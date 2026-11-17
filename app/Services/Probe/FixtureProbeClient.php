@@ -1,0 +1,60 @@
+<?php
+
+namespace App\Services\Probe;
+
+use DateTimeImmutable;
+
+class FixtureProbeClient implements ProbeClient
+{
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null): ProbeResult
+    {
+        $startedAt = hrtime(true);
+        $parts = parse_url($url);
+        $host = mb_strtolower((string) ($parts['host'] ?? ''));
+
+        if (! in_array($host, ['fixture.test', 'healthy.fixture.test'], true)) {
+            return new ProbeResult(null, 0, '[離線測試網址無效]', [], [], 'fixture_host_rejected', '離線測試傳輸只接受 fixture.test 網域。', null, null);
+        }
+
+        $path = $parts['path'] ?? '/ok';
+        $redirects = [];
+        $finalUrl = $url;
+
+        if ($path === '/redirect-https') {
+            $redirects[] = 'https://fixture.test/ok';
+            $finalUrl = 'https://fixture.test/ok';
+            $path = '/ok';
+        }
+
+        if ($path === '/redirect-private') {
+            $redirects[] = 'http://127.0.0.1/admin';
+
+            return new ProbeResult(null, 2, 'http://fixture.test/redirect-private', $redirects, [], 'blocked_ssrf', '離線測試模式在未連線的情況下封鎖了私有位址重新導向。', null, null);
+        }
+
+        if ($path === '/redirect-loop') {
+            $redirects[] = $url;
+
+            return new ProbeResult(null, 2, $url, $redirects, [], 'redirect_loop', '偵測到重新導向迴圈。', null, null);
+        }
+
+        if ($path === '/timeout') {
+            return new ProbeResult(null, 10_000, $url, [], [], 'timeout', '離線測試模式模擬連線逾時。', null, null);
+        }
+
+        $statusCode = match ($path) {
+            '/403', '/forbidden' => 403,
+            '/404', '/not-found' => 404,
+            '/500', '/server-error' => 500,
+            '/429' => 429,
+            '/adsbot-difference' => str_contains($userAgent, 'AdsBot') ? 403 : 200,
+            default => 200,
+        };
+        $body = $path === '/missing-text' ? '<html>fixture page without the expected copy</html>' : '<html>fixture healthy landing page</html>';
+        $elapsedMs = (int) round((hrtime(true) - $startedAt) / 1_000_000) + 2;
+        $matchesExpectedText = $expectedText === null || $expectedText === '' ? null : mb_stripos($body, $expectedText) !== false;
+        $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
+
+        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, ['203.0.113.10'], null, null, $matchesExpectedText, $expiry);
+    }
+}
