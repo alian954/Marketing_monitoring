@@ -25,13 +25,21 @@ class NotificationDispatcher
         $reason = $this->reasonLabel($incident->rule_key);
         $code = $incident->rule_key === 'adsbot_difference' ? $run->adsbot_status : $run->normal_status;
         $statusLine = $code === null ? '檢查錯誤：'.($run->error_type ?? $run->adsbot_error_type ?? 'unknown') : 'HTTP 狀態碼：'.$code;
-        $timeLine = $run->elapsed_ms === null ? '耗時：無資料' : '耗時：'.$run->elapsed_ms.' 毫秒';
+        $timeLine = $incident->rule_key === 'response_time' && $run->normal_elapsed_ms !== null
+            ? 'HTTP 回應耗時：'.$run->normal_elapsed_ms.' 毫秒'
+            : ($run->elapsed_ms === null ? '耗時：無資料' : '耗時：'.$run->elapsed_ms.' 毫秒');
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $thresholdLine = $incident->rule_key === 'response_time'
+            ? '設定門檻：'.($snapshot['response_time_threshold_ms'] ?? $monitor->response_time_threshold_ms).' 毫秒'
+            : '';
+        $acceptedStatusCodes = array_map('intval', $monitor->accepted_status_codes ?? []);
+        $successfulStatusCodes = [...range(200, 399), ...$acceptedStatusCodes];
         $previousSuccess = CheckRun::query()
             ->where('monitor_id', $monitor->id)
             ->where('config_version', $run->config_version)
             ->where('status', 'completed')
-            ->where('normal_status', '>=', 200)
-            ->where('normal_status', '<', 400)
+            ->whereNull('error_type')
+            ->whereIn('normal_status', $successfulStatusCodes)
             ->where('id', '<', $run->id)
             ->latest('finished_at')
             ->value('finished_at');
@@ -44,6 +52,7 @@ class NotificationDispatcher
             '偵測時間（UTC）：'.now()->utc()->toIso8601String(),
             $statusLine,
             $timeLine,
+            $thresholdLine,
             '前次成功檢查時間（UTC）：'.($previousSuccess ?: '未記錄'),
             $incident->rule_key === 'adsbot_difference' ? 'AdsBot 結果僅為 User-Agent 字串模擬，不代表 Google 官方擷取。' : '',
         ]);
@@ -67,6 +76,8 @@ class NotificationDispatcher
         return match ($ruleKey) {
             'http' => 'HTTP 連線異常',
             'content' => '缺少預期文字',
+            'forbidden_text' => '回應包含不應出現的文字',
+            'response_time' => 'HTTP 回應時間超過設定門檻',
             'tls_expired' => 'TLS 憑證已過期',
             'tls_handshake' => 'TLS 交握失敗',
             'tls_14d' => 'TLS 憑證將於 14 天內到期',

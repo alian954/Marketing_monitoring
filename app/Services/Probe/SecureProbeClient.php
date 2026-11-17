@@ -23,6 +23,7 @@ class SecureProbeClient implements ProbeClient
         $visited = [];
         $redirects = [];
         $resolvedIps = [];
+        $monitorHostIps = [];
         $elapsedMs = 0;
         $maxRedirects = (int) config('monitoring.max_redirects');
         $deadline = $startedAt + max(1, (int) config('monitoring.request_timeout_seconds')) * 1_000_000_000;
@@ -37,18 +38,22 @@ class SecureProbeClient implements ProbeClient
             try {
                 $target = $this->policy->validateAndResolve($currentUrl, $allowedRedirectHosts, $originHost);
                 $originHost ??= $target['host'];
+
+                if ($hop === 0) {
+                    $monitorHostIps = $target['ips'];
+                }
             } catch (ProbeException $exception) {
-                return $this->failure($exception, $startedAt, $redirects, $resolvedIps, $currentUrl);
+                return $this->failure($exception, $startedAt, $redirects, $resolvedIps, $currentUrl, monitorHostIps: $monitorHostIps);
             }
 
             $remainingMs = $this->remainingMilliseconds($deadline);
 
             if ($remainingMs === 0) {
-                return $this->failure($this->timeoutException(), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs);
+                return $this->failure($this->timeoutException(), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, monitorHostIps: $monitorHostIps);
             }
 
             if (isset($visited[$target['url']])) {
-                return $this->failure(new ProbeException('redirect_loop', '偵測到重新導向迴圈。'), $startedAt, $redirects, $resolvedIps, $target['url']);
+                return $this->failure(new ProbeException('redirect_loop', '偵測到重新導向迴圈。'), $startedAt, $redirects, $resolvedIps, $target['url'], monitorHostIps: $monitorHostIps);
             }
 
             $visited[$target['url']] = true;
@@ -57,7 +62,7 @@ class SecureProbeClient implements ProbeClient
             $elapsedMs += $response->elapsedMs;
 
             if (hrtime(true) >= $deadline) {
-                return $this->failure($this->timeoutException(), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt);
+                return $this->failure($this->timeoutException(), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
             }
 
             if ($response->errorType !== null) {
@@ -71,6 +76,7 @@ class SecureProbeClient implements ProbeClient
                     $response->errorDetail,
                     null,
                     $response->tlsExpiresAt,
+                    $monitorHostIps,
                 );
             }
 
@@ -89,29 +95,30 @@ class SecureProbeClient implements ProbeClient
                     null,
                     $matchesExpectedText,
                     $response->tlsExpiresAt,
+                    $monitorHostIps,
                 );
             }
 
             if ($response->location === null || trim($response->location) === '') {
-                return $this->failure(new ProbeException('redirect_invalid', '重新導向回應缺少 Location 標頭。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt);
+                return $this->failure(new ProbeException('redirect_invalid', '重新導向回應缺少 Location 標頭。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
             }
 
             try {
                 $nextUrl = (string) UriResolver::resolve(new Uri($target['url']), new Uri($response->location));
             } catch (Throwable) {
-                return $this->failure(new ProbeException('redirect_invalid', '重新導向目標網址無效。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt);
+                return $this->failure(new ProbeException('redirect_invalid', '重新導向目標網址無效。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
             }
 
             $redirects[] = $this->masker->mask($nextUrl);
 
             if ($hop === $maxRedirects) {
-                return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt);
+                return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
             }
 
             $currentUrl = $nextUrl;
         }
 
-        return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs);
+        return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs, monitorHostIps: $monitorHostIps);
     }
 
     private function remainingMilliseconds(int $deadline): int
@@ -135,6 +142,7 @@ class SecureProbeClient implements ProbeClient
         string $url,
         ?int $elapsedMs = null,
         ?\DateTimeImmutable $tlsExpiresAt = null,
+        array $monitorHostIps = [],
     ): ProbeResult {
         return new ProbeResult(
             null,
@@ -146,6 +154,7 @@ class SecureProbeClient implements ProbeClient
             $exception->getMessage(),
             null,
             $tlsExpiresAt,
+            $monitorHostIps,
         );
     }
 }

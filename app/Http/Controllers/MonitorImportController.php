@@ -177,7 +177,9 @@ class MonitorImportController extends Controller
                 'enabled' => true,
                 'config_version' => 1,
                 'allowed_redirect_hosts' => [],
+                'accepted_status_codes' => [],
                 'expected_text' => null,
+                'expected_text_mode' => 'present',
                 'interval_seconds' => (int) config('monitoring.interval_seconds'),
                 'next_check_at' => now(),
             ]);

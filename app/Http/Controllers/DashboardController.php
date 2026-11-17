@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DnsChangeEvent;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
@@ -28,17 +29,24 @@ class DashboardController extends Controller
             ->latest('last_seen_at')
             ->limit(20)
             ->get();
+        $dnsChanges = DnsChangeEvent::query()
+            ->with('monitor:id,name')
+            ->latest('detected_at')
+            ->limit(10)
+            ->get();
         $heartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-scheduler')->first();
         $heartbeatFresh = $heartbeat?->last_succeeded_at !== null && $heartbeat->last_succeeded_at->gte(now()->subMinutes(2));
 
         return view('dashboard', [
             'monitors' => $monitors,
             'incidents' => $incidents,
+            'dnsChanges' => $dnsChanges,
             'heartbeat' => $heartbeat,
             'heartbeatFresh' => $heartbeatFresh,
             'counts' => [
                 'healthy' => $monitors->where('health_state', 'healthy')->count(),
                 'issue' => $monitors->whereIn('health_state', ['issue', 'suspect'])->count(),
+                'warning' => $monitors->where('health_state', 'warning')->count(),
                 'stale' => $monitors->where('health_state', 'stale')->count(),
                 'paused' => $monitors->where('health_state', 'paused')->count(),
             ],

@@ -215,6 +215,127 @@ textarea {
     font-size: 12px;
 }
 
+.public-status-body {
+    background: var(--paper);
+}
+
+.public-status-shell {
+    width: min(900px, calc(100% - 48px));
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 34px 0 28px;
+}
+
+.public-status-header,
+.public-status-title-row,
+.public-status-service {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.public-status-header {
+    margin-bottom: 24px;
+}
+
+.public-status-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    font-weight: 750;
+    text-decoration: none;
+}
+
+.public-status-overview {
+    margin-bottom: 18px;
+    padding: 25px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.public-status-overview .eyebrow {
+    margin-bottom: 6px;
+}
+
+.public-status-overview .page-title {
+    font-size: clamp(24px, 4vw, 32px);
+}
+
+.public-status-summary {
+    margin: 22px 0 3px;
+    color: var(--ink);
+    font-size: 20px;
+    font-weight: 720;
+}
+
+.public-status-description,
+.public-status-updated,
+.public-status-disclaimer {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.public-status-updated {
+    margin-top: 16px;
+    font-size: 12px;
+}
+
+.public-status-service-list {
+    padding: 0 20px;
+}
+
+.public-status-service {
+    min-height: 82px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.public-status-service:last-child {
+    border-bottom: 0;
+}
+
+.public-status-service-name h3 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.public-status-service-name p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.public-status-disclaimer {
+    margin-top: 14px;
+}
+
+.public-status-footer {
+    margin-top: 28px;
+    color: var(--subtle);
+    font-size: 12px;
+    text-align: center;
+}
+
+.public-status-share {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.public-status-share .field-group {
+    flex: 1;
+}
+
 .spaced-top {
     margin-top: 18px;
 }
@@ -401,9 +522,15 @@ textarea {
 
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 22px;
+}
+
+.monitor-availability-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
+    padding: 20px;
 }
 
 .stat-card {
@@ -915,6 +1042,70 @@ textarea {
     overflow-wrap: anywhere;
 }
 
+.response-time-chart {
+    padding: 18px 20px 20px;
+}
+
+.response-time-figure {
+    margin: 0;
+}
+
+.response-time-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.response-time-grid-line {
+    stroke: var(--line);
+    stroke-width: 1;
+}
+
+.response-time-axis-label {
+    fill: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 10px;
+}
+
+.response-time-line {
+    fill: none;
+    stroke: var(--teal);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.5;
+}
+
+.response-time-point {
+    fill: var(--teal);
+    stroke: #fff;
+    stroke-width: 1;
+}
+
+.response-time-caption {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.response-time-data {
+    margin-top: 16px;
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+}
+
+.response-time-data summary {
+    min-height: 24px;
+    color: var(--blue-dark);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.response-time-data[open] summary {
+    margin-bottom: 12px;
+}
+
 .incident-list {
     display: grid;
     gap: 12px;
@@ -1346,6 +1537,24 @@ textarea {
         padding: 27px 0 42px;
     }
 
+    .public-status-shell {
+        width: min(100% - 32px, 900px);
+        padding: 23px 0;
+    }
+
+    .public-status-overview {
+        padding: 19px;
+    }
+
+    .public-status-service-list {
+        padding: 0 15px;
+    }
+
+    .public-status-share {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
     .page-heading {
         align-items: flex-start;
         flex-direction: column;
@@ -1364,6 +1573,10 @@ textarea {
     .stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 9px;
+    }
+
+    .monitor-availability-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .stat-card {

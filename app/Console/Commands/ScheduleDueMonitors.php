@@ -33,7 +33,12 @@ class ScheduleDueMonitors extends Command
                 ->limit(100)
                 ->get()
                 ->each(function (Monitor $monitor) use ($scheduler, &$queued): void {
-                    if ($scheduler->enqueue($monitor) !== null) {
+                    $configuredJitterSeconds = max(0, (int) config('monitoring.schedule_jitter_max_seconds'));
+                    $intervalJitterCapSeconds = max(1, intdiv(max(1, $monitor->interval_seconds), 4));
+                    $maximumJitterSeconds = min($configuredJitterSeconds, $intervalJitterCapSeconds);
+                    $jitterSeconds = $maximumJitterSeconds === 0 ? 0 : random_int(0, $maximumJitterSeconds);
+
+                    if ($scheduler->enqueue($monitor, 'scheduled', delaySeconds: $jitterSeconds) !== null) {
                         $queued++;
                     }
                 });

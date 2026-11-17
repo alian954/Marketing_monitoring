@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\CheckRun;
 use App\Models\Monitor;
+use App\Services\DnsChangeRecorder;
 use App\Services\IncidentManager;
 use App\Services\Probe\ProbeClient;
 use App\Services\RunScheduler;
@@ -36,8 +37,14 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         return [10, 30];
     }
 
-    public function handle(ProbeClient $probe, IncidentManager $incidents, RunScheduler $scheduler): void
+    public function handle(
+        ProbeClient $probe,
+        IncidentManager $incidents,
+        RunScheduler $scheduler,
+        ?DnsChangeRecorder $dnsChanges = null,
+    ): void
     {
+        $dnsChanges ??= app(DnsChangeRecorder::class);
         $run = CheckRun::query()->with('monitor')->findOrFail($this->checkRunId);
 
         if (in_array($run->status, ['completed', 'stale_config', 'paused'], true)) {
@@ -85,7 +92,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             throw $exception;
         }
 
-        DB::transaction(function () use ($run, $monitor, $normal, $adsbot, $incidents, $scheduler): void {
+        DB::transaction(function () use ($run, $monitor, $normal, $adsbot, $incidents, $scheduler, $dnsChanges): void {
             $lockedRun = CheckRun::query()->lockForUpdate()->findOrFail($run->id);
 
             if (in_array($lockedRun->status, ['completed', 'stale_config', 'paused'], true)) {
@@ -105,9 +112,11 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'error_detail' => $normal->errorDetail === null ? null : mb_substr($normal->errorDetail, 0, 300),
                 'adsbot_error_type' => $adsbot->errorType,
                 'elapsed_ms' => $normal->elapsedMs + $adsbot->elapsedMs,
+                'normal_elapsed_ms' => $normal->elapsedMs,
                 'final_url' => $normal->finalUrl,
                 'redirects' => $normal->redirects,
                 'resolved_public_ips' => $resolvedIps,
+                'monitor_host_ips' => $normal->monitorHostIps,
                 'expected_text_found' => $normal->expectedTextFound,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
@@ -118,6 +127,11 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 
             $currentMonitor->last_checked_at = $finishedAt;
             $currentMonitor->save();
+
+            if ($lockedRun->source === 'scheduled') {
+                $dnsChanges->recordFor($lockedRun);
+            }
+
             $confirmationDelay = $incidents->record($currentMonitor, $lockedRun, $normal, $adsbot);
 
             if ($confirmationDelay !== null && $confirmationDelay > 0) {

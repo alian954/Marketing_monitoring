@@ -10,6 +10,7 @@ return [
     'max_body_bytes' => 1_048_576,
     'stale_grace_seconds' => 900,
     'retention_days' => 30,
+    'schedule_jitter_max_seconds' => 60,
     'notify_email' => env('MONITOR_NOTIFY_EMAIL'),
     'default_allowed_redirect_hosts' => array_filter(array_map(
         static fn (string $host): string => mb_strtolower(trim($host)),

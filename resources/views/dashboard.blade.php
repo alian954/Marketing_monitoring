@@ -14,6 +14,7 @@
             <p class="page-description">查看監測狀態、進行中的事件，以及排程器運作情形。</p>
         </div>
         <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
             <a class="button button-secondary" href="{{ route('monitors.export') }}">匯出 CSV</a>
             <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
         </div>
@@ -29,6 +30,11 @@
             <div class="stat-topline"><span class="stat-label">需留意</span><x-state-badge state="issue" /></div>
             <strong class="stat-value">{{ $counts['issue'] ?? 0 }}</strong>
             <p class="stat-hint">異常已確認或仍在確認中</p>
+        </article>
+        <article class="stat-card">
+            <div class="stat-topline"><span class="stat-label">效能警告</span><x-state-badge state="warning" /></div>
+            <strong class="stat-value">{{ $counts['warning'] ?? 0 }}</strong>
+            <p class="stat-hint">回應變慢或檢查受到限制</p>
         </article>
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">資料逾時</span><x-state-badge state="stale" /></div>
@@ -163,7 +169,7 @@
                             <tr>
                                 <td><span class="monitor-name-link">{{ $incident->monitor?->name ?? '已刪除的監測項目' }}</span></td>
                                 <td><x-state-badge :state="$incident->state" /></td>
-                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'content' => '缺少預期文字', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
+                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'content' => '缺少預期文字', 'forbidden_text' => '回應包含不應出現的文字', 'response_time' => 'HTTP 回應時間超過設定門檻', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
                                 <td>
                                     @if ($incident->last_seen_at)
                                         <time class="timestamp" datetime="{{ $incident->last_seen_at->toIso8601String() }}">{{ $incident->last_seen_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
@@ -172,6 +178,57 @@
                                     @endif
                                 </td>
                                 <td class="row-actions"><a class="strong-link" href="{{ route('monitors.show', $incident->monitor) }}">查看 <span aria-hidden="true">→</span></a></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
+    <section class="panel spaced-top" aria-labelledby="dns-changes-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="dns-changes-title" class="panel-title">DNS 位址變更</h2>
+                <p class="panel-description">新紀錄只追蹤監測網址主機的安全公開 IP；舊版紀錄可能包含重新導向目的主機。</p>
+            </div>
+        </div>
+        @if ($dnsChanges->isEmpty())
+            <div class="empty-state">
+                <h3 class="empty-title">尚未偵測到 DNS 位址變更</h3>
+                <p class="empty-copy">累積至少兩次排程檢查後，若公開 IP 集不同，變更紀錄會顯示於此處。</p>
+            </div>
+        @else
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <caption class="sr-only">最近偵測到的 DNS 公開 IP 位址變更</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">監測項目</th>
+                            <th scope="col">偵測時間</th>
+                            <th scope="col">監測主機先前 IP</th>
+                            <th scope="col">監測主機目前 IP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($dnsChanges as $dnsChange)
+                            <tr>
+                                <td>
+                                    @if ($dnsChange->monitor)
+                                        <a class="monitor-name-link" href="{{ route('monitors.show', $dnsChange->monitor) }}">{{ $dnsChange->monitor->name }}</a>
+                                    @else
+                                        <span class="secondary-text">已刪除的監測項目</span>
+                                    @endif
+                                </td>
+                                <td><time class="timestamp" datetime="{{ $dnsChange->detected_at->toIso8601String() }}">{{ $dnsChange->detected_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
+                                <td class="masked-url">
+                                    {{ implode(', ', $dnsChange->previous_ips) }}
+                                    @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
+                                </td>
+                                <td class="masked-url">
+                                    {{ implode(', ', $dnsChange->current_ips) }}
+                                    @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>

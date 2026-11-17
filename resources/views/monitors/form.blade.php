@@ -8,6 +8,9 @@
         $redirectHosts = $monitor->allowed_redirect_hosts;
         $redirectHostsValue = is_array($redirectHosts) ? implode("\n", $redirectHosts) : '';
     }
+    $acceptedStatusCodes = $monitor->accepted_status_codes;
+    $acceptedStatusCodesDefault = is_array($acceptedStatusCodes) ? implode(', ', $acceptedStatusCodes) : '';
+    $acceptedStatusCodesValue = old('accepted_status_codes', $acceptedStatusCodesDefault);
 @endphp
 
 @section('title', $isEditing ? '編輯監測項目' : '新增監測項目')
@@ -67,11 +70,47 @@
                         </div>
 
                         <div class="field-group field-group-full">
+                            <label class="field-label" for="accepted_status_codes">額外接受的 HTTP 狀態碼</label>
+                            <input class="field-input @error('accepted_status_codes') is-invalid @enderror" id="accepted_status_codes" name="accepted_status_codes" type="text" value="{{ $acceptedStatusCodesValue }}" maxlength="1000" autocomplete="off" placeholder="例如：401, 404 429" aria-describedby="{{ $errors->has('accepted_status_codes') ? 'accepted-status-codes-help accepted-status-codes-error' : 'accepted-status-codes-help' }}" @if ($errors->has('accepted_status_codes')) aria-invalid="true" @endif>
+                            <p id="accepted-status-codes-help" class="field-help">選填，輸入以逗號或空白分隔的 400–599 狀態碼。預設只接受 200–399；加入 429 後，429 會視為預期回應，不會觸發限制警告。</p>
+                            @error('accepted_status_codes')<p id="accepted-status-codes-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group">
+                            <label class="field-label" for="interval_seconds">檢查頻率</label>
+                            <select class="field-select @error('interval_seconds') is-invalid @enderror" id="interval_seconds" name="interval_seconds" required @if ($errors->has('interval_seconds')) aria-invalid="true" @endif aria-describedby="{{ $errors->has('interval_seconds') ? 'interval-help interval-error' : 'interval-help' }}">
+                                @foreach ($intervalOptions as $seconds => $label)
+                                    <option value="{{ $seconds }}" @selected((string) old('interval_seconds', $monitor->interval_seconds ?? config('monitoring.interval_seconds')) === (string) $seconds)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <p id="interval-help" class="field-help">檢查越頻繁，發出的請求越多。手動檢查不會更改排程頻率。</p>
+                            @error('interval_seconds')<p id="interval-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
                             <label class="field-label" for="expected_text">預期回應文字</label>
-                            <input class="field-input @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" type="text" value="{{ old('expected_text', $monitor->expected_text) }}" maxlength="500" autocomplete="off" placeholder="選填；回應中必須包含的文字" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}">
-                            <p id="expected-text-help" class="field-help">留空時只檢查 HTTP 回應。文字比對不區分大小寫。</p>
+                            <input class="field-input @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" type="text" value="{{ old('expected_text', $monitor->expected_text) }}" maxlength="500" autocomplete="off" placeholder="選填；要比對的文字" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}">
+                            <p id="expected-text-help" class="field-help">留空時不比對文字。比對不區分大小寫。</p>
                             @error('expected_text')<p id="expected-text-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
+
+                        <div class="field-group">
+                            <label class="field-label" for="expected_text_mode">文字符合條件</label>
+                            <select class="field-select @error('expected_text_mode') is-invalid @enderror" id="expected_text_mode" name="expected_text_mode" required aria-describedby="{{ $errors->has('expected_text_mode') ? 'expected-text-mode-help expected-text-mode-error' : 'expected-text-mode-help' }}" @if ($errors->has('expected_text_mode')) aria-invalid="true" @endif>
+                                <option value="present" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'present')>回應中必須包含</option>
+                                <option value="absent" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'absent')>回應中不得包含</option>
+                            </select>
+                            <p id="expected-text-mode-help" class="field-help">只在上方輸入文字時套用這項條件。</p>
+                            @error('expected_text_mode')<p id="expected-text-mode-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group">
+                            <label class="field-label" for="response_time_threshold_ms">回應時間警示門檻（毫秒）</label>
+                            <input class="field-input @error('response_time_threshold_ms') is-invalid @enderror" id="response_time_threshold_ms" name="response_time_threshold_ms" type="number" inputmode="numeric" min="100" max="9000" step="1" value="{{ old('response_time_threshold_ms', $monitor->response_time_threshold_ms) }}" aria-invalid="{{ $errors->has('response_time_threshold_ms') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('response_time_threshold_ms') ? 'response-time-threshold-help response-time-threshold-error' : 'response-time-threshold-help' }}">
+                            <p id="response-time-threshold-help" class="field-help">留空即可停用。一般 HTTP 檢查成功且耗時超過 100–9000 毫秒門檻時，系統會建立警告事件。</p>
+                            @error('response_time_threshold_ms')<p id="response-time-threshold-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
                     </div>
                 </div>
 

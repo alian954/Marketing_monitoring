@@ -6,44 +6,87 @@ use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
+use App\Models\StatusPage;
 use App\Services\IncidentManager;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use App\Services\UrlMasker;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitorController extends Controller
 {
+    /** @var array<int, string> */
+    private const INTERVAL_OPTIONS = [
+        60 => '每 1 分鐘',
+        300 => '每 5 分鐘',
+        900 => '每 15 分鐘',
+        1800 => '每 30 分鐘',
+        3600 => '每 1 小時',
+    ];
+
     public function __construct(
         private readonly UrlSafetyPolicy $urlPolicy,
         private readonly UrlMasker $urlMasker,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View|RedirectResponse
     {
-        $monitors = Monitor::query()
+        $validator = Validator::make($request->query(), [
+            'search' => ['nullable', 'string', 'max:120'],
+            'state' => ['nullable', 'in:all,enabled,paused'],
+        ], [
+            'search.max' => '搜尋文字不得超過 120 個字元。',
+            'state.in' => '請選擇有效的監測狀態篩選條件。',
+        ]);
+        if ($validator->fails()) {
+            return redirect()->route('monitors.index')->withErrors($validator);
+        }
+
+        $validated = $validator->validated();
+        $search = trim((string) ($validated['search'] ?? ''));
+        $state = $validated['state'] ?? 'all';
+
+        $query = Monitor::query()
             ->with(['latestCheckRun', 'activeIncidents'])
-            ->orderBy('name')
-            ->paginate(50);
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $searchTerm = '%'.$search.'%';
+                $query->where(function (Builder $query) use ($searchTerm): void {
+                    $query->where('name', 'like', $searchTerm)
+                        ->orWhere('label', 'like', $searchTerm);
+                });
+            })
+            ->when($state === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
+            ->when($state === 'paused', static fn (Builder $query) => $query->where('enabled', false))
+            ->orderBy('name');
+        $monitors = $query->paginate(50)->withQueryString();
 
         $monitors->getCollection()->each(function (Monitor $monitor): void {
             $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
             $monitor->setAttribute('health_state', $monitor->healthState());
         });
 
-        return view('monitors.index', compact('monitors'));
+        $filters = ['search' => $search, 'state' => $state];
+
+        return view('monitors.index', compact('monitors', 'filters'));
     }
 
     public function create(): View
     {
-        return view('monitors.form', ['monitor' => new Monitor, 'formAction' => route('monitors.store'), 'formMethod' => 'POST']);
+        return view('monitors.form', [
+            'monitor' => new Monitor,
+            'formAction' => route('monitors.store'),
+            'formMethod' => 'POST',
+            'intervalOptions' => self::INTERVAL_OPTIONS,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -64,8 +107,11 @@ class MonitorController extends Controller
             'enabled' => true,
             'config_version' => 1,
             'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
+            'accepted_status_codes' => $validated['accepted_status_codes'],
             'expected_text' => $validated['expected_text'] ?: null,
-            'interval_seconds' => (int) config('monitoring.interval_seconds'),
+            'expected_text_mode' => $validated['expected_text_mode'],
+            'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
+            'interval_seconds' => $validated['interval_seconds'],
             'next_check_at' => now(),
         ]);
 
@@ -77,8 +123,100 @@ class MonitorController extends Controller
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
         $runs = $monitor->checkRuns()->latest('scheduled_at')->limit(100)->get();
         $incidents = $monitor->incidents()->with(['events', 'outboxMessages'])->latest('last_seen_at')->limit(50)->get();
+        $asOf = now();
+        $historyStart = $asOf->copy()->subDays(30);
+        $historyRuns = $monitor->checkRuns()
+            ->where('source', 'scheduled')
+            ->where('status', 'completed')
+            ->whereNotNull('finished_at')
+            ->where('finished_at', '>=', $historyStart)
+            ->orderBy('finished_at')
+            ->get(['id', 'config_snapshot', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms']);
 
-        return view('monitors.show', compact('monitor', 'runs', 'incidents'));
+        $availabilityStats = collect([
+            ['label' => '24 小時', 'starts_at' => $asOf->copy()->subDay()],
+            ['label' => '7 天', 'starts_at' => $asOf->copy()->subDays(7)],
+            ['label' => '30 天', 'starts_at' => $historyStart],
+        ])->map(function (array $period) use ($historyRuns, $monitor): array {
+            $periodRuns = $historyRuns->filter(
+                fn (CheckRun $run): bool => $run->finished_at->greaterThanOrEqualTo($period['starts_at']),
+            );
+            $completedChecks = $periodRuns->count();
+            $successfulChecks = $periodRuns->filter(static function (CheckRun $run): bool {
+                $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+                $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
+                $statusCode = $run->normal_status;
+                $isSuccessfulStatus = $statusCode === 429
+                    || ($statusCode !== null && (($statusCode >= 200 && $statusCode < 400) || in_array($statusCode, $acceptedStatusCodes, true)));
+
+                return $run->error_type === null && $isSuccessfulStatus;
+            })->count();
+
+            return [
+                'label' => $period['label'],
+                'availability' => $completedChecks === 0 ? null : round(($successfulChecks / $completedChecks) * 100, 2),
+                'successful_checks' => $successfulChecks,
+                'completed_checks' => $completedChecks,
+            ];
+        })->all();
+
+        $responseTimeStart = $asOf->copy()->subDay();
+        $responseTimeRuns = $historyRuns->filter(
+            fn (CheckRun $run): bool => $run->finished_at->greaterThanOrEqualTo($responseTimeStart)
+                && $run->normal_elapsed_ms !== null,
+        )->values();
+        $maximumResponseTimeMs = (int) ($responseTimeRuns->max('normal_elapsed_ms') ?? 0);
+        $responseTimeScaleMaxMs = max(100, (int) (ceil($maximumResponseTimeMs / 100) * 100));
+        $responseTimePoints = $responseTimeRuns->map(function (CheckRun $run) use ($responseTimeStart, $responseTimeScaleMaxMs): array {
+            $elapsedSeconds = max(0, $run->finished_at->getTimestamp() - $responseTimeStart->getTimestamp());
+            $x = 48 + (min(1, $elapsedSeconds / 86400) * 522);
+            $y = 144 - (($run->normal_elapsed_ms / $responseTimeScaleMaxMs) * 116);
+
+            return [
+                'x' => number_format($x, 2, '.', ''),
+                'y' => number_format($y, 2, '.', ''),
+                'coordinate' => number_format($x, 2, '.', '').','.number_format($y, 2, '.', ''),
+                'finished_at' => $run->finished_at,
+                'normal_status' => $run->normal_status,
+                'elapsed_ms' => $run->normal_elapsed_ms,
+                'error_type' => $run->error_type,
+            ];
+        });
+        $responseTimeSegments = [];
+        $currentSegment = [];
+        $previousFinishedAt = null;
+        $maximumGapSeconds = max(60, $monitor->interval_seconds * 2);
+
+        foreach ($responseTimePoints as $point) {
+            $finishedAtTimestamp = $point['finished_at']->getTimestamp();
+
+            if ($previousFinishedAt !== null && ($finishedAtTimestamp - $previousFinishedAt) > $maximumGapSeconds) {
+                if (count($currentSegment) > 1) {
+                    $responseTimeSegments[] = implode(' ', $currentSegment);
+                }
+
+                $currentSegment = [];
+            }
+
+            $currentSegment[] = $point['coordinate'];
+            $previousFinishedAt = $finishedAtTimestamp;
+        }
+
+        if (count($currentSegment) > 1) {
+            $responseTimeSegments[] = implode(' ', $currentSegment);
+        }
+
+        $responseTime = [
+            'count' => $responseTimeRuns->count(),
+            'average_ms' => $responseTimeRuns->avg('normal_elapsed_ms'),
+            'minimum_ms' => $responseTimeRuns->min('normal_elapsed_ms'),
+            'maximum_ms' => $responseTimeRuns->max('normal_elapsed_ms'),
+            'scale_max_ms' => $responseTimeScaleMaxMs,
+            'points' => $responseTimePoints->all(),
+            'segments' => $responseTimeSegments,
+        ];
+
+        return view('monitors.show', compact('monitor', 'runs', 'incidents', 'availabilityStats', 'responseTime'));
     }
 
     public function edit(Monitor $monitor): View
@@ -89,6 +227,7 @@ class MonitorController extends Controller
             'monitor' => $monitor,
             'formAction' => route('monitors.update', $monitor),
             'formMethod' => 'PUT',
+            'intervalOptions' => self::INTERVAL_OPTIONS,
         ]);
     }
 
@@ -113,7 +252,11 @@ class MonitorController extends Controller
                 'url' => $normalizedUrl,
                 'url_hash' => $fingerprint,
                 'label' => $validated['label'] ?: null,
+                'accepted_status_codes' => $validated['accepted_status_codes'],
                 'expected_text' => $validated['expected_text'] ?: null,
+                'expected_text_mode' => $validated['expected_text_mode'],
+                'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
+                'interval_seconds' => $validated['interval_seconds'],
                 'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
                 'config_version' => $nextVersion,
                 'next_check_at' => $lockedMonitor->enabled ? now() : null,
@@ -196,9 +339,34 @@ class MonitorController extends Controller
 
     public function destroy(Monitor $monitor): RedirectResponse
     {
-        $monitor->delete();
+        $pageWasUnpublished = DB::transaction(function () use ($monitor): bool {
+            $lockedMonitor = Monitor::query()->lockForUpdate()->findOrFail($monitor->id);
+            $wasPublic = $lockedMonitor->public_status;
+            $lockedMonitor->delete();
 
-        return redirect()->route('monitors.index')->with('status', '監測項目及其相關記錄已刪除。');
+            if (! $wasPublic || Monitor::query()->where('public_status', true)->exists()) {
+                return false;
+            }
+
+            $statusPage = StatusPage::query()
+                ->where('setting_key', 'default')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $statusPage?->is_published) {
+                return false;
+            }
+
+            $statusPage->forceFill(['is_published' => false])->save();
+
+            return true;
+        });
+
+        $statusMessage = $pageWasUnpublished
+            ? '監測項目及其相關記錄已刪除；最後一個公開項目已移除，狀態頁也已取消發布。'
+            : '監測項目及其相關記錄已刪除。';
+
+        return redirect()->route('monitors.index')->with('status', $statusMessage);
     }
 
     public function export(): StreamedResponse
@@ -226,15 +394,28 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, expected_text: ?string, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
             'label' => ['nullable', 'string', 'max:100'],
+            'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
             'expected_text' => ['nullable', 'string', 'max:500'],
+            'expected_text_mode' => ['sometimes', 'in:present,absent'],
+            'response_time_threshold_ms' => ['nullable', 'integer', 'min:100', 'max:9000'],
+            'interval_seconds' => ['sometimes', 'integer', 'in:'.implode(',', array_keys(self::INTERVAL_OPTIONS))],
             'redirect_hosts' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'response_time_threshold_ms.integer' => '回應時間門檻必須是整數。',
+            'response_time_threshold_ms.min' => '回應時間門檻不得低於 100 毫秒。',
+            'response_time_threshold_ms.max' => '回應時間門檻不得高於 9000 毫秒。',
+            'expected_text_mode.in' => '文字條件設定無效，請重新選擇。',
+            'accepted_status_codes.string' => '額外接受狀態碼格式不正確。',
+            'accepted_status_codes.max' => '額外接受狀態碼欄位過長。',
+            'interval_seconds.integer' => '檢查頻率格式不正確。',
+            'interval_seconds.in' => '請選擇支援的檢查頻率。',
         ]);
         $allowedHosts = [];
 
@@ -246,13 +427,49 @@ class MonitorController extends Controller
             }
         }
 
+        if (array_key_exists('accepted_status_codes', $validated)) {
+            $acceptedStatusCodes = $this->normalizeAcceptedStatusCodes($validated['accepted_status_codes']);
+        } else {
+            $acceptedStatusCodes = $monitor?->accepted_status_codes ?? [];
+        }
+
         return [
             'name' => $validated['name'],
             'url' => isset($validated['url']) ? trim($validated['url']) : '',
             'label' => $validated['label'] ?? null,
+            'accepted_status_codes' => $acceptedStatusCodes,
             'expected_text' => $validated['expected_text'] ?? null,
+            'expected_text_mode' => $validated['expected_text_mode'] ?? $monitor?->expected_text_mode ?? 'present',
+            'response_time_threshold_ms' => array_key_exists('response_time_threshold_ms', $validated)
+                ? ($validated['response_time_threshold_ms'] === null ? null : (int) $validated['response_time_threshold_ms'])
+                : ($monitor?->response_time_threshold_ms),
+            'interval_seconds' => array_key_exists('interval_seconds', $validated)
+                ? (int) $validated['interval_seconds']
+                : ($monitor?->interval_seconds ?? (int) config('monitoring.interval_seconds')),
             'allowed_redirect_hosts' => array_values(array_unique($allowedHosts)),
         ];
+    }
+
+    /** @return list<int> */
+    private function normalizeAcceptedStatusCodes(?string $input): array
+    {
+        $codes = preg_split('/[\s,]+/', trim((string) $input), flags: PREG_SPLIT_NO_EMPTY) ?: [];
+        $normalizedCodes = [];
+
+        foreach ($codes as $code) {
+            if (preg_match('/\A\d{3}\z/D', $code) !== 1 || (int) $code < 400 || (int) $code > 599) {
+                throw ValidationException::withMessages([
+                    'accepted_status_codes' => '額外接受狀態碼只能是 400 至 599 的三位數 HTTP 狀態碼。',
+                ]);
+            }
+
+            $normalizedCodes[] = (int) $code;
+        }
+
+        $normalizedCodes = array_values(array_unique($normalizedCodes));
+        sort($normalizedCodes, SORT_NUMERIC);
+
+        return $normalizedCodes;
     }
 
     private function validateProbeUrl(string $url, array $allowedHosts): string

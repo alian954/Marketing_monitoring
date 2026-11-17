@@ -33,7 +33,10 @@ class RunScheduler
             $snapshot = json_encode([
                 'name' => $lockedMonitor->name,
                 'url' => $lockedMonitor->url,
+                'accepted_status_codes' => $lockedMonitor->accepted_status_codes ?? [],
                 'expected_text' => $lockedMonitor->expected_text,
+                'expected_text_mode' => $lockedMonitor->expected_text_mode ?? 'present',
+                'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,
                 'allowed_redirect_hosts' => $lockedMonitor->allowed_redirect_hosts ?? [],
             ], JSON_THROW_ON_ERROR);
             $runKey = hash('sha256', implode(':', [
@@ -60,7 +63,7 @@ class RunScheduler
                 $dispatch = RunMonitorCheck::dispatch($run->id)->afterCommit();
 
                 if ($delaySeconds > 0) {
-                    $dispatch->delay($scheduledAt);
+                    $dispatch->delay(now()->addSeconds($delaySeconds));
                 }
             }
 

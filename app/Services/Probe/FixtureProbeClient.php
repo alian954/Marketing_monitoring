@@ -16,6 +16,7 @@ class FixtureProbeClient implements ProbeClient
             return new ProbeResult(null, 0, '[離線測試網址無效]', [], [], 'fixture_host_rejected', '離線測試傳輸只接受 fixture.test 網域。', null, null);
         }
 
+        $monitorHostIps = ['203.0.113.10'];
         $path = $parts['path'] ?? '/ok';
         $redirects = [];
         $finalUrl = $url;
@@ -29,17 +30,17 @@ class FixtureProbeClient implements ProbeClient
         if ($path === '/redirect-private') {
             $redirects[] = 'http://127.0.0.1/admin';
 
-            return new ProbeResult(null, 2, 'http://fixture.test/redirect-private', $redirects, [], 'blocked_ssrf', '離線測試模式在未連線的情況下封鎖了私有位址重新導向。', null, null);
+            return new ProbeResult(null, 2, 'http://fixture.test/redirect-private', $redirects, [], 'blocked_ssrf', '離線測試模式在未連線的情況下封鎖了私有位址重新導向。', null, null, $monitorHostIps);
         }
 
         if ($path === '/redirect-loop') {
             $redirects[] = $url;
 
-            return new ProbeResult(null, 2, $url, $redirects, [], 'redirect_loop', '偵測到重新導向迴圈。', null, null);
+            return new ProbeResult(null, 2, $url, $redirects, [], 'redirect_loop', '偵測到重新導向迴圈。', null, null, $monitorHostIps);
         }
 
         if ($path === '/timeout') {
-            return new ProbeResult(null, 10_000, $url, [], [], 'timeout', '離線測試模式模擬連線逾時。', null, null);
+            return new ProbeResult(null, 10_000, $url, [], [], 'timeout', '離線測試模式模擬連線逾時。', null, null, $monitorHostIps);
         }
 
         $statusCode = match ($path) {
@@ -55,6 +56,6 @@ class FixtureProbeClient implements ProbeClient
         $matchesExpectedText = $expectedText === null || $expectedText === '' ? null : mb_stripos($body, $expectedText) !== false;
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 
-        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, ['203.0.113.10'], null, null, $matchesExpectedText, $expiry);
+        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps);
     }
 }

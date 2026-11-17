@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
+use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
+use App\Models\NotificationOutbox;
 use App\Models\TlsObservation;
 use App\Services\Probe\ProbeResult;
 use Illuminate\Support\Facades\DB;
@@ -24,22 +26,62 @@ class IncidentManager
             }
 
             $delay = null;
-            $httpFailure = $normal->errorType !== null || $normal->statusCode === null || ($normal->statusCode >= 400 && $normal->statusCode !== 429);
+            $normalStatusAccepted = $lockedMonitor->acceptsHttpStatus($normal->statusCode);
+            $normalProbeSucceeded = $this->probeSucceededForMonitor($lockedMonitor, $normal);
+            $httpFailure = $normal->errorType !== null
+                || $normal->statusCode === null
+                || (! $normalStatusAccepted && $normal->statusCode !== 429);
             $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'http', 'critical', $httpFailure, $normal, true));
 
-            if ($normal->statusCode === 429) {
+            if ($normal->statusCode === 429 && ! $normalStatusAccepted) {
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'probe_restricted', 'warning', true, $normal, false));
             } else {
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'probe_restricted', 'warning', false, $normal, false));
             }
 
-            $contentFailure = $lockedMonitor->expected_text !== null
-                && $lockedMonitor->expected_text !== ''
-                && $normal->succeeded()
-                && $normal->expectedTextFound === false;
-            $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'content', 'warning', $contentFailure, $normal, true));
+            $expectedText = $lockedMonitor->expected_text;
+            $expectedTextMode = $lockedMonitor->expected_text_mode === 'absent' ? 'absent' : 'present';
 
-            $uaDiffers = $normal->succeeded() && ! $adsbot->succeeded();
+            if ($expectedText !== null && $expectedText !== '' && $normalProbeSucceeded) {
+                $expectedTextFound = $normal->expectedTextFound;
+                $contentFailure = $expectedTextMode === 'absent'
+                    ? $expectedTextFound === true
+                    : $expectedTextFound === false;
+                $contentRuleKey = $expectedTextMode === 'absent' ? 'forbidden_text' : 'content';
+                $delay = $this->earlierDelay($delay, $this->recordRule(
+                    $lockedMonitor,
+                    $run,
+                    $contentRuleKey,
+                    'warning',
+                    $contentFailure,
+                    $normal,
+                    true,
+                    null,
+                    [
+                        'expected_text_mode' => $expectedTextMode,
+                        'expected_text_found' => $expectedTextFound,
+                    ],
+                ));
+            }
+
+            $responseTimeThreshold = $lockedMonitor->response_time_threshold_ms;
+            $normalElapsedMs = $run->normal_elapsed_ms ?? $normal->elapsedMs;
+
+            if ($responseTimeThreshold !== null && $normalProbeSucceeded) {
+                $delay = $this->earlierDelay($delay, $this->recordRule(
+                    $lockedMonitor,
+                    $run,
+                    'response_time',
+                    'warning',
+                    $normalElapsedMs > $responseTimeThreshold,
+                    $normal,
+                    true,
+                    null,
+                    ['threshold_ms' => $responseTimeThreshold],
+                ));
+            }
+
+            $uaDiffers = $normalProbeSucceeded && ! $this->probeSucceededForMonitor($lockedMonitor, $adsbot);
             $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));
 
             $this->recordTls($lockedMonitor, $run, $normal, $delay);
@@ -78,6 +120,7 @@ class IncidentManager
         ProbeResult $result,
         bool $notifyOnOpen,
         ?bool $notifyOnRecovery = null,
+        array $additionalEvidence = [],
     ): ?int {
         $incident = Incident::query()
             ->where('monitor_id', $monitor->id)
@@ -91,7 +134,7 @@ class IncidentManager
             'status' => $result->statusCode,
             'error_type' => $result->errorType,
             'elapsed_ms' => $result->elapsedMs,
-        ];
+        ] + $additionalEvidence;
 
         if ($failed && $incident === null) {
             $incident = Incident::query()->create([
@@ -134,7 +177,7 @@ class IncidentManager
                 $incident->save();
                 $this->addEvent($incident, $run, 'opened', $evidence);
 
-                if ($notifyOnOpen) {
+                if ($notifyOnOpen && ! $this->isInMaintenance($monitor)) {
                     $this->notifications->queue($incident, $monitor, $run, 'opened');
                 }
 
@@ -142,6 +185,15 @@ class IncidentManager
             }
 
             $incident->save();
+
+            if (
+                $incident->state === Incident::STATE_OPEN
+                && $notifyOnOpen
+                && ! $this->hasOpenedNotification($incident)
+                && ! $this->isInMaintenance($monitor)
+            ) {
+                $this->notifications->queue($incident, $monitor, $run, 'opened');
+            }
 
             if ($incident->state === Incident::STATE_SUSPECT) {
                 return max(1, $incident->confirm_after->getTimestamp() - now()->timestamp);
@@ -183,7 +235,11 @@ class IncidentManager
             $incident->save();
             $this->addEvent($incident, $run, 'recovered', $evidence);
 
-            if ($notifyOnRecovery ?? $notifyOnOpen) {
+            if (
+                ($notifyOnRecovery ?? $notifyOnOpen)
+                && ! $this->isInMaintenance($monitor)
+                && ($this->hasOpenedNotification($incident) || ! $this->wasOpenedDuringMaintenance($incident))
+            ) {
                 $this->notifications->queue($incident, $monitor, $run, 'recovered');
             }
 
@@ -246,5 +302,41 @@ class IncidentManager
         }
 
         return $current === null ? $candidate : min($current, $candidate);
+    }
+
+    private function probeSucceededForMonitor(Monitor $monitor, ProbeResult $result): bool
+    {
+        return $result->errorType === null && $monitor->acceptsHttpStatus($result->statusCode);
+    }
+
+    private function isInMaintenance(Monitor $monitor): bool
+    {
+        $currentTime = now();
+
+        return $monitor->maintenanceWindows()
+            ->where('starts_at', '<=', $currentTime)
+            ->where('ends_at', '>', $currentTime)
+            ->exists();
+    }
+
+    private function hasOpenedNotification(Incident $incident): bool
+    {
+        return NotificationOutbox::query()
+            ->where('incident_id', $incident->id)
+            ->where('event_type', 'opened')
+            ->exists();
+    }
+
+    private function wasOpenedDuringMaintenance(Incident $incident): bool
+    {
+        if ($incident->opened_at === null) {
+            return false;
+        }
+
+        return MaintenanceWindow::query()
+            ->where('monitor_id', $incident->monitor_id)
+            ->where('starts_at', '<=', $incident->opened_at)
+            ->where('ends_at', '>', $incident->opened_at)
+            ->exists();
     }
 }

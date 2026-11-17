@@ -7,6 +7,7 @@ readonly class ProbeResult
     /**
      * @param  list<string>  $redirects
      * @param  list<string>  $resolvedPublicIps
+     * @param  list<string>  $monitorHostIps
      */
     public function __construct(
         public ?int $statusCode,
@@ -18,6 +19,7 @@ readonly class ProbeResult
         public ?string $errorDetail,
         public ?bool $expectedTextFound,
         public ?\DateTimeImmutable $tlsExpiresAt,
+        public array $monitorHostIps = [],
     ) {}
 
     public function succeeded(): bool
