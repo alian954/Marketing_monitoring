@@ -1,0 +1,73 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:?Set DB_DATABASE in .env}
+      MYSQL_USER: ${DB_USERNAME:?Set DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["php", "artisan", "migrate", "--force"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - app-storage:/var/www/html/storage
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "queue:work", "database", "--sleep=1", "--tries=3", "--timeout=45", "--max-time=3600"]
+    volumes:
+      - app-storage:/var/www/html/storage
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - app-storage:/var/www/html/storage
+
+volumes:
+  mysql-data:
+  app-storage:
