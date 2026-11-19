@@ -507,10 +507,10 @@ class MonitorController extends Controller
         return back()->with('status', '監測已恢復，排程器下次執行時會進行檢查。');
     }
 
-    public function bulkStatus(Request $request, IncidentManager $incidents): RedirectResponse
+    public function bulkStatus(Request $request, IncidentManager $incidents, RunScheduler $scheduler): RedirectResponse
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:pause,resume,label'],
+            'action' => ['required', 'in:pause,resume,label,check'],
             'label' => ['nullable', 'string', 'max:100'],
             'monitor_ids' => ['required', 'array', 'min:1', 'max:50'],
             'monitor_ids.*' => ['required', 'integer', 'distinct', 'exists:monitors,id'],
@@ -531,6 +531,25 @@ class MonitorController extends Controller
         $action = $validated['action'];
         $label = trim((string) ($validated['label'] ?? ''));
         $label = $label === '' ? null : $label;
+
+        if ($action === 'check') {
+            $monitors = Monitor::query()->whereIn('id', $monitorIds)->orderBy('id')->get();
+
+            if ($monitors->count() !== count($monitorIds)) {
+                throw ValidationException::withMessages([
+                    'monitor_ids' => '部分監測項目已不存在，請重新載入清單後再試。',
+                ]);
+            }
+
+            $counts = ['queued' => 0, 'paused' => 0, 'cooldown' => 0, 'in_flight' => 0, 'missing' => 0];
+
+            foreach ($monitors as $monitor) {
+                $counts[$this->requestManualCheck($monitor, $scheduler)]++;
+            }
+
+            return back()->with('status', $this->bulkManualCheckStatus($counts));
+        }
+
         $changedCount = DB::transaction(function () use ($monitorIds, $action, $label, $incidents): int {
             $monitors = Monitor::query()
                 ->whereIn('id', $monitorIds)
@@ -604,27 +623,65 @@ class MonitorController extends Controller
 
     public function checkNow(Monitor $monitor, RunScheduler $scheduler): RedirectResponse
     {
-        $cacheKey = 'manual-check:'.$monitor->id;
+        return match ($this->requestManualCheck($monitor, $scheduler)) {
+            'queued' => back()->with('status', '手動檢查已排入佇列，並會套用與排程檢查相同的安全及確認規則。'),
+            'paused' => back()->withErrors(['check' => '請先恢復監測，再提出手動檢查。']),
+            'cooldown' => back()->withErrors(['check' => '剛才已提出手動檢查，請等待五分鐘後再試。']),
+            'in_flight' => back()->withErrors(['check' => '此監測項目已有檢查排入佇列或正在執行。']),
+            default => back()->withErrors(['check' => '此監測項目已不存在，請重新載入清單。']),
+        };
+    }
 
-        if (! Cache::add($cacheKey, true, now()->addMinutes(5))) {
-            return back()->withErrors(['check' => '剛才已提出手動檢查，請等待五分鐘後再試。']);
+    /** @return 'queued'|'paused'|'cooldown'|'in_flight'|'missing' */
+    private function requestManualCheck(Monitor $monitor, RunScheduler $scheduler): string
+    {
+        $monitor = $monitor->fresh();
+
+        if ($monitor === null) {
+            return 'missing';
         }
 
         if (! $monitor->enabled) {
-            Cache::forget($cacheKey);
-
-            return back()->withErrors(['check' => '請先恢復監測，再提出手動檢查。']);
+            return 'paused';
         }
 
-        $run = $scheduler->enqueue($monitor, 'manual');
+        $cacheKey = 'manual-check:'.$monitor->id;
 
-        if ($run === null) {
-            Cache::forget($cacheKey);
-
-            return back()->withErrors(['check' => '此監測項目已有檢查排入佇列或正在執行。']);
+        if (! Cache::add($cacheKey, true, now()->addMinutes(5))) {
+            return 'cooldown';
         }
 
-        return back()->with('status', '手動檢查已排入佇列，並會套用與排程檢查相同的安全及確認規則。');
+        if ($scheduler->enqueue($monitor, 'manual') !== null) {
+            return 'queued';
+        }
+
+        Cache::forget($cacheKey);
+        $currentMonitor = $monitor->fresh();
+
+        if ($currentMonitor === null) {
+            return 'missing';
+        }
+
+        return $currentMonitor->enabled ? 'in_flight' : 'paused';
+    }
+
+    /** @param array{queued: int, paused: int, cooldown: int, in_flight: int, missing: int} $counts */
+    private function bulkManualCheckStatus(array $counts): string
+    {
+        $messages = [$counts['queued'] > 0 ? "已排入 {$counts['queued']} 個手動檢查。" : '沒有項目排入手動檢查。'];
+
+        foreach ([
+            'paused' => '個已暫停，略過。',
+            'cooldown' => '個仍在五分鐘冷卻期，略過。',
+            'in_flight' => '個已有檢查排入佇列或正在執行，略過。',
+            'missing' => '個已不存在，略過。',
+        ] as $result => $suffix) {
+            if ($counts[$result] > 0) {
+                $messages[] = $counts[$result].' '.$suffix;
+            }
+        }
+
+        return implode(' ', $messages);
     }
 
     public function destroy(Monitor $monitor): RedirectResponse

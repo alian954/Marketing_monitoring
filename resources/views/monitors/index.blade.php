@@ -123,8 +123,9 @@
                                 <option value="pause" @selected(old('action') === 'pause')>暫停所選監測項目</option>
                                 <option value="resume" @selected(old('action') === 'resume')>恢復所選監測項目</option>
                                 <option value="label" @selected(old('action') === 'label')>更新所選項目的標籤</option>
+                                <option value="check" @selected(old('action') === 'check')>立即檢查所選項目</option>
                             </select>
-                            <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。</p>
+                            <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。立即檢查會略過已暫停、冷卻中或已有檢查執行的項目。</p>
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">

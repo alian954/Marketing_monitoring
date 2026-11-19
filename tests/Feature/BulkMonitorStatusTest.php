@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunMonitorCheck;
 use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -115,6 +118,77 @@ class BulkMonitorStatusTest extends TestCase
             'next_check_at' => now()->toDateTimeString(),
         ]);
         $this->assertSame($existingDueAt, $alreadyEnabledMonitor->fresh()->next_check_at->toDateTimeString());
+    }
+
+    public function test_bulk_manual_check_queues_selected_monitors_without_changing_their_schedules(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $nextCheckAt = now()->addHour();
+        $firstMonitor = $this->createMonitor(['next_check_at' => $nextCheckAt]);
+        $secondMonitor = $this->createMonitor(['next_check_at' => $nextCheckAt]);
+        Cache::forget('manual-check:'.$firstMonitor->id);
+        Cache::forget('manual-check:'.$secondMonitor->id);
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'check',
+                'monitor_ids' => [$firstMonitor->id, $secondMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已排入 2 個手動檢查。');
+
+        foreach ([$firstMonitor, $secondMonitor] as $monitor) {
+            $this->assertDatabaseHas('check_runs', [
+                'monitor_id' => $monitor->id,
+                'source' => 'manual',
+                'status' => 'queued',
+            ]);
+            $this->assertSame($nextCheckAt->toDateTimeString(), $monitor->fresh()->next_check_at->toDateTimeString());
+            Cache::forget('manual-check:'.$monitor->id);
+        }
+
+        Queue::assertPushed(RunMonitorCheck::class, 2);
+    }
+
+    public function test_bulk_manual_check_skips_paused_cooling_and_in_flight_monitors(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $pausedMonitor = $this->createMonitor(['enabled' => false]);
+        $coolingMonitor = $this->createMonitor();
+        $inFlightMonitor = $this->createMonitor();
+        $availableMonitor = $this->createMonitor();
+        Cache::put('manual-check:'.$coolingMonitor->id, true, now()->addMinutes(5));
+        $existingRun = CheckRun::factory()->for($inFlightMonitor)->create([
+            'status' => 'queued',
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'check',
+                'monitor_ids' => [$pausedMonitor->id, $coolingMonitor->id, $inFlightMonitor->id, $availableMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已排入 1 個手動檢查。 1 個已暫停，略過。 1 個仍在五分鐘冷卻期，略過。 1 個已有檢查排入佇列或正在執行，略過。');
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $existingRun->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('check_runs', [
+            'monitor_id' => $availableMonitor->id,
+            'source' => 'manual',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('check_runs', 2);
+        Queue::assertPushed(RunMonitorCheck::class, 1);
+
+        foreach ([$coolingMonitor, $inFlightMonitor, $availableMonitor] as $monitor) {
+            Cache::forget('manual-check:'.$monitor->id);
+        }
     }
 
     public function test_bulk_status_rejects_empty_duplicate_and_unknown_monitor_selections(): void
@@ -277,6 +351,7 @@ class BulkMonitorStatusTest extends TestCase
             ->assertSee('暫停所選監測項目')
             ->assertSee('恢復所選監測項目')
             ->assertSee('更新所選項目的標籤')
+            ->assertSee('立即檢查所選項目')
             ->assertSee('name="label"', false)
             ->assertSee('留空會清除所選項目的標籤');
     }
