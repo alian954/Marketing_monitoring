@@ -48,6 +48,7 @@ class MonitorImportController extends Controller
         'notification_discord_webhook',
         'confirmation_delay_seconds',
         'enabled',
+        'public_status',
     ];
 
     public function __construct(
@@ -101,7 +102,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds、enabled；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -154,6 +155,7 @@ class MonitorImportController extends Controller
             $notificationDiscordWebhook = null;
             $confirmationDelaySeconds = (int) config('monitoring.confirmation_delay_seconds');
             $enabled = true;
+            $publicStatus = false;
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -304,6 +306,20 @@ class MonitorImportController extends Controller
                         $errors[] = '啟用狀態只接受 1、0、true、false、yes、no、on 或 off。';
                     } else {
                         $enabled = $parsedEnabled;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['public_status'])) {
+                $publicStatusInput = trim((string) ($cells[$columnIndexes['public_status']] ?? ''));
+
+                if ($publicStatusInput !== '') {
+                    $parsedPublicStatus = filter_var($publicStatusInput, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+                    if ($parsedPublicStatus === null) {
+                        $errors[] = '公開狀態頁設定只接受 1、0、true、false、yes、no、on 或 off。';
+                    } else {
+                        $publicStatus = $parsedPublicStatus;
                     }
                 }
             }
@@ -501,6 +517,7 @@ class MonitorImportController extends Controller
                 'notification_discord_webhook_configured' => $notificationDiscordWebhook !== null,
                 'confirmation_delay_seconds' => $confirmationDelaySeconds,
                 'enabled' => $enabled,
+                'public_status' => $publicStatus,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -575,6 +592,7 @@ class MonitorImportController extends Controller
                 'url' => $row['url'],
                 'label' => $row['label'] !== '' ? $row['label'] : null,
                 'enabled' => $row['enabled'] ?? true,
+                'public_status' => $row['public_status'] ?? false,
                 'config_version' => 1,
                 'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],

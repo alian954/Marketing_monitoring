@@ -102,6 +102,7 @@ class SocialPostImportTest extends TestCase
             'notification_discord_webhook',
             'confirmation_delay_seconds',
             'enabled',
+            'public_status',
         ], $headers);
         $this->assertDatabaseCount('monitors', 0);
     }
@@ -179,6 +180,82 @@ class SocialPostImportTest extends TestCase
             ])
             ->assertOk()
             ->assertSee('啟用狀態只接受 1、0、true、false、yes、no、on 或 off。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(1, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_import_public_status_page_visibility(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $publicStatusCases = [
+            ['false', false],
+            ['0', false],
+            ['no', false],
+            ['off', false],
+            ['true', true],
+            ['1', true],
+            ['yes', true],
+            ['on', true],
+            ['', false],
+        ];
+        $rows = [];
+
+        foreach ($publicStatusCases as $index => [$publicStatusInput]) {
+            $postId = str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT);
+            $rows[] = [
+                'Monitor '.$postId,
+                'https://example.com/public-status/'.$postId,
+                'Campaign',
+                $publicStatusInput,
+            ];
+        }
+
+        $csv = $this->csvContent(['name', 'url', 'label', 'public_status'], $rows);
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('公開狀態頁')
+            ->assertSee('加入公開狀態頁')
+            ->assertSee('僅內部監測');
+
+        $this->assertSame(9, $preview->viewData('validCount'));
+        $this->assertSame(
+            array_column($publicStatusCases, 1),
+            array_column($preview->viewData('previewRows'), 'public_status'),
+        );
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 9);
+
+        foreach ($publicStatusCases as $index => [, $expectedPublicStatus]) {
+            $monitor = Monitor::query()->where('name', 'Monitor '.str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT))->sole();
+            $this->assertSame($expectedPublicStatus, $monitor->public_status);
+        }
+    }
+
+    public function test_csv_rejects_unrecognized_public_status_page_values(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'public_status'],
+            [['Invalid public status', 'https://example.com/public-status/invalid', 'Campaign', 'sometimes']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('公開狀態頁設定只接受 1、0、true、false、yes、no、on 或 off。');
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertSame(1, $preview->viewData('invalidCount'));
