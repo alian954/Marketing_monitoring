@@ -68,6 +68,7 @@ class MonitorController extends Controller
     private const MONITOR_LIST_FILTER_RULES = [
         'search' => ['nullable', 'string', 'max:2048'],
         'label' => ['nullable', 'string', 'max:100'],
+        'platform' => ['nullable', 'in:all,website,facebook,instagram,threads'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
@@ -76,6 +77,7 @@ class MonitorController extends Controller
     private const MONITOR_LIST_FILTER_MESSAGES = [
         'search.max' => '搜尋條件不得超過 2048 個字元。',
         'label.max' => '標籤篩選不得超過 100 個字元。',
+        'platform.in' => '請選擇有效的平台篩選條件。',
         'state.in' => '請選擇有效的監測狀態篩選條件。',
         'sort.in' => '請選擇有效的監測排序方式。',
     ];
@@ -96,9 +98,10 @@ class MonitorController extends Controller
         $validated = $validator->validated();
         $search = trim((string) ($validated['search'] ?? ''));
         $label = (string) ($validated['label'] ?? '');
+        $platform = $validated['platform'] ?? 'all';
         $state = $validated['state'] ?? 'all';
         $sort = $validated['sort'] ?? 'name';
-        $filters = ['search' => $search, 'label' => $label, 'state' => $state, 'sort' => $sort];
+        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'sort' => $sort];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents']);
@@ -124,7 +127,7 @@ class MonitorController extends Controller
         return view('monitors.index', compact('monitors', 'filters', 'labels'));
     }
 
-    /** @param array{search: string, label: string, state: string, sort?: string} $filters */
+    /** @param array{search: string, label: string, platform: string, state: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
@@ -138,6 +141,15 @@ class MonitorController extends Controller
                 });
             })
             ->when($filters['label'] !== '', static fn (Builder $query) => $query->where('label', $filters['label']))
+            ->when($filters['platform'] !== 'all', static function (Builder $query) use ($filters): void {
+                if ($filters['platform'] === 'website') {
+                    $query->whereNull('social_platform');
+
+                    return;
+                }
+
+                $query->where('social_platform', $filters['platform']);
+            })
             ->when($filters['state'] === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
             ->when($filters['state'] === 'paused', static fn (Builder $query) => $query->where('enabled', false))
             ->when($filters['state'] === 'incidents', static function (Builder $query): void {
@@ -759,6 +771,7 @@ class MonitorController extends Controller
         $filters = [
             'search' => trim((string) ($validated['search'] ?? '')),
             'label' => (string) ($validated['label'] ?? ''),
+            'platform' => $validated['platform'] ?? 'all',
             'state' => $validated['state'] ?? 'all',
         ];
 

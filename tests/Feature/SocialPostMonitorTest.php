@@ -95,6 +95,30 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('Campaign headline', $monitor->expected_text);
         $this->assertSame('present', $monitor->expected_text_mode);
         $this->assertSame('Threads', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'threads',
+        ]);
+    }
+
+    public function test_editing_a_social_post_updates_its_stored_platform(): void
+    {
+        $oldUrl = 'https://www.instagram.com/p/ABC123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $oldUrl,
+            'url_hash' => Monitor::fingerprintUrl($oldUrl),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $newUrl = 'https://www.threads.net/@creator/post/NEW123';
+
+        $this->actingAs(User::factory()->create())
+            ->put(route('monitors.update', $monitor), $this->socialPost($newUrl, 'Campaign headline'))
+            ->assertRedirect(route('monitors.show', $monitor));
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'threads',
+        ]);
     }
 
     public function test_monitor_list_shows_the_latest_text_match_state_without_exposing_the_phrase(): void

@@ -4,11 +4,11 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['state'] !== 'all';
+        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all';
         $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
-            static fn (string $filter, string $name): bool => $name !== 'sort' && $filter !== '' && ! ($name === 'state' && $filter === 'all'),
+            static fn (string $filter, string $name): bool => $name !== 'sort' && $filter !== '' && ! (in_array($name, ['platform', 'state'], true) && $filter === 'all'),
             ARRAY_FILTER_USE_BOTH,
         );
         $oldMonitorIds = old('monitor_ids', []);
@@ -56,6 +56,16 @@
                                 @endforeach
                             </datalist>
                             <p id="monitor-label-help" class="field-help">輸入或選取一個完整標籤，精確篩選該標籤的監測項目。</p>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="monitor-platform">監測平台</label>
+                            <select class="field-select" id="monitor-platform" name="platform">
+                                <option value="all" @selected(old('platform', $filters['platform']) === 'all')>全部平台</option>
+                                <option value="website" @selected(old('platform', $filters['platform']) === 'website')>一般網站</option>
+                                <option value="facebook" @selected(old('platform', $filters['platform']) === 'facebook')>Facebook</option>
+                                <option value="instagram" @selected(old('platform', $filters['platform']) === 'instagram')>Instagram</option>
+                                <option value="threads" @selected(old('platform', $filters['platform']) === 'threads')>Threads</option>
+                            </select>
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-state">監測狀態</label>

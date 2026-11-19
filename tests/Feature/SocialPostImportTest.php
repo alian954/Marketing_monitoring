@@ -69,6 +69,10 @@ class SocialPostImportTest extends TestCase
         $this->assertSame('Campaign, launch headline', $monitor->expected_text);
         $this->assertSame('present', $monitor->expected_text_mode);
         $this->assertSame('Instagram', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'instagram',
+        ]);
 
         $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
         $this->assertNotNull($run);

@@ -30,6 +30,15 @@ class Monitor extends Model
     /** @use HasFactory<MonitorFactory> */
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::saving(static function (Monitor $monitor): void {
+            $monitor->forceFill([
+                'social_platform' => self::socialPlatformKeyForUrl((string) $monitor->url),
+            ]);
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -96,6 +105,16 @@ class Monitor extends Model
     public function socialPlatform(): ?string
     {
         return self::socialPlatformForUrl($this->url);
+    }
+
+    public static function socialPlatformKeyForUrl(string $url): ?string
+    {
+        return match (self::socialPlatformForUrl($url)) {
+            'Facebook' => 'facebook',
+            'Instagram' => 'instagram',
+            'Threads' => 'threads',
+            default => null,
+        };
     }
 
     public static function socialPlatformForUrl(string $url): ?string

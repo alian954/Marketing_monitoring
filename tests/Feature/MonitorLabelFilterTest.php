@@ -50,6 +50,7 @@ class MonitorLabelFilterTest extends TestCase
         $this->assertSame([
             'search' => 'Spring',
             'label' => 'Campaign A',
+            'platform' => 'all',
             'state' => 'enabled',
             'sort' => 'name',
         ], $response->viewData('filters'));
@@ -232,6 +233,7 @@ class MonitorLabelFilterTest extends TestCase
         $this->assertSame([
             'search' => 'Campaign',
             'label' => 'Campaign',
+            'platform' => 'all',
             'state' => 'enabled',
             'sort' => 'last_checked_desc',
         ], $response->viewData('filters'));
