@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MonitorPlatformFilterTest extends TestCase
@@ -54,6 +55,30 @@ class MonitorPlatformFilterTest extends TestCase
         $this->assertDatabaseHas('monitors', [
             'id' => $monitor->id,
             'social_platform' => 'threads',
+        ]);
+    }
+
+    public function test_platform_migration_backfills_existing_encrypted_social_urls(): void
+    {
+        $migration = require base_path('database/migrations/2026_11_19_020730_add_social_platform_to_monitors_table.php');
+        $migration->down();
+
+        $url = 'https://www.facebook.com/page/posts/LEGACY123';
+        $legacyMonitor = Monitor::factory()->make([
+            'name' => 'Legacy Facebook post',
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+        ]);
+        $legacyAttributes = $legacyMonitor->getAttributes();
+        $legacyAttributes['created_at'] = now();
+        $legacyAttributes['updated_at'] = now();
+        $monitorId = DB::table('monitors')->insertGetId($legacyAttributes);
+
+        $migration->up();
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitorId,
+            'social_platform' => 'facebook',
         ]);
     }
 
