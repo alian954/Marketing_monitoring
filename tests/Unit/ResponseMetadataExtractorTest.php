@@ -14,8 +14,10 @@ class ResponseMetadataExtractorTest extends TestCase
             <html><head>
                 <title>Page title</title>
                 <meta property="og:title" content="  社群貼文 &amp; 活動  ">
+                <meta name="twitter:title" content="Twitter title">
                 <meta name="description" content="Generic page description">
                 <meta property="og:description" content="  最新活動   詳情  ">
+                <meta name="twitter:description" content="Twitter description">
             </head></html>
             HTML);
 
@@ -38,6 +40,24 @@ class ResponseMetadataExtractorTest extends TestCase
         $this->assertSame([
             'title' => 'Page title',
             'description' => 'Page description',
+            'image_reference_hash' => null,
+        ], $metadata);
+    }
+
+    public function test_it_uses_twitter_card_metadata_before_generic_page_metadata(): void
+    {
+        $metadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head>
+                <title>Generic page title</title>
+                <meta name="description" content="Generic page description">
+                <meta name="twitter:title" content="Twitter card title">
+                <meta name="twitter:description" content="Twitter card description">
+            </head></html>
+            HTML);
+
+        $this->assertSame([
+            'title' => 'Twitter card title',
+            'description' => 'Twitter card description',
             'image_reference_hash' => null,
         ], $metadata);
     }

@@ -43,7 +43,9 @@ class ResponseMetadataExtractor
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
         $openGraphTitle = null;
+        $twitterTitle = null;
         $openGraphDescription = null;
+        $twitterDescription = null;
         $metaDescription = null;
         $imageReferenceHash = null;
 
@@ -60,8 +62,16 @@ class ResponseMetadataExtractor
                 $openGraphTitle = $content;
             }
 
+            if ($twitterTitle === null && ($property === 'twitter:title' || $name === 'twitter:title')) {
+                $twitterTitle = $content;
+            }
+
             if ($openGraphDescription === null && ($property === 'og:description' || $name === 'og:description')) {
                 $openGraphDescription = $content;
+            }
+
+            if ($twitterDescription === null && ($property === 'twitter:description' || $name === 'twitter:description')) {
+                $twitterDescription = $content;
             }
 
             if ($metaDescription === null && $name === 'description') {
@@ -76,8 +86,8 @@ class ResponseMetadataExtractor
         }
 
         return [
-            'title' => self::truncate($openGraphTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
-            'description' => self::truncate($openGraphDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
+            'title' => self::truncate($openGraphTitle ?? $twitterTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
+            'description' => self::truncate($openGraphDescription ?? $twitterDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
             'image_reference_hash' => $imageReferenceHash,
         ];
     }

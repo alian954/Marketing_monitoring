@@ -433,7 +433,7 @@ class SocialPostMonitorTest extends TestCase
         {
             public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
             {
-                return new HopResponse(403, null, '<html><head><title>Instagram</title><meta property="og:title" content="貼文分享標題 &amp; &lt;script&gt;alert(1)&lt;/script&gt;"><meta property="og:description" content="請登入查看貼文"><meta property="og:image" content="/media/share.png?token=private-preview-value"></head><body><main>Log in to continue</main></body></html>', 40, null, null, null);
+                return new HopResponse(403, null, '<html><head><title>Instagram</title><meta name="twitter:title" content="貼文分享標題 &amp; &lt;script&gt;alert(1)&lt;/script&gt;"><meta name="twitter:description" content="請登入查看貼文"><meta name="twitter:image" content="/media/share.png?token=private-preview-value"></head><body><main>Log in to continue</main></body></html>', 40, null, null, null);
             }
         };
         $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
