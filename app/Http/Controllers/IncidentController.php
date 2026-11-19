@@ -17,12 +17,15 @@ class IncidentController extends Controller
     public function bulkAcknowledge(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'acknowledgement_action' => ['required', 'in:acknowledge,unacknowledge'],
+            'acknowledgement_action' => ['required', 'in:acknowledge,unacknowledge,snooze_notifications'],
+            'duration_minutes' => ['required_if:acknowledgement_action,snooze_notifications', 'nullable', 'integer', 'in:30,60,240,1440'],
             'incident_ids' => ['required', 'array', 'min:1', 'max:25'],
             'incident_ids.*' => ['required', 'integer', 'distinct', 'exists:incidents,id'],
         ], [
             'acknowledgement_action.required' => '請先選擇認領操作。',
             'acknowledgement_action.in' => '認領操作無效，請重新選擇。',
+            'duration_minutes.required_if' => '請先選擇通知暫停時間。',
+            'duration_minutes.in' => '通知暫停時間無效，請重新選擇。',
             'incident_ids.required' => '請先選取要認領的事件。',
             'incident_ids.array' => '所選事件格式無效，請重新選取。',
             'incident_ids.min' => '請先選取要認領的事件。',
@@ -33,12 +36,15 @@ class IncidentController extends Controller
         $actor = $request->user();
         abort_unless($actor instanceof User, 401);
         $selectedIds = array_map('intval', $validated['incident_ids']);
-        $acknowledge = $validated['acknowledgement_action'] === 'acknowledge';
+        $action = $validated['acknowledgement_action'];
+        $durationMinutes = isset($validated['duration_minutes']) ? (int) $validated['duration_minutes'] : null;
+        $snoozedUntil = $durationMinutes === null ? null : now()->addMinutes($durationMinutes);
+        $acknowledge = $action === 'acknowledge';
         $eventType = $acknowledge ? 'acknowledged' : 'unacknowledged';
         $acknowledgedAt = now();
 
         /** @var array{changed: int, skipped: int} $result */
-        $result = DB::transaction(function () use ($selectedIds, $actor, $acknowledgedAt, $acknowledge, $eventType): array {
+        $result = DB::transaction(function () use ($selectedIds, $actor, $acknowledgedAt, $acknowledge, $eventType, $action, $durationMinutes, $snoozedUntil): array {
             $lockedIncidents = Incident::query()
                 ->whereKey($selectedIds)
                 ->orderBy('id')
@@ -48,6 +54,26 @@ class IncidentController extends Controller
             $skippedCount = count($selectedIds) - $lockedIncidents->count();
 
             foreach ($lockedIncidents as $lockedIncident) {
+                if ($action === 'snooze_notifications') {
+                    if (
+                        $lockedIncident->state !== Incident::STATE_OPEN
+                        || ($lockedIncident->snoozed_until !== null && $lockedIncident->snoozed_until->isFuture())
+                    ) {
+                        $skippedCount++;
+
+                        continue;
+                    }
+
+                    $lockedIncident->forceFill(['snoozed_until' => $snoozedUntil])->save();
+                    $this->recordActivity($lockedIncident, $actor, 'notifications_snoozed', [
+                        'duration_minutes' => $durationMinutes,
+                        'snoozed_until' => $snoozedUntil?->toIso8601String(),
+                    ]);
+                    $changedCount++;
+
+                    continue;
+                }
+
                 if (
                     ! in_array($lockedIncident->state, [Incident::STATE_SUSPECT, Incident::STATE_OPEN], true)
                     || ($lockedIncident->acknowledged_at !== null) === $acknowledge
@@ -68,11 +94,18 @@ class IncidentController extends Controller
             return ['changed' => $changedCount, 'skipped' => $skippedCount];
         });
 
-        $actionLabel = $acknowledge ? '認領' : '解除認領';
-        $skipReason = $acknowledge ? '已認領、已恢復或已結束' : '尚未認領、已恢復或已結束';
-        $message = $result['changed'] > 0
-            ? '已'.$actionLabel.' '.$result['changed'].' 件事件；略過 '.$result['skipped'].' 件'.$skipReason.'的事件。'
-            : '所選事件均'.$skipReason.'，沒有變更認領狀態。';
+        if ($action === 'snooze_notifications') {
+            $snoozeTime = $snoozedUntil?->timezone('Asia/Taipei')->format('Y/n/j H:i');
+            $message = $result['changed'] > 0
+                ? '已暫停 '.$result['changed'].' 件事件的提醒與升級通知至 '.$snoozeTime.'；略過 '.$result['skipped'].' 件尚未成立、已有有效暫停或已恢復／結束的事件。'
+                : '所選事件均尚未成立、已有有效暫停或已恢復／結束，沒有變更通知狀態。';
+        } else {
+            $actionLabel = $acknowledge ? '認領' : '解除認領';
+            $skipReason = $acknowledge ? '已認領、已恢復或已結束' : '尚未認領、已恢復或已結束';
+            $message = $result['changed'] > 0
+                ? '已'.$actionLabel.' '.$result['changed'].' 件事件；略過 '.$result['skipped'].' 件'.$skipReason.'的事件。'
+                : '所選事件均'.$skipReason.'，沒有變更認領狀態。';
+        }
 
         return redirect()->route('incidents.index', $request->query())->with('status', $message);
     }

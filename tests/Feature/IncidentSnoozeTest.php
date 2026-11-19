@@ -253,6 +253,89 @@ class IncidentSnoozeTest extends TestCase
         ]);
     }
 
+    public function test_bulk_snoozing_audits_open_incidents_and_skips_ineligible_or_already_snoozed_incidents(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 08:00:00', 'UTC'));
+        $operator = User::factory()->create(['name' => 'On-call operator']);
+        $monitor = $this->monitor(8);
+        $openIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+        $alreadySnoozedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'snoozed_until' => now()->addHour(),
+        ]);
+        $suspectIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_SUSPECT]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'resolved_at' => now(),
+        ]);
+
+        $this->actingAs($operator)
+            ->post(route('incidents.bulk-acknowledge', ['severity' => 'warning']), [
+                'acknowledgement_action' => 'snooze_notifications',
+                'duration_minutes' => 240,
+                'incident_ids' => [$openIncident->id, $alreadySnoozedIncident->id, $suspectIncident->id, $resolvedIncident->id],
+            ])
+            ->assertRedirect(route('incidents.index', ['severity' => 'warning']))
+            ->assertSessionHas('status', '已暫停 1 件事件的提醒與升級通知至 2026/11/19 20:00；略過 3 件尚未成立、已有有效暫停或已恢復／結束的事件。');
+
+        $this->assertSame('2026-11-19 12:00:00', $openIncident->fresh()->snoozed_until?->toDateTimeString());
+        $this->assertSame('2026-11-19 09:00:00', $alreadySnoozedIncident->fresh()->snoozed_until?->toDateTimeString());
+        $this->assertNull($suspectIncident->fresh()->snoozed_until);
+        $this->assertNull($resolvedIncident->fresh()->snoozed_until);
+
+        $snoozeEvent = IncidentEvent::query()->sole();
+        $this->assertSame($openIncident->id, $snoozeEvent->incident_id);
+        $this->assertSame('notifications_snoozed', $snoozeEvent->event_type);
+        $this->assertSame($operator->id, $snoozeEvent->evidence['actor_id']);
+        $this->assertSame('On-call operator', $snoozeEvent->evidence['actor_name']);
+        $this->assertSame(240, $snoozeEvent->evidence['duration_minutes']);
+        $this->assertSame('2026-11-19T12:00:00+00:00', $snoozeEvent->evidence['snoozed_until']);
+        $this->assertDatabaseCount('notification_outbox', 0);
+    }
+
+    public function test_bulk_snoozing_requires_an_allowed_duration(): void
+    {
+        $operator = User::factory()->create();
+        $monitor = $this->monitor(9);
+        $incident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+
+        foreach ([null, 90] as $duration) {
+            $payload = [
+                'acknowledgement_action' => 'snooze_notifications',
+                'incident_ids' => [$incident->id],
+            ];
+            if ($duration !== null) {
+                $payload['duration_minutes'] = $duration;
+            }
+
+            $this->actingAs($operator)
+                ->from(route('incidents.index'))
+                ->post(route('incidents.bulk-acknowledge'), $payload)
+                ->assertRedirect(route('incidents.index'))
+                ->assertSessionHasErrors('duration_minutes');
+        }
+
+        $this->assertNull($incident->fresh()->snoozed_until);
+        $this->assertDatabaseCount('incident_events', 0);
+    }
+
+    public function test_incident_list_exposes_bulk_snooze_action_and_duration_options(): void
+    {
+        $monitor = $this->monitor(10);
+        Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('incidents.index'))
+            ->assertOk()
+            ->assertSee('暫停所選事件的通知')
+            ->assertSee('通知暫停時間')
+            ->assertSee('name="duration_minutes"', false)
+            ->assertSee('value="30"', false)
+            ->assertSee('value="60"', false)
+            ->assertSee('value="240"', false)
+            ->assertSee('value="1440"', false);
+    }
+
     /** @param array<string, mixed> $attributes */
     private function monitor(int $number, array $attributes = []): Monitor
     {

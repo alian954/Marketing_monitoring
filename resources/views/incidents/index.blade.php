@@ -143,17 +143,28 @@
             <form id="bulk-incident-acknowledgement-form" action="{{ route('incidents.bulk-acknowledge', request()->query()) }}" method="POST">
                 @csrf
                 @error('acknowledgement_action')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+                @error('duration_minutes')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                 @error('incident_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                 @error('incident_ids.*')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                 <div class="form-grid">
                     <div class="field-group">
-                        <label class="field-label" for="bulk-incident-acknowledgement-action">批次認領操作</label>
+                        <label class="field-label" for="bulk-incident-acknowledgement-action">批次事件操作</label>
                         <select class="field-select" id="bulk-incident-acknowledgement-action" name="acknowledgement_action" required aria-describedby="bulk-incident-help">
                             <option value="acknowledge" @selected(old('acknowledgement_action', 'acknowledge') === 'acknowledge')>認領所選事件</option>
                             <option value="unacknowledge" @selected(old('acknowledgement_action') === 'unacknowledge')>解除所選事件的認領</option>
+                            <option value="snooze_notifications" @selected(old('acknowledgement_action') === 'snooze_notifications')>暫停所選事件的通知</option>
                         </select>
                     </div>
-                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
+                    <div class="field-group">
+                        <label class="field-label" for="bulk-incident-snooze-duration">通知暫停時間</label>
+                        <select class="field-select" id="bulk-incident-snooze-duration" name="duration_minutes" aria-describedby="bulk-incident-help">
+                            <option value="30" @selected(old('duration_minutes', '60') === '30')>30 分鐘</option>
+                            <option value="60" @selected(old('duration_minutes', '60') === '60')>1 小時</option>
+                            <option value="240" @selected(old('duration_minutes') === '240')>4 小時</option>
+                            <option value="1440" @selected(old('duration_minutes') === '1440')>24 小時</option>
+                        </select>
+                    </div>
+                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；批次暫停只會套用至已成立且通知尚未暫停的事件。認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
                 </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
                     <table class="data-table">
