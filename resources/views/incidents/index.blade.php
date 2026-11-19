@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
     @endphp
 
@@ -62,7 +62,36 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-date-from">首次發現日期（起）</label>
+                            <input
+                                class="field-input @error('date_from') is-invalid @enderror"
+                                id="incident-date-from"
+                                name="date_from"
+                                type="date"
+                                value="{{ old('date_from', $filters['date_from']) }}"
+                                @if ($errors->has('date_from')) aria-invalid="true" aria-describedby="incident-date-from-error" @endif
+                            >
+                            @error('date_from')
+                                <p id="incident-date-from-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-date-to">首次發現日期（迄）</label>
+                            <input
+                                class="field-input @error('date_to') is-invalid @enderror"
+                                id="incident-date-to"
+                                name="date_to"
+                                type="date"
+                                value="{{ old('date_to', $filters['date_to']) }}"
+                                @if ($errors->has('date_to')) aria-invalid="true" aria-describedby="incident-date-to-error" @endif
+                            >
+                            @error('date_to')
+                                <p id="incident-date-to-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
+                    <p class="field-help">日期依首次發現時間的台灣日期篩選，起訖日都包含當日。</p>
                     <div class="form-actions">
                         <button class="button button-secondary" type="submit">套用篩選</button>
                         @if ($hasFilters)

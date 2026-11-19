@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Incident;
 use App\Models\Monitor;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -56,6 +57,8 @@ class IncidentHistoryController extends Controller
                 'state' => $filters['state'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
                 'rule_key' => $filters['rule_key'] ?? '',
+                'date_from' => $filters['date_from'] ?? '',
+                'date_to' => $filters['date_to'] ?? '',
             ],
         ]);
     }
@@ -126,7 +129,7 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string} */
+    /** @return array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
@@ -134,10 +137,16 @@ class IncidentHistoryController extends Controller
             'state' => ['nullable', 'in:'.implode(',', array_keys(self::STATE_LABELS))],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ], [
+            'date_from.date_format' => '開始日期格式無效。',
+            'date_to.date_format' => '結束日期格式無效。',
+            'date_to.after_or_equal' => '結束日期不可早於開始日期。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string} $filters */
+    /** @param array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -155,7 +164,17 @@ class IncidentHistoryController extends Controller
             })
             ->when($filters['state'] ?? null, static fn (Builder $query, string $state): Builder => $query->where('state', $state))
             ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))
-            ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey));
+            ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
+            ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {
+                $start = CarbonImmutable::parse($dateFrom, 'Asia/Taipei')->startOfDay()->utc();
+
+                return $query->where('created_at', '>=', $start);
+            })
+            ->when($filters['date_to'] ?? null, static function (Builder $query, string $dateTo): Builder {
+                $endExclusive = CarbonImmutable::parse($dateTo, 'Asia/Taipei')->addDay()->startOfDay()->utc();
+
+                return $query->where('created_at', '<', $endExclusive);
+            });
     }
 
     private function escapeCsvFormula(string $value): string

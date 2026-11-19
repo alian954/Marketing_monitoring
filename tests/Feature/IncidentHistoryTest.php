@@ -50,6 +50,8 @@ class IncidentHistoryTest extends TestCase
             'state' => Incident::STATE_OPEN,
             'monitor_id' => $monitor->id,
             'rule_key' => 'http',
+            'date_from' => now('Asia/Taipei')->toDateString(),
+            'date_to' => now('Asia/Taipei')->toDateString(),
         ];
 
         $this->actingAs($user)
@@ -67,6 +69,59 @@ class IncidentHistoryTest extends TestCase
             ->assertSee('顯示第 26–26 筆，共 26 筆')
             ->assertSee('#'.$incidents->first()->id)
             ->assertDontSee('#'.$incidents->last()->id);
+    }
+
+    public function test_incident_history_and_csv_filter_inclusive_taiwan_first_seen_dates(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+        $user = User::factory()->create();
+        $monitor = $this->createMonitor('Date filter campaign');
+        $incidents = [
+            'before' => Incident::factory()->for($monitor)->create(['created_at' => '2026-11-18 15:59:59']),
+            'start' => Incident::factory()->for($monitor)->create(['created_at' => '2026-11-18 16:00:00']),
+            'end' => Incident::factory()->for($monitor)->create(['created_at' => '2026-11-19 15:59:59']),
+            'after' => Incident::factory()->for($monitor)->create(['created_at' => '2026-11-19 16:00:00']),
+        ];
+        $filters = ['date_from' => '2026-11-19', 'date_to' => '2026-11-19'];
+
+        $detailResponse = $this->actingAs($user)
+            ->get(route('incidents.index', $filters))
+            ->assertOk()
+            ->assertSee('日期依首次發現時間的台灣日期篩選，起訖日都包含當日。')
+            ->assertSee(route('incidents.export', $filters));
+
+        $this->assertEqualsCanonicalizing(
+            [$incidents['start']->id, $incidents['end']->id],
+            $detailResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('incidents.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertEqualsCanonicalizing(
+            [(string) $incidents['start']->id, (string) $incidents['end']->id],
+            array_column($rows, 'incident_id'),
+        );
+    }
+
+    public function test_incident_history_rejects_invalid_or_reversed_date_filters(): void
+    {
+        $indexUrl = route('incidents.index');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from($indexUrl)
+            ->get(route('incidents.index', ['date_from' => '2026-02-30']))
+            ->assertRedirect($indexUrl)
+            ->assertSessionHasErrors(['date_from' => '開始日期格式無效。']);
+
+        $this->actingAs($user)
+            ->from($indexUrl)
+            ->get(route('incidents.index', ['date_from' => '2026-11-20', 'date_to' => '2026-11-19']))
+            ->assertRedirect($indexUrl)
+            ->assertSessionHasErrors(['date_to' => '結束日期不可早於開始日期。']);
     }
 
     public function test_incident_history_shows_an_empty_state(): void
@@ -152,5 +207,18 @@ class IncidentHistoryTest extends TestCase
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
         ]);
+    }
+
+    /** @return array<int, array<string, string>> */
+    private function csvRows(string $content): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', trim($content));
+        $headers = str_getcsv(array_shift($lines));
+        $rows = array_map(static fn (string $line): array => str_getcsv($line), $lines);
+
+        return array_map(
+            static fn (array $row): array => array_combine($headers, $row),
+            $rows,
+        );
     }
 }
