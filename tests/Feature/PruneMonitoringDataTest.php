@@ -8,6 +8,7 @@ use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\StatusPageSubscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 class PruneMonitoringDataTest extends TestCase
@@ -75,5 +76,24 @@ class PruneMonitoringDataTest extends TestCase
         $this->assertDatabaseMissing('status_page_subscriptions', ['id' => $expired->id]);
         $this->assertDatabaseHas('status_page_subscriptions', ['id' => $unexpired->id]);
         $this->assertDatabaseHas('status_page_subscriptions', ['id' => $confirmed->id]);
+    }
+
+    public function test_prune_uses_the_configured_check_history_retention_days(): void
+    {
+        Config::set('monitoring.retention_days', 90);
+        $monitor = Monitor::factory()->create();
+        $retainedRun = CheckRun::factory()->for($monitor)->create([
+            'scheduled_at' => now()->subDays(31),
+            'finished_at' => now()->subDays(31),
+        ]);
+        $expiredRun = CheckRun::factory()->for($monitor)->create([
+            'scheduled_at' => now()->subDays(91),
+            'finished_at' => now()->subDays(91),
+        ]);
+
+        $this->artisan('monitors:prune')->assertExitCode(0);
+
+        $this->assertDatabaseHas('check_runs', ['id' => $retainedRun->id]);
+        $this->assertDatabaseMissing('check_runs', ['id' => $expiredRun->id]);
     }
 }
