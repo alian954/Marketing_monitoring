@@ -204,7 +204,7 @@
                                         <span class="secondary-text">尚未認領</span>
                                     @endif
                                 </td>
-                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'probe_incomplete' => '回應過大，驗證未完成', 'content' => '原始回應未包含預期文字', 'forbidden_text' => '回應包含不應出現的文字', 'response_header' => 'HTTP 回應標頭不符合設定', 'response_time' => 'HTTP 回應時間超過設定門檻', 'monitor_stale' => '監測資料逾時', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期', 'tls_30d' => 'TLS 憑證將於 30 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
+                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'probe_incomplete' => '回應過大，驗證未完成', 'content' => '原始回應未包含預期文字', 'forbidden_text' => '回應包含不應出現的文字', 'response_header' => 'HTTP 回應標頭不符合設定', 'response_time' => 'HTTP 回應時間超過設定門檻', 'monitor_stale' => '監測資料逾時', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期', 'tls_30d' => 'TLS 憑證將於 30 天內到期', 'domain_expired' => '網域已到期', 'domain_7d' => '網域將於 7 天內到期', 'domain_14d' => '網域將於 14 天內到期', 'domain_30d' => '網域將於 30 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
                                 <td>
                                     @if ($incident->last_seen_at)
                                         <time class="timestamp" datetime="{{ $incident->last_seen_at->toIso8601String() }}">{{ $incident->last_seen_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
@@ -276,6 +276,69 @@
             </div>
             @if ($expiringCertificateCount > $expiringCertificates->count())
                 <p class="panel-description">另有 {{ $expiringCertificateCount - $expiringCertificates->count() }} 張憑證未列出；此處先顯示最早到期的 10 張。</p>
+            @endif
+        @endif
+    </section>
+
+    <section class="panel spaced-top" aria-labelledby="domain-expiry-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="domain-expiry-title" class="panel-title">網域註冊期限</h2>
+                <p class="panel-description">每日透過 IANA RDAP 清單查詢網站網域的註冊到期日；部分註冊機構不公開期限資料。超過 48 小時未更新的觀測會標示逾時。</p>
+            </div>
+            @if ($expiringDomainCount > 0)
+                <span class="secondary-text">{{ $expiringDomainCount }} 個</span>
+            @endif
+        </div>
+        @if ($expiringDomains->isEmpty())
+            <div class="empty-state">
+                <h3 class="empty-title">沒有已知的近期到期網域</h3>
+                <p class="empty-copy">目前沒有成功查得已過期或 30 天內到期的網站網域。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-label="已過期或 30 天內到期的網站網域清單" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">已過期或 30 天內到期的網站網域註冊期限</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">監測項目</th>
+                            <th scope="col">註冊網域</th>
+                            <th scope="col">到期日</th>
+                            <th scope="col">狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($expiringDomains as $domain)
+                            <tr>
+                                <th scope="row">
+                                    <a class="monitor-name-link" href="{{ route('monitors.show', $domain['monitor']) }}">{{ $domain['monitor']->name }}</a>
+                                </th>
+                                <td>{{ $domain['domain_name'] ?? '未辨識' }}</td>
+                                <td>
+                                    <time datetime="{{ $domain['expires_at']->toIso8601String() }}">{{ $domain['expires_at']->timezone('Asia/Taipei')->format('Y/n/j') }}</time>
+                                    @if ($domain['observed_at'])
+                                        <span class="secondary-text">觀測於 <time datetime="{{ $domain['observed_at']->toIso8601String() }}">{{ $domain['observed_at']->timezone('Asia/Taipei')->format('n/j H:i') }}</time></span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($domain['is_stale'])
+                                        <x-state-badge state="stale" />
+                                        <span>資料逾時，需重新查詢</span>
+                                    @elseif ($domain['is_expired'])
+                                        <x-state-badge state="issue" />
+                                        <span>已到期</span>
+                                    @else
+                                        <x-state-badge state="warning" />
+                                        <span>{{ $domain['days_until_expiry'] === 0 ? '不足 1 天到期' : '剩餘 '.$domain['days_until_expiry'].' 天' }}</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @if ($expiringDomainCount > $expiringDomains->count())
+                <p class="panel-description">另有 {{ $expiringDomainCount - $expiringDomains->count() }} 個網域未列出；此處先顯示最早到期的 10 個。</p>
             @endif
         @endif
     </section>

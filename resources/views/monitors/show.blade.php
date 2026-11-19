@@ -25,6 +25,23 @@
         'tls_7d' => 'TLS 憑證將於 7 天內到期',
         'tls_14d' => 'TLS 憑證將於 14 天內到期',
         'tls_30d' => 'TLS 憑證將於 30 天內到期',
+        'domain_expired' => '網域已到期',
+        'domain_7d' => '網域將於 7 天內到期',
+        'domain_14d' => '網域將於 14 天內到期',
+        'domain_30d' => '網域將於 30 天內到期',
+    ];
+    $domainExpiryErrorLabels = [
+        'rdap_invalid_host' => '無法辨識此網址的網域名稱',
+        'rdap_unsupported' => 'IANA 清單未提供此頂級網域的 RDAP 服務',
+        'rdap_bootstrap_unavailable' => '無法取得 IANA RDAP 服務清單',
+        'rdap_unavailable' => 'RDAP 註冊服務暫時無法回應',
+        'rdap_not_found' => 'RDAP 未找到網域註冊資料',
+        'rdap_invalid_response' => 'RDAP 回應格式無法辨識',
+        'rdap_domain_mismatch' => 'RDAP 回傳的網域與查詢不一致',
+        'rdap_expiration_unavailable' => '註冊機構未提供網域到期日',
+        'rdap_insecure_endpoint' => 'RDAP 服務未使用 HTTPS',
+        'blocked_ssrf' => 'RDAP 服務位址未通過安全檢查',
+        'dns_nxdomain' => 'RDAP 主機名稱無法解析',
     ];
     $eventLabels = [
         'failure_seen' => '發現異常',
@@ -330,6 +347,41 @@
                                 {{ $latestTlsObservation->error_type }}
                             @else
                                 未取得憑證到期時間
+                            @endif
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
+    @endif
+
+    @if ($latestDomainRegistrationObservation)
+        <section class="panel spaced-top" aria-labelledby="latest-domain-observation-title">
+            <div class="panel-header">
+                <div>
+                    <h2 id="latest-domain-observation-title" class="panel-title">每日網域註冊期限檢查</h2>
+                    <p class="panel-description">透過 IANA RDAP 服務查詢網站註冊網域，不使用社群平台 API。註冊機構未提供資料時會顯示為無法判定。</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <dl class="metadata-list">
+                    <div class="metadata-item">
+                        <dt>最近檢查</dt>
+                        <dd><time datetime="{{ $latestDomainRegistrationObservation->observed_on->toDateString() }}">{{ $latestDomainRegistrationObservation->observed_on->format('Y/n/j') }}</time></dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>註冊網域</dt>
+                        <dd>{{ $latestDomainRegistrationObservation->domain_name ?? '尚未判定' }}</dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>註冊到期日</dt>
+                        <dd>
+                            @if ($latestDomainRegistrationObservation->expires_at)
+                                <time datetime="{{ $latestDomainRegistrationObservation->expires_at->toIso8601String() }}">{{ $latestDomainRegistrationObservation->expires_at->timezone('Asia/Taipei')->format('Y/n/j') }}</time>
+                            @elseif ($latestDomainRegistrationObservation->error_type)
+                                <span>{{ $domainExpiryErrorLabels[$latestDomainRegistrationObservation->error_type] ?? $latestDomainRegistrationObservation->error_type }}</span>
+                            @else
+                                未取得註冊期限
                             @endif
                         </dd>
                     </div>
@@ -977,7 +1029,7 @@
                                 <td>
                                     <time class="timestamp" datetime="{{ $run->scheduled_at->toIso8601String() }}">{{ $run->scheduled_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
                                 </td>
-                                <td>{{ ['manual' => '手動檢查', 'confirmation' => '確認延遲檢查', 'tls_daily' => '每日 TLS 檢查'][$run->source] ?? '排程檢查' }}</td>
+                                <td>{{ ['manual' => '手動檢查', 'confirmation' => '確認延遲檢查', 'tls_daily' => '每日 TLS 檢查', 'domain_daily' => '每日網域期限檢查'][$run->source] ?? '排程檢查' }}</td>
                                 <td><x-state-badge :state="$run->status" /></td>
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>

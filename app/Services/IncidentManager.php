@@ -9,6 +9,7 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\TlsObservation;
+use App\Services\Probe\DomainExpiryResult;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeResult;
 use App\Services\Probe\ResponseHeaderCondition;
@@ -455,6 +456,26 @@ class IncidentManager
         });
     }
 
+    public function recordDomainExpiryObservation(Monitor $monitor, CheckRun $run, DomainExpiryResult $result): void
+    {
+        if (! $result->succeeded()) {
+            return;
+        }
+
+        DB::transaction(function () use ($monitor, $run, $result): void {
+            $lockedMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
+
+            if ($lockedMonitor === null || $lockedMonitor->config_version !== $run->config_version) {
+                return;
+            }
+
+            $probeResult = new ProbeResult(null, 0, null, [], [], null, null, null, null);
+            $delay = null;
+
+            $this->recordDomainExpiry($lockedMonitor, $run, $probeResult, $result, $delay);
+        });
+    }
+
     public function pauseMonitor(Monitor $monitor): void
     {
         DB::transaction(function () use ($monitor): void {
@@ -711,6 +732,33 @@ class IncidentManager
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_14d', 'warning', $withinFourteenDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_30d', 'warning', $withinThirtyDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_handshake', 'critical', false, $result, true, false));
+    }
+
+    private function recordDomainExpiry(
+        Monitor $monitor,
+        CheckRun $run,
+        ProbeResult $probeResult,
+        DomainExpiryResult $result,
+        ?int &$delay,
+    ): void {
+        if ($result->expiresAt === null || $result->domainName === null) {
+            return;
+        }
+
+        $secondsRemaining = $result->expiresAt->getTimestamp() - now()->timestamp;
+        $expired = $secondsRemaining <= 0;
+        $withinSevenDays = $secondsRemaining > 0 && $secondsRemaining <= 7 * 86400;
+        $withinFourteenDays = $secondsRemaining > 7 * 86400 && $secondsRemaining <= 14 * 86400;
+        $withinThirtyDays = $secondsRemaining > 14 * 86400 && $secondsRemaining <= 30 * 86400;
+        $evidence = [
+            'domain_name' => $result->domainName,
+            'domain_expires_at' => $result->expiresAt->format(DATE_ATOM),
+        ];
+
+        $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'domain_expired', 'critical', $expired, $probeResult, true, false, $evidence));
+        $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'domain_7d', 'critical', $withinSevenDays, $probeResult, true, false, $evidence));
+        $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'domain_14d', 'warning', $withinFourteenDays, $probeResult, true, false, $evidence));
+        $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'domain_30d', 'warning', $withinThirtyDays, $probeResult, true, false, $evidence));
     }
 
     /** @param array<string, mixed> $evidence */

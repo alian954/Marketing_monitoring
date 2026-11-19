@@ -16,7 +16,7 @@ class DashboardController extends Controller
     public function index(UrlMasker $urlMasker): View
     {
         $monitors = Monitor::query()
-            ->with(['latestCheckRun', 'latestTlsObservation', 'activeIncidents.acknowledgedBy:id,name'])
+            ->with(['latestCheckRun', 'latestTlsObservation', 'latestDomainRegistrationObservation', 'activeIncidents.acknowledgedBy:id,name'])
             ->orderBy('name')
             ->get();
 
@@ -56,6 +56,39 @@ class DashboardController extends Controller
         $expiringCertificateCount = $expiringCertificates->count();
         $expiringCertificates = $expiringCertificates->take(10)->values();
 
+        $expiringDomains = $monitors
+            ->filter(function (Monitor $monitor) use ($asOf): bool {
+                $expiresAt = $monitor->latestDomainRegistrationObservation?->expires_at;
+
+                return $monitor->socialPlatform() === null
+                    && $expiresAt !== null
+                    && $expiresAt->lessThanOrEqualTo($asOf->addDays(30));
+            })
+            ->sortBy(static fn (Monitor $monitor): int => $monitor->latestDomainRegistrationObservation->expires_at->getTimestamp())
+            ->map(static function (Monitor $monitor) use ($asOf): array {
+                $observation = $monitor->latestDomainRegistrationObservation;
+                $expiresAt = $observation->expires_at;
+                $secondsUntilExpiry = $expiresAt->getTimestamp() - $asOf->getTimestamp();
+                $observedAt = $observation->updated_at ?? $observation->created_at;
+                $isStale = $observedAt === null
+                    || $observedAt->lessThan($asOf->subHours(self::TLS_OBSERVATION_STALE_AFTER_HOURS));
+
+                return [
+                    'monitor' => $monitor,
+                    'domain_name' => $observation->domain_name,
+                    'expires_at' => $expiresAt,
+                    'observed_at' => $observedAt,
+                    'is_stale' => $isStale,
+                    'is_expired' => ! $isStale && $secondsUntilExpiry <= 0,
+                    'days_until_expiry' => $isStale || $secondsUntilExpiry <= 0
+                        ? null
+                        : (int) ceil($secondsUntilExpiry / 86_400),
+                ];
+            })
+            ->values();
+        $expiringDomainCount = $expiringDomains->count();
+        $expiringDomains = $expiringDomains->take(10)->values();
+
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
             ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
@@ -76,6 +109,8 @@ class DashboardController extends Controller
             'monitors' => $monitors,
             'expiringCertificates' => $expiringCertificates,
             'expiringCertificateCount' => $expiringCertificateCount,
+            'expiringDomains' => $expiringDomains,
+            'expiringDomainCount' => $expiringDomainCount,
             'incidents' => $incidents,
             'dnsChanges' => $dnsChanges,
             'heartbeat' => $heartbeat,

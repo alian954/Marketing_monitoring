@@ -97,6 +97,11 @@ class Monitor extends Model
         return $this->hasMany(TlsObservation::class);
     }
 
+    public function domainRegistrationObservations(): HasMany
+    {
+        return $this->hasMany(DomainRegistrationObservation::class);
+    }
+
     public function activeIncidents(): HasMany
     {
         return $this->hasMany(Incident::class)->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN]);
@@ -106,13 +111,18 @@ class Monitor extends Model
     {
         return $this->hasOne(CheckRun::class)
             ->ofMany(['scheduled_at' => 'MAX'], static function (Builder $query): void {
-                $query->where('source', '!=', 'tls_daily');
+                $query->whereNotIn('source', ['tls_daily', 'domain_daily']);
             });
     }
 
     public function latestTlsObservation(): HasOne
     {
         return $this->hasOne(TlsObservation::class)->ofMany(['observed_on' => 'MAX']);
+    }
+
+    public function latestDomainRegistrationObservation(): HasOne
+    {
+        return $this->hasOne(DomainRegistrationObservation::class)->ofMany(['observed_on' => 'MAX']);
     }
 
     public function socialPlatform(): ?string

@@ -62,6 +62,7 @@ class MonitorController extends Controller
         'manual' => '手動檢查',
         'confirmation' => '確認延遲檢查',
         'tls_daily' => '每日 TLS 檢查',
+        'domain_daily' => '每日網域期限檢查',
     ];
 
     /** @var array<string, string> */
@@ -269,6 +270,7 @@ class MonitorController extends Controller
             ->limit(50)
             ->get(['id', 'monitor_id', 'previous_ips', 'current_ips', 'monitor_host_only', 'detected_at']);
         $latestTlsObservation = $monitor->tlsObservations()->latest('observed_on')->first();
+        $latestDomainRegistrationObservation = $monitor->domainRegistrationObservations()->latest('observed_on')->first();
         $incidents = $monitor->incidents()->with(['events', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
         $historyStart = $asOf->copy()->subDays(30);
@@ -405,6 +407,7 @@ class MonitorController extends Controller
             'runs',
             'dnsChanges',
             'latestTlsObservation',
+            'latestDomainRegistrationObservation',
             'incidents',
             'checkSuccessStats',
             'availabilityStats',

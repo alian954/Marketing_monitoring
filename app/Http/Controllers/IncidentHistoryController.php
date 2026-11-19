@@ -29,6 +29,10 @@ class IncidentHistoryController extends Controller
         'tls_7d' => 'TLS 憑證將於 7 天內到期',
         'tls_14d' => 'TLS 憑證將於 14 天內到期',
         'tls_30d' => 'TLS 憑證將於 30 天內到期',
+        'domain_expired' => '網域已到期',
+        'domain_7d' => '網域將於 7 天內到期',
+        'domain_14d' => '網域將於 14 天內到期',
+        'domain_30d' => '網域將於 30 天內到期',
     ];
 
     /** @var array<string, string> */
