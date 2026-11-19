@@ -53,6 +53,35 @@ class MonitorCheckRunFilterTest extends TestCase
         $this->assertSame((string) $matchingRun->id, $csvRows[0]['check_run_id']);
     }
 
+    public function test_monitor_detail_filters_and_exports_by_http_response_code(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $user = User::factory()->create();
+        $matchingRun = CheckRun::factory()->for($monitor)->create(['normal_status' => 429]);
+        CheckRun::factory()->for($monitor)->create(['normal_status' => 403]);
+        CheckRun::factory()->for($monitor)->create(['normal_status' => null]);
+        $filters = ['http_status' => 429];
+
+        $detailResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, ...$filters]))
+            ->assertOk()
+            ->assertSee('HTTP 回應碼')
+            ->assertSee('value="429"', false)
+            ->assertSee(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]));
+
+        $this->assertSame([$matchingRun->id], $detailResponse->viewData('runs')->getCollection()->modelKeys());
+        $this->assertSame(1, $detailResponse->viewData('runs')->total());
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]))
+            ->assertOk();
+        $exportRows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $exportRows);
+        $this->assertSame((string) $matchingRun->id, $exportRows[0]['check_run_id']);
+        $this->assertSame('429', $exportRows[0]['http_status']);
+    }
+
     public function test_monitor_detail_filters_and_exports_each_text_match_result(): void
     {
         $monitor = Monitor::factory()->create(['expected_text' => 'Campaign headline']);
@@ -239,11 +268,12 @@ class MonitorCheckRunFilterTest extends TestCase
 
         $this->actingAs($user)
             ->from($monitorUrl)
-            ->get(route('monitors.show', ['monitor' => $monitor, 'status' => 'unexpected', 'source' => 'unexpected', 'content_match' => 'unexpected']))
+            ->get(route('monitors.show', ['monitor' => $monitor, 'status' => 'unexpected', 'source' => 'unexpected', 'http_status' => '700', 'content_match' => 'unexpected']))
             ->assertRedirect($monitorUrl)
             ->assertSessionHasErrors([
                 'status' => '請選擇有效的檢查執行狀態。',
                 'source' => '請選擇有效的檢查來源。',
+                'http_status' => 'HTTP 回應碼必須介於 100 到 599。',
                 'content_match' => '請選擇有效的文字比對篩選條件。',
             ]);
     }
@@ -279,6 +309,7 @@ class MonitorCheckRunFilterTest extends TestCase
         $filters = [
             'status' => 'failed',
             'source' => 'scheduled',
+            'http_status' => '200',
             'content_match' => 'found',
             'date_from' => '2026-11-01',
             'date_to' => '2026-11-30',

@@ -941,6 +941,27 @@
                 </div>
 
                 <div class="field-group">
+                    <label class="field-label" for="check-run-http-status">HTTP 回應碼</label>
+                    <input
+                        class="field-input @error('http_status') is-invalid @enderror"
+                        id="check-run-http-status"
+                        name="http_status"
+                        type="number"
+                        inputmode="numeric"
+                        min="100"
+                        max="599"
+                        step="1"
+                        value="{{ $checkRunFilters['http_status'] }}"
+                        aria-describedby="{{ $errors->has('http_status') ? 'check-run-http-status-help check-run-http-status-error' : 'check-run-http-status-help' }}"
+                        @if ($errors->has('http_status')) aria-invalid="true" @endif
+                    >
+                    <p id="check-run-http-status-help" class="field-help">輸入 100–599 的狀態碼，例如 403 或 429。</p>
+                    @error('http_status')
+                        <p id="check-run-http-status-error" class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="field-group">
                     <label class="field-label" for="check-run-date-from">開始日期</label>
                     <input
                         class="field-input @error('date_from') is-invalid @enderror"

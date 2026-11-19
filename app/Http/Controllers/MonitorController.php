@@ -866,18 +866,21 @@ class MonitorController extends Controller
         }, 'dns-changes-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{status: string, source: string, content_match: string, date_from: string, date_to: string} */
+    /** @return array{status: string, source: string, http_status: string, content_match: string, date_from: string, date_to: string} */
     private function validateCheckRunFilters(Request $request): array
     {
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_STATUS_OPTIONS))],
             'source' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_SOURCE_OPTIONS))],
+            'http_status' => ['nullable', 'integer', 'between:100,599'],
             'content_match' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_CONTENT_MATCH_OPTIONS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ], [
             'status.in' => '請選擇有效的檢查執行狀態。',
             'source.in' => '請選擇有效的檢查來源。',
+            'http_status.integer' => 'HTTP 回應碼必須是整數。',
+            'http_status.between' => 'HTTP 回應碼必須介於 100 到 599。',
             'content_match.in' => '請選擇有效的文字比對篩選條件。',
             'date_from.date_format' => '開始日期格式無效。',
             'date_to.date_format' => '結束日期格式無效。',
@@ -887,6 +890,7 @@ class MonitorController extends Controller
         return [
             'status' => (string) ($validated['status'] ?? ''),
             'source' => (string) ($validated['source'] ?? ''),
+            'http_status' => (string) ($validated['http_status'] ?? ''),
             'content_match' => (string) ($validated['content_match'] ?? ''),
             'date_from' => (string) ($validated['date_from'] ?? ''),
             'date_to' => (string) ($validated['date_to'] ?? ''),
@@ -894,7 +898,7 @@ class MonitorController extends Controller
     }
 
     /**
-     * @param  array{status: string, source: string, content_match: string, date_from: string, date_to: string}  $filters
+     * @param  array{status: string, source: string, http_status: string, content_match: string, date_from: string, date_to: string}  $filters
      * @param  array<int, list<int>>  $acceptedStatusCodesByVersion
      */
     private function filterCheckRuns(Builder $query, array $filters, array $acceptedStatusCodesByVersion = []): Builder
@@ -902,6 +906,7 @@ class MonitorController extends Controller
         return $query
             ->when($filters['status'] !== '', static fn (Builder $query): Builder => $query->where('status', $filters['status']))
             ->when($filters['source'] !== '', static fn (Builder $query): Builder => $query->where('source', $filters['source']))
+            ->when($filters['http_status'] !== '', static fn (Builder $query): Builder => $query->where('normal_status', (int) $filters['http_status']))
             ->when($filters['content_match'] === 'found', function (Builder $query) use ($acceptedStatusCodesByVersion): Builder {
                 $query->where('expected_text_found', true);
                 $this->whereAcceptedHttpStatuses($query, $acceptedStatusCodesByVersion);
