@@ -79,7 +79,7 @@ class NotificationController extends Controller
 
         if ($queuedCount === 0) {
             return redirect()->route('notifications.index')
-                ->withErrors(['notification' => '尚未設定全域通知收件信箱或 Slack webhook。']);
+                ->withErrors(['notification' => '尚未設定全域通知收件信箱、Slack 或 Discord webhook。']);
         }
 
         return redirect()->route('notifications.index', ['event_type' => NotificationOutbox::EVENT_TYPE_TEST])
@@ -92,7 +92,7 @@ class NotificationController extends Controller
 
         if ($queuedCount === 0) {
             return redirect()->route('monitors.show', $monitor)
-                ->withErrors(['notification' => '尚未設定此監測的收件信箱或全域通知管道。']);
+                ->withErrors(['notification' => '尚未設定此監測的收件信箱或可用的全域通知管道。']);
         }
 
         return redirect()->route('notifications.index', [
@@ -107,7 +107,7 @@ class NotificationController extends Controller
         return $request->validate([
             'status' => ['nullable', 'in:pending,sending,sent,failed,unknown,cancelled'],
             'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED],
-            'channel' => ['nullable', 'in:email,slack'],
+            'channel' => ['nullable', 'in:email,slack,discord'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
         ]);
     }
@@ -150,12 +150,13 @@ class NotificationController extends Controller
         return [
             NotificationOutbox::CHANNEL_EMAIL => '電子郵件',
             NotificationOutbox::CHANNEL_SLACK => 'Slack webhook',
+            NotificationOutbox::CHANNEL_DISCORD => 'Discord webhook',
         ];
     }
 
     private function maskedRecipient(NotificationOutbox $notification): string
     {
-        if ($notification->channel === NotificationOutbox::CHANNEL_SLACK) {
+        if (in_array($notification->channel, [NotificationOutbox::CHANNEL_SLACK, NotificationOutbox::CHANNEL_DISCORD], true)) {
             return 'Webhook 端點已遮蔽';
         }
 

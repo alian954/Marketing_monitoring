@@ -31,6 +31,15 @@ class NotificationTestDispatcher
             $destinations[] = [NotificationOutbox::CHANNEL_SLACK, $slackWebhookUrl];
         }
 
+        $monitorDiscordWebhookUrl = trim((string) $monitor?->notification_discord_webhook);
+        $discordWebhookUrl = $monitorDiscordWebhookUrl === ''
+            ? trim((string) config('monitoring.notify_discord_webhook'))
+            : $monitorDiscordWebhookUrl;
+
+        if ($discordWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
+        }
+
         if ($destinations === []) {
             return 0;
         }

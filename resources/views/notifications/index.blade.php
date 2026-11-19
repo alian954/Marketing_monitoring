@@ -11,7 +11,7 @@
         <div class="heading-copy">
             <p class="eyebrow">工作區</p>
             <h1 class="page-title">通知紀錄</h1>
-            <p class="page-description">查看電子郵件或 Slack 的寄送狀態；可在此測試全域通知管道，也可在監測詳情測試個別收件設定。失敗或結果不明的通知可以重新排入寄送佇列。</p>
+            <p class="page-description">查看電子郵件、Slack 或 Discord 的寄送狀態；可在此測試全域通知管道，也可在監測詳情測試個別收件設定。失敗或結果不明的通知可以重新排入寄送佇列。</p>
         </div>
         <div class="heading-actions">
             <form action="{{ route('notifications.test') }}" method="POST" aria-label="傳送測試通知">
@@ -67,6 +67,7 @@
                                 <option value="" @selected($filters['channel'] === '')>全部管道</option>
                                 <option value="email" @selected($filters['channel'] === 'email')>電子郵件</option>
                                 <option value="slack" @selected($filters['channel'] === 'slack')>Slack webhook</option>
+                                <option value="discord" @selected($filters['channel'] === 'discord')>Discord webhook</option>
                             </select>
                         </div>
                         <div class="field-group">

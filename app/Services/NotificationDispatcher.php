@@ -23,7 +23,7 @@ class NotificationDispatcher
         string $eventType,
         ?string $idempotencySuffix = null,
         ?array $emailRecipientsOverride = null,
-        bool $includeSlack = true,
+        bool $includeWebhookChannels = true,
     ): bool {
         $monitorRecipients = NotificationEmailRecipientParser::parse($monitor->notification_email);
         $emailRecipients = $emailRecipientsOverride ?? ($monitorRecipients === []
@@ -40,8 +40,17 @@ class NotificationDispatcher
             ? trim((string) config('monitoring.notify_slack_webhook'))
             : $monitorSlackWebhookUrl;
 
-        if ($includeSlack && $slackWebhookUrl !== '') {
+        if ($includeWebhookChannels && $slackWebhookUrl !== '') {
             $destinations[] = [NotificationOutbox::CHANNEL_SLACK, $slackWebhookUrl];
+        }
+
+        $monitorDiscordWebhookUrl = trim((string) $monitor->notification_discord_webhook);
+        $discordWebhookUrl = $monitorDiscordWebhookUrl === ''
+            ? trim((string) config('monitoring.notify_discord_webhook'))
+            : $monitorDiscordWebhookUrl;
+
+        if ($includeWebhookChannels && $discordWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
         }
 
         $statusSubscribersQueued = $this->statusPageSubscriptions->queue($incident, $monitor, $eventType);

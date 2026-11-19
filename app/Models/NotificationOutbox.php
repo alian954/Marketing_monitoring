@@ -17,6 +17,8 @@ class NotificationOutbox extends Model
 
     public const CHANNEL_SLACK = 'slack';
 
+    public const CHANNEL_DISCORD = 'discord';
+
     public const EVENT_TYPE_TEST = 'test';
 
     public const EVENT_TYPE_ESCALATION = 'escalation';

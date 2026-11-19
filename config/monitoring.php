@@ -14,6 +14,7 @@ return [
     'incident_reminder_interval_minutes' => (int) env('MONITOR_INCIDENT_REMINDER_INTERVAL_MINUTES', 360),
     'notify_email' => env('MONITOR_NOTIFY_EMAIL'),
     'notify_slack_webhook' => env('MONITOR_SLACK_WEBHOOK_URL'),
+    'notify_discord_webhook' => env('MONITOR_DISCORD_WEBHOOK_URL'),
     'default_allowed_redirect_hosts' => array_filter(array_map(
         static fn (string $host): string => mb_strtolower(trim($host)),
         explode(',', (string) env('MONITOR_ALLOWED_REDIRECT_HOSTS', '')),

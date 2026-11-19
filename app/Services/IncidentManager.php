@@ -315,7 +315,7 @@ class IncidentManager
                         $failureRun,
                         $eventType,
                         emailRecipientsOverride: $recipients,
-                        includeSlack: false,
+                        includeWebhookChannels: false,
                     );
 
                     if ($wasQueued) {

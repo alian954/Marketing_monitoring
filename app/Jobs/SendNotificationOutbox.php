@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Incident;
 use App\Models\NotificationOutbox;
 use App\Models\StatusPageSubscription;
+use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\SlackWebhookUrlPolicy;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -104,6 +105,8 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 $this->sendEmail($message);
             } elseif ($message['channel'] === NotificationOutbox::CHANNEL_SLACK) {
                 $this->sendSlack($message);
+            } elseif ($message['channel'] === NotificationOutbox::CHANNEL_DISCORD) {
+                $this->sendDiscord($message);
             } else {
                 throw new InvalidArgumentException('Unsupported notification channel.');
             }
@@ -147,6 +150,31 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
             ->timeout(10)
             ->withoutRedirecting()
             ->post($webhookUrl, ['text' => $message['subject']."\n\n".$message['body']])
+            ->throw();
+    }
+
+    /** @param array{channel: string, recipient: string, subject: string, body: string} $message */
+    private function sendDiscord(array $message): void
+    {
+        $webhookUrl = $message['recipient'];
+
+        if (! DiscordWebhookUrlPolicy::isAllowed($webhookUrl)) {
+            throw new InvalidArgumentException('Discord webhook URL must use an allowed Discord HTTPS host and path.');
+        }
+
+        $content = $message['subject']."\n\n".$message['body'];
+
+        if (mb_strlen($content) > 2000) {
+            $content = mb_substr($content, 0, 1999).'…';
+        }
+
+        Http::connectTimeout(3)
+            ->timeout(10)
+            ->withoutRedirecting()
+            ->post($webhookUrl.'?wait=true', [
+                'content' => $content,
+                'allowed_mentions' => ['parse' => []],
+            ])
             ->throw();
     }
 }

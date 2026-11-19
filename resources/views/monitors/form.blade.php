@@ -4,6 +4,7 @@
     $isEditing = strtoupper((string) $formMethod) !== 'POST';
     $maskedUrl = $monitor->getAttribute('masked_url');
     $hasSlackWebhook = filled($monitor->notification_slack_webhook);
+    $hasDiscordWebhook = filled($monitor->notification_discord_webhook);
     $redirectHostsValue = old('redirect_hosts');
     if ($redirectHostsValue === null) {
         $redirectHosts = $monitor->allowed_redirect_hosts;
@@ -143,6 +144,28 @@
                                 </label>
                             @endif
                             @error('notification_slack_webhook')<p id="notification-slack-webhook-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
+                            <label class="field-label" for="notification_discord_webhook">Discord Incoming Webhook</label>
+                            <p id="notification-discord-webhook-help" class="field-help">
+                                @if ($hasDiscordWebhook)
+                                    此監測已設定專用 Discord webhook（網址已遮蔽）；留白會保留目前設定。
+                                @else
+                                    選填，留白時使用全域 MONITOR_DISCORD_WEBHOOK_URL。Webhook 僅接受 discord.com HTTPS 網址，並會加密儲存。
+                                @endif
+                            </p>
+                            <div class="secret-input-row">
+                                <input class="field-input @error('notification_discord_webhook') is-invalid @enderror" id="notification_discord_webhook" name="notification_discord_webhook" type="password" value="" maxlength="2048" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="notification-discord-webhook-help{{ $errors->has('notification_discord_webhook') ? ' notification-discord-webhook-error' : '' }}" @if ($errors->has('notification_discord_webhook')) aria-invalid="true" @endif>
+                                <button class="button button-secondary" type="button" data-secret-toggle aria-controls="notification_discord_webhook" aria-pressed="false" data-show-label="顯示網址" data-hide-label="隱藏網址" hidden>顯示網址</button>
+                            </div>
+                            @if ($isEditing && $hasDiscordWebhook)
+                                <label class="field-check spaced-top" for="clear_notification_discord_webhook">
+                                    <input id="clear_notification_discord_webhook" name="clear_notification_discord_webhook" type="checkbox" value="1" @checked(old('clear_notification_discord_webhook'))>
+                                    移除此監測專用 webhook，改用全域 Discord 設定
+                                </label>
+                            @endif
+                            @error('notification_discord_webhook')<p id="notification-discord-webhook-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">
