@@ -54,6 +54,8 @@
                         <li>分享標題：{{ $probePreview['response_metadata']['title'] ?? '未提供' }}</li>
                         <li>分享摘要：{{ $probePreview['response_metadata']['description'] ?? '未提供' }}</li>
                         <li>分享預覽圖片參照：{{ ($probePreview['response_metadata']['image_reference_present'] ?? false) ? '已偵測' : '未提供' }}</li>
+                        <li>Open Graph 類型：{{ $probePreview['response_metadata']['open_graph_type'] ?? '未提供' }}</li>
+                        <li>標準網址參照：{{ ($probePreview['response_metadata']['canonical_reference_present'] ?? false) ? '已偵測' : '未提供' }}</li>
                         <li>分享發佈時間（UTC）：{{ $probePreview['response_metadata']['published_at_utc'] ?? '未提供' }}</li>
                         <li>分享修改時間（UTC）：{{ $probePreview['response_metadata']['modified_at_utc'] ?? '未提供' }}</li>
                         @if ($probePreview['expected_text_checked'])

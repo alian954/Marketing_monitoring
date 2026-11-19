@@ -25,6 +25,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => '社群貼文 & 活動',
             'description' => '最新活動 詳情',
             'image_reference_hash' => null,
+            'open_graph_type' => null,
+            'canonical_reference_hash' => null,
             'published_at' => null,
             'modified_at' => null,
         ], $metadata);
@@ -43,6 +45,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => 'Page title',
             'description' => 'Page description',
             'image_reference_hash' => null,
+            'open_graph_type' => null,
+            'canonical_reference_hash' => null,
             'published_at' => null,
             'modified_at' => null,
         ], $metadata);
@@ -63,6 +67,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => 'Twitter card title',
             'description' => 'Twitter card description',
             'image_reference_hash' => null,
+            'open_graph_type' => null,
+            'canonical_reference_hash' => null,
             'published_at' => null,
             'modified_at' => null,
         ], $metadata);
@@ -77,8 +83,8 @@ class ResponseMetadataExtractorTest extends TestCase
 
         $this->assertSame(255, mb_strlen($metadata['title']));
         $this->assertSame(500, mb_strlen($metadata['description']));
-        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract(''));
-        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract('<html><body>no metadata</body></html>'));
+        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract(''));
+        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract('<html><body>no metadata</body></html>'));
     }
 
     public function test_it_hashes_a_normalized_open_graph_image_reference_without_query_or_fragment(): void
@@ -93,9 +99,47 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => null,
             'description' => null,
             'image_reference_hash' => '4822f7225b9ec55db19c608f6d37b25d9f6cc7442502a566525bce0629833c6c',
+            'open_graph_type' => null,
+            'canonical_reference_hash' => null,
             'published_at' => null,
             'modified_at' => null,
         ], $metadata);
+    }
+
+    public function test_it_extracts_open_graph_type_and_hashes_the_canonical_url_without_query_or_fragment(): void
+    {
+        $metadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head>
+                <meta property="og:type" content="  article  ">
+                <meta property="og:url" content="https://WWW.Instagram.com:443/p/ABC123/?token=private-token#post">
+            </head></html>
+            HTML);
+
+        $this->assertSame('article', $metadata['open_graph_type']);
+        $this->assertSame('59276114c24f898c899a925b37854497f2cb8a64e485d5eca8077a67a175ca16', $metadata['canonical_reference_hash']);
+    }
+
+    public function test_it_rejects_unsafe_or_oversized_canonical_urls_and_limits_open_graph_type_length(): void
+    {
+        $unsafeMetadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head>
+                <meta property="og:type" content="safe-type">
+                <meta property="og:url" content="https://user:password@example.test/post">
+            </head></html>
+            HTML);
+        $relativeMetadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head><meta property="og:url" content="/p/ABC123/"></head></html>
+            HTML, 'https://www.instagram.com/p/ABC123/');
+        $oversizedUrl = 'https://example.test/'.str_repeat('p', 2_048);
+        $oversizedMetadata = ResponseMetadataExtractor::extract(
+            '<html><head><meta property="og:type" content="'.str_repeat('t', 200).'"><meta property="og:url" content="'.$oversizedUrl.'"></head></html>',
+        );
+
+        $this->assertNull($unsafeMetadata['canonical_reference_hash']);
+        $this->assertSame('safe-type', $unsafeMetadata['open_graph_type']);
+        $this->assertNull($relativeMetadata['canonical_reference_hash']);
+        $this->assertNull($oversizedMetadata['canonical_reference_hash']);
+        $this->assertSame(120, mb_strlen($oversizedMetadata['open_graph_type']));
     }
 
     public function test_it_normalizes_publication_times_to_utc_and_skips_invalid_dates(): void

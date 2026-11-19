@@ -161,6 +161,8 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'response_title' => $normal->responseTitle,
                 'response_description' => $normal->responseDescription,
                 'response_image_reference_hash' => $normal->responseImageReferenceHash,
+                'response_open_graph_type' => $normal->responseOpenGraphType,
+                'response_canonical_reference_hash' => $normal->responseCanonicalReferenceHash,
                 'response_published_at' => $normal->responsePublishedAt,
                 'response_modified_at' => $normal->responseModifiedAt,
                 'tls_expires_at' => $normal->tlsExpiresAt,

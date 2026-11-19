@@ -290,11 +290,15 @@ class MonitorController extends Controller
             $latestResponseMetadataRun?->response_title !== null
             || $latestResponseMetadataRun?->response_description !== null
             || $latestResponseMetadataRun?->response_image_reference_hash !== null
+            || $latestResponseMetadataRun?->response_open_graph_type !== null
+            || $latestResponseMetadataRun?->response_canonical_reference_hash !== null
             || $latestResponseMetadataRun?->response_published_at !== null
             || $latestResponseMetadataRun?->response_modified_at !== null
             || $previousResponseMetadataRun->response_title !== null
             || $previousResponseMetadataRun->response_description !== null
             || $previousResponseMetadataRun->response_image_reference_hash !== null
+            || $previousResponseMetadataRun->response_open_graph_type !== null
+            || $previousResponseMetadataRun->response_canonical_reference_hash !== null
             || $previousResponseMetadataRun->response_published_at !== null
             || $previousResponseMetadataRun->response_modified_at !== null
         );
@@ -302,6 +306,8 @@ class MonitorController extends Controller
             $latestResponseMetadataRun?->response_title !== $previousResponseMetadataRun->response_title
             || $latestResponseMetadataRun?->response_description !== $previousResponseMetadataRun->response_description
             || $latestResponseMetadataRun?->response_image_reference_hash !== $previousResponseMetadataRun->response_image_reference_hash
+            || $latestResponseMetadataRun?->response_open_graph_type !== $previousResponseMetadataRun->response_open_graph_type
+            || $latestResponseMetadataRun?->response_canonical_reference_hash !== $previousResponseMetadataRun->response_canonical_reference_hash
             || $latestResponseMetadataRun?->response_published_at?->format('U.u') !== $previousResponseMetadataRun->response_published_at?->format('U.u')
             || $latestResponseMetadataRun?->response_modified_at?->format('U.u') !== $previousResponseMetadataRun->response_modified_at?->format('U.u')
         );
@@ -481,7 +487,7 @@ class MonitorController extends Controller
             })
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')
-            ->first(['id', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash', 'response_published_at', 'response_modified_at']);
+            ->first(['id', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at']);
     }
 
     public function edit(Monitor $monitor): View
@@ -855,6 +861,8 @@ class MonitorController extends Controller
                 'response_title',
                 'response_description',
                 'response_image_reference_present',
+                'response_og_type',
+                'response_canonical_reference_present',
                 'response_published_at_utc',
                 'response_modified_at_utc',
                 'expected_text_mode',
@@ -893,6 +901,8 @@ class MonitorController extends Controller
                         (string) $run->response_title,
                         (string) $run->response_description,
                         $run->response_image_reference_hash === null ? '0' : '1',
+                        (string) $run->response_open_graph_type,
+                        $run->response_canonical_reference_hash === null ? '0' : '1',
                         $run->response_published_at?->utc()->toIso8601String() ?? '',
                         $run->response_modified_at?->utc()->toIso8601String() ?? '',
                         $run->expectedTextMode(),
@@ -1679,6 +1689,8 @@ class MonitorController extends Controller
                     'title' => $result->responseTitle,
                     'description' => $result->responseDescription,
                     'image_reference_present' => $result->responseImageReferenceHash !== null,
+                    'open_graph_type' => $result->responseOpenGraphType,
+                    'canonical_reference_present' => $result->responseCanonicalReferenceHash !== null,
                     'published_at_utc' => $result->responsePublishedAt?->format(DATE_ATOM),
                     'modified_at_utc' => $result->responseModifiedAt?->format(DATE_ATOM),
                 ],

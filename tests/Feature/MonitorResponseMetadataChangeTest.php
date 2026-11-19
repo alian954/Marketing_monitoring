@@ -44,6 +44,44 @@ class MonitorResponseMetadataChangeTest extends TestCase
             ->assertDontSee(str_repeat('b', 64));
     }
 
+    public function test_latest_response_metadata_reports_open_graph_identity_changes_without_exposing_canonical_hashes(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $previousHash = str_repeat('a', 64);
+        $currentHash = str_repeat('b', 64);
+        $this->createRun(
+            $monitor,
+            now()->subMinutes(10),
+            'completed',
+            null,
+            null,
+            openGraphType: 'article',
+            canonicalReferenceHash: $previousHash,
+        );
+        $this->createRun(
+            $monitor,
+            now()->subMinutes(2),
+            'completed',
+            null,
+            null,
+            openGraphType: 'video.other',
+            canonicalReferenceHash: $currentHash,
+        );
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('與上次完成檢查相比已變更。')
+            ->assertSee('上次 Open Graph 類型：article')
+            ->assertSee('Open Graph 類型：video.other')
+            ->assertSee('上次標準網址參照：已偵測')
+            ->assertSee('標準網址參照：已偵測')
+            ->assertDontSee($previousHash)
+            ->assertDontSee($currentHash);
+
+        $this->assertSame(['open_graph_type', 'canonical_reference'], $response->viewData('responseMetadataChanges')[0]['changed_fields']);
+    }
+
     public function test_latest_response_metadata_reports_when_the_modified_time_changes(): void
     {
         $monitor = Monitor::factory()->create();
@@ -151,6 +189,8 @@ class MonitorResponseMetadataChangeTest extends TestCase
         ?string $imageReferenceHash = null,
         ?DateTimeInterface $publishedAt = null,
         ?DateTimeInterface $modifiedAt = null,
+        ?string $openGraphType = null,
+        ?string $canonicalReferenceHash = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -169,6 +209,8 @@ class MonitorResponseMetadataChangeTest extends TestCase
             'response_title' => $title,
             'response_description' => $description,
             'response_image_reference_hash' => $imageReferenceHash,
+            'response_open_graph_type' => $openGraphType,
+            'response_canonical_reference_hash' => $canonicalReferenceHash,
             'response_published_at' => $publishedAt,
             'response_modified_at' => $modifiedAt,
         ]);

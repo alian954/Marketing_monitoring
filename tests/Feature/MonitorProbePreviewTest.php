@@ -69,6 +69,8 @@ class MonitorProbePreviewTest extends TestCase
                 responseTitle: 'Campaign <script>alert(1)</script>',
                 responseDescription: '<img src=x onerror=alert(2)>',
                 responseImageReferenceHash: str_repeat('d', 64),
+                responseOpenGraphType: '<script>alert(3)</script>',
+                responseCanonicalReferenceHash: str_repeat('e', 64),
                 responsePublishedAt: new \DateTimeImmutable('2026-11-19T01:30:00+00:00'),
                 responseModifiedAt: new \DateTimeImmutable('2026-11-20T12:45:00+00:00'),
             ));
@@ -85,11 +87,15 @@ class MonitorProbePreviewTest extends TestCase
             ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
             ->assertSee('&lt;img src=x onerror=alert(2)&gt;', false)
             ->assertSee('分享預覽圖片參照：已偵測')
+            ->assertSee('Open Graph 類型：&lt;script&gt;alert(3)&lt;/script&gt;', false)
+            ->assertSee('標準網址參照：已偵測')
             ->assertSee('分享發佈時間（UTC）：2026-11-19T01:30:00+00:00')
             ->assertSee('分享修改時間（UTC）：2026-11-20T12:45:00+00:00')
             ->assertDontSee('<script>alert(1)</script>', false)
             ->assertDontSee('<img src=x onerror=alert(2)>', false)
+            ->assertDontSee('<script>alert(3)</script>', false)
             ->assertDontSee(str_repeat('d', 64))
+            ->assertDontSee(str_repeat('e', 64))
             ->assertDontSee('<article>Campaign headline</article>', false);
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
@@ -143,7 +149,9 @@ class MonitorProbePreviewTest extends TestCase
             ->assertSee('HTTP 狀態與文字條件均符合目前設定。')
             ->assertSee('分享標題：未提供')
             ->assertSee('分享摘要：未提供')
-            ->assertSee('分享預覽圖片參照：未提供');
+            ->assertSee('分享預覽圖片參照：未提供')
+            ->assertSee('Open Graph 類型：未提供')
+            ->assertSee('標準網址參照：未提供');
 
         $this->assertDatabaseCount('monitors', 0);
     }

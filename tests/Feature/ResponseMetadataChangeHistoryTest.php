@@ -108,6 +108,36 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $this->assertArrayNotHasKey('current_image_reference_hash', $changes[0]);
     }
 
+    public function test_monitor_detail_lists_open_graph_type_and_canonical_reference_changes_without_exposing_hashes(): void
+    {
+        $monitor = $this->createMonitor();
+        $previousHash = str_repeat('a', 64);
+        $currentHash = str_repeat('b', 64);
+        $this->createRun($monitor, now()->subMinutes(2), null, null, openGraphType: '<script>alert(4)</script>', canonicalReferenceHash: $previousHash);
+        $this->createRun($monitor, now()->subMinute(), null, null, openGraphType: 'video.other', canonicalReferenceHash: $currentHash);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('Open Graph 類型')
+            ->assertSee('標準網址參照')
+            ->assertSee('&lt;script&gt;alert(4)&lt;/script&gt;', false)
+            ->assertSee('video.other')
+            ->assertSee('已偵測（參照已變更）')
+            ->assertDontSee('<script>alert(4)</script>', false)
+            ->assertDontSee($previousHash)
+            ->assertDontSee($currentHash);
+        $changes = $response->viewData('responseMetadataChanges');
+
+        $this->assertSame(['open_graph_type', 'canonical_reference'], $changes[0]['changed_fields']);
+        $this->assertSame('<script>alert(4)</script>', $changes[0]['previous_open_graph_type']);
+        $this->assertSame('video.other', $changes[0]['current_open_graph_type']);
+        $this->assertTrue($changes[0]['previous_canonical_reference_present']);
+        $this->assertTrue($changes[0]['current_canonical_reference_present']);
+        $this->assertArrayNotHasKey('previous_canonical_reference_hash', $changes[0]);
+        $this->assertArrayNotHasKey('current_canonical_reference_hash', $changes[0]);
+    }
+
     public function test_monitor_detail_lists_modified_time_changes_in_taiwan_time(): void
     {
         $monitor = $this->createMonitor();
@@ -202,6 +232,8 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         ?string $imageReferenceHash = null,
         ?DateTimeInterface $publishedAt = null,
         ?DateTimeInterface $modifiedAt = null,
+        ?string $openGraphType = null,
+        ?string $canonicalReferenceHash = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -214,6 +246,8 @@ class ResponseMetadataChangeHistoryTest extends TestCase
             'response_title' => $title,
             'response_description' => $description,
             'response_image_reference_hash' => $imageReferenceHash,
+            'response_open_graph_type' => $openGraphType,
+            'response_canonical_reference_hash' => $canonicalReferenceHash,
             'response_published_at' => $publishedAt,
             'response_modified_at' => $modifiedAt,
         ]);

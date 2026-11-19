@@ -15,15 +15,17 @@ class ResponseMetadataExtractor
 
     private const MAX_DESCRIPTION_LENGTH = 500;
 
-    private const MAX_IMAGE_REFERENCE_LENGTH = 2_048;
+    private const MAX_REFERENCE_LENGTH = 2_048;
+
+    private const MAX_OPEN_GRAPH_TYPE_LENGTH = 120;
 
     /**
-     * @return array{title: ?string, description: ?string, image_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable}
+     * @return array{title: ?string, description: ?string, image_reference_hash: ?string, open_graph_type: ?string, canonical_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable}
      */
     public static function extract(string $html, ?string $responseUrl = null): array
     {
         if (trim($html) === '') {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
         }
 
         $document = new DOMDocument('1.0', 'UTF-8');
@@ -40,7 +42,7 @@ class ResponseMetadataExtractor
         }
 
         if (! $loaded) {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
         }
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
@@ -50,6 +52,8 @@ class ResponseMetadataExtractor
         $twitterDescription = null;
         $metaDescription = null;
         $imageReferenceHash = null;
+        $openGraphType = null;
+        $canonicalReferenceHash = null;
         $publishedAt = null;
         $modifiedAt = null;
 
@@ -85,7 +89,15 @@ class ResponseMetadataExtractor
             if ($imageReferenceHash === null
                 && (in_array($property, ['og:image', 'og:image:url', 'og:image:secure_url'], true)
                     || in_array($name, ['og:image', 'twitter:image', 'twitter:image:src'], true))) {
-                $imageReferenceHash = self::imageReferenceHash($content, $responseUrl);
+                $imageReferenceHash = self::referenceHash($content, $responseUrl);
+            }
+
+            if ($openGraphType === null && ($property === 'og:type' || $name === 'og:type')) {
+                $openGraphType = self::truncate($content, self::MAX_OPEN_GRAPH_TYPE_LENGTH);
+            }
+
+            if ($canonicalReferenceHash === null && ($property === 'og:url' || $name === 'og:url')) {
+                $canonicalReferenceHash = self::referenceHash($content);
             }
 
             if ($publishedAt === null && ($property === 'article:published_time' || $name === 'article:published_time')) {
@@ -101,6 +113,8 @@ class ResponseMetadataExtractor
             'title' => self::truncate($openGraphTitle ?? $twitterTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
             'description' => self::truncate($openGraphDescription ?? $twitterDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
             'image_reference_hash' => $imageReferenceHash,
+            'open_graph_type' => $openGraphType,
+            'canonical_reference_hash' => $canonicalReferenceHash,
             'published_at' => $publishedAt,
             'modified_at' => $modifiedAt,
         ];
@@ -130,9 +144,9 @@ class ResponseMetadataExtractor
         }
     }
 
-    private static function imageReferenceHash(string $reference, ?string $responseUrl): ?string
+    private static function referenceHash(string $reference, ?string $responseUrl = null): ?string
     {
-        if (mb_strlen($reference) > self::MAX_IMAGE_REFERENCE_LENGTH) {
+        if (mb_strlen($reference) > self::MAX_REFERENCE_LENGTH) {
             return null;
         }
 

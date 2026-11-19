@@ -304,7 +304,7 @@
                         <div class="metadata-item field-group-full">
                             <dt>分享預覽資料</dt>
                             <dd>
-                                @if ($monitor->latestCheckRun->response_title || $monitor->latestCheckRun->response_description || $monitor->latestCheckRun->response_image_reference_hash || $monitor->latestCheckRun->response_published_at || $monitor->latestCheckRun->response_modified_at)
+                                @if ($monitor->latestCheckRun->response_title || $monitor->latestCheckRun->response_description || $monitor->latestCheckRun->response_image_reference_hash || $monitor->latestCheckRun->response_open_graph_type || $monitor->latestCheckRun->response_canonical_reference_hash || $monitor->latestCheckRun->response_published_at || $monitor->latestCheckRun->response_modified_at)
                                     @if ($monitor->latestCheckRun->response_title)
                                         <p>分享標題：{{ $monitor->latestCheckRun->response_title }}</p>
                                     @endif
@@ -312,6 +312,8 @@
                                         <p>分享摘要：{{ $monitor->latestCheckRun->response_description }}</p>
                                     @endif
                                     <p>分享預覽圖片參照：{{ $monitor->latestCheckRun->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
+                                    <p>Open Graph 類型：{{ $monitor->latestCheckRun->response_open_graph_type ?? '未提供' }}</p>
+                                    <p>標準網址參照：{{ $monitor->latestCheckRun->response_canonical_reference_hash ? '已偵測' : '未提供' }}</p>
                                     <p>分享發佈時間：{{ $monitor->latestCheckRun->response_published_at ? $monitor->latestCheckRun->response_published_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                     <p>分享修改時間：{{ $monitor->latestCheckRun->response_modified_at ? $monitor->latestCheckRun->response_modified_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                 @else
@@ -331,6 +333,8 @@
                                         <p>上次分享標題：{{ $previousResponseMetadataRun->response_title ?? '未提供' }}</p>
                                         <p>上次分享摘要：{{ $previousResponseMetadataRun->response_description ?? '未提供' }}</p>
                                         <p>上次分享預覽圖片參照：{{ $previousResponseMetadataRun->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
+                                        <p>上次 Open Graph 類型：{{ $previousResponseMetadataRun->response_open_graph_type ?? '未提供' }}</p>
+                                        <p>上次標準網址參照：{{ $previousResponseMetadataRun->response_canonical_reference_hash ? '已偵測' : '未提供' }}</p>
                                         <p>上次分享發佈時間：{{ $previousResponseMetadataRun->response_published_at ? $previousResponseMetadataRun->response_published_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                         <p>上次分享修改時間：{{ $previousResponseMetadataRun->response_modified_at ? $previousResponseMetadataRun->response_modified_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                     @else
@@ -373,14 +377,14 @@
         <div class="panel-header">
             <div>
                 <h2 id="response-metadata-history-title" class="panel-title">分享預覽變更歷史</h2>
-                <p class="panel-description">比對完成檢查提供的分享標題、摘要、預覽圖片參照，以及發佈與修改時間；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+                <p class="panel-description">比對完成檢查提供的分享標題、摘要、預覽圖片參照、Open Graph 類型、標準網址參照，以及發佈與修改時間；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
             </div>
             <span class="secondary-text">{{ count($responseMetadataChanges) }} 次變更</span>
         </div>
         @if ($responseMetadataChanges === [])
             <div class="empty-state">
                 <h3 class="empty-title">尚未偵測到分享預覽變更</h3>
-                <p class="empty-copy">當完成檢查發現分享標題、摘要、預覽圖片參照、發佈時間或修改時間與前次不同，變更時間與前後狀態會顯示在此處。</p>
+                <p class="empty-copy">當完成檢查發現分享標題、摘要、預覽圖片參照、Open Graph 類型、標準網址參照、發佈時間或修改時間與前次不同，變更時間與前後狀態會顯示在此處。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="response-metadata-history-title" tabindex="0">
@@ -400,7 +404,7 @@
                                     <time class="timestamp" datetime="{{ $change['changed_at']->toIso8601String() }}">{{ $change['changed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
                                     <span class="secondary-text">
                                         @foreach ($change['changed_fields'] as $field)
-                                            {{ match ($field) { 'title' => '標題', 'description' => '摘要', 'image_reference' => '預覽圖片參照', 'published_at' => '發佈時間', 'modified_at' => '修改時間' } }}@if (! $loop->last)、@endif
+                                            {{ match ($field) { 'title' => '標題', 'description' => '摘要', 'image_reference' => '預覽圖片參照', 'open_graph_type' => 'Open Graph 類型', 'canonical_reference' => '標準網址參照', 'published_at' => '發佈時間', 'modified_at' => '修改時間' } }}@if (! $loop->last)、@endif
                                         @endforeach
                                         變更
                                     </span>
@@ -414,6 +418,12 @@
                                     @endif
                                     @if (in_array('image_reference', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享預覽圖片參照：</span>{{ $change['previous_image_reference_present'] ? '已偵測' : '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('open_graph_type', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">Open Graph 類型：</span>{{ $change['previous_open_graph_type'] ?? '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('canonical_reference', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">標準網址參照：</span>{{ $change['previous_canonical_reference_present'] ? '已偵測' : '未提供' }}</p>
                                     @endif
                                     @if (in_array('published_at', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享發佈時間：</span>{{ $change['previous_published_at'] ? $change['previous_published_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
@@ -431,6 +441,12 @@
                                     @endif
                                     @if (in_array('image_reference', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享預覽圖片參照：</span>{{ $change['current_image_reference_present'] ? '已偵測（參照已變更）' : '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('open_graph_type', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">Open Graph 類型：</span>{{ $change['current_open_graph_type'] ?? '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('canonical_reference', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">標準網址參照：</span>{{ $change['current_canonical_reference_present'] ? '已偵測（參照已變更）' : '未提供' }}</p>
                                     @endif
                                     @if (in_array('published_at', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享發佈時間：</span>{{ $change['current_published_at'] ? $change['current_published_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
@@ -1211,7 +1227,7 @@
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 <td>
-                                    @if ($run->response_title || $run->response_description || $run->response_image_reference_hash || $run->response_published_at || $run->response_modified_at)
+                                    @if ($run->response_title || $run->response_description || $run->response_image_reference_hash || $run->response_open_graph_type || $run->response_canonical_reference_hash || $run->response_published_at || $run->response_modified_at)
                                         <details>
                                             <summary>查看分享預覽資料</summary>
                                             @if ($run->response_title)
@@ -1221,6 +1237,8 @@
                                                 <p>分享摘要：{{ $run->response_description }}</p>
                                             @endif
                                             <p>分享預覽圖片參照：{{ $run->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
+                                            <p>Open Graph 類型：{{ $run->response_open_graph_type ?? '未提供' }}</p>
+                                            <p>標準網址參照：{{ $run->response_canonical_reference_hash ? '已偵測' : '未提供' }}</p>
                                             <p>分享發佈時間：{{ $run->response_published_at ? $run->response_published_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                             <p>分享修改時間：{{ $run->response_modified_at ? $run->response_modified_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s').'（台灣時間）' : '未提供' }}</p>
                                         </details>

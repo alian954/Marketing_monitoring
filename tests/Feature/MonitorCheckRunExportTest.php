@@ -56,6 +56,8 @@ class MonitorCheckRunExportTest extends TestCase
             'response_title' => '=HYPERLINK("https://evil.example")',
             'response_description' => 'Public campaign page summary.',
             'response_image_reference_hash' => str_repeat('c', 64),
+            'response_open_graph_type' => 'article',
+            'response_canonical_reference_hash' => str_repeat('d', 64),
             'response_published_at' => '2026-11-19 01:02:03',
             'response_modified_at' => '2026-11-19 05:02:03',
             'tls_expires_at' => '2027-01-01 00:00:00',
@@ -103,6 +105,8 @@ class MonitorCheckRunExportTest extends TestCase
             'response_title',
             'response_description',
             'response_image_reference_present',
+            'response_og_type',
+            'response_canonical_reference_present',
             'response_published_at_utc',
             'response_modified_at_utc',
             'expected_text_mode',
@@ -128,6 +132,8 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_title']]);
         $this->assertSame('Public campaign page summary.', $row[$columns['response_description']]);
         $this->assertSame('1', $row[$columns['response_image_reference_present']]);
+        $this->assertSame('article', $row[$columns['response_og_type']]);
+        $this->assertSame('1', $row[$columns['response_canonical_reference_present']]);
         $this->assertSame('2026-11-19T01:02:03+00:00', $row[$columns['response_published_at_utc']]);
         $this->assertSame('2026-11-19T05:02:03+00:00', $row[$columns['response_modified_at_utc']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
@@ -139,8 +145,10 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertStringNotContainsString('private transport error detail', $content);
         $this->assertStringNotContainsString('private-redirect-value', $content);
         $this->assertStringNotContainsString(str_repeat('c', 64), $content);
+        $this->assertStringNotContainsString(str_repeat('d', 64), $content);
         $this->assertStringNotContainsString('other monitor private run', $content);
         $this->assertArrayNotHasKey('response_image_reference_hash', $run->fresh()->toArray());
+        $this->assertArrayNotHasKey('response_canonical_reference_hash', $run->fresh()->toArray());
     }
 
     public function test_authenticated_user_can_inspect_masked_redirect_details_in_check_history(): void
