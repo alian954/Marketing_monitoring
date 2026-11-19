@@ -68,7 +68,7 @@ class MonitorController extends Controller
     private const MONITOR_LIST_FILTER_RULES = [
         'search' => ['nullable', 'string', 'max:2048'],
         'label' => ['nullable', 'string', 'max:100'],
-        'state' => ['nullable', 'in:all,enabled,paused,incidents'],
+        'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
 
@@ -144,6 +144,28 @@ class MonitorController extends Controller
                 $query->whereHas('activeIncidents', static function (Builder $incidentQuery): void {
                     $incidentQuery->whereColumn('incidents.config_version', 'monitors.config_version');
                 });
+            })
+            ->when($filters['state'] === 'stale', static function (Builder $query): void {
+                $query->where('enabled', true)
+                    ->where(function (Builder $staleQuery): void {
+                        $asOf = now();
+                        $staleGraceSeconds = max(0, (int) config('monitoring.stale_grace_seconds'));
+
+                        foreach (array_keys(self::INTERVAL_OPTIONS) as $intervalSeconds) {
+                            $staleBefore = $asOf->copy()->subSeconds($intervalSeconds + $staleGraceSeconds);
+
+                            $staleQuery->orWhere(function (Builder $intervalQuery) use ($intervalSeconds, $staleBefore): void {
+                                $intervalQuery->where('interval_seconds', $intervalSeconds)
+                                    ->where(function (Builder $checkQuery) use ($staleBefore): void {
+                                        $checkQuery->where('last_checked_at', '<', $staleBefore)
+                                            ->orWhere(function (Builder $firstCheckQuery) use ($staleBefore): void {
+                                                $firstCheckQuery->whereNull('last_checked_at')
+                                                    ->where('created_at', '<', $staleBefore);
+                                            });
+                                    });
+                            });
+                        }
+                    });
             });
     }
 

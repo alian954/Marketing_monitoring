@@ -141,6 +141,67 @@ class MonitorLabelFilterTest extends TestCase
         );
     }
 
+    public function test_monitor_list_and_csv_export_filter_stale_monitors_using_interval_and_grace_period(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+        $intervalSeconds = 300;
+        $staleBefore = now()->copy()->subSeconds($intervalSeconds + (int) config('monitoring.stale_grace_seconds'));
+        $staleCheckedMonitor = $this->createMonitor([
+            'name' => 'Stale checked monitor',
+            'label' => 'Operations',
+            'interval_seconds' => $intervalSeconds,
+            'last_checked_at' => $staleBefore->copy()->subSecond()->toDateTimeString(),
+        ]);
+        $staleUncheckedMonitor = $this->createMonitor([
+            'name' => 'Stale unchecked monitor',
+            'label' => 'Operations',
+            'interval_seconds' => $intervalSeconds,
+        ]);
+        $staleUncheckedMonitor->forceFill(['created_at' => $staleBefore->copy()->subSecond()])->save();
+        $this->createMonitor([
+            'name' => 'At stale boundary',
+            'label' => 'Operations',
+            'interval_seconds' => $intervalSeconds,
+            'last_checked_at' => $staleBefore->toDateTimeString(),
+        ]);
+        $this->createMonitor([
+            'name' => 'Different interval still fresh',
+            'label' => 'Operations',
+            'interval_seconds' => 1800,
+            'last_checked_at' => now()->copy()->subSeconds(1801)->toDateTimeString(),
+        ]);
+        $this->createMonitor([
+            'name' => 'Paused stale monitor',
+            'label' => 'Operations',
+            'enabled' => false,
+            'interval_seconds' => $intervalSeconds,
+            'last_checked_at' => $staleBefore->copy()->subSecond()->toDateTimeString(),
+        ]);
+        $filters = ['state' => 'stale'];
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', $filters))
+            ->assertOk()
+            ->assertSee('<option value="stale" selected>檢查已逾時</option>', false);
+        $monitors = $response->viewData('monitors')->getCollection();
+
+        $this->assertEqualsCanonicalizing(
+            [$staleCheckedMonitor->id, $staleUncheckedMonitor->id],
+            $monitors->modelKeys(),
+        );
+        $this->assertSame(['stale', 'stale'], $monitors->map->healthState()->all());
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertEqualsCanonicalizing(
+            [$staleCheckedMonitor->name, $staleUncheckedMonitor->name],
+            array_column($rows, 'name'),
+        );
+    }
+
     public function test_monitor_search_label_and_state_filters_are_preserved_in_pagination(): void
     {
         for ($index = 1; $index <= 51; $index++) {
@@ -248,7 +309,7 @@ class MonitorLabelFilterTest extends TestCase
             ]);
     }
 
-    /** @param array{name: string, label: string, enabled?: bool, last_checked_at?: ?string} $attributes */
+    /** @param array{name: string, label: string, enabled?: bool, interval_seconds?: int, last_checked_at?: ?string} $attributes */
     private function createMonitor(array $attributes): Monitor
     {
         $url = 'https://example.com/monitors/'.hash('sha256', $attributes['name']);

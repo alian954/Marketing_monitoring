@@ -64,6 +64,7 @@
                                 <option value="enabled" @selected(old('state', $filters['state']) === 'enabled')>啟用中</option>
                                 <option value="paused" @selected(old('state', $filters['state']) === 'paused')>已暫停</option>
                                 <option value="incidents" @selected(old('state', $filters['state']) === 'incidents')>有未結束事件</option>
+                                <option value="stale" @selected(old('state', $filters['state']) === 'stale')>檢查已逾時</option>
                             </select>
                         </div>
                         <div class="field-group">
