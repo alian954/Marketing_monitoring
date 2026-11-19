@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Monitor;
+use App\Services\AcceptedStatusCodeList;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\ResponseHeaderCondition;
@@ -30,6 +31,7 @@ class MonitorImportController extends Controller
         'interval_seconds',
         'timeout_seconds',
         'response_time_threshold_ms',
+        'accepted_status_codes',
     ];
 
     public function __construct(
@@ -73,7 +75,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -110,6 +112,17 @@ class MonitorImportController extends Controller
             $timeoutSeconds = (int) config('monitoring.request_timeout_seconds');
             $timeoutIsValid = true;
             $responseTimeThresholdMs = null;
+            $acceptedStatusCodes = [];
+
+            if (isset($columnIndexes['accepted_status_codes'])) {
+                try {
+                    $acceptedStatusCodes = AcceptedStatusCodeList::normalize(
+                        (string) ($cells[$columnIndexes['accepted_status_codes']] ?? ''),
+                    );
+                } catch (InvalidArgumentException $exception) {
+                    $errors[] = $exception->getMessage();
+                }
+            }
 
             if (isset($columnIndexes['expected_response_header'])) {
                 try {
@@ -253,6 +266,7 @@ class MonitorImportController extends Controller
                 'interval_seconds' => $intervalSeconds,
                 'timeout_seconds' => $timeoutSeconds,
                 'response_time_threshold_ms' => $responseTimeThresholdMs,
+                'accepted_status_codes' => $acceptedStatusCodes,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -321,7 +335,7 @@ class MonitorImportController extends Controller
                 'enabled' => true,
                 'config_version' => 1,
                 'allowed_redirect_hosts' => [],
-                'accepted_status_codes' => [],
+                'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,

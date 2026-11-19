@@ -65,6 +65,7 @@ class SocialPostImportTest extends TestCase
         $previewRow = $preview->viewData('previewRows')[0];
         $this->assertTrue($previewRow['eligible']);
         $this->assertSame('present', $previewRow['expected_text_mode']);
+        $this->assertSame([], $previewRow['accepted_status_codes']);
         $this->assertDatabaseCount('monitors', 0);
 
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
@@ -73,6 +74,7 @@ class SocialPostImportTest extends TestCase
         $monitor = Monitor::query()->sole();
         $this->assertSame('Campaign, launch headline', $monitor->expected_text);
         $this->assertSame('present', $monitor->expected_text_mode);
+        $this->assertSame([], $monitor->accepted_status_codes);
         $this->assertSame('Instagram', $monitor->socialPlatform());
         $this->assertDatabaseHas('monitors', [
             'id' => $monitor->id,
@@ -378,6 +380,81 @@ class SocialPostImportTest extends TestCase
         $this->assertSame(Incident::STATE_SUSPECT, $incident->state);
         $failureEvent = $incident->events()->where('event_type', 'failure_seen')->sole();
         $this->assertSame(1000, $failureEvent->evidence['threshold_ms']);
+    }
+
+    public function test_csv_can_import_accepted_http_status_codes_and_treat_429_as_healthy(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/ACCEPT429/';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'accepted_status_codes'],
+            [['Rate-limited post', $url, 'Campaign', 'Campaign headline', '429, 400 429 599']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('額外接受狀態碼')
+            ->assertSee('400, 429, 599')
+            ->assertSee('可匯入');
+
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertSame([400, 429, 599], $previewRow['accepted_status_codes']);
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $this->assertSame([400, 429, 599], $monitor->accepted_status_codes);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([400, 429, 599], $snapshot['accepted_status_codes']);
+
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
+            ->andReturn(new ProbeResult(429, 300, $url, [], ['93.184.216.34'], null, null, true, null));
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $completedRun = $run->fresh();
+        $this->assertSame(429, $completedRun->normal_status);
+        $this->assertTrue($completedRun->passesMonitorChecks());
+        $this->assertDatabaseCount('incidents', 0);
+    }
+
+    public function test_csv_rejects_invalid_and_oversized_accepted_http_status_codes(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'accepted_status_codes'],
+            [
+                ['Text class', 'https://example.com/status-text-class', 'Ops', '4xx'],
+                ['Success status', 'https://example.com/status-success', 'Ops', '399'],
+                ['Out of range', 'https://example.com/status-out-of-range', 'Ops', '600'],
+                ['Too long', 'https://example.com/status-too-long', 'Ops', str_repeat('4', 1001)],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('額外接受狀態碼只能是 400 至 599 的三位數 HTTP 狀態碼。')
+            ->assertSee('額外接受狀態碼欄位過長。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(4, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_csv_rejects_optional_columns_in_a_noncanonical_order(): void

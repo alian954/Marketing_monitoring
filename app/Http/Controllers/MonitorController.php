@@ -7,6 +7,7 @@ use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\StatusPage;
+use App\Services\AcceptedStatusCodeList;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\IncidentManager;
@@ -1231,23 +1232,13 @@ class MonitorController extends Controller
     /** @return list<int> */
     private function normalizeAcceptedStatusCodes(?string $input): array
     {
-        $codes = preg_split('/[\s,]+/', trim((string) $input), flags: PREG_SPLIT_NO_EMPTY) ?: [];
-        $normalizedCodes = [];
-
-        foreach ($codes as $code) {
-            if (preg_match('/\A\d{3}\z/D', $code) !== 1 || (int) $code < 400 || (int) $code > 599) {
-                throw ValidationException::withMessages([
-                    'accepted_status_codes' => '額外接受狀態碼只能是 400 至 599 的三位數 HTTP 狀態碼。',
-                ]);
-            }
-
-            $normalizedCodes[] = (int) $code;
+        try {
+            return AcceptedStatusCodeList::normalize($input);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'accepted_status_codes' => $exception->getMessage(),
+            ]);
         }
-
-        $normalizedCodes = array_values(array_unique($normalizedCodes));
-        sort($normalizedCodes, SORT_NUMERIC);
-
-        return $normalizedCodes;
     }
 
     private function validateProbeUrl(string $url, array $allowedHosts): string
