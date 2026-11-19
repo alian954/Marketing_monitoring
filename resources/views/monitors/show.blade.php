@@ -549,6 +549,7 @@
                 <h2 id="availability-title" class="panel-title">估算時間可用率</h2>
                 <p class="panel-description">依已完成的排程 HTTP 檢查估算：通過目前狀態碼與文字條件的結果算可用，其他完成結果算不可用。每次結果最多延伸至檢查頻率加寬限時間；佇列工作失敗及超過延伸上限的資料空窗不算可用或停機。維護時段不計入觀測。可用率只計入有觀測的時間，覆蓋率顯示有觀測時間占非維護時間的比例。</p>
             </div>
+            <a class="button button-secondary button-small" href="{{ route('monitors.availability.export', $monitor) }}">匯出可用率 CSV</a>
         </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的估算時間可用率">
             @foreach ($availabilityStats as $stat)

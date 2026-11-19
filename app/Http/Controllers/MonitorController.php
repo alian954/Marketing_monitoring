@@ -12,7 +12,7 @@ use App\Services\AcceptedStatusCodeList;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\IncidentManager;
-use App\Services\MonitorAvailabilityCalculator;
+use App\Services\MonitorAvailabilityReport;
 use App\Services\NotificationEmailRecipientParser;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeClient;
@@ -99,7 +99,7 @@ class MonitorController extends Controller
     public function __construct(
         private readonly UrlSafetyPolicy $urlPolicy,
         private readonly UrlMasker $urlMasker,
-        private readonly MonitorAvailabilityCalculator $availabilityCalculator,
+        private readonly MonitorAvailabilityReport $availabilityReport,
     ) {}
 
     public function index(Request $request): View|RedirectResponse
@@ -320,33 +320,10 @@ class MonitorController extends Controller
         $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
         $historyStart = $asOf->copy()->subDays(30);
-        $historyQueryStart = $historyStart->copy()->subSeconds(
-            Monitor::MAX_INTERVAL_SECONDS + max(0, (int) config('monitoring.stale_grace_seconds')),
-        );
-        $historyRuns = $monitor->checkRuns()
-            ->where('source', 'scheduled')
-            ->whereIn('status', ['completed', 'failed'])
-            ->whereNotNull('finished_at')
-            ->where('finished_at', '>=', $historyQueryStart)
-            ->orderBy('finished_at')
-            ->get(['id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms', 'expected_text_found', 'expected_response_header_found']);
-        $maintenanceLookupDate = $historyStart->copy()->timezone('Asia/Taipei')->subDays(7)->toDateString();
-        $maintenanceWindows = $monitor->maintenanceWindows()
-            ->where(function (Builder $query) use ($historyStart, $maintenanceLookupDate): void {
-                $query->where(function (Builder $query) use ($historyStart): void {
-                    $query->where('repeat_weekly', false)->where('ends_at', '>', $historyStart);
-                })->orWhere(function (Builder $query) use ($maintenanceLookupDate): void {
-                    $query->where('repeat_weekly', true)->whereDate('repeat_until', '>=', $maintenanceLookupDate);
-                });
-            })
-            ->get();
-        $availabilityStats = $this->availabilityCalculator->calculate(
-            $historyRuns,
-            $maintenanceWindows,
-            $monitor->interval_seconds,
-            (int) config('monitoring.stale_grace_seconds'),
-            $asOf->toImmutable(),
-        );
+        $availabilityData = $this->availabilityReport->build($monitor, $asOf->toImmutable());
+        $historyRuns = $availabilityData['history_runs'];
+        $maintenanceWindows = $availabilityData['maintenance_windows'];
+        $availabilityStats = $availabilityData['statistics'];
 
         $checkSuccessStats = collect([
             ['label' => '24 小時', 'starts_at' => $asOf->copy()->subDay()],
@@ -911,6 +888,50 @@ class MonitorController extends Controller
 
             fclose($stream);
         }, 'check-history-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function exportAvailability(Monitor $monitor): StreamedResponse
+    {
+        $asOf = now()->toImmutable();
+        $availabilityStats = $this->availabilityReport->build($monitor, $asOf)['statistics'];
+
+        return response()->streamDownload(function () use ($monitor, $asOf, $availabilityStats): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'monitor_name',
+                'period',
+                'as_of_utc',
+                'availability_percent',
+                'coverage_percent',
+                'estimated_up_minutes',
+                'estimated_down_minutes',
+                'observed_minutes',
+                'eligible_minutes',
+                'maintenance_excluded_minutes',
+                'legacy_interval_fallback',
+            ], ',', '"', '');
+
+            foreach ($availabilityStats as $statistic) {
+                $estimatedDownMinutes = max(0, $statistic['observed_minutes'] - $statistic['up_minutes']);
+                $fields = [
+                    $monitor->name,
+                    $statistic['label'],
+                    $asOf->utc()->toIso8601String(),
+                    $statistic['availability_rate'] === null ? '' : number_format($statistic['availability_rate'], 2, '.', ''),
+                    $statistic['coverage_rate'] === null ? '' : number_format($statistic['coverage_rate'], 2, '.', ''),
+                    number_format($statistic['up_minutes'], 2, '.', ''),
+                    number_format($estimatedDownMinutes, 2, '.', ''),
+                    number_format($statistic['observed_minutes'], 2, '.', ''),
+                    number_format($statistic['eligible_minutes'], 2, '.', ''),
+                    number_format($statistic['maintenance_excluded_minutes'], 2, '.', ''),
+                    $statistic['legacy_interval_fallback'] ? '1' : '0',
+                ];
+
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'availability-report-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function exportDnsChanges(Monitor $monitor): StreamedResponse
