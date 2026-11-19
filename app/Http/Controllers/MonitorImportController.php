@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Monitor;
 use App\Services\AcceptedStatusCodeList;
+use App\Services\NotificationEmailRecipientParser;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\RequestHeaderParser;
@@ -35,6 +36,7 @@ class MonitorImportController extends Controller
         'accepted_status_codes',
         'request_headers',
         'allowed_redirect_hosts',
+        'notification_email',
     ];
 
     public function __construct(
@@ -78,7 +80,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -119,6 +121,8 @@ class MonitorImportController extends Controller
             $requestHeaders = [];
             $requestHeaderNames = [];
             $allowedRedirectHosts = [];
+            $notificationEmail = null;
+            $notificationEmailCount = 0;
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -148,6 +152,22 @@ class MonitorImportController extends Controller
                     );
                 } catch (ProbeException $exception) {
                     $errors[] = $exception->getMessage();
+                }
+            }
+
+            if (isset($columnIndexes['notification_email'])) {
+                $notificationEmailInput = (string) ($cells[$columnIndexes['notification_email']] ?? '');
+
+                if (mb_strlen($notificationEmailInput) > 2549) {
+                    $errors[] = '告警收件信箱清單過長。';
+                } else {
+                    $notificationEmail = NotificationEmailRecipientParser::normalize($notificationEmailInput);
+                    $notificationEmailCount = count(NotificationEmailRecipientParser::parse($notificationEmail));
+                    $notificationEmailError = NotificationEmailRecipientParser::validationError($notificationEmail);
+
+                    if ($notificationEmailError !== null) {
+                        $errors[] = $notificationEmailError;
+                    }
                 }
             }
 
@@ -301,6 +321,8 @@ class MonitorImportController extends Controller
                 'request_headers' => $requestHeaders,
                 'request_header_names' => $requestHeaderNames,
                 'allowed_redirect_hosts' => $allowedRedirectHosts,
+                'notification_email' => $notificationEmail,
+                'notification_email_count' => $notificationEmailCount,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -315,7 +337,7 @@ class MonitorImportController extends Controller
             'monitor_import_token' => $previewToken,
         ]);
         $previewRows = array_map(static function (array $row): array {
-            unset($row['expected_response_header'], $row['request_headers']);
+            unset($row['expected_response_header'], $row['request_headers'], $row['notification_email']);
 
             return $row;
         }, $rows);
@@ -371,6 +393,7 @@ class MonitorImportController extends Controller
                 'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
                 'request_headers' => $row['request_headers'] ?? [],
+                'notification_email' => $row['notification_email'] ?? null,
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,

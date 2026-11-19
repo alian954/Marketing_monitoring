@@ -1203,24 +1203,9 @@ class MonitorController extends Controller
 
     private function validateNotificationEmailRecipients(?string $notificationEmail, string $attribute = 'notification_email'): void
     {
-        if ($notificationEmail === null) {
-            return;
-        }
+        $message = NotificationEmailRecipientParser::validationError($notificationEmail);
 
-        $recipients = explode("\n", $notificationEmail);
-        $validator = Validator::make(
-            ['recipients' => $recipients],
-            [
-                'recipients' => ['required', 'array', 'max:10'],
-                'recipients.*' => ['required', 'string', 'email', 'max:254'],
-            ],
-        );
-
-        if ($validator->fails()) {
-            $message = count($recipients) > 10
-                ? '最多可設定 10 個告警收件信箱。'
-                : '每個告警收件信箱都必須是有效電子郵件地址，且單一地址不得超過 254 個字元。';
-
+        if ($message !== null) {
             throw ValidationException::withMessages([$attribute => $message]);
         }
     }

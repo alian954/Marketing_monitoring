@@ -3,10 +3,15 @@
 namespace Tests\Feature;
 
 use App\Jobs\RunMonitorCheck;
+use App\Jobs\SendNotificationOutbox;
+use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\Monitor;
+use App\Models\NotificationOutbox;
 use App\Models\User;
 use App\Services\IncidentManager;
+use App\Services\NotificationDispatcher;
+use App\Services\NotificationEmailRecipientParser;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\ProbeClient;
@@ -626,6 +631,88 @@ class SocialPostImportTest extends TestCase
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertSame(2, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_import_encrypted_notification_recipients_and_queue_alerts_for_them(): void
+    {
+        config(['monitoring.notify_email' => 'global@example.test']);
+        Queue::fake([RunMonitorCheck::class, SendNotificationOutbox::class]);
+        $url = 'https://www.threads.com/@creator/post/NOTIFY123';
+        $notificationEmailInput = "alerts@example.test, team@example.test;\nALERTS@example.test";
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'notification_email'],
+            [['Campaign post alerts', $url, 'Campaign', 'Campaign headline', $notificationEmailInput]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('告警信箱')
+            ->assertSee('已設定 2 個')
+            ->assertDontSee('alerts@example.test')
+            ->assertDontSee('team@example.test');
+
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertSame(2, $previewRow['notification_email_count']);
+        $this->assertArrayNotHasKey('notification_email', $previewRow);
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $normalizedRecipients = "alerts@example.test\nteam@example.test";
+        $this->assertSame($normalizedRecipients, $monitor->notification_email);
+        $encryptedMonitorRecipients = (string) DB::table('monitors')->where('id', $monitor->id)->value('notification_email');
+        $this->assertStringNotContainsString('alerts@example.test', $encryptedMonitorRecipients);
+
+        $run = CheckRun::factory()->for($monitor)->create();
+        $incident = Incident::factory()->for($monitor)->create();
+        app(NotificationDispatcher::class)->queue($incident, $monitor, $run, 'opened');
+
+        $outboxes = NotificationOutbox::query()->where('channel', NotificationOutbox::CHANNEL_EMAIL)->get();
+        $this->assertEqualsCanonicalizing(
+            NotificationEmailRecipientParser::parse($normalizedRecipients),
+            $outboxes->pluck('recipient')->all(),
+        );
+        $this->assertDatabaseMissing('notification_outbox', ['recipient' => 'global@example.test']);
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
+    }
+
+    public function test_csv_rejects_invalid_oversized_and_excessive_notification_recipients(): void
+    {
+        $tooManyRecipients = implode(', ', array_map(
+            static fn (int $index): string => 'recipient'.$index.'@example.test',
+            range(1, 11),
+        ));
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'notification_email'],
+            [
+                ['Invalid email', 'https://example.com/invalid-email', 'Ops', 'not-an-email'],
+                ['Too many emails', 'https://example.com/too-many-emails', 'Ops', $tooManyRecipients],
+                ['Email list too long', 'https://example.com/email-list-too-long', 'Ops', str_repeat('x', 2550)],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('每個告警收件信箱都必須是有效電子郵件地址，且單一地址不得超過 254 個字元。')
+            ->assertSee('最多可設定 10 個告警收件信箱。')
+            ->assertSee('告警收件信箱清單過長。')
+            ->assertDontSee('not-an-email')
+            ->assertDontSee('recipient1@example.test');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(3, $preview->viewData('invalidCount'));
 
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
             ->assertRedirect(route('monitors.index'));
