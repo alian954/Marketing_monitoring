@@ -39,6 +39,14 @@
         'unacknowledged' => '事件認領已解除',
         'notifications_snoozed' => '提醒與升級通知已暫停',
         'notifications_resumed' => '提醒與升級通知已恢復',
+        'classification_changed' => '事件分類已變更',
+        'incident_note_added' => '新增檢視備註',
+        'incident_note_cleared' => '已清除檢視備註',
+    ];
+    $classificationLabels = [
+        'true_issue' => '確認為真實異常',
+        'false_alarm' => '確認為誤報',
+        'unknown' => '尚不確定',
     ];
     $responseTimeAxis = [
         ['y' => 28, 'value' => $responseTime['scale_max_ms']],
@@ -593,11 +601,17 @@
                                                         比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : ($event->evidence['expected_text_found'] ? '原始回應已找到指定文字' : '原始回應未找到指定文字') }}
                                                     </span>
                                                 @endif
-                                                @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed'], true))
+                                                @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed', 'classification_changed', 'incident_note_added', 'incident_note_cleared'], true))
                                                     <span class="secondary-text">由 {{ $event->evidence['actor_name'] ?? '使用者' }}</span>
                                                 @endif
                                                 @if ($event->event_type === 'notifications_snoozed' && isset($event->evidence['duration_minutes'], $event->evidence['snoozed_until']))
                                                     <span class="secondary-text">暫停 {{ $event->evidence['duration_minutes'] }} 分鐘，至 {{ \Illuminate\Support\Carbon::parse($event->evidence['snoozed_until'])->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</span>
+                                                @endif
+                                                @if ($event->event_type === 'classification_changed')
+                                                    <span class="secondary-text">{{ $classificationLabels[$event->evidence['from'] ?? ''] ?? '未分類' }} → {{ $classificationLabels[$event->evidence['to'] ?? ''] ?? '未分類' }}</span>
+                                                @endif
+                                                @if ($event->event_type === 'incident_note_added' && isset($event->evidence['note']))
+                                                    <span class="incident-note-display">{{ $event->evidence['note'] }}</span>
                                                 @endif
                                                 <time class="secondary-text" datetime="{{ $event->created_at->toIso8601String() }}">{{ $event->created_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
                                             </span>

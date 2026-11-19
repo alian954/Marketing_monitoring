@@ -53,7 +53,7 @@ class Incident extends Model
 
     public function events(): HasMany
     {
-        return $this->hasMany(IncidentEvent::class)->orderBy('created_at');
+        return $this->hasMany(IncidentEvent::class)->orderBy('created_at')->orderBy('id');
     }
 
     public function outboxMessages(): HasMany

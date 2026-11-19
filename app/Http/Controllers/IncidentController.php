@@ -112,11 +112,37 @@ class IncidentController extends Controller
             'classification' => ['nullable', 'in:true_issue,false_alarm,unknown'],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
+        $classification = $validated['classification'] ?? null;
+        $note = $validated['note'] ?? null;
 
-        $incident->forceFill([
-            'classification' => $validated['classification'] ?? null,
-            'note' => $validated['note'] ?? null,
-        ])->save();
+        DB::transaction(function () use ($incident, $actor, $classification, $note): void {
+            $lockedIncident = Incident::query()->lockForUpdate()->findOrFail($incident->id);
+            $previousClassification = $lockedIncident->classification;
+            $previousNote = $lockedIncident->note;
+
+            $lockedIncident->forceFill([
+                'classification' => $classification,
+                'note' => $note,
+            ])->save();
+
+            if ($previousClassification !== $classification) {
+                $this->recordActivity($lockedIncident, $actor, 'classification_changed', [
+                    'from' => $previousClassification,
+                    'to' => $classification,
+                ]);
+            }
+
+            if ($previousNote !== $note) {
+                $this->recordActivity(
+                    $lockedIncident,
+                    $actor,
+                    $note === null || $note === '' ? 'incident_note_cleared' : 'incident_note_added',
+                    $note === null || $note === '' ? [] : ['note' => $note],
+                );
+            }
+        });
 
         return back()->with('status', '事件分類與備註已儲存。');
     }
@@ -168,5 +194,21 @@ class IncidentController extends Controller
 
             return true;
         });
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function recordActivity(Incident $incident, User $actor, string $eventType, array $evidence): void
+    {
+        IncidentEvent::query()->forceCreate([
+            'incident_id' => $incident->id,
+            'check_run_id' => null,
+            'event_type' => $eventType,
+            'evidence' => [
+                'actor_id' => $actor->getKey(),
+                'actor_name' => $actor->name,
+                ...$evidence,
+            ],
+            'created_at' => now(),
+        ]);
     }
 }
