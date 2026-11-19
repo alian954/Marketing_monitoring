@@ -19,6 +19,9 @@ class Monitor extends Model
 {
     public const MAX_INTERVAL_SECONDS = 3600;
 
+    /** @var list<int> */
+    public const SUPPORTED_INTERVAL_SECONDS = [60, 300, 900, 1800, self::MAX_INTERVAL_SECONDS];
+
     /** @var array<string, string> */
     private const SOCIAL_DOMAINS = [
         'facebook.com' => 'Facebook',

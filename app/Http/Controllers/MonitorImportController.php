@@ -27,6 +27,12 @@ class MonitorImportController extends Controller
         ['name', 'url', 'label', 'expected_response_header'],
         ['name', 'url', 'label', 'expected_text', 'expected_response_header'],
         ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header'],
+        ['name', 'url', 'label', 'interval_seconds'],
+        ['name', 'url', 'label', 'expected_text', 'interval_seconds'],
+        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'interval_seconds'],
+        ['name', 'url', 'label', 'expected_response_header', 'interval_seconds'],
+        ['name', 'url', 'label', 'expected_text', 'expected_response_header', 'interval_seconds'],
+        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds'],
     ];
 
     public function __construct(
@@ -92,6 +98,7 @@ class MonitorImportController extends Controller
             $duplicate = false;
             $expectedResponseHeader = null;
             $expectedResponseHeaderName = null;
+            $intervalSeconds = (int) config('monitoring.interval_seconds');
 
             if (isset($columnIndexes['expected_response_header'])) {
                 try {
@@ -101,6 +108,20 @@ class MonitorImportController extends Controller
                     $expectedResponseHeaderName = ResponseHeaderCondition::headerName($expectedResponseHeader);
                 } catch (InvalidArgumentException $exception) {
                     $errors[] = $exception->getMessage();
+                }
+            }
+
+            if (isset($columnIndexes['interval_seconds'])) {
+                $intervalInput = trim((string) ($cells[$columnIndexes['interval_seconds']] ?? ''));
+
+                if ($intervalInput !== '') {
+                    $parsedInterval = ctype_digit($intervalInput) ? (int) $intervalInput : null;
+
+                    if ($parsedInterval === null || ! in_array($parsedInterval, Monitor::SUPPORTED_INTERVAL_SECONDS, true)) {
+                        $errors[] = '檢查間隔只能使用 '.implode('、', Monitor::SUPPORTED_INTERVAL_SECONDS).' 秒。';
+                    } else {
+                        $intervalSeconds = $parsedInterval;
+                    }
                 }
             }
 
@@ -177,6 +198,7 @@ class MonitorImportController extends Controller
                 'expected_text_mode' => $expectedTextMode,
                 'expected_response_header' => $expectedResponseHeader,
                 'expected_response_header_name' => $expectedResponseHeaderName,
+                'interval_seconds' => $intervalSeconds,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -251,7 +273,7 @@ class MonitorImportController extends Controller
                 'expected_response_header' => $row['expected_response_header'] ?? null,
                 'timeout_seconds' => (int) config('monitoring.request_timeout_seconds'),
                 'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
-                'interval_seconds' => (int) config('monitoring.interval_seconds'),
+                'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
                 'next_check_at' => now(),
             ]);
 

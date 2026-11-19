@@ -181,6 +181,130 @@ class SocialPostImportTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_csv_can_import_custom_intervals_with_social_post_conditions(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $condition = 'X-Robots-Tag: campaign-index';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds'],
+            [[
+                'Spring campaign',
+                'https://www.instagram.com/reel/ABC123/',
+                'Campaign',
+                "Campaign headline\nSpring sale",
+                'present_any',
+                $condition,
+                '300',
+            ], [
+                'Default frequency',
+                'https://example.com/default-frequency',
+                'Ops',
+                '',
+                'present',
+                '',
+                '',
+            ]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('至少包含一個片段：Campaign headline、Spring sale')
+            ->assertSee('HTTP 標頭條件')
+            ->assertSee('5 分鐘')
+            ->assertSee('15 分鐘')
+            ->assertDontSee('campaign-index');
+
+        $this->assertSame(2, $preview->viewData('validCount'));
+        $previewRows = $preview->viewData('previewRows');
+        $previewRow = $previewRows[0];
+        $this->assertSame(300, $previewRow['interval_seconds']);
+        $this->assertSame('X-Robots-Tag', $previewRow['expected_response_header_name']);
+        $this->assertSame((int) config('monitoring.interval_seconds'), $previewRows[1]['interval_seconds']);
+        $this->assertDatabaseCount('monitors', 0);
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 2);
+        $monitor = Monitor::query()->where('name', 'Spring campaign')->sole();
+        $this->assertSame(300, $monitor->interval_seconds);
+        $this->assertSame('present_any', $monitor->expected_text_mode);
+        $this->assertSame($condition, $monitor->expected_response_header);
+        $defaultFrequencyMonitor = Monitor::query()->where('name', 'Default frequency')->sole();
+        $this->assertSame((int) config('monitoring.interval_seconds'), $defaultFrequencyMonitor->interval_seconds);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(300, $snapshot['interval_seconds']);
+        $this->assertSame($condition, $snapshot['expected_response_header']);
+        Queue::assertPushed(RunMonitorCheck::class, 1);
+    }
+
+    public function test_csv_rejects_intervals_outside_the_supported_choices(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'interval_seconds'],
+            [
+                ['Unsupported frequency', 'https://example.com/unsupported-frequency', 'Ops', '120'],
+                ['Non-numeric frequency', 'https://example.com/non-numeric-frequency', 'Ops', 'every-five-minutes'],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('檢查間隔只能使用 60、300、900、1800、3600 秒。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(2, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_import_accepts_every_supported_interval_choice(): void
+    {
+        $intervals = [60, 300, 900, 1800, 3600];
+        $rows = array_map(static fn (int $seconds): array => [
+            'Frequency '.$seconds,
+            'https://example.com/frequency-'.$seconds,
+            'Ops',
+            (string) $seconds,
+        ], $intervals);
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'interval_seconds'],
+            $rows,
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk();
+
+        $this->assertSame(5, $preview->viewData('validCount'));
+        $this->assertSame($intervals, array_column($preview->viewData('previewRows'), 'interval_seconds'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $savedIntervals = Monitor::query()
+            ->orderBy('interval_seconds')
+            ->get()
+            ->map(static fn (Monitor $monitor): int => $monitor->interval_seconds)
+            ->all();
+
+        $this->assertSame($intervals, $savedIntervals);
+    }
+
     public function test_csv_rejects_social_posts_without_expected_text(): void
     {
         $csv = $this->csvContent(

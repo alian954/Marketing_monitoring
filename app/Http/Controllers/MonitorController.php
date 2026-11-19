@@ -166,7 +166,7 @@ class MonitorController extends Controller
                         $asOf = now();
                         $staleGraceSeconds = max(0, (int) config('monitoring.stale_grace_seconds'));
 
-                        foreach (array_keys(self::INTERVAL_OPTIONS) as $intervalSeconds) {
+                        foreach (Monitor::SUPPORTED_INTERVAL_SECONDS as $intervalSeconds) {
                             $staleBefore = $asOf->copy()->subSeconds($intervalSeconds + $staleGraceSeconds);
 
                             $staleQuery->orWhere(function (Builder $intervalQuery) use ($intervalSeconds, $staleBefore): void {
@@ -950,7 +950,7 @@ class MonitorController extends Controller
             'response_time_threshold_ms' => ['nullable', 'integer', 'min:100', 'max:14000'],
             'timeout_seconds' => ['sometimes', 'integer', 'min:1', 'max:15'],
             'confirmation_delay_seconds' => ['sometimes', 'integer', 'min:30', 'max:300'],
-            'interval_seconds' => ['sometimes', 'integer', 'in:'.implode(',', array_keys(self::INTERVAL_OPTIONS))],
+            'interval_seconds' => ['sometimes', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
             'redirect_hosts' => ['nullable', 'string', 'max:2000'],
         ], [
             'response_time_threshold_ms.integer' => '回應時間門檻必須是整數。',
