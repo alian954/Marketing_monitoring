@@ -55,6 +55,17 @@ class SocialPostMonitorTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_direct_facebook_post_id_requires_expected_text(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->post(route('monitors.store'), $this->socialPost('https://www.facebook.com/10153449196353553'))
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('expected_text');
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_social_post_requires_text_to_be_present(): void
     {
         $this->actingAs(User::factory()->create())
@@ -219,9 +230,10 @@ class SocialPostMonitorTest extends TestCase
             ->assertDontSee('文字比對：');
     }
 
-    public function test_social_post_url_detection_accepts_post_routes_but_not_profile_pages(): void
+    public function test_social_post_url_detection_accepts_post_routes_and_direct_post_ids_but_not_profile_pages(): void
     {
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://m.facebook.com/post/123'));
+        $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/10153449196353553'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/page/posts/123'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/story.php?story_fbid=123'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/share/r/abc123/'));

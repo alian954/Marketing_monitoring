@@ -168,6 +168,10 @@ class Monitor extends Model
             return $path !== '';
         }
 
+        if (ctype_digit($path)) {
+            return true;
+        }
+
         if (preg_match('/(?:\A|\/)(?:post|posts|videos|reel)\/[^\/]+\z|\Ashare\/[prv]\/[^\/]+\z/i', $path) === 1) {
             return true;
         }
