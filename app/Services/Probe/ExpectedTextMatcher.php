@@ -78,6 +78,11 @@ class ExpectedTextMatcher
         $normalizedBody = html_entity_decode(strip_tags($bodyWithTagSeparators), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $normalizedBody = preg_replace('/\s+/u', ' ', trim($normalizedBody)) ?? trim($normalizedBody);
         $normalizedExpectedText = preg_replace('/\s+/u', ' ', trim($expectedText)) ?? trim($expectedText);
+        $unicodeDecodedBody = html_entity_decode(
+            self::decodeJsonUnicodeEscapes($body),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        );
         $encodedExpectedText = json_encode($expectedText);
         $encodedExpectedText = $encodedExpectedText === false
             ? null
@@ -89,8 +94,22 @@ class ExpectedTextMatcher
         return mb_stripos($body, $expectedText) !== false
             || mb_stripos($decodedBody, $expectedText) !== false
             || mb_stripos($plainTextBody, $expectedText) !== false
+            || mb_stripos($unicodeDecodedBody, $expectedText) !== false
             || ($encodedExpectedText !== null && mb_stripos($body, $encodedExpectedText) !== false)
             || ($unescapedSlashExpectedText !== null && mb_stripos($body, $unescapedSlashExpectedText) !== false)
             || ($normalizedExpectedText !== '' && mb_stripos($normalizedBody, $normalizedExpectedText) !== false);
+    }
+
+    private static function decodeJsonUnicodeEscapes(string $body): string
+    {
+        return preg_replace_callback(
+            '/(?<!\\\\)(?:\\\\u[0-9a-f]{4})+/i',
+            static function (array $matches): string {
+                $decodedText = json_decode('"'.$matches[0].'"', true);
+
+                return is_string($decodedText) ? $decodedText : $matches[0];
+            },
+            $body,
+        ) ?? $body;
     }
 }

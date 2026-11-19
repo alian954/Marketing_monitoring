@@ -558,6 +558,16 @@ class ProbeSecurityTest extends TestCase
         $this->assertFalse(ExpectedTextMatcher::matches('<p>Public launch.</p>', "Internal draft\nEmbargoed", 'absent'));
     }
 
+    public function test_expected_text_matcher_decodes_json_unicode_escapes_for_social_post_text(): void
+    {
+        $body = '<script type="application/json">{"caption":"\\u512a\\u60e0\\ud83c\\udf38"}</script>';
+        $expectedText = '優惠🌸';
+
+        $this->assertTrue(ExpectedTextMatcher::matches($body, $expectedText));
+        $this->assertTrue(ExpectedTextMatcher::matchesBoundedPrefix($body, $expectedText));
+        $this->assertFalse(ExpectedTextMatcher::matches('<script type="application/json">{"caption":"\\\\u512a\\\\u60e0\\\\ud83c\\\\udf38"}</script>', $expectedText));
+    }
+
     public function test_oversized_response_only_confirms_text_when_the_bounded_prefix_proves_the_condition(): void
     {
         $makeProbe = static function (string $body): SecureProbeClient {
