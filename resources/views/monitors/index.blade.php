@@ -212,6 +212,12 @@
                                 <td><x-state-badge :state="$monitor->enabled ? 'enabled' : 'paused'" /></td>
                                 <td>
                                     <div class="row-actions">
+                                        @if ($monitor->enabled)
+                                            <form class="inline-form" action="{{ route('monitors.check', $monitor) }}" method="POST">
+                                                @csrf
+                                                <button class="button button-quiet button-small" type="submit">立即檢查</button>
+                                            </form>
+                                        @endif
                                         <form class="inline-form" action="{{ route('monitors.toggle', $monitor) }}" method="POST">
                                             @csrf
                                             <button class="button button-quiet button-small" type="submit">{{ $monitor->enabled ? '暫停' : '恢復' }}</button>
