@@ -78,6 +78,7 @@ class MonitorController extends Controller
         'label' => ['nullable', 'string', 'max:100'],
         'platform' => ['nullable', 'in:all,website,facebook,instagram,threads'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
+        'http_status' => ['nullable', 'integer', 'between:100,599'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
 
@@ -87,6 +88,8 @@ class MonitorController extends Controller
         'label.max' => '標籤篩選不得超過 100 個字元。',
         'platform.in' => '請選擇有效的平台篩選條件。',
         'state.in' => '請選擇有效的監測狀態篩選條件。',
+        'http_status.integer' => 'HTTP 回應碼必須是整數。',
+        'http_status.between' => 'HTTP 回應碼必須介於 100–599。',
         'sort.in' => '請選擇有效的監測排序方式。',
     ];
 
@@ -108,8 +111,9 @@ class MonitorController extends Controller
         $label = (string) ($validated['label'] ?? '');
         $platform = $validated['platform'] ?? 'all';
         $state = $validated['state'] ?? 'all';
+        $httpStatus = (string) ($validated['http_status'] ?? '');
         $sort = $validated['sort'] ?? 'name';
-        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'sort' => $sort];
+        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'http_status' => $httpStatus, 'sort' => $sort];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents']);
@@ -137,7 +141,7 @@ class MonitorController extends Controller
         ]);
     }
 
-    /** @param array{search: string, label: string, platform: string, state: string, sort?: string} $filters */
+    /** @param array{search: string, label: string, platform: string, state: string, http_status?: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
@@ -159,6 +163,11 @@ class MonitorController extends Controller
                 }
 
                 $query->where('social_platform', $filters['platform']);
+            })
+            ->when(($filters['http_status'] ?? '') !== '', static function (Builder $query) use ($filters): void {
+                $query->whereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($filters): void {
+                    $checkRunQuery->where('normal_status', (int) $filters['http_status']);
+                });
             })
             ->when($filters['state'] === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
             ->when($filters['state'] === 'paused', static fn (Builder $query) => $query->where('enabled', false))
@@ -1099,6 +1108,7 @@ class MonitorController extends Controller
             'label' => (string) ($validated['label'] ?? ''),
             'platform' => $validated['platform'] ?? 'all',
             'state' => $validated['state'] ?? 'all',
+            'http_status' => (string) ($validated['http_status'] ?? ''),
         ];
 
         return response()->streamDownload(function () use ($filters): void {

@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all';
+        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['http_status'] !== '';
         $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
@@ -76,6 +76,27 @@
                                 <option value="incidents" @selected(old('state', $filters['state']) === 'incidents')>有未結束事件</option>
                                 <option value="stale" @selected(old('state', $filters['state']) === 'stale')>檢查已逾時</option>
                             </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="monitor-http-status">HTTP 回應碼</label>
+                            <input
+                                class="field-input @error('http_status') is-invalid @enderror"
+                                id="monitor-http-status"
+                                name="http_status"
+                                type="number"
+                                inputmode="numeric"
+                                min="100"
+                                max="599"
+                                step="1"
+                                value="{{ old('http_status', $filters['http_status']) }}"
+                                autocomplete="off"
+                                aria-describedby="{{ $errors->has('http_status') ? 'monitor-http-status-help monitor-http-status-error' : 'monitor-http-status-help' }}"
+                                @if ($errors->has('http_status')) aria-invalid="true" @endif
+                            >
+                            <p id="monitor-http-status-help" class="field-help">依最新一次 HTTP 檢查的回應碼精確篩選；沒有回應碼的項目不會列入。</p>
+                            @error('http_status')
+                                <p id="monitor-http-status-error" class="field-error">{{ $message }}</p>
+                            @enderror
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-sort">排序方式</label>

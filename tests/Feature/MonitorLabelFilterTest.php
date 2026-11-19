@@ -52,6 +52,7 @@ class MonitorLabelFilterTest extends TestCase
             'label' => 'Campaign A',
             'platform' => 'all',
             'state' => 'enabled',
+            'http_status' => '',
             'sort' => 'name',
         ], $response->viewData('filters'));
     }
@@ -235,6 +236,7 @@ class MonitorLabelFilterTest extends TestCase
             'label' => 'Campaign',
             'platform' => 'all',
             'state' => 'enabled',
+            'http_status' => '',
             'sort' => 'last_checked_desc',
         ], $response->viewData('filters'));
     }
