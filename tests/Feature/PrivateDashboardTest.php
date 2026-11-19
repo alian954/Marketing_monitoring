@@ -17,7 +17,13 @@ class PrivateDashboardTest extends TestCase
     public function test_private_pages_redirect_to_login_and_public_registration_is_missing(): void
     {
         $this->get(route('dashboard'))->assertRedirect(route('login'));
+        $this->get(route('notifications.index'))->assertRedirect(route('login'));
+        $this->get(route('notifications.export'))->assertRedirect(route('login'));
         $this->get(route('monitors.index'))->assertRedirect(route('login'));
+        $this->get(route('monitors.import'))->assertRedirect(route('login'));
+        $this->post(route('monitors.import.preview'), [])->assertRedirect(route('login'));
+        $this->post(route('monitors.import.commit'), [])->assertRedirect(route('login'));
+        $this->get(route('monitors.export'))->assertRedirect(route('login'));
         $this->get('/register')->assertNotFound();
     }
 
@@ -76,6 +82,7 @@ class PrivateDashboardTest extends TestCase
     public function test_csv_preview_reports_invalid_and_duplicate_rows_then_imports_only_confirmed_valid_rows(): void
     {
         Config::set('monitoring.transport', 'fixture');
+        Config::set('monitoring.confirmation_delay_seconds', 90);
         $user = User::factory()->create();
         $csv = "name,url,label\nValid,http://fixture.test/ok,Campaign\nDuplicate,http://fixture.test/ok,Campaign\nPrivate,http://127.0.0.1/admin,Local\n";
 
@@ -92,8 +99,42 @@ class PrivateDashboardTest extends TestCase
             ->assertRedirect(route('monitors.index'));
 
         $this->assertDatabaseCount('monitors', 1);
+        $this->assertSame(90, Monitor::query()->sole()->confirmation_delay_seconds);
         $storedUrl = \DB::table('monitors')->value('url');
         $this->assertNotSame('http://fixture.test/ok', $storedUrl);
+    }
+
+    public function test_csv_import_commits_the_500_row_limit_and_skips_the_501st_row(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $csvLines = ['name,url,label'];
+
+        for ($rowNumber = 1; $rowNumber <= 501; $rowNumber++) {
+            $csvLines[] = 'Monitor '.$rowNumber.',http://fixture.test/item-'.$rowNumber.',Campaign';
+        }
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', implode("\n", $csvLines)),
+            ])
+            ->assertOk()
+            ->assertSee('CSV 最多只能有 500 筆資料列。');
+
+        $this->assertSame(500, $preview->viewData('validCount'));
+        $this->assertSame(1, $preview->viewData('invalidCount'));
+        $this->assertDatabaseCount('monitors', 0);
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已匯入 500 個監測項目；略過 1 筆無效或重複資料。');
+
+        $this->assertDatabaseCount('monitors', 500);
+
+        $export = $this->get(route('monitors.export'))->assertOk();
+        $exportRows = explode("\n", trim($export->streamedContent()));
+
+        $this->assertCount(501, $exportRows);
+        $this->assertStringContainsString('"Monitor 500",http://fixture.test/item-500', $exportRows[500]);
     }
 
     public function test_csv_commit_rejects_a_stale_or_mismatched_preview_token(): void

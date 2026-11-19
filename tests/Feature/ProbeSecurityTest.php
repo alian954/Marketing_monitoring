@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\ProbeTransport;
@@ -125,7 +126,420 @@ class ProbeSecurityTest extends TestCase
         $this->assertSame(200, $result->statusCode);
         $this->assertSame('https://landing.example/path?email=REDACTED', $result->finalUrl);
         $this->assertSame('https://landing.example/path?email=owner%40example.com', $transport->targets[0]['url']);
-        $this->assertSame(['93.184.216.34', '93.184.216.35'], $transport->targets[0]['ips']);
+        $this->assertSame(['93.184.216.34'], $transport->targets[0]['ips']);
+        $this->assertSame(['93.184.216.34', '93.184.216.35'], $result->monitorHostIps);
+    }
+
+    public function test_social_platform_first_party_redirects_are_followed_without_a_user_allowlist(): void
+    {
+        $redirectCases = [
+            ['https://fb.watch/ABC123/', 'https://www.facebook.com/watch/?v=ABC123'],
+            ['https://threads.net/@creator/post/ABC123', 'https://www.threads.com/@creator/post/ABC123'],
+            ['https://instagram.com/p/ABC123/', 'https://www.instagram.com/p/ABC123/'],
+        ];
+
+        foreach ($redirectCases as [$sourceUrl, $redirectUrl]) {
+            $resolver = new class implements HostResolver
+            {
+                public function resolve(string $hostname): array
+                {
+                    return ['93.184.216.34'];
+                }
+            };
+            $transport = new class($redirectUrl) implements ProbeTransport
+            {
+                public int $calls = 0;
+
+                public function __construct(private readonly string $redirectUrl) {}
+
+                public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+                {
+                    $this->calls++;
+
+                    if ($this->calls === 1) {
+                        return new HopResponse(302, $this->redirectUrl, '', 1, null, null, null);
+                    }
+
+                    return new HopResponse(200, null, '<article>Campaign headline</article>', 1, null, null, null);
+                }
+            };
+            $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+            $result = $client->inspect($sourceUrl, [], 'MonitorTest/1.0', 'Campaign headline');
+
+            $this->assertSame(200, $result->statusCode);
+            $this->assertTrue($result->succeeded());
+            $this->assertSame(true, $result->expectedTextFound);
+            $this->assertCount(1, $result->redirects);
+            $this->assertSame(2, $transport->calls);
+        }
+    }
+
+    public function test_social_platform_redirects_to_unrelated_hosts_remain_blocked(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(302, 'https://attacker.example/collect', '', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://www.facebook.com/story.php?story_fbid=123', [], 'MonitorTest/1.0');
+
+        $this->assertSame('redirect_host_not_allowed', $result->errorType);
+        $this->assertSame(1, $transport->calls);
+    }
+
+    public function test_transport_failure_falls_back_to_the_next_validated_ip(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34', '93.184.216.35'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            /** @var list<array{url: string, host: string, port: int, ips: list<string>}> */
+            public array $targets = [];
+
+            /** @var list<int> */
+            public array $timeouts = [];
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->targets[] = $target;
+                $this->timeouts[] = $timeoutMs;
+
+                if ($target['ips'][0] === '93.184.216.34') {
+                    usleep(20_000);
+
+                    return new HopResponse(null, null, '', 12, 'connection_error', 'connection failed', null);
+                }
+
+                return new HopResponse(200, null, '<p>healthy</p>', 8, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', timeoutSeconds: 1);
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertSame(20, $result->elapsedMs);
+        $this->assertSame([['93.184.216.34'], ['93.184.216.35']], array_column($transport->targets, 'ips'));
+        $this->assertLessThan($transport->timeouts[0], $transport->timeouts[1]);
+        $this->assertSame(['93.184.216.34', '93.184.216.35'], $result->resolvedPublicIps);
+    }
+
+    public function test_http_error_responses_do_not_fall_back_to_another_ip(): void
+    {
+        foreach ([429, 503] as $statusCode) {
+            $resolver = new class implements HostResolver
+            {
+                public function resolve(string $hostname): array
+                {
+                    return ['93.184.216.34', '93.184.216.35'];
+                }
+            };
+            $transport = new class($statusCode) implements ProbeTransport
+            {
+                public int $calls = 0;
+
+                public function __construct(private readonly int $statusCode) {}
+
+                public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+                {
+                    $this->calls++;
+
+                    return new HopResponse($this->statusCode, null, '', 1, null, null, null);
+                }
+            };
+            $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+            $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+            $this->assertSame($statusCode, $result->statusCode);
+            $this->assertSame(1, $transport->calls);
+        }
+    }
+
+    public function test_all_transport_failures_are_aggregated_and_return_the_last_error(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34', '93.184.216.35', '93.184.216.36'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            /** @var list<array{url: string, host: string, port: int, ips: list<string>}> */
+            public array $targets = [];
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->targets[] = $target;
+
+                return new HopResponse(null, null, '', 7, 'connection_error', 'connection failed', null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+        $this->assertSame('connection_error', $result->errorType);
+        $this->assertSame('connection failed', $result->errorDetail);
+        $this->assertSame(21, $result->elapsedMs);
+        $this->assertSame(3, count($transport->targets));
+    }
+
+    public function test_expected_text_matches_content_encoded_as_html_entities(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Campaign &amp; special offer</article>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', 'Campaign & special offer');
+
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_expected_text_matches_when_html_markup_splits_visible_text(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Campaign <strong>headline</strong></article>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', 'Campaign headline');
+
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_expected_text_matches_json_unicode_escapes_in_raw_response(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<script>{"caption":"\\u71b1\\u9580\\u512a\\u60e0"}</script>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', '熱門優惠');
+
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_expected_text_matches_json_unicode_escapes_with_unescaped_slashes(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<script>{"caption":"\\u512a\\u60e0/\\u6298\\u6263"}</script>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', '優惠/折扣');
+
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_oversized_response_can_confirm_expected_text_from_its_bounded_prefix(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Campaign &amp; special offer', 1, 'body_too_large', 'body limit', null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', 'Campaign & special offer');
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertNull($result->errorType);
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_oversized_response_without_a_match_stays_indeterminate(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Other content</article>', 1, 'body_too_large', 'body limit', null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', 'Expected campaign phrase');
+
+        $this->assertSame('body_too_large', $result->errorType);
+        $this->assertNull($result->expectedTextFound);
+    }
+
+    public function test_oversized_response_without_a_content_condition_still_confirms_http_availability(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Large response prefix</article>', 1, 'body_too_large', 'body limit', null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertNull($result->errorType);
+        $this->assertNull($result->expectedTextFound);
+    }
+
+    public function test_secure_probe_preserves_retry_after_from_the_response(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(429, null, '', 1, null, null, null, 1800);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+        $this->assertSame(429, $result->statusCode);
+        $this->assertSame(1800, $result->retryAfterSeconds);
+    }
+
+    public function test_oversized_redirect_can_follow_its_location_header(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                return $this->calls === 1
+                    ? new HopResponse(302, '/final', '<html>long redirect body', 1, 'body_too_large', 'body limit', null)
+                    : new HopResponse(200, null, '<article>Campaign headline</article>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', 'Campaign headline');
+
+        $this->assertSame(2, $transport->calls);
+        $this->assertSame(['https://landing.example/final'], $result->redirects);
+        $this->assertSame(200, $result->statusCode);
+        $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_fixture_probe_matches_expected_text_after_html_entity_decoding(): void
+    {
+        $result = (new FixtureProbeClient)->inspect(
+            'https://fixture.test/html-entities',
+            [],
+            'MonitorTest/1.0',
+            'Campaign & special offer',
+        );
+
+        $this->assertTrue($result->expectedTextFound);
     }
 
     public function test_iana_special_use_ranges_are_blocked_for_literals_and_dns_answers(): void

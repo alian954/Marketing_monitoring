@@ -7,6 +7,8 @@ use DateTimeZone;
 
 class CurlProbeTransport implements ProbeTransport
 {
+    public function __construct(private readonly RetryAfterParser $retryAfterParser) {}
+
     public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
     {
         $handle = curl_init($target['url']);
@@ -15,12 +17,12 @@ class CurlProbeTransport implements ProbeTransport
             return new HopResponse(null, null, '', 0, 'curl_initialization_failed', '安全連線用戶端無法初始化。', null);
         }
 
-        $body = '';
+        $bodyBuffer = new BoundedResponseBodyBuffer((int) config('monitoring.max_body_bytes'));
         $location = null;
-        $bodyTooLarge = false;
-        $maxBodyBytes = (int) config('monitoring.max_body_bytes');
+        $retryAfterHeader = null;
+        $retryAfterParser = $this->retryAfterParser;
         $resolve = null;
-        $requestBudgetMs = max(1, min($timeoutMs, (int) config('monitoring.request_timeout_seconds') * 1000));
+        $requestBudgetMs = max(1, $timeoutMs);
         $connectBudgetMs = max(1, min($requestBudgetMs, (int) config('monitoring.connect_timeout_seconds') * 1000));
 
         if (filter_var($target['host'], FILTER_VALIDATE_IP) === false) {
@@ -44,20 +46,22 @@ class CurlProbeTransport implements ProbeTransport
             CURLOPT_CERTINFO => true,
             CURLOPT_HTTPGET => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-            CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (&$body, &$bodyTooLarge, $maxBodyBytes): int {
-                if (strlen($body) + strlen($chunk) > $maxBodyBytes) {
-                    $bodyTooLarge = true;
-
+            CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use ($bodyBuffer): int {
+                if (! $bodyBuffer->append($chunk)) {
                     return 0;
                 }
 
-                $body .= $chunk;
-
                 return strlen($chunk);
             },
-            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location): int {
+            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location, &$retryAfterHeader, $retryAfterParser): int {
                 if (preg_match('/^Location:\s*(.*?)\s*$/i', $line, $matches) === 1) {
                     $location = trim($matches[1]);
+                }
+
+                $retryAfterValue = $retryAfterParser->headerValue($line);
+
+                if ($retryAfterValue !== null) {
+                    $retryAfterHeader = $retryAfterValue;
                 }
 
                 return strlen($line);
@@ -81,16 +85,17 @@ class CurlProbeTransport implements ProbeTransport
         $primaryIp = (string) curl_getinfo($handle, CURLINFO_PRIMARY_IP);
         $errorNumber = curl_errno($handle);
         $tlsExpiresAt = $this->certificateExpiry(curl_getinfo($handle, CURLINFO_CERTINFO));
+        $retryAfterSeconds = $this->retryAfterParser->seconds($retryAfterHeader);
         curl_close($handle);
 
         $pinnedIp = $target['ips'][0];
 
         if (($primaryIp !== '' && ! $this->sameIp($pinnedIp, $primaryIp)) || ($completed !== false && $primaryIp === '')) {
-            return new HopResponse(null, null, '', $elapsedMs, 'pinned_ip_mismatch', '實際連線的 IP 與已驗證的位址不一致。', $tlsExpiresAt);
+            return new HopResponse(null, null, '', $elapsedMs, 'pinned_ip_mismatch', '實際連線的 IP 與已驗證的位址不一致。', $tlsExpiresAt, $retryAfterSeconds);
         }
 
-        if ($bodyTooLarge) {
-            return new HopResponse($statusCode ?: null, $location, '', $elapsedMs, 'body_too_large', '回應內容超過 1 MB 讀取上限。', $tlsExpiresAt);
+        if ($bodyBuffer->exceededLimit()) {
+            return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, 'body_too_large', '回應內容超過 1 MB 讀取上限。', $tlsExpiresAt, $retryAfterSeconds);
         }
 
         if ($completed === false || $errorNumber !== 0) {
@@ -109,10 +114,10 @@ class CurlProbeTransport implements ProbeTransport
                 default => '無法完成連線要求。',
             };
 
-            return new HopResponse($statusCode ?: null, $location, '', $elapsedMs, $errorType, $detail, $tlsExpiresAt);
+            return new HopResponse($statusCode ?: null, $location, '', $elapsedMs, $errorType, $detail, $tlsExpiresAt, $retryAfterSeconds);
         }
 
-        return new HopResponse($statusCode ?: null, $location, $body, $elapsedMs, null, null, $tlsExpiresAt);
+        return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, null, null, $tlsExpiresAt, $retryAfterSeconds);
     }
 
     private function certificateExpiry(array|false $certificates): ?DateTimeImmutable

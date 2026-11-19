@@ -22,6 +22,7 @@ class NotificationOutboxFactory extends Factory
         return [
             'incident_id' => Incident::factory(),
             'event_key' => hash('sha256', (string) Str::uuid()),
+            'channel' => 'email',
             'recipient' => 'owner@example.com',
             'event_type' => 'opened',
             'status' => 'pending',

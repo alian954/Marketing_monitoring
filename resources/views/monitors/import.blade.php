@@ -24,7 +24,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="csv-upload-title" class="panel-title">CSV 檔案</h2>
-                <p class="panel-description">最多 500 列。第一列必須包含完全相同的欄位名稱 <code>name,url,label</code>。</p>
+                <p class="panel-description">最多 500 列。第一列必須以 <code>name,url,label</code> 開頭，可再加上 <code>expected_text</code> 與 <code>expected_text_mode</code>。</p>
             </div>
         </div>
         <div class="panel-body">
@@ -33,7 +33,7 @@
                 <div class="field-group">
                     <label class="field-label" for="csv_file">選擇 CSV 檔案<span class="required-mark" aria-hidden="true">*</span></label>
                     <input class="field-input @error('csv_file') is-invalid @enderror" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required aria-describedby="{{ $errors->has('csv_file') ? 'csv-help csv-file-error' : 'csv-help' }}">
-                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code> 與 <code>label</code>。網址會保留於伺服器端，預覽時僅顯示遮罩後的網址。</p>
+                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。社群貼文需加入 <code>expected_text</code>，並使用 <code>expected_text_mode=present</code>；一般網站可用 <code>absent</code> 檢查文字是否消失。省略比對方式時預設為 <code>present</code>。所有資料列先預覽，確認後才匯入；網址預覽會遮罩。</p>
                     @error('csv_file')<p id="csv-file-error" class="field-error">{{ $message }}</p>@enderror
                 </div>
                 <div class="form-actions">
@@ -71,13 +71,14 @@
                 @else
                     <div class="data-table-wrap preview-table-frame">
                         <table class="data-table">
-                            <caption class="sr-only">CSV 資料列、遮罩目的網址與匯入資格</caption>
+                            <caption class="sr-only">CSV 資料列、遮罩目的網址、預期文字條件與匯入資格</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">列號</th>
                                     <th scope="col">監測名稱</th>
                                     <th scope="col">目的網址</th>
                                     <th scope="col">標籤</th>
+                                    <th scope="col">預期文字條件</th>
                                     <th scope="col">檢查結果</th>
                                 </tr>
                             </thead>
@@ -93,6 +94,13 @@
                                         <td>{{ data_get($previewRow, 'name', '—') }}</td>
                                         <td><span class="masked-url">{{ data_get($previewRow, 'masked_url', '—') }}</span></td>
                                         <td>{{ data_get($previewRow, 'label') ?: '—' }}</td>
+                                        <td>
+                                            @if (data_get($previewRow, 'expected_text', '') !== '')
+                                                {{ data_get($previewRow, 'expected_text_mode') === 'absent' ? '不得包含：' : '必須包含：' }}{{ data_get($previewRow, 'expected_text') }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
                                         <td>
                                             @if ($isDuplicate)
                                                 <x-state-badge state="issue" />

@@ -12,5 +12,6 @@ readonly class HopResponse
         public ?string $errorType,
         public ?string $errorDetail,
         public ?\DateTimeImmutable $tlsExpiresAt,
+        public ?int $retryAfterSeconds = null,
     ) {}
 }

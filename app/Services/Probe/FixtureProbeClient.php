@@ -6,7 +6,7 @@ use DateTimeImmutable;
 
 class FixtureProbeClient implements ProbeClient
 {
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null): ProbeResult
     {
         $startedAt = hrtime(true);
         $parts = parse_url($url);
@@ -51,9 +51,19 @@ class FixtureProbeClient implements ProbeClient
             '/adsbot-difference' => str_contains($userAgent, 'AdsBot') ? 403 : 200,
             default => 200,
         };
-        $body = $path === '/missing-text' ? '<html>fixture page without the expected copy</html>' : '<html>fixture healthy landing page</html>';
+        $body = match ($path) {
+            '/missing-text' => '<html>fixture page without the expected copy</html>',
+            '/html-entities' => '<html>Campaign &amp; special offer</html>',
+            default => '<html>fixture healthy landing page</html>',
+        };
         $elapsedMs = (int) round((hrtime(true) - $startedAt) / 1_000_000) + 2;
-        $matchesExpectedText = $expectedText === null || $expectedText === '' ? null : mb_stripos($body, $expectedText) !== false;
+        $decodedBody = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $matchesExpectedText = null;
+
+        if ($expectedText !== null && $expectedText !== '') {
+            $matchesExpectedText = mb_stripos($body, $expectedText) !== false
+                || mb_stripos($decodedBody, $expectedText) !== false;
+        }
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 
         return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps);

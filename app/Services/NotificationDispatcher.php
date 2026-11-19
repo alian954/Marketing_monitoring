@@ -10,19 +10,48 @@ use App\Models\NotificationOutbox;
 
 class NotificationDispatcher
 {
-    public function __construct(private readonly UrlMasker $urlMasker) {}
+    public function __construct(
+        private readonly UrlMasker $urlMasker,
+        private readonly StatusPageSubscriptionDispatcher $statusPageSubscriptions,
+    ) {}
 
-    public function queue(Incident $incident, Monitor $monitor, CheckRun $run, string $eventType): void
-    {
-        $recipient = (string) config('monitoring.notify_email');
+    /** @param list<string>|null $emailRecipientsOverride */
+    public function queue(
+        Incident $incident,
+        Monitor $monitor,
+        CheckRun $run,
+        string $eventType,
+        ?string $idempotencySuffix = null,
+        ?array $emailRecipientsOverride = null,
+        bool $includeSlack = true,
+    ): bool {
+        $monitorRecipients = NotificationEmailRecipientParser::parse($monitor->notification_email);
+        $emailRecipients = $emailRecipientsOverride ?? ($monitorRecipients === []
+            ? NotificationEmailRecipientParser::parse((string) config('monitoring.notify_email'))
+            : $monitorRecipients);
+        $destinations = [];
 
-        if ($recipient === '') {
-            return;
+        foreach ($emailRecipients as $emailRecipient) {
+            $destinations[] = [NotificationOutbox::CHANNEL_EMAIL, $emailRecipient];
         }
 
-        $eventKey = hash('sha256', $incident->id.':'.$eventType);
+        $monitorSlackWebhookUrl = trim((string) $monitor->notification_slack_webhook);
+        $slackWebhookUrl = $monitorSlackWebhookUrl === ''
+            ? trim((string) config('monitoring.notify_slack_webhook'))
+            : $monitorSlackWebhookUrl;
+
+        if ($includeSlack && $slackWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_SLACK, $slackWebhookUrl];
+        }
+
+        $statusSubscribersQueued = $this->statusPageSubscriptions->queue($incident, $monitor, $eventType);
+
+        if ($destinations === []) {
+            return $statusSubscribersQueued;
+        }
+
         $url = $this->urlMasker->mask($monitor->url);
-        $reason = $this->reasonLabel($incident->rule_key);
+        $reason = $this->reasonLabel($incident->rule_key, $monitor);
         $code = $incident->rule_key === 'adsbot_difference' ? $run->adsbot_status : $run->normal_status;
         $statusLine = $code === null ? '檢查錯誤：'.($run->error_type ?? $run->adsbot_error_type ?? 'unknown') : 'HTTP 狀態碼：'.$code;
         $timeLine = $incident->rule_key === 'response_time' && $run->normal_elapsed_ms !== null
@@ -43,9 +72,14 @@ class NotificationDispatcher
             ->where('id', '<', $run->id)
             ->latest('finished_at')
             ->value('finished_at');
-        $stateText = $eventType === 'opened' ? '異常已確認' : '連續兩次檢查正常，事件已恢復';
+        $stateText = match ($eventType) {
+            'opened' => '異常已確認',
+            'reminder' => '異常仍未恢復',
+            NotificationOutbox::EVENT_TYPE_ESCALATION => '異常仍未確認，已升級告警',
+            default => '連續兩次檢查正常，事件已恢復',
+        };
         $subject = '['.config('app.name').'] '.$monitor->name.' '.$stateText;
-        $body = implode("\n", [
+        $bodyLines = [
             $monitor->name.' — '.$stateText,
             '網址：'.$url,
             '原因：'.$reason,
@@ -55,34 +89,57 @@ class NotificationDispatcher
             $thresholdLine,
             '前次成功檢查時間（UTC）：'.($previousSuccess ?: '未記錄'),
             $incident->rule_key === 'adsbot_difference' ? 'AdsBot 結果僅為 User-Agent 字串模擬，不代表 Google 官方擷取。' : '',
-        ]);
+        ];
 
-        $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
-            'incident_id' => $incident->id,
-            'recipient' => $recipient,
-            'event_type' => $eventType,
-            'status' => 'pending',
-            'subject' => $subject,
-            'body' => $body,
-        ]);
-
-        if ($outbox->wasRecentlyCreated) {
-            SendNotificationOutbox::dispatch($outbox->id)->afterCommit();
+        if ($monitor->socialPlatform() !== null) {
+            $bodyLines[] = '此監測只讀取免登入的 HTTP 回應；平台登入要求或自動請求限制可能造成無法確認，請手動開啟網址核對貼文。這不代表貼文未發布或已刪除。';
         }
+
+        $body = implode("\n", $bodyLines);
+        $queued = false;
+
+        foreach ($destinations as [$channel, $destination]) {
+            $channelSuffix = match ($channel) {
+                NotificationOutbox::CHANNEL_EMAIL => count($emailRecipients) === 1
+                    ? ''
+                    : ':email:'.hash('sha256', mb_strtolower($destination)),
+                default => ':'.$channel,
+            };
+            $suffix = $idempotencySuffix === null ? '' : ':'.$idempotencySuffix;
+            $eventKey = hash('sha256', $incident->id.':'.$eventType.$channelSuffix.$suffix);
+            $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
+                'incident_id' => $incident->id,
+                'channel' => $channel,
+                'recipient' => $destination,
+                'event_type' => $eventType,
+                'status' => 'pending',
+                'subject' => $subject,
+                'body' => $body,
+            ]);
+
+            if ($outbox->wasRecentlyCreated) {
+                $queued = true;
+                SendNotificationOutbox::dispatch($outbox->id)->afterCommit();
+            }
+        }
+
+        return $queued || $statusSubscribersQueued;
     }
 
-    private function reasonLabel(string $ruleKey): string
+    private function reasonLabel(string $ruleKey, Monitor $monitor): string
     {
         return match ($ruleKey) {
             'http' => 'HTTP 連線異常',
-            'content' => '缺少預期文字',
+            'content' => $monitor->socialPlatform() === null ? '缺少預期文字' : '原始回應未包含預期貼文文字',
             'forbidden_text' => '回應包含不應出現的文字',
             'response_time' => 'HTTP 回應時間超過設定門檻',
             'tls_expired' => 'TLS 憑證已過期',
             'tls_handshake' => 'TLS 交握失敗',
             'tls_14d' => 'TLS 憑證將於 14 天內到期',
             'tls_7d' => 'TLS 憑證將於 7 天內到期',
+            'tls_30d' => 'TLS 憑證將於 30 天內到期',
             'probe_restricted' => '檢查受到速率限制或封鎖',
+            'probe_incomplete' => '回應內容超過讀取上限，文字比對未完成',
             'adsbot_difference' => 'AdsBot User-Agent 模擬結果不同',
             default => $ruleKey,
         };

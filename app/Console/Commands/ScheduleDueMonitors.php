@@ -6,6 +6,7 @@ use App\Jobs\SendNotificationOutbox;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\SchedulerHeartbeat;
+use App\Services\IncidentManager;
 use App\Services\RunScheduler;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -16,7 +17,7 @@ use Throwable;
 #[Description('將到期檢查與通知 outbox 記錄加入佇列')]
 class ScheduleDueMonitors extends Command
 {
-    public function handle(RunScheduler $scheduler): int
+    public function handle(RunScheduler $scheduler, IncidentManager $incidents): int
     {
         $heartbeat = SchedulerHeartbeat::query()->firstOrCreate(['job_key' => 'monitor-scheduler']);
         $heartbeat->forceFill(['last_started_at' => now(), 'last_error' => null])->save();
@@ -61,8 +62,10 @@ class ScheduleDueMonitors extends Command
                     'updated_at' => now(),
                 ]);
 
+            $queuedReminders = $incidents->queueDueReminders();
+            $queuedEscalations = $incidents->queueDueEscalations();
             $heartbeat->forceFill(['last_succeeded_at' => now(), 'last_error' => null])->save();
-            $this->info('已將 '.$queued.' 個到期監測檢查加入佇列。');
+            $this->info('已將 '.$queued.' 個到期監測檢查加入佇列，排入 '.$queuedReminders.' 個持續事件提醒與 '.$queuedEscalations.' 個升級通知。');
 
             return self::SUCCESS;
         } catch (Throwable $exception) {

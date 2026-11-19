@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
@@ -67,5 +68,41 @@ class MonitorEditTest extends TestCase
             ->assertOk()
             ->assertSee('設定已變更')
             ->assertSee('舊事件已因設定變更而結束');
+    }
+
+    public function test_monitor_detail_paginates_all_retained_check_runs(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $user = User::factory()->create();
+        $oldestRun = null;
+
+        for ($index = 0; $index < 51; $index++) {
+            $run = CheckRun::factory()->for($monitor)->create([
+                'scheduled_at' => now()->subMinutes($index),
+            ]);
+
+            if ($index === 50) {
+                $oldestRun = $run;
+            }
+        }
+
+        $firstPage = $this->actingAs($user)
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('顯示保留期間內的檢查結果');
+
+        $firstPageRuns = $firstPage->viewData('runs');
+        $this->assertSame(51, $firstPageRuns->total());
+        $this->assertCount(50, $firstPageRuns->getCollection());
+        $this->assertFalse($firstPageRuns->getCollection()->contains('id', $oldestRun->id));
+        $firstPage->assertSee(route('monitors.show', ['monitor' => $monitor, 'page' => 2]));
+
+        $secondPage = $this->get(route('monitors.show', ['monitor' => $monitor, 'page' => 2]))
+            ->assertOk();
+
+        $secondPageRuns = $secondPage->viewData('runs');
+        $this->assertSame(51, $secondPageRuns->total());
+        $this->assertCount(1, $secondPageRuns->getCollection());
+        $this->assertTrue($secondPageRuns->getCollection()->contains('id', $oldestRun->id));
     }
 }

@@ -37,7 +37,10 @@ class RunScheduler
                 'expected_text' => $lockedMonitor->expected_text,
                 'expected_text_mode' => $lockedMonitor->expected_text_mode ?? 'present',
                 'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,
+                'timeout_seconds' => $lockedMonitor->timeout_seconds,
+                'confirmation_delay_seconds' => $lockedMonitor->confirmation_delay_seconds,
                 'allowed_redirect_hosts' => $lockedMonitor->allowed_redirect_hosts ?? [],
+                'interval_seconds' => $lockedMonitor->interval_seconds,
             ], JSON_THROW_ON_ERROR);
             $runKey = hash('sha256', implode(':', [
                 $lockedMonitor->id,

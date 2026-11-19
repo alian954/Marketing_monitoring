@@ -26,6 +26,8 @@ class IncidentFactory extends Factory
             'severity' => 'critical',
             'state' => Incident::STATE_OPEN,
             'classification' => null,
+            'acknowledged_at' => null,
+            'acknowledged_by_id' => null,
             'active_key' => hash('sha256', (string) Str::uuid()),
             'note' => null,
             'failure_count' => 2,

@@ -35,6 +35,52 @@ class CheckRun extends Model
         ];
     }
 
+    public function passesMonitorChecks(): bool
+    {
+        if ($this->status !== 'completed' || $this->error_type !== null) {
+            return false;
+        }
+
+        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $statusCode = $this->normal_status;
+        $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
+        $isAcceptedStatus = $statusCode !== null
+            && (($statusCode >= 200 && $statusCode < 400) || in_array($statusCode, $acceptedStatusCodes, true));
+
+        if (! $isAcceptedStatus) {
+            return false;
+        }
+
+        $expectedText = $snapshot['expected_text'] ?? null;
+
+        if (! is_string($expectedText) || $expectedText === '') {
+            return true;
+        }
+
+        return ($snapshot['expected_text_mode'] ?? 'present') === 'absent'
+            ? $this->expected_text_found === false
+            : $this->expected_text_found === true;
+    }
+
+    public function hasIndeterminateContentMatch(): bool
+    {
+        if ($this->error_type !== 'body_too_large' || $this->expected_text_found !== null || $this->normal_status === null) {
+            return false;
+        }
+
+        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $expectedText = $snapshot['expected_text'] ?? null;
+
+        if (! is_string($expectedText) || $expectedText === '') {
+            return false;
+        }
+
+        $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
+
+        return ($this->normal_status >= 200 && $this->normal_status < 400)
+            || in_array($this->normal_status, $acceptedStatusCodes, true);
+    }
+
     public function monitor(): BelongsTo
     {
         return $this->belongsTo(Monitor::class);

@@ -5,14 +5,28 @@ namespace App\Models;
 use Carbon\CarbonImmutable;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'url', 'url_hash', 'label', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
+#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_slack_webhook', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
+#[Hidden(['notification_escalation_email', 'notification_slack_webhook'])]
 class Monitor extends Model
 {
+    public const MAX_INTERVAL_SECONDS = 3600;
+
+    /** @var array<string, string> */
+    private const SOCIAL_DOMAINS = [
+        'facebook.com' => 'Facebook',
+        'fb.watch' => 'Facebook',
+        'instagram.com' => 'Instagram',
+        'threads.com' => 'Threads',
+        'threads.net' => 'Threads',
+    ];
+
     /** @use HasFactory<MonitorFactory> */
     use HasFactory;
 
@@ -20,11 +34,17 @@ class Monitor extends Model
     {
         return [
             'url' => 'encrypted',
+            'notification_email' => 'encrypted',
+            'notification_escalation_email' => 'encrypted',
+            'notification_slack_webhook' => 'encrypted',
             'allowed_redirect_hosts' => 'array',
             'accepted_status_codes' => 'array',
             'enabled' => 'boolean',
             'config_version' => 'integer',
             'response_time_threshold_ms' => 'integer',
+            'timeout_seconds' => 'integer',
+            'confirmation_delay_seconds' => 'integer',
+            'notification_escalation_delay_minutes' => 'integer',
             'public_status' => 'boolean',
             'interval_seconds' => 'integer',
             'next_check_at' => 'immutable_datetime',
@@ -47,6 +67,11 @@ class Monitor extends Model
         return $this->hasMany(MaintenanceWindow::class);
     }
 
+    public function tlsObservations(): HasMany
+    {
+        return $this->hasMany(TlsObservation::class);
+    }
+
     public function activeIncidents(): HasMany
     {
         return $this->hasMany(Incident::class)->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN]);
@@ -54,7 +79,75 @@ class Monitor extends Model
 
     public function latestCheckRun(): HasOne
     {
-        return $this->hasOne(CheckRun::class)->latestOfMany('scheduled_at');
+        return $this->hasOne(CheckRun::class)
+            ->ofMany(['scheduled_at' => 'MAX'], static function (Builder $query): void {
+                $query->where('source', '!=', 'tls_daily');
+            });
+    }
+
+    public function latestTlsObservation(): HasOne
+    {
+        return $this->hasOne(TlsObservation::class)->ofMany(['observed_on' => 'MAX']);
+    }
+
+    public function socialPlatform(): ?string
+    {
+        return self::socialPlatformForUrl($this->url);
+    }
+
+    public static function socialPlatformForUrl(string $url): ?string
+    {
+        $url = trim($url);
+        $host = mb_strtolower((string) parse_url($url, PHP_URL_HOST));
+        $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
+        $query = [];
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        foreach (self::SOCIAL_DOMAINS as $domain => $platform) {
+            if ($host !== $domain && ! str_ends_with($host, '.'.$domain)) {
+                continue;
+            }
+
+            if ($platform === 'Facebook' && self::isFacebookPostUrl($domain, $path, $query)) {
+                return $platform;
+            }
+
+            if ($platform === 'Instagram' && preg_match('/\A(?:p|reel|tv)\/[^\/]+\z|\Astories\/[^\/]+\/[^\/]+\z/i', $path) === 1) {
+                return $platform;
+            }
+
+            if ($platform === 'Threads' && preg_match('/\A@[^\/]+\/post\/[^\/]+\z|\At\/[^\/]+\z/i', $path) === 1) {
+                return $platform;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $query */
+    private static function isFacebookPostUrl(string $domain, string $path, array $query): bool
+    {
+        if ($domain === 'fb.watch') {
+            return $path !== '';
+        }
+
+        if (preg_match('/(?:\A|\/)(?:post|posts|videos|reel)\/[^\/]+\z|\Ashare\/[prv]\/[^\/]+\z/i', $path) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\A(?:story|permalink)\.php\z/i', $path) === 1) {
+            return ! empty($query['story_fbid']) || ! empty($query['fbid']);
+        }
+
+        if (preg_match('/\Awatch\z/i', $path) === 1) {
+            return ! empty($query['v']);
+        }
+
+        if (preg_match('/\Aphoto\z/i', $path) === 1) {
+            return ! empty($query['fbid']);
+        }
+
+        return preg_match('/\A(?:[^\/]+\/)?photos\/[^\/]+\/[^\/]+\z/i', $path) === 1;
     }
 
     public static function fingerprintUrl(string $url): string
@@ -119,11 +212,19 @@ class Monitor extends Model
 
         $run = $this->latestCheckRun;
 
+        if ($run?->status === 'failed') {
+            return 'warning';
+        }
+
         if ($run === null || $run->status !== 'completed') {
             return 'pending';
         }
 
         if ($run->normal_status === 429 && ! $this->acceptsHttpStatus($run->normal_status)) {
+            return 'warning';
+        }
+
+        if ($run->hasIndeterminateContentMatch()) {
             return 'warning';
         }
 

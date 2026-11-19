@@ -6,11 +6,14 @@ use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Services\DnsChangeRecorder;
 use App\Services\IncidentManager;
+use App\Services\MonitorHostConcurrencyLock;
 use App\Services\Probe\ProbeClient;
+use App\Services\Probe\RetryAfterParser;
 use App\Services\RunScheduler;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -18,7 +21,9 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    public int $tries = 20;
+
+    public int $maxExceptions = 3;
 
     public int $timeout = 45;
 
@@ -37,13 +42,24 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         return [10, 30];
     }
 
+    /** @return list<WithoutOverlapping> */
+    public function middleware(): array
+    {
+        $monitor = CheckRun::query()->with('monitor')->find($this->checkRunId)?->monitor;
+
+        if ($monitor === null) {
+            return [];
+        }
+
+        return [app(MonitorHostConcurrencyLock::class)->forUrl($monitor->url)];
+    }
+
     public function handle(
         ProbeClient $probe,
         IncidentManager $incidents,
         RunScheduler $scheduler,
         ?DnsChangeRecorder $dnsChanges = null,
-    ): void
-    {
+    ): void {
         $dnsChanges ??= app(DnsChangeRecorder::class);
         $run = CheckRun::query()->with('monitor')->findOrFail($this->checkRunId);
 
@@ -66,7 +82,9 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         }
 
         $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $timeoutSeconds = (int) ($snapshot['timeout_seconds'] ?? config('monitoring.request_timeout_seconds'));
         $run->forceFill(['status' => 'running', 'started_at' => $run->started_at ?? now()])->save();
+        $adsbot = null;
 
         try {
             $normal = $probe->inspect(
@@ -74,21 +92,20 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 (array) ($snapshot['allowed_redirect_hosts'] ?? []),
                 'MarketingMonitor/1.0 (+authorized landing page check)',
                 isset($snapshot['expected_text']) ? (string) $snapshot['expected_text'] : null,
+                $timeoutSeconds,
             );
-            $adsbot = $probe->inspect(
-                (string) $snapshot['url'],
-                (array) ($snapshot['allowed_redirect_hosts'] ?? []),
-                'AdsBot-Google (+http://www.google.com/adsbot.html)',
-            );
+
+            if ($monitor->socialPlatform() === null) {
+                $adsbot = $probe->inspect(
+                    (string) $snapshot['url'],
+                    (array) ($snapshot['allowed_redirect_hosts'] ?? []),
+                    'AdsBot-Google (+http://www.google.com/adsbot.html)',
+                    null,
+                    $timeoutSeconds,
+                );
+            }
         } catch (Throwable $exception) {
             report($exception);
-            $run->forceFill([
-                'status' => 'failed',
-                'error_type' => 'probe_internal_error',
-                'error_detail' => '檢查在記錄結果前失敗。',
-                'finished_at' => now(),
-            ])->save();
-
             throw $exception;
         }
 
@@ -101,17 +118,23 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 
             $currentMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
             $currentVersionMatches = $currentMonitor !== null && $currentMonitor->config_version === $lockedRun->config_version;
-            $resolvedIps = array_values(array_unique([...$normal->resolvedPublicIps, ...$adsbot->resolvedPublicIps]));
+            $resolvedIps = $normal->resolvedPublicIps;
+
+            if ($adsbot !== null) {
+                $resolvedIps = [...$resolvedIps, ...$adsbot->resolvedPublicIps];
+            }
+
+            $resolvedIps = array_values(array_unique($resolvedIps));
             $finishedAt = now();
             $lockedRun->forceFill([
                 'status' => $currentVersionMatches ? 'completed' : 'stale_config',
                 'finished_at' => $finishedAt,
                 'normal_status' => $normal->statusCode,
-                'adsbot_status' => $adsbot->statusCode,
+                'adsbot_status' => $adsbot?->statusCode,
                 'error_type' => $normal->errorType,
                 'error_detail' => $normal->errorDetail === null ? null : mb_substr($normal->errorDetail, 0, 300),
-                'adsbot_error_type' => $adsbot->errorType,
-                'elapsed_ms' => $normal->elapsedMs + $adsbot->elapsedMs,
+                'adsbot_error_type' => $adsbot?->errorType,
+                'elapsed_ms' => $normal->elapsedMs + ($adsbot?->elapsedMs ?? 0),
                 'normal_elapsed_ms' => $normal->elapsedMs,
                 'final_url' => $normal->finalUrl,
                 'redirects' => $normal->redirects,
@@ -133,10 +156,51 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             }
 
             $confirmationDelay = $incidents->record($currentMonitor, $lockedRun, $normal, $adsbot);
+            $retryAfterSeconds = in_array($normal->statusCode, [429, 503], true)
+                ? min(max(0, $normal->retryAfterSeconds ?? 0), RetryAfterParser::MAX_DELAY_SECONDS)
+                : 0;
+            $followUpDelaySeconds = $confirmationDelay === null
+                ? null
+                : max($confirmationDelay, $retryAfterSeconds);
 
-            if ($confirmationDelay !== null && $confirmationDelay > 0) {
-                $scheduler->enqueue($currentMonitor, 'confirmation', now()->addSeconds($confirmationDelay), $confirmationDelay);
+            if ($retryAfterSeconds > 0) {
+                $nextCheckDelaySeconds = $followUpDelaySeconds === null
+                    ? $retryAfterSeconds
+                    : $followUpDelaySeconds + $currentMonitor->interval_seconds;
+                $nextScheduledCheckAt = $finishedAt->copy()->addSeconds($nextCheckDelaySeconds);
+
+                if ($currentMonitor->next_check_at === null || $currentMonitor->next_check_at->lessThan($nextScheduledCheckAt)) {
+                    $currentMonitor->next_check_at = $nextScheduledCheckAt;
+                    $currentMonitor->save();
+                }
             }
+
+            if ($followUpDelaySeconds !== null && $followUpDelaySeconds > 0) {
+                $scheduler->enqueue(
+                    $currentMonitor,
+                    'confirmation',
+                    $finishedAt->copy()->addSeconds($followUpDelaySeconds),
+                    $followUpDelaySeconds,
+                );
+            }
+        });
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        DB::transaction(function (): void {
+            $run = CheckRun::query()->lockForUpdate()->find($this->checkRunId);
+
+            if ($run === null || ! in_array($run->status, ['queued', 'running'], true)) {
+                return;
+            }
+
+            $run->forceFill([
+                'status' => 'failed',
+                'error_type' => 'queue_job_failed',
+                'error_detail' => '檢查佇列工作重試耗盡，未能完成探測。',
+                'finished_at' => now(),
+            ])->save();
         });
     }
 }

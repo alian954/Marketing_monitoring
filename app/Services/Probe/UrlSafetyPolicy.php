@@ -4,6 +4,13 @@ namespace App\Services\Probe;
 
 class UrlSafetyPolicy
 {
+    /** @var list<list<string>> */
+    private const SOCIAL_REDIRECT_HOST_GROUPS = [
+        ['facebook.com', 'fb.watch'],
+        ['instagram.com'],
+        ['threads.com', 'threads.net'],
+    ];
+
     public function __construct(private readonly HostResolver $resolver) {}
 
     /**
@@ -35,7 +42,7 @@ class UrlSafetyPolicy
         if ($originHost !== null && $host !== $originHost) {
             $allowlist = array_map(fn (string $allowed): string => $this->normalizeHost($allowed), $allowedRedirectHosts);
 
-            if (! in_array($host, $allowlist, true)) {
+            if (! in_array($host, $allowlist, true) && ! $this->isAllowedSocialPlatformRedirect($originHost, $host)) {
                 throw new ProbeException('redirect_host_not_allowed', '重新導向主機未列入此監測項目的允許清單。');
             }
         }
@@ -172,5 +179,31 @@ class UrlSafetyPolicy
     private function formatHostForUrl(string $host): string
     {
         return str_contains($host, ':') ? '['.$host.']' : $host;
+    }
+
+    private function isAllowedSocialPlatformRedirect(string $originHost, string $redirectHost): bool
+    {
+        foreach (self::SOCIAL_REDIRECT_HOST_GROUPS as $hostGroup) {
+            $originBelongsToGroup = false;
+
+            foreach ($hostGroup as $domain) {
+                if ($originHost === $domain || str_ends_with($originHost, '.'.$domain)) {
+                    $originBelongsToGroup = true;
+                    break;
+                }
+            }
+
+            if (! $originBelongsToGroup) {
+                continue;
+            }
+
+            foreach ($hostGroup as $domain) {
+                if ($redirectHost === $domain || str_ends_with($redirectHost, '.'.$domain)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

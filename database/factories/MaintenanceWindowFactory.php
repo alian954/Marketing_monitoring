@@ -25,6 +25,8 @@ class MaintenanceWindowFactory extends Factory
             'starts_at' => $startsAt,
             'ends_at' => $startsAt->copy()->addHour(),
             'reason' => $this->faker->sentence(),
+            'repeat_weekly' => false,
+            'repeat_until' => null,
         ];
     }
 }

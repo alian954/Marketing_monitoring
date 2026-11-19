@@ -6,6 +6,7 @@ use Database\Factories\StatusPageFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['setting_key', 'title', 'public_token', 'public_token_hash', 'is_published'])]
 class StatusPage extends Model
@@ -21,5 +22,10 @@ class StatusPage extends Model
             'public_token' => 'encrypted',
             'is_published' => 'boolean',
         ];
+    }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(StatusPageSubscription::class);
     }
 }

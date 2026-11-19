@@ -1,0 +1,165 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Incident;
+use App\Models\Monitor;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class IncidentHistoryController extends Controller
+{
+    /** @var array<string, string> */
+    private const RULE_LABELS = [
+        'http' => 'HTTP 回應異常',
+        'probe_restricted' => '檢查受到限制',
+        'probe_incomplete' => '回應過大，驗證未完成',
+        'content' => '原始回應未包含預期文字',
+        'forbidden_text' => '回應包含不應出現的文字',
+        'response_time' => 'HTTP 回應時間超過設定門檻',
+        'adsbot_difference' => 'AdsBot 模擬結果不同',
+        'tls_expired' => 'TLS 憑證已過期',
+        'tls_handshake' => 'TLS 交握失敗',
+        'tls_7d' => 'TLS 憑證將於 7 天內到期',
+        'tls_14d' => 'TLS 憑證將於 14 天內到期',
+        'tls_30d' => 'TLS 憑證將於 30 天內到期',
+    ];
+
+    /** @var array<string, string> */
+    private const STATE_LABELS = [
+        Incident::STATE_SUSPECT => '確認中',
+        Incident::STATE_OPEN => '已確認',
+        Incident::STATE_RESOLVED => '已恢復',
+        Incident::STATE_PAUSED => '已暫停',
+        Incident::STATE_SUPERSEDED => '設定已變更',
+    ];
+
+    public function index(Request $request): View
+    {
+        $filters = $this->validatedFilters($request);
+        $incidents = $this->incidentQuery($filters)
+            ->orderByDesc('last_seen_at')
+            ->orderByDesc('id')
+            ->paginate(25)
+            ->withQueryString();
+        $monitors = Monitor::query()->orderBy('name')->get(['id', 'name']);
+
+        return view('incidents.index', [
+            'incidents' => $incidents,
+            'monitors' => $monitors,
+            'ruleLabels' => self::RULE_LABELS,
+            'stateLabels' => self::STATE_LABELS,
+            'filters' => [
+                'search' => $filters['search'] ?? '',
+                'state' => $filters['state'] ?? '',
+                'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
+                'rule_key' => $filters['rule_key'] ?? '',
+            ],
+        ]);
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $filters = $this->validatedFilters($request);
+        $exportedAt = now();
+
+        return response()->streamDownload(function () use ($filters, $exportedAt): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'incident_id',
+                'monitor_name',
+                'rule_key',
+                'severity',
+                'state',
+                'first_seen_at_utc',
+                'classification',
+                'failure_count',
+                'recovery_count',
+                'opened_at_utc',
+                'resolved_at_utc',
+                'confirmed_duration_seconds',
+                'acknowledged_by',
+                'acknowledged_at_utc',
+                'last_seen_at_utc',
+                'note',
+            ]);
+
+            $this->incidentQuery($filters)
+                ->orderBy('id')
+                ->lazyById()
+                ->each(function (Incident $incident) use ($stream, $exportedAt): void {
+                    $durationEndsAt = match ($incident->state) {
+                        Incident::STATE_OPEN => $exportedAt,
+                        Incident::STATE_RESOLVED => $incident->resolved_at,
+                        default => null,
+                    };
+                    $confirmedDurationSeconds = $incident->classification === 'false_alarm'
+                        || $incident->opened_at === null
+                        || $durationEndsAt === null
+                        ? ''
+                        : (string) max(0, $durationEndsAt->getTimestamp() - $incident->opened_at->getTimestamp());
+                    $fields = [
+                        (string) $incident->id,
+                        $incident->monitor?->name ?? '',
+                        $incident->rule_key,
+                        $incident->severity,
+                        $incident->state,
+                        $incident->created_at?->utc()->toIso8601String() ?? '',
+                        (string) $incident->classification,
+                        (string) $incident->failure_count,
+                        (string) $incident->recovery_count,
+                        $incident->opened_at?->utc()->toIso8601String() ?? '',
+                        $incident->resolved_at?->utc()->toIso8601String() ?? '',
+                        $confirmedDurationSeconds,
+                        $incident->acknowledgedBy?->name ?? '',
+                        $incident->acknowledged_at?->utc()->toIso8601String() ?? '',
+                        $incident->last_seen_at?->utc()->toIso8601String() ?? '',
+                        (string) $incident->note,
+                    ];
+
+                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                });
+
+            fclose($stream);
+        }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** @return array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string} */
+    private function validatedFilters(Request $request): array
+    {
+        return $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'state' => ['nullable', 'in:'.implode(',', array_keys(self::STATE_LABELS))],
+            'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
+            'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
+        ]);
+    }
+
+    /** @param array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string} $filters */
+    private function incidentQuery(array $filters): Builder
+    {
+        return Incident::query()
+            ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
+            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+                $query->where(function (Builder $query) use ($search): void {
+                    $query->whereHas('monitor', static function (Builder $monitorQuery) use ($search): void {
+                        $monitorQuery->where('name', 'like', '%'.$search.'%');
+                    });
+
+                    if (ctype_digit($search)) {
+                        $query->orWhere('id', (int) $search);
+                    }
+                });
+            })
+            ->when($filters['state'] ?? null, static fn (Builder $query, string $state): Builder => $query->where('state', $state))
+            ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))
+            ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey));
+    }
+
+    private function escapeCsvFormula(string $value): string
+    {
+        return preg_match('/\A[\t\r ]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
+    }
+}

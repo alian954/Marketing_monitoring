@@ -13,6 +13,7 @@
         'enabled' => '已啟用',
         'disabled' => '未啟用',
         'pending' => '待檢查',
+        'sending' => '傳送中',
         'open' => '已確認',
         'resolved' => '已恢復',
         'completed' => '已完成',

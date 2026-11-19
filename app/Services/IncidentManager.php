@@ -10,13 +10,15 @@ use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\TlsObservation;
 use App\Services\Probe\ProbeResult;
+use App\Services\Probe\TlsCertificateResult;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class IncidentManager
 {
     public function __construct(private readonly NotificationDispatcher $notifications) {}
 
-    public function record(Monitor $monitor, CheckRun $run, ProbeResult $normal, ProbeResult $adsbot): ?int
+    public function record(Monitor $monitor, CheckRun $run, ProbeResult $normal, ?ProbeResult $adsbot): ?int
     {
         return DB::transaction(function () use ($monitor, $run, $normal, $adsbot): ?int {
             $lockedMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
@@ -28,7 +30,11 @@ class IncidentManager
             $delay = null;
             $normalStatusAccepted = $lockedMonitor->acceptsHttpStatus($normal->statusCode);
             $normalProbeSucceeded = $this->probeSucceededForMonitor($lockedMonitor, $normal);
-            $httpFailure = $normal->errorType !== null
+            $contentMatchIncomplete = $normal->errorType === 'body_too_large'
+                && $normalStatusAccepted
+                && is_string($lockedMonitor->expected_text)
+                && $lockedMonitor->expected_text !== '';
+            $httpFailure = ($normal->errorType !== null && ! $contentMatchIncomplete)
                 || $normal->statusCode === null
                 || (! $normalStatusAccepted && $normal->statusCode !== 429);
             $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'http', 'critical', $httpFailure, $normal, true));
@@ -38,6 +44,16 @@ class IncidentManager
             } else {
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'probe_restricted', 'warning', false, $normal, false));
             }
+
+            $delay = $this->earlierDelay($delay, $this->recordRule(
+                $lockedMonitor,
+                $run,
+                'probe_incomplete',
+                'warning',
+                $contentMatchIncomplete,
+                $normal,
+                true,
+            ));
 
             $expectedText = $lockedMonitor->expected_text;
             $expectedTextMode = $lockedMonitor->expected_text_mode === 'absent' ? 'absent' : 'present';
@@ -81,12 +97,227 @@ class IncidentManager
                 ));
             }
 
-            $uaDiffers = $normalProbeSucceeded && ! $this->probeSucceededForMonitor($lockedMonitor, $adsbot);
-            $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));
+            if ($adsbot !== null) {
+                $uaDiffers = $normalProbeSucceeded && ! $this->probeSucceededForMonitor($lockedMonitor, $adsbot);
+                $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));
+            }
 
             $this->recordTls($lockedMonitor, $run, $normal, $delay);
 
             return $delay;
+        });
+    }
+
+    public function queueDueReminders(): int
+    {
+        $intervalMinutes = (int) config('monitoring.incident_reminder_interval_minutes');
+
+        if ($intervalMinutes < 1) {
+            return 0;
+        }
+
+        $reminderCutoff = now()->subMinutes($intervalMinutes);
+        $incidentIds = Incident::query()
+            ->where('state', Incident::STATE_OPEN)
+            ->whereNotNull('opened_at')
+            ->where('opened_at', '<=', $reminderCutoff)
+            ->whereDoesntHave('outboxMessages', static function (Builder $query) use ($reminderCutoff): void {
+                $query->where('event_type', 'reminder')
+                    ->where('created_at', '>', $reminderCutoff);
+            })
+            ->orderBy('opened_at')
+            ->orderBy('id')
+            ->limit(100)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+        $queuedReminders = 0;
+
+        foreach ($incidentIds as $incidentId) {
+            $wasQueued = DB::transaction(function () use ($incidentId, $reminderCutoff): bool {
+                $incident = Incident::query()->lockForUpdate()->with('monitor')->find($incidentId);
+
+                if (
+                    $incident === null
+                    || $incident->state !== Incident::STATE_OPEN
+                    || $incident->opened_at === null
+                    || $incident->opened_at->greaterThan($reminderCutoff)
+                    || $this->isInMaintenance($incident->monitor)
+                ) {
+                    return false;
+                }
+
+                $hasRecentReminder = NotificationOutbox::query()
+                    ->where('incident_id', $incident->id)
+                    ->where('event_type', 'reminder')
+                    ->where('created_at', '>', $reminderCutoff)
+                    ->exists();
+
+                if ($hasRecentReminder) {
+                    return false;
+                }
+
+                $failureRun = IncidentEvent::query()
+                    ->where('incident_id', $incident->id)
+                    ->where('event_type', 'failure_seen')
+                    ->whereNotNull('check_run_id')
+                    ->with('checkRun')
+                    ->latest('created_at')
+                    ->first()?->checkRun;
+
+                if ($failureRun === null) {
+                    return false;
+                }
+
+                $reminderNumber = IncidentEvent::query()
+                    ->where('incident_id', $incident->id)
+                    ->where('event_type', 'reminder_queued')
+                    ->count() + 1;
+                $wasQueued = $this->notifications->queue(
+                    $incident,
+                    $incident->monitor,
+                    $failureRun,
+                    'reminder',
+                    'reminder-'.$reminderNumber,
+                );
+
+                if ($wasQueued) {
+                    IncidentEvent::query()->forceCreate([
+                        'incident_id' => $incident->id,
+                        'check_run_id' => null,
+                        'event_type' => 'reminder_queued',
+                        'evidence' => ['reminder_number' => $reminderNumber],
+                        'created_at' => now(),
+                    ]);
+                }
+
+                return $wasQueued;
+            });
+
+            if ($wasQueued) {
+                $queuedReminders++;
+            }
+        }
+
+        return $queuedReminders;
+    }
+
+    public function queueDueEscalations(): int
+    {
+        $incidentIds = Incident::query()
+            ->where('state', Incident::STATE_OPEN)
+            ->whereNull('acknowledged_at')
+            ->whereNotNull('opened_at')
+            ->whereHas('monitor', static function (Builder $query): void {
+                $query->whereNotNull('notification_escalation_email')
+                    ->whereNotNull('notification_escalation_delay_minutes');
+            })
+            ->whereDoesntHave('outboxMessages', static function (Builder $query): void {
+                $query->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION);
+            })
+            ->orderBy('opened_at')
+            ->orderBy('id')
+            ->limit(100)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+        $queuedEscalations = 0;
+
+        foreach ($incidentIds as $incidentId) {
+            $wasQueued = DB::transaction(function () use ($incidentId): bool {
+                $incident = Incident::query()->lockForUpdate()->with('monitor')->find($incidentId);
+
+                if (
+                    $incident === null
+                    || $incident->state !== Incident::STATE_OPEN
+                    || $incident->acknowledged_at !== null
+                    || $incident->opened_at === null
+                    || $incident->monitor === null
+                    || $incident->config_version !== $incident->monitor->config_version
+                    || $this->isInMaintenance($incident->monitor)
+                ) {
+                    return false;
+                }
+
+                $monitor = $incident->monitor;
+                $delayMinutes = (int) $monitor->notification_escalation_delay_minutes;
+
+                if (
+                    $delayMinutes < 1
+                    || $monitor->notification_escalation_email === null
+                    || $incident->opened_at->addMinutes($delayMinutes)->isFuture()
+                    || $incident->outboxMessages()->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)->exists()
+                ) {
+                    return false;
+                }
+
+                $failureRun = IncidentEvent::query()
+                    ->where('incident_id', $incident->id)
+                    ->where('event_type', 'failure_seen')
+                    ->whereNotNull('check_run_id')
+                    ->with('checkRun')
+                    ->latest('created_at')
+                    ->first()?->checkRun;
+                $recipients = NotificationEmailRecipientParser::parse($monitor->notification_escalation_email);
+
+                if ($failureRun === null || $recipients === []) {
+                    return false;
+                }
+
+                $wasQueued = $this->notifications->queue(
+                    $incident,
+                    $monitor,
+                    $failureRun,
+                    NotificationOutbox::EVENT_TYPE_ESCALATION,
+                    emailRecipientsOverride: $recipients,
+                    includeSlack: false,
+                );
+
+                if ($wasQueued) {
+                    IncidentEvent::query()->firstOrCreate([
+                        'incident_id' => $incident->id,
+                        'check_run_id' => null,
+                        'event_type' => 'escalation_queued',
+                    ], [
+                        'evidence' => ['recipient_count' => count($recipients), 'delay_minutes' => $delayMinutes],
+                        'created_at' => now(),
+                    ]);
+                }
+
+                return $wasQueued;
+            });
+
+            if ($wasQueued) {
+                $queuedEscalations++;
+            }
+        }
+
+        return $queuedEscalations;
+    }
+
+    public function recordTlsObservation(Monitor $monitor, CheckRun $run, TlsCertificateResult $result): void
+    {
+        DB::transaction(function () use ($monitor, $run, $result): void {
+            $lockedMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
+
+            if ($lockedMonitor === null || $lockedMonitor->config_version !== $run->config_version) {
+                return;
+            }
+
+            $probeResult = new ProbeResult(
+                null,
+                0,
+                null,
+                [],
+                [],
+                $result->errorType,
+                $result->errorDetail,
+                null,
+                $result->expiresAt,
+            );
+            $delay = null;
+
+            $this->recordTls($lockedMonitor, $run, $probeResult, $delay);
         });
     }
 
@@ -135,6 +366,7 @@ class IncidentManager
             'error_type' => $result->errorType,
             'elapsed_ms' => $result->elapsedMs,
         ] + $additionalEvidence;
+        $confirmationDelaySeconds = $this->confirmationDelaySeconds($monitor);
 
         if ($failed && $incident === null) {
             $incident = Incident::query()->create([
@@ -146,12 +378,12 @@ class IncidentManager
                 'active_key' => hash('sha256', implode(':', [$monitor->id, $run->config_version, $ruleKey])),
                 'failure_count' => 1,
                 'recovery_count' => 0,
-                'confirm_after' => now()->addSeconds((int) config('monitoring.confirmation_delay_seconds')),
+                'confirm_after' => now()->addSeconds($confirmationDelaySeconds),
                 'last_seen_at' => now(),
             ]);
             $this->addEvent($incident, $run, 'failure_seen', $evidence);
 
-            return (int) config('monitoring.confirmation_delay_seconds');
+            return $confirmationDelaySeconds;
         }
 
         if ($incident === null) {
@@ -163,7 +395,7 @@ class IncidentManager
             $incident->last_seen_at = now();
             $incident->recovery_count = 0;
             $incident->confirm_after = $incident->state === Incident::STATE_SUSPECT
-                ? ($incident->confirm_after ?? now()->addSeconds((int) config('monitoring.confirmation_delay_seconds')))
+                ? ($incident->confirm_after ?? now()->addSeconds($confirmationDelaySeconds))
                 : null;
 
             if ($isNewObservation) {
@@ -221,10 +453,10 @@ class IncidentManager
         }
 
         if ($incident->recovery_count === 1) {
-            $incident->confirm_after ??= now()->addSeconds((int) config('monitoring.confirmation_delay_seconds'));
+            $incident->confirm_after ??= now()->addSeconds($confirmationDelaySeconds);
             $incident->save();
 
-            return (int) config('monitoring.confirmation_delay_seconds');
+            return $confirmationDelaySeconds;
         }
 
         if ($incident->recovery_count >= 2 && $incident->confirm_after !== null && $incident->confirm_after->getTimestamp() <= now()->timestamp) {
@@ -278,10 +510,12 @@ class IncidentManager
         $expired = $secondsRemaining <= 0;
         $withinSevenDays = $secondsRemaining > 0 && $secondsRemaining <= 7 * 86400;
         $withinFourteenDays = $secondsRemaining > 7 * 86400 && $secondsRemaining <= 14 * 86400;
+        $withinThirtyDays = $secondsRemaining > 14 * 86400 && $secondsRemaining <= 30 * 86400;
 
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_expired', 'critical', $expired, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_7d', 'critical', $withinSevenDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_14d', 'warning', $withinFourteenDays, $result, true, false));
+        $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_30d', 'warning', $withinThirtyDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_handshake', 'critical', false, $result, true, false));
     }
 
@@ -304,6 +538,11 @@ class IncidentManager
         return $current === null ? $candidate : min($current, $candidate);
     }
 
+    private function confirmationDelaySeconds(Monitor $monitor): int
+    {
+        return max(1, (int) ($monitor->confirmation_delay_seconds ?? config('monitoring.confirmation_delay_seconds')));
+    }
+
     private function probeSucceededForMonitor(Monitor $monitor, ProbeResult $result): bool
     {
         return $result->errorType === null && $monitor->acceptsHttpStatus($result->statusCode);
@@ -314,9 +553,8 @@ class IncidentManager
         $currentTime = now();
 
         return $monitor->maintenanceWindows()
-            ->where('starts_at', '<=', $currentTime)
-            ->where('ends_at', '>', $currentTime)
-            ->exists();
+            ->get()
+            ->contains(fn (MaintenanceWindow $window): bool => $window->isActiveAt($currentTime));
     }
 
     private function hasOpenedNotification(Incident $incident): bool
@@ -335,8 +573,7 @@ class IncidentManager
 
         return MaintenanceWindow::query()
             ->where('monitor_id', $incident->monitor_id)
-            ->where('starts_at', '<=', $incident->opened_at)
-            ->where('ends_at', '>', $incident->opened_at)
-            ->exists();
+            ->get()
+            ->contains(fn (MaintenanceWindow $window): bool => $window->isActiveAt($incident->opened_at));
     }
 }

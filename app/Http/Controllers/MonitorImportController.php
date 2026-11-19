@@ -16,6 +16,13 @@ use Throwable;
 
 class MonitorImportController extends Controller
 {
+    /** @var list<list<string>> */
+    private const SUPPORTED_HEADERS = [
+        ['name', 'url', 'label'],
+        ['name', 'url', 'label', 'expected_text'],
+        ['name', 'url', 'label', 'expected_text', 'expected_text_mode'],
+    ];
+
     public function __construct(
         private readonly UrlSafetyPolicy $urlPolicy,
         private readonly UrlMasker $urlMasker,
@@ -39,17 +46,18 @@ class MonitorImportController extends Controller
 
         if (! is_array($header)) {
             fclose($stream);
-            throw ValidationException::withMessages(['csv_file' => 'CSV 檔案是空的。請新增標題列：name,url,label。']);
+            throw ValidationException::withMessages(['csv_file' => 'CSV 檔案是空的。請新增標題列：name,url,label；也可加上 expected_text,expected_text_mode。']);
         }
 
         $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
         $header = array_map(static fn ($cell): string => mb_strtolower(trim((string) $cell)), $header);
 
-        if ($header !== ['name', 'url', 'label']) {
+        if (! in_array($header, self::SUPPORTED_HEADERS, true)) {
             fclose($stream);
-            throw ValidationException::withMessages(['csv_file' => '第一列必須完全符合：name,url,label。']);
+            throw ValidationException::withMessages(['csv_file' => '標題列必須依序使用 name,url,label，並可選擇加入 expected_text,expected_text_mode。']);
         }
 
+        $columnIndexes = array_flip($header);
         $existingHashes = Monitor::query()->pluck('url_hash')->flip()->all();
         $seenHashes = [];
         $rows = [];
@@ -63,15 +71,22 @@ class MonitorImportController extends Controller
                 break;
             }
 
-            $cells = array_pad($cells, 3, '');
+            $cells = array_pad($cells, count($header), '');
             $name = trim((string) ($cells[0] ?? ''));
             $url = trim((string) ($cells[1] ?? ''));
             $label = trim((string) ($cells[2] ?? ''));
+            $expectedText = isset($columnIndexes['expected_text'])
+                ? trim((string) ($cells[$columnIndexes['expected_text']] ?? ''))
+                : '';
+            $expectedTextMode = isset($columnIndexes['expected_text_mode'])
+                ? mb_strtolower(trim((string) ($cells[$columnIndexes['expected_text_mode']] ?? '')))
+                : 'present';
+            $expectedTextMode = $expectedTextMode === '' ? 'present' : $expectedTextMode;
             $errors = [];
             $duplicate = false;
 
-            if (count($cells) > 3) {
-                $errors[] = '每筆資料只能有 name、url、label 三個欄位。';
+            if (count($cells) > count($header)) {
+                $errors[] = '資料欄位數量與標題列不一致。';
             }
 
             if ($name === '' || mb_strlen($name) > 120) {
@@ -86,26 +101,44 @@ class MonitorImportController extends Controller
                 $errors[] = '標籤長度不得超過 100 個字元。';
             }
 
+            if (mb_strlen($expectedText) > 500) {
+                $errors[] = '預期文字不得超過 500 個字元。';
+            }
+
+            if (! in_array($expectedTextMode, ['present', 'absent'], true)) {
+                $errors[] = '預期文字比對方式只能是 present 或 absent。';
+            }
+
             $normalizedUrl = $url;
             $hash = null;
+            $socialPlatform = null;
 
             if ($errors === []) {
                 try {
                     $normalizedUrl = $this->validateUrl($url);
                     $hash = Monitor::fingerprintUrl($normalizedUrl);
-
-                    if (isset($existingHashes[$hash])) {
-                        $duplicate = true;
-                        $errors[] = '此網址已在監測中。';
-                    } elseif (isset($seenHashes[$hash])) {
-                        $duplicate = true;
-                        $errors[] = '此網址在 CSV 檔案中重複。';
-                    } else {
-                        $seenHashes[$hash] = true;
-                    }
+                    $socialPlatform = Monitor::socialPlatformForUrl($normalizedUrl);
                 } catch (ProbeException $exception) {
                     $errors[] = $exception->getMessage();
                 }
+            }
+
+            if ($socialPlatform !== null && $expectedText === '') {
+                $errors[] = '社群貼文必須提供 expected_text 欄位中的預期文字。';
+            }
+
+            if ($socialPlatform !== null && $expectedTextMode !== 'present') {
+                $errors[] = '社群貼文的 expected_text_mode 必須是 present。';
+            }
+
+            if ($hash !== null && isset($existingHashes[$hash])) {
+                $duplicate = true;
+                $errors[] = '此網址已在監測中。';
+            } elseif ($hash !== null && isset($seenHashes[$hash])) {
+                $duplicate = true;
+                $errors[] = '此網址在 CSV 檔案中重複。';
+            } elseif ($hash !== null && $errors === []) {
+                $seenHashes[$hash] = true;
             }
 
             $rows[] = [
@@ -114,6 +147,8 @@ class MonitorImportController extends Controller
                 'url' => $normalizedUrl,
                 'masked_url' => $url === '' ? '' : $this->urlMasker->mask($normalizedUrl),
                 'label' => $label,
+                'expected_text' => $expectedText,
+                'expected_text_mode' => $expectedTextMode,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -178,8 +213,10 @@ class MonitorImportController extends Controller
                 'config_version' => 1,
                 'allowed_redirect_hosts' => [],
                 'accepted_status_codes' => [],
-                'expected_text' => null,
-                'expected_text_mode' => 'present',
+                'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
+                'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
+                'timeout_seconds' => (int) config('monitoring.request_timeout_seconds'),
+                'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => (int) config('monitoring.interval_seconds'),
                 'next_check_at' => now(),
             ]);
