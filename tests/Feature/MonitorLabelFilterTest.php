@@ -53,6 +53,7 @@ class MonitorLabelFilterTest extends TestCase
             'platform' => 'all',
             'state' => 'enabled',
             'http_status' => '',
+            'signal' => '',
             'sort' => 'name',
         ], $response->viewData('filters'));
     }
@@ -237,6 +238,7 @@ class MonitorLabelFilterTest extends TestCase
             'platform' => 'all',
             'state' => 'enabled',
             'http_status' => '',
+            'signal' => '',
             'sort' => 'last_checked_desc',
         ], $response->viewData('filters'));
     }

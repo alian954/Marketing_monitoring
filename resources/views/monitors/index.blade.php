@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['http_status'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['http_status'] !== '' || $filters['signal'] !== '';
         $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
@@ -99,6 +99,27 @@
                             @enderror
                         </div>
                         <div class="field-group">
+                            <label class="field-label" for="monitor-signal">錯誤訊號代碼</label>
+                            <input
+                                class="field-input @error('signal') is-invalid @enderror"
+                                id="monitor-signal"
+                                name="signal"
+                                type="text"
+                                maxlength="40"
+                                value="{{ old('signal', $filters['signal']) }}"
+                                autocomplete="off"
+                                autocorrect="off"
+                                autocapitalize="none"
+                                spellcheck="false"
+                                aria-describedby="{{ $errors->has('signal') ? 'monitor-signal-help monitor-signal-error' : 'monitor-signal-help' }}"
+                                @if ($errors->has('signal')) aria-invalid="true" @endif
+                            >
+                            <p id="monitor-signal-help" class="field-help">輸入最新一般探測或 AdsBot 模擬的精確代碼，例如 timeout、dns_nxdomain 或 tls_verify。</p>
+                            @error('signal')
+                                <p id="monitor-signal-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="field-group">
                             <label class="field-label" for="monitor-sort">排序方式</label>
                             <select class="field-select" id="monitor-sort" name="sort">
                                 <option value="name" @selected(old('sort', $filters['sort']) === 'name')>名稱（A–Z）</option>
@@ -186,7 +207,7 @@
             </div>
             <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="monitor-table-caption">
                 <table class="data-table">
-                    <caption id="monitor-table-caption" class="sr-only">符合篩選條件的監測項目、檢查排程與最近一次健康檢查結果</caption>
+                    <caption id="monitor-table-caption" class="sr-only">符合篩選條件的監測項目、檢查排程、最近檢查結果與錯誤訊號</caption>
                     <thead>
                         <tr>
                             <th scope="col">
@@ -201,6 +222,7 @@
                             <th scope="col">最近檢查</th>
                             <th scope="col">下次檢查</th>
                             <th scope="col">HTTP</th>
+                            <th scope="col">最新錯誤訊號</th>
                             <th scope="col">監測功能</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -260,6 +282,17 @@
                                         {{ $monitor->latestCheckRun->normal_status }}
                                     @else
                                         <span aria-label="沒有 HTTP 狀態碼">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($monitor->latestCheckRun?->error_type)
+                                        <span class="secondary-text">一般探測：{{ $monitor->latestCheckRun->error_type }}</span>
+                                    @endif
+                                    @if ($monitor->latestCheckRun?->adsbot_error_type)
+                                        <span class="secondary-text">AdsBot 模擬：{{ $monitor->latestCheckRun->adsbot_error_type }}</span>
+                                    @endif
+                                    @if (! $monitor->latestCheckRun?->error_type && ! $monitor->latestCheckRun?->adsbot_error_type)
+                                        <span class="secondary-text">—</span>
                                     @endif
                                 </td>
                                 <td><x-state-badge :state="$monitor->enabled ? 'enabled' : 'paused'" /></td>

@@ -79,6 +79,7 @@ class MonitorController extends Controller
         'platform' => ['nullable', 'in:all,website,facebook,instagram,threads'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
         'http_status' => ['nullable', 'integer', 'between:100,599'],
+        'signal' => ['nullable', 'string', 'max:40', 'regex:/\A[a-z0-9_]+\z/'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
 
@@ -90,6 +91,8 @@ class MonitorController extends Controller
         'state.in' => '請選擇有效的監測狀態篩選條件。',
         'http_status.integer' => 'HTTP 回應碼必須是整數。',
         'http_status.between' => 'HTTP 回應碼必須介於 100–599。',
+        'signal.max' => '訊號代碼不得超過 40 個字元。',
+        'signal.regex' => '訊號代碼只能使用小寫英文字母、數字與底線。',
         'sort.in' => '請選擇有效的監測排序方式。',
     ];
 
@@ -112,8 +115,9 @@ class MonitorController extends Controller
         $platform = $validated['platform'] ?? 'all';
         $state = $validated['state'] ?? 'all';
         $httpStatus = (string) ($validated['http_status'] ?? '');
+        $signal = (string) ($validated['signal'] ?? '');
         $sort = $validated['sort'] ?? 'name';
-        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'http_status' => $httpStatus, 'sort' => $sort];
+        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'http_status' => $httpStatus, 'signal' => $signal, 'sort' => $sort];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents']);
@@ -141,7 +145,7 @@ class MonitorController extends Controller
         ]);
     }
 
-    /** @param array{search: string, label: string, platform: string, state: string, http_status?: string, sort?: string} $filters */
+    /** @param array{search: string, label: string, platform: string, state: string, http_status?: string, signal?: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
@@ -164,11 +168,23 @@ class MonitorController extends Controller
 
                 $query->where('social_platform', $filters['platform']);
             })
-            ->when(($filters['http_status'] ?? '') !== '', static function (Builder $query) use ($filters): void {
-                $query->whereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($filters): void {
-                    $checkRunQuery->where('normal_status', (int) $filters['http_status']);
-                });
-            })
+            ->when(
+                ($filters['http_status'] ?? '') !== '' || ($filters['signal'] ?? '') !== '',
+                static function (Builder $query) use ($filters): void {
+                    $query->whereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($filters): void {
+                        if (($filters['http_status'] ?? '') !== '') {
+                            $checkRunQuery->where('normal_status', (int) $filters['http_status']);
+                        }
+
+                        if (($filters['signal'] ?? '') !== '') {
+                            $checkRunQuery->where(function (Builder $signalQuery) use ($filters): void {
+                                $signalQuery->where('error_type', $filters['signal'])
+                                    ->orWhere('adsbot_error_type', $filters['signal']);
+                            });
+                        }
+                    });
+                },
+            )
             ->when($filters['state'] === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
             ->when($filters['state'] === 'paused', static fn (Builder $query) => $query->where('enabled', false))
             ->when($filters['state'] === 'incidents', static function (Builder $query): void {
@@ -1109,11 +1125,12 @@ class MonitorController extends Controller
             'platform' => $validated['platform'] ?? 'all',
             'state' => $validated['state'] ?? 'all',
             'http_status' => (string) ($validated['http_status'] ?? ''),
+            'signal' => (string) ($validated['signal'] ?? ''),
         ];
 
         return response()->streamDownload(function () use ($filters): void {
             $stream = fopen('php://output', 'w');
-            fputcsv($stream, ['name', 'url', 'label', 'enabled', 'last_checked_at_utc', 'http_status', 'error_type']);
+            fputcsv($stream, ['name', 'url', 'label', 'enabled', 'last_checked_at_utc', 'http_status', 'error_type', 'adsbot_error_type']);
 
             $this->filterMonitorList(Monitor::query(), $filters)
                 ->with('latestCheckRun')
@@ -1129,6 +1146,7 @@ class MonitorController extends Controller
                         $monitor->last_checked_at?->utc()->toIso8601String() ?? '',
                         $run?->normal_status === null ? '' : (string) $run->normal_status,
                         (string) $run?->error_type,
+                        (string) $run?->adsbot_error_type,
                     ];
 
                     fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
