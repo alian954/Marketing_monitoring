@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['monitor_id', 'config_version', 'rule_key', 'severity', 'state', 'classification', 'acknowledged_at', 'acknowledged_by_id', 'active_key', 'note', 'failure_count', 'recovery_count', 'confirm_after', 'opened_at', 'last_seen_at', 'resolved_at'])]
+#[Fillable(['monitor_id', 'config_version', 'rule_key', 'severity', 'state', 'classification', 'acknowledged_at', 'acknowledged_by_id', 'snoozed_until', 'active_key', 'note', 'failure_count', 'recovery_count', 'confirm_after', 'opened_at', 'last_seen_at', 'resolved_at'])]
 class Incident extends Model
 {
     public const STATE_SUSPECT = 'suspect';
@@ -31,6 +31,7 @@ class Incident extends Model
             'config_version' => 'integer',
             'acknowledged_by_id' => 'integer',
             'acknowledged_at' => 'immutable_datetime',
+            'snoozed_until' => 'immutable_datetime',
             'failure_count' => 'integer',
             'recovery_count' => 'integer',
             'confirm_after' => 'immutable_datetime',

@@ -23,6 +23,14 @@ class NotificationOutbox extends Model
 
     public const EVENT_TYPE_ESCALATION_STAGE_2 = 'escalation_stage_2';
 
+    public const EVENT_TYPE_REMINDER = 'reminder';
+
+    public const SNOOZABLE_EVENT_TYPES = [
+        self::EVENT_TYPE_REMINDER,
+        self::EVENT_TYPE_ESCALATION,
+        self::EVENT_TYPE_ESCALATION_STAGE_2,
+    ];
+
     public const EVENT_TYPE_STATUS_OPENED = 'status_opened';
 
     public const EVENT_TYPE_STATUS_RECOVERED = 'status_recovered';

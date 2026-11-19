@@ -56,20 +56,24 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 }
             }
 
-            if (in_array($outbox->event_type, [
-                NotificationOutbox::EVENT_TYPE_ESCALATION,
-                NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
-            ], true)) {
+            if (in_array($outbox->event_type, NotificationOutbox::SNOOZABLE_EVENT_TYPES, true)) {
                 $incident = Incident::query()->lockForUpdate()->find($outbox->incident_id);
+
+                if ($incident?->snoozed_until?->isFuture()) {
+                    return null;
+                }
 
                 if (
                     $incident === null
                     || $incident->state !== Incident::STATE_OPEN
-                    || $incident->acknowledged_at !== null
+                    || (in_array($outbox->event_type, [
+                        NotificationOutbox::EVENT_TYPE_ESCALATION,
+                        NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+                    ], true) && $incident->acknowledged_at !== null)
                 ) {
                     $outbox->forceFill([
                         'status' => 'cancelled',
-                        'last_error' => '事件已認領或結束，升級通知未寄出。',
+                        'last_error' => '事件已結束或升級事件已認領，通知未寄出。',
                     ])->save();
 
                     return null;

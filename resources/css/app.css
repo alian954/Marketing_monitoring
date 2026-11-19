@@ -1068,6 +1068,41 @@ textarea {
     padding: 0;
 }
 
+.incident-snooze-form {
+    display: grid;
+    gap: 10px;
+    margin-block: 12px;
+}
+
+.incident-snooze-settings {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.incident-snooze-settings legend {
+    padding: 0;
+}
+
+.incident-snooze-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-block-start: 8px;
+}
+
+.incident-snooze-option {
+    min-block-size: 32px;
+    align-items: center;
+}
+
+@media (pointer: coarse) {
+    .incident-snooze-option {
+        min-block-size: 48px;
+    }
+}
+
 .field-group-full {
     grid-column: 1 / -1;
 }

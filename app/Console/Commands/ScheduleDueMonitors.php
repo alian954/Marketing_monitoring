@@ -11,6 +11,7 @@ use App\Services\RunScheduler;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
 #[Signature('monitors:dispatch-due')]
@@ -46,6 +47,12 @@ class ScheduleDueMonitors extends Command
 
             NotificationOutbox::query()
                 ->where('status', 'pending')
+                ->where(function (Builder $query): void {
+                    $query->whereNotIn('event_type', NotificationOutbox::SNOOZABLE_EVENT_TYPES)
+                        ->orWhereDoesntHave('incident', static function (Builder $incidentQuery): void {
+                            $incidentQuery->whereNotNull('snoozed_until')->where('snoozed_until', '>', now());
+                        });
+                })
                 ->orderBy('id')
                 ->limit(100)
                 ->get()

@@ -84,6 +84,8 @@ Route::middleware('auth')->group(function (): void {
 
     Route::post('/incidents/{incident}/acknowledgement', [IncidentController::class, 'acknowledge'])->name('incidents.acknowledgement.store');
     Route::delete('/incidents/{incident}/acknowledgement', [IncidentController::class, 'unacknowledge'])->name('incidents.acknowledgement.destroy');
+    Route::post('/incidents/{incident}/notification-snooze', [IncidentController::class, 'snoozeNotifications'])->name('incidents.notifications.snooze');
+    Route::delete('/incidents/{incident}/notification-snooze', [IncidentController::class, 'resumeNotifications'])->name('incidents.notifications.snooze.destroy');
     Route::patch('/incidents/{incident}', [IncidentController::class, 'update'])->name('incidents.update');
     Route::post('/notifications/{outbox}/retry', [IncidentController::class, 'retryOutbox'])->name('notifications.retry');
 });

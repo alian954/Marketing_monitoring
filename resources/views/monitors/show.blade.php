@@ -37,6 +37,8 @@
         'superseded' => '舊事件已因設定變更而結束',
         'acknowledged' => '事件已認領',
         'unacknowledged' => '事件認領已解除',
+        'notifications_snoozed' => '提醒與升級通知已暫停',
+        'notifications_resumed' => '提醒與升級通知已恢復',
     ];
     $responseTimeAxis = [
         ['y' => 28, 'value' => $responseTime['scale_max_ms']],
@@ -591,8 +593,11 @@
                                                         比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : ($event->evidence['expected_text_found'] ? '原始回應已找到指定文字' : '原始回應未找到指定文字') }}
                                                     </span>
                                                 @endif
-                                                @if (in_array($event->event_type, ['acknowledged', 'unacknowledged'], true))
+                                                @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed'], true))
                                                     <span class="secondary-text">由 {{ $event->evidence['actor_name'] ?? '使用者' }}</span>
+                                                @endif
+                                                @if ($event->event_type === 'notifications_snoozed' && isset($event->evidence['duration_minutes'], $event->evidence['snoozed_until']))
+                                                    <span class="secondary-text">暫停 {{ $event->evidence['duration_minutes'] }} 分鐘，至 {{ \Illuminate\Support\Carbon::parse($event->evidence['snoozed_until'])->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</span>
                                                 @endif
                                                 <time class="secondary-text" datetime="{{ $event->created_at->toIso8601String() }}">{{ $event->created_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
                                             </span>
@@ -605,6 +610,45 @@
 
                             @if ($incident->note)
                                 <p class="incident-note-display"><strong>已儲存備註：</strong> {{ $incident->note }}</p>
+                            @endif
+
+                            @if ($incident->state === \App\Models\Incident::STATE_OPEN)
+                                @php
+                                    $snoozeErrorKey = 'duration_minutes.'.$incident->id;
+                                    $snoozeError = $errors->first($snoozeErrorKey);
+                                    $snoozedUntil = $incident->snoozed_until;
+                                    $notificationsAreSnoozed = $snoozedUntil !== null && $snoozedUntil->isFuture();
+                                @endphp
+                                <p class="field-help">此功能只暫緩持續提醒與升級通知，不會延後最初告警或恢復通知。</p>
+                                @if ($notificationsAreSnoozed)
+                                    <p class="field-help">提醒與升級目前暫停至 <time datetime="{{ $snoozedUntil->toIso8601String() }}">{{ $snoozedUntil->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>。</p>
+                                    <form class="form-actions" action="{{ route('incidents.notifications.snooze.destroy', $incident) }}" method="POST" aria-labelledby="incident-{{ $incident->id }}-title">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="button button-secondary button-small" type="submit">立即恢復通知</button>
+                                    </form>
+                                @endif
+                                <form class="incident-snooze-form" action="{{ route('incidents.notifications.snooze', $incident) }}" method="POST" aria-labelledby="incident-{{ $incident->id }}-title">
+                                    @csrf
+                                    <fieldset class="incident-snooze-settings" aria-describedby="incident-{{ $incident->id }}-snooze-help{{ $snoozeError ? ' incident-'.$incident->id.'-snooze-error' : '' }}">
+                                        <legend class="field-label">暫停提醒與升級多久</legend>
+                                        <p id="incident-{{ $incident->id }}-snooze-help" class="field-help">暫停期間新提醒不會排入；已排隊的提醒與升級會保留，恢復後再處理。</p>
+                                        <div class="incident-snooze-options">
+                                            @foreach ([30 => '30 分鐘', 60 => '1 小時', 240 => '4 小時', 1440 => '24 小時'] as $duration => $label)
+                                                <label class="field-check incident-snooze-option" for="incident-{{ $incident->id }}-snooze-{{ $duration }}">
+                                                    <input id="incident-{{ $incident->id }}-snooze-{{ $duration }}" name="duration_minutes[{{ $incident->id }}]" type="radio" value="{{ $duration }}" required @checked((int) old($snoozeErrorKey, 60) === $duration) @if ($snoozeError) aria-invalid="true" @if ($loop->first) autofocus @endif @endif>
+                                                    <span>{{ $label }}</span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                        @if ($snoozeError)
+                                            <p id="incident-{{ $incident->id }}-snooze-error" class="field-error" role="alert">{{ $snoozeError }}</p>
+                                        @endif
+                                    </fieldset>
+                                    <div class="form-actions">
+                                        <button class="button button-secondary button-small" type="submit">{{ $notificationsAreSnoozed ? '重新設定暫停時間' : '暫停通知' }}</button>
+                                    </div>
+                                </form>
                             @endif
 
                             @if (in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true))

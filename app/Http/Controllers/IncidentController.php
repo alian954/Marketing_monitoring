@@ -34,6 +34,78 @@ class IncidentController extends Controller
         return back()->with('status', $wasAcknowledged ? '事件認領已解除。' : '事件目前沒有待解除的認領。');
     }
 
+    public function snoozeNotifications(Request $request, Incident $incident): RedirectResponse
+    {
+        $field = 'duration_minutes.'.$incident->id;
+        $validated = $request->validate([
+            $field => ['required', 'integer', 'in:30,60,240,1440'],
+        ]);
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
+        $durationMinutes = (int) data_get($validated, $field);
+        $snoozedUntil = now()->addMinutes($durationMinutes);
+
+        DB::transaction(function () use ($incident, $actor, $snoozedUntil, $durationMinutes): void {
+            $lockedIncident = Incident::query()->lockForUpdate()->findOrFail($incident->id);
+
+            if ($lockedIncident->state !== Incident::STATE_OPEN) {
+                throw ValidationException::withMessages(['incident' => '只有已成立且仍進行中的事件可以暫停通知。']);
+            }
+
+            $lockedIncident->forceFill(['snoozed_until' => $snoozedUntil])->save();
+
+            IncidentEvent::query()->forceCreate([
+                'incident_id' => $lockedIncident->id,
+                'check_run_id' => null,
+                'event_type' => 'notifications_snoozed',
+                'evidence' => [
+                    'actor_id' => $actor->getKey(),
+                    'actor_name' => $actor->name,
+                    'duration_minutes' => $durationMinutes,
+                    'snoozed_until' => $snoozedUntil->toIso8601String(),
+                ],
+                'created_at' => now(),
+            ]);
+        });
+
+        return back()->with('status', '提醒與升級通知已暫停至 '.$snoozedUntil->timezone('Asia/Taipei')->format('Y/n/j H:i').'。');
+    }
+
+    public function resumeNotifications(Request $request, Incident $incident): RedirectResponse
+    {
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
+
+        $wasSnoozed = DB::transaction(function () use ($incident, $actor): bool {
+            $lockedIncident = Incident::query()->lockForUpdate()->findOrFail($incident->id);
+
+            if ($lockedIncident->state !== Incident::STATE_OPEN) {
+                throw ValidationException::withMessages(['incident' => '只有已成立且仍進行中的事件可以恢復通知。']);
+            }
+
+            if ($lockedIncident->snoozed_until === null) {
+                return false;
+            }
+
+            $lockedIncident->forceFill(['snoozed_until' => null])->save();
+
+            IncidentEvent::query()->forceCreate([
+                'incident_id' => $lockedIncident->id,
+                'check_run_id' => null,
+                'event_type' => 'notifications_resumed',
+                'evidence' => [
+                    'actor_id' => $actor->getKey(),
+                    'actor_name' => $actor->name,
+                ],
+                'created_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        return back()->with('status', $wasSnoozed ? '事件提醒與升級通知已恢復。' : '此事件目前沒有暫停通知。');
+    }
+
     public function update(Request $request, Incident $incident): RedirectResponse
     {
         $validated = $request->validate([

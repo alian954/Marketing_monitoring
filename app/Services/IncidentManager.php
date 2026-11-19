@@ -119,10 +119,13 @@ class IncidentManager
         $reminderCutoff = now()->subMinutes($intervalMinutes);
         $incidentIds = Incident::query()
             ->where('state', Incident::STATE_OPEN)
+            ->where(function (Builder $query): void {
+                $query->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
+            })
             ->whereNotNull('opened_at')
             ->where('opened_at', '<=', $reminderCutoff)
             ->whereDoesntHave('outboxMessages', static function (Builder $query) use ($reminderCutoff): void {
-                $query->where('event_type', 'reminder')
+                $query->where('event_type', NotificationOutbox::EVENT_TYPE_REMINDER)
                     ->where('created_at', '>', $reminderCutoff);
             })
             ->orderBy('opened_at')
@@ -140,6 +143,7 @@ class IncidentManager
                 if (
                     $incident === null
                     || $incident->state !== Incident::STATE_OPEN
+                    || ($incident->snoozed_until !== null && $incident->snoozed_until->isFuture())
                     || $incident->opened_at === null
                     || $incident->opened_at->greaterThan($reminderCutoff)
                     || $this->isInMaintenance($incident->monitor)
@@ -149,7 +153,7 @@ class IncidentManager
 
                 $hasRecentReminder = NotificationOutbox::query()
                     ->where('incident_id', $incident->id)
-                    ->where('event_type', 'reminder')
+                    ->where('event_type', NotificationOutbox::EVENT_TYPE_REMINDER)
                     ->where('created_at', '>', $reminderCutoff)
                     ->exists();
 
@@ -177,7 +181,7 @@ class IncidentManager
                     $incident,
                     $incident->monitor,
                     $failureRun,
-                    'reminder',
+                    NotificationOutbox::EVENT_TYPE_REMINDER,
                     'reminder-'.$reminderNumber,
                 );
 
@@ -207,6 +211,9 @@ class IncidentManager
         $incidentIds = Incident::query()
             ->where('state', Incident::STATE_OPEN)
             ->whereNull('acknowledged_at')
+            ->where(function (Builder $query): void {
+                $query->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
+            })
             ->whereNotNull('opened_at')
             ->where(function (Builder $query): void {
                 $query->where(function (Builder $query): void {
@@ -243,6 +250,7 @@ class IncidentManager
                     $incident === null
                     || $incident->state !== Incident::STATE_OPEN
                     || $incident->acknowledged_at !== null
+                    || ($incident->snoozed_until !== null && $incident->snoozed_until->isFuture())
                     || $incident->opened_at === null
                     || $incident->monitor === null
                     || $incident->config_version !== $incident->monitor->config_version

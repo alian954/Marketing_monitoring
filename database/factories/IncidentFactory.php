@@ -28,6 +28,7 @@ class IncidentFactory extends Factory
             'classification' => null,
             'acknowledged_at' => null,
             'acknowledged_by_id' => null,
+            'snoozed_until' => null,
             'active_key' => hash('sha256', (string) Str::uuid()),
             'note' => null,
             'failure_count' => 2,
