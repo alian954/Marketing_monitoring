@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $totalMonitors = $monitors->count();
+        $totalMonitors = $monitorCount;
     @endphp
 
     <div class="page-heading">

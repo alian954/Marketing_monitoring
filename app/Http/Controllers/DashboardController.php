@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\DnsChangeEvent;
+use App\Models\DomainRegistrationObservation;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
+use App\Models\TlsObservation;
 use App\Services\UrlMasker;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -16,8 +20,10 @@ class DashboardController extends Controller
     public function index(UrlMasker $urlMasker): View
     {
         $monitors = Monitor::query()
-            ->with(['latestCheckRun', 'latestTlsObservation', 'latestDomainRegistrationObservation', 'activeIncidents.acknowledgedBy:id,name'])
+            ->with(['latestCheckRun', 'activeIncidents'])
             ->orderBy('name')
+            ->orderBy('id')
+            ->limit(8)
             ->get();
 
         foreach ($monitors as $monitor) {
@@ -26,68 +32,58 @@ class DashboardController extends Controller
         }
 
         $asOf = now()->toImmutable();
-        $expiringCertificates = $monitors
-            ->filter(function (Monitor $monitor) use ($asOf): bool {
-                $expiresAt = $monitor->latestTlsObservation?->expires_at;
+        $monitorCount = 0;
+        $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
+        $expiringCertificateCount = 0;
+        $expiringCertificates = [];
+        $expiringDomainCount = 0;
+        $expiringDomains = [];
 
-                return $expiresAt !== null && $expiresAt->lessThanOrEqualTo($asOf->addDays(30));
-            })
-            ->sortBy(static fn (Monitor $monitor): int => $monitor->latestTlsObservation->expires_at->getTimestamp())
-            ->map(static function (Monitor $monitor) use ($asOf): array {
-                $observation = $monitor->latestTlsObservation;
-                $expiresAt = $observation->expires_at;
-                $secondsUntilExpiry = $expiresAt->getTimestamp() - $asOf->getTimestamp();
-                $observedAt = $observation->updated_at ?? $observation->created_at;
-                $isStale = $observedAt === null
-                    || $observedAt->lessThan($asOf->subHours(self::TLS_OBSERVATION_STALE_AFTER_HOURS));
+        Monitor::query()
+            ->with(['latestCheckRun', 'latestTlsObservation', 'latestDomainRegistrationObservation', 'activeIncidents'])
+            ->chunkById(500, function (EloquentCollection $monitorBatch) use (
+                $asOf,
+                &$monitorCount,
+                &$counts,
+                &$expiringCertificates,
+                &$expiringCertificateCount,
+                &$expiringDomains,
+                &$expiringDomainCount,
+            ): void {
+                foreach ($monitorBatch as $monitor) {
+                    $monitorCount++;
+                    $healthState = $monitor->healthState();
 
-                return [
-                    'monitor' => $monitor,
-                    'expires_at' => $expiresAt,
-                    'observed_at' => $observedAt,
-                    'is_stale' => $isStale,
-                    'is_expired' => ! $isStale && $secondsUntilExpiry <= 0,
-                    'days_until_expiry' => $isStale || $secondsUntilExpiry <= 0
-                        ? null
-                        : (int) ceil($secondsUntilExpiry / 86_400),
-                ];
-            })
-            ->values();
-        $expiringCertificateCount = $expiringCertificates->count();
-        $expiringCertificates = $expiringCertificates->take(10)->values();
+                    if (in_array($healthState, ['issue', 'suspect'], true)) {
+                        $counts['issue']++;
+                    } elseif (array_key_exists($healthState, $counts)) {
+                        $counts[$healthState]++;
+                    }
 
-        $expiringDomains = $monitors
-            ->filter(function (Monitor $monitor) use ($asOf): bool {
-                $expiresAt = $monitor->latestDomainRegistrationObservation?->expires_at;
+                    $certificateObservation = $monitor->latestTlsObservation;
+                    $certificateExpiresAt = $certificateObservation?->expires_at;
 
-                return $monitor->socialPlatform() === null
-                    && $expiresAt !== null
-                    && $expiresAt->lessThanOrEqualTo($asOf->addDays(30));
-            })
-            ->sortBy(static fn (Monitor $monitor): int => $monitor->latestDomainRegistrationObservation->expires_at->getTimestamp())
-            ->map(static function (Monitor $monitor) use ($asOf): array {
-                $observation = $monitor->latestDomainRegistrationObservation;
-                $expiresAt = $observation->expires_at;
-                $secondsUntilExpiry = $expiresAt->getTimestamp() - $asOf->getTimestamp();
-                $observedAt = $observation->updated_at ?? $observation->created_at;
-                $isStale = $observedAt === null
-                    || $observedAt->lessThan($asOf->subHours(self::TLS_OBSERVATION_STALE_AFTER_HOURS));
+                    if ($certificateExpiresAt !== null && $certificateExpiresAt->lessThanOrEqualTo($asOf->addDays(30))) {
+                        $expiringCertificateCount++;
+                        $expiringCertificates[] = $this->expirySummary($monitor, $certificateObservation, $asOf);
+                        $this->sortExpirySummaries($expiringCertificates);
+                    }
 
-                return [
-                    'monitor' => $monitor,
-                    'domain_name' => $observation->domain_name,
-                    'expires_at' => $expiresAt,
-                    'observed_at' => $observedAt,
-                    'is_stale' => $isStale,
-                    'is_expired' => ! $isStale && $secondsUntilExpiry <= 0,
-                    'days_until_expiry' => $isStale || $secondsUntilExpiry <= 0
-                        ? null
-                        : (int) ceil($secondsUntilExpiry / 86_400),
-                ];
-            })
-            ->values();
-        $expiringDomainCount = $expiringDomains->count();
-        $expiringDomains = $expiringDomains->take(10)->values();
+                    $domainObservation = $monitor->latestDomainRegistrationObservation;
+                    $domainExpiresAt = $domainObservation?->expires_at;
+
+                    if ($monitor->social_platform === null
+                        && $domainExpiresAt !== null
+                        && $domainExpiresAt->lessThanOrEqualTo($asOf->addDays(30))) {
+                        $expiringDomainCount++;
+                        $expiringDomains[] = [
+                            ...$this->expirySummary($monitor, $domainObservation, $asOf),
+                            'domain_name' => $domainObservation->domain_name,
+                        ];
+                        $this->sortExpirySummaries($expiringDomains);
+                    }
+                }
+            });
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -107,9 +103,10 @@ class DashboardController extends Controller
 
         return view('dashboard', [
             'monitors' => $monitors,
-            'expiringCertificates' => $expiringCertificates,
+            'monitorCount' => $monitorCount,
+            'expiringCertificates' => collect($expiringCertificates)->values(),
             'expiringCertificateCount' => $expiringCertificateCount,
-            'expiringDomains' => $expiringDomains,
+            'expiringDomains' => collect($expiringDomains)->values(),
             'expiringDomainCount' => $expiringDomainCount,
             'incidents' => $incidents,
             'dnsChanges' => $dnsChanges,
@@ -118,13 +115,42 @@ class DashboardController extends Controller
             'workerHeartbeat' => $workerHeartbeat,
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
             'queueWorkerEnabled' => config('queue.default') !== 'sync',
-            'counts' => [
-                'healthy' => $monitors->where('health_state', 'healthy')->count(),
-                'issue' => $monitors->whereIn('health_state', ['issue', 'suspect'])->count(),
-                'warning' => $monitors->where('health_state', 'warning')->count(),
-                'stale' => $monitors->where('health_state', 'stale')->count(),
-                'paused' => $monitors->where('health_state', 'paused')->count(),
-            ],
+            'counts' => $counts,
         ]);
+    }
+
+    /** @return array{monitor: Monitor, expires_at: CarbonImmutable, observed_at: \DateTimeInterface|null, is_stale: bool, is_expired: bool, days_until_expiry: int|null} */
+    private function expirySummary(Monitor $monitor, TlsObservation|DomainRegistrationObservation $observation, CarbonImmutable $asOf): array
+    {
+        $expiresAt = $observation->expires_at;
+        $secondsUntilExpiry = $expiresAt->getTimestamp() - $asOf->getTimestamp();
+        $observedAt = $observation->updated_at ?? $observation->created_at;
+        $isStale = $observedAt === null
+            || $observedAt->lessThan($asOf->subHours(self::TLS_OBSERVATION_STALE_AFTER_HOURS));
+
+        return [
+            'monitor' => $monitor,
+            'expires_at' => $expiresAt,
+            'observed_at' => $observedAt,
+            'is_stale' => $isStale,
+            'is_expired' => ! $isStale && $secondsUntilExpiry <= 0,
+            'days_until_expiry' => $isStale || $secondsUntilExpiry <= 0
+                ? null
+                : (int) ceil($secondsUntilExpiry / 86_400),
+        ];
+    }
+
+    /** @param list<array{monitor: Monitor, expires_at: CarbonImmutable}> $summaries */
+    private function sortExpirySummaries(array &$summaries): void
+    {
+        usort($summaries, static function (array $first, array $second): int {
+            return ($first['expires_at']->getTimestamp() <=> $second['expires_at']->getTimestamp())
+                ?: strcasecmp($first['monitor']->name, $second['monitor']->name)
+                ?: ($first['monitor']->id <=> $second['monitor']->id);
+        });
+
+        if (count($summaries) > 10) {
+            array_pop($summaries);
+        }
     }
 }
