@@ -363,6 +363,66 @@
         </section>
     </div>
 
+    <section class="panel spaced-top" aria-labelledby="response-metadata-history-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="response-metadata-history-title" class="panel-title">分享摘要變更歷史</h2>
+                <p class="panel-description">比對完成檢查提供的分享標題與摘要；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+            </div>
+            <span class="secondary-text">{{ count($responseMetadataChanges) }} 次變更</span>
+        </div>
+        @if ($responseMetadataChanges === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚未偵測到分享摘要變更</h3>
+                <p class="empty-copy">當完成檢查發現分享標題或摘要與前次不同，變更時間與前後內容會顯示在此處。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="response-metadata-history-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">{{ $monitor->name }}最近的分享摘要變更</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">變更時間</th>
+                            <th scope="col">變更前</th>
+                            <th scope="col">變更後</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($responseMetadataChanges as $change)
+                            <tr>
+                                <td>
+                                    <time class="timestamp" datetime="{{ $change['changed_at']->toIso8601String() }}">{{ $change['changed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
+                                    <span class="secondary-text">
+                                        @foreach ($change['changed_fields'] as $field)
+                                            {{ $field === 'title' ? '標題' : '摘要' }}@if (! $loop->last)、@endif
+                                        @endforeach
+                                        變更
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (in_array('title', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享標題：</span>{{ $change['previous_title'] ?? '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('description', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享摘要：</span>{{ $change['previous_description'] ?? '未提供' }}</p>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if (in_array('title', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享標題：</span>{{ $change['current_title'] ?? '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('description', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享摘要：</span>{{ $change['current_description'] ?? '未提供' }}</p>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     @if ($latestTlsObservation)
         <section class="panel spaced-top" aria-labelledby="latest-tls-observation-title">
             <div class="panel-header">

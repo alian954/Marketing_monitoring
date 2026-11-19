@@ -20,6 +20,7 @@ use App\Services\Probe\ProbeException;
 use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
+use App\Services\ResponseMetadataChangeHistory;
 use App\Services\RunScheduler;
 use App\Services\SlackWebhookUrlPolicy;
 use App\Services\TeamsWebhookUrlPolicy;
@@ -279,9 +280,10 @@ class MonitorController extends Controller
         return redirect()->route('monitors.show', $monitor)->with('status', '已新增監測項目，排程器下次執行時會進行檢查。');
     }
 
-    public function show(Request $request, Monitor $monitor): View
+    public function show(Request $request, Monitor $monitor, ResponseMetadataChangeHistory $metadataChangeHistory): View
     {
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
+        $responseMetadataChanges = $metadataChangeHistory->build($monitor);
         $latestResponseMetadataRun = $monitor->latestCheckRun;
         $previousResponseMetadataRun = $this->previousResponseMetadataRun($monitor, $latestResponseMetadataRun);
         $responseMetadataComparisonAvailable = $previousResponseMetadataRun !== null && (
@@ -430,6 +432,7 @@ class MonitorController extends Controller
             'previousResponseMetadataRun',
             'responseMetadataComparisonAvailable',
             'responseMetadataChanged',
+            'responseMetadataChanges',
             'runs',
             'dnsChanges',
             'latestTlsObservation',
