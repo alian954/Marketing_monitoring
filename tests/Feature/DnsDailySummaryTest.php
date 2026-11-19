@@ -7,8 +7,11 @@ use App\Models\DnsChangeEvent;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schedule;
@@ -21,6 +24,8 @@ class DnsDailySummaryTest extends TestCase
     public function test_daily_command_sends_one_masked_summary_for_the_previous_day(): void
     {
         Config::set('monitoring.notify_email', 'owner@example.test');
+        Config::set('monitoring.notify_slack_webhook', null);
+        Config::set('monitoring.notify_discord_webhook', null);
         Queue::fake([SendNotificationOutbox::class]);
         $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
         $monitor = Monitor::factory()->create([
@@ -39,13 +44,13 @@ class DnsDailySummaryTest extends TestCase
 
         $this->artisan('monitors:send-dns-summary')
             ->assertExitCode(0)
-            ->expectsOutputToContain('已將 1 筆 DNS 變更加入摘要寄送佇列。');
+            ->expectsOutputToContain('已將 1 筆 DNS 變更摘要加入 1 個通知管道。');
 
         $outbox = NotificationOutbox::query()->sole();
         $this->assertNull($outbox->incident_id);
         $this->assertSame('dns_daily_summary', $outbox->event_type);
         $this->assertSame('owner@example.test', $outbox->recipient);
-        $this->assertSame(64, strlen($outbox->event_key));
+        $this->assertSame(hash('sha256', 'dns_daily_summary:owner@example.test:2026-11-17'), $outbox->event_key);
         $this->assertStringContainsString('2026-11-17', $outbox->subject);
         $this->assertStringContainsString('Campaign landing', $outbox->body);
         $this->assertStringContainsString('email=REDACTED&token=REDACTED', $outbox->body);
@@ -101,9 +106,68 @@ class DnsDailySummaryTest extends TestCase
         Queue::assertPushed(SendNotificationOutbox::class, 1);
     }
 
+    public function test_daily_command_dispatches_a_masked_dns_summary_to_webhooks_without_email(): void
+    {
+        $slackWebhookUrl = 'https://hooks.slack.com/services/T123/SECRET/WEBHOOK';
+        $discordWebhookUrl = 'https://discord.com/api/webhooks/456/SECRET';
+        Config::set('monitoring.notify_email', null);
+        Config::set('monitoring.notify_slack_webhook', $slackWebhookUrl);
+        Config::set('monitoring.notify_discord_webhook', $discordWebhookUrl);
+        Queue::fake([SendNotificationOutbox::class]);
+        $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
+        $monitor = Monitor::factory()->create([
+            'name' => 'Campaign landing',
+            'url' => 'https://example.com/landing?token=dns-secret',
+            'url_hash' => Monitor::fingerprintUrl('https://example.com/landing?token=dns-secret'),
+        ]);
+        DnsChangeEvent::factory()->for($monitor)->create([
+            'previous_ips' => ['93.184.216.34'],
+            'current_ips' => ['93.184.216.35'],
+            'detected_at' => now()->subDay()->startOfDay()->addHours(12),
+        ]);
+
+        $this->artisan('monitors:send-dns-summary')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('已將 1 筆 DNS 變更摘要加入 2 個通知管道。');
+
+        $outboxes = NotificationOutbox::query()->orderBy('channel')->get();
+        $this->assertSame([NotificationOutbox::CHANNEL_DISCORD, NotificationOutbox::CHANNEL_SLACK], $outboxes->pluck('channel')->all());
+        $this->assertSame(2, $outboxes->pluck('event_key')->unique()->count());
+        $this->assertTrue($outboxes->every(static fn (NotificationOutbox $outbox): bool => $outbox->event_type === 'dns_daily_summary'
+            && $outbox->status === 'pending'
+            && str_contains($outbox->body, 'token=REDACTED')
+            && ! str_contains($outbox->body, 'dns-secret')));
+        $encryptedRecipients = DB::table('notification_outbox')->pluck('recipient')->all();
+        $this->assertNotContains($slackWebhookUrl, $encryptedRecipients);
+        $this->assertNotContains($discordWebhookUrl, $encryptedRecipients);
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
+
+        Http::fake([
+            $slackWebhookUrl => Http::response('', 200),
+            $discordWebhookUrl.'?wait=true' => Http::response('ok', 204),
+        ]);
+        Mail::fake();
+
+        $outboxes->each(static fn (NotificationOutbox $outbox) => (new SendNotificationOutbox($outbox->id))->handle());
+
+        $this->assertSame(2, NotificationOutbox::query()->where('status', 'sent')->count());
+        Http::assertSent(fn (Request $request): bool => $request->url() === $slackWebhookUrl
+            && str_contains($request['text'], '93.184.216.34')
+            && str_contains($request['text'], '93.184.216.35'));
+        Http::assertSent(fn (Request $request): bool => $request->url() === $discordWebhookUrl.'?wait=true'
+            && str_contains($request['content'], 'DNS 變更每日摘要')
+            && $request['allowed_mentions'] === ['parse' => []]);
+
+        $this->artisan('monitors:send-dns-summary')->assertExitCode(0);
+        $this->assertDatabaseCount('notification_outbox', 2);
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
+    }
+
     public function test_empty_day_or_missing_recipient_does_not_create_an_outbox_entry(): void
     {
         Config::set('monitoring.notify_email', 'owner@example.test');
+        Config::set('monitoring.notify_slack_webhook', null);
+        Config::set('monitoring.notify_discord_webhook', null);
         $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
 
         $this->artisan('monitors:send-dns-summary')
@@ -114,7 +178,7 @@ class DnsDailySummaryTest extends TestCase
         Config::set('monitoring.notify_email', '');
         $this->artisan('monitors:send-dns-summary')
             ->assertExitCode(0)
-            ->expectsOutputToContain('未設定通知收件人');
+            ->expectsOutputToContain('未設定任何通知管道');
         $this->assertDatabaseCount('notification_outbox', 0);
     }
 

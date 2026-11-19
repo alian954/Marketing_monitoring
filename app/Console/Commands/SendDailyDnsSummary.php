@@ -17,10 +17,25 @@ class SendDailyDnsSummary extends Command
 {
     public function handle(UrlMasker $urlMasker): int
     {
-        $recipient = (string) config('monitoring.notify_email');
+        $destinations = [];
+        $emailRecipient = trim((string) config('monitoring.notify_email'));
+        $slackWebhookUrl = trim((string) config('monitoring.notify_slack_webhook'));
+        $discordWebhookUrl = trim((string) config('monitoring.notify_discord_webhook'));
 
-        if ($recipient === '') {
-            $this->info('未設定通知收件人，未建立 DNS 摘要。');
+        if ($emailRecipient !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_EMAIL, $emailRecipient];
+        }
+
+        if ($slackWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_SLACK, $slackWebhookUrl];
+        }
+
+        if ($discordWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
+        }
+
+        if ($destinations === []) {
+            $this->info('未設定任何通知管道，未建立 DNS 摘要。');
 
             return self::SUCCESS;
         }
@@ -42,19 +57,33 @@ class SendDailyDnsSummary extends Command
             return self::SUCCESS;
         }
 
-        $eventKey = hash('sha256', implode(':', ['dns_daily_summary', $recipient, $reportDate]));
-        $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
-            'incident_id' => null,
-            'recipient' => $recipient,
-            'event_type' => 'dns_daily_summary',
-            'status' => 'pending',
-            'subject' => '['.config('app.name').'] DNS 變更摘要 '.$reportDate,
-            'body' => $this->summaryBody($events, $urlMasker, $reportDate),
-        ]);
+        $queuedCount = 0;
+        $subject = '['.config('app.name').'] DNS 變更摘要 '.$reportDate;
+        $body = $this->summaryBody($events, $urlMasker, $reportDate);
 
-        if ($outbox->wasRecentlyCreated) {
-            SendNotificationOutbox::dispatch($outbox->id);
-            $this->info('已將 '.$events->count().' 筆 DNS 變更加入摘要寄送佇列。');
+        foreach ($destinations as [$channel, $recipient]) {
+            $eventKeyParts = $channel === NotificationOutbox::CHANNEL_EMAIL
+                ? ['dns_daily_summary', $recipient, $reportDate]
+                : ['dns_daily_summary', $channel, hash('sha256', $recipient), $reportDate];
+            $eventKey = hash('sha256', implode(':', $eventKeyParts));
+            $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
+                'incident_id' => null,
+                'channel' => $channel,
+                'recipient' => $recipient,
+                'event_type' => 'dns_daily_summary',
+                'status' => 'pending',
+                'subject' => $subject,
+                'body' => $body,
+            ]);
+
+            if ($outbox->wasRecentlyCreated) {
+                SendNotificationOutbox::dispatch($outbox->id);
+                $queuedCount++;
+            }
+        }
+
+        if ($queuedCount > 0) {
+            $this->info('已將 '.$events->count().' 筆 DNS 變更摘要加入 '.$queuedCount.' 個通知管道。');
 
             return self::SUCCESS;
         }
