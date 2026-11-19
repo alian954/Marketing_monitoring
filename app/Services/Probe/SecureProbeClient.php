@@ -116,9 +116,13 @@ class SecureProbeClient implements ProbeClient
                 && $isRedirectResponse
                 && $response->location !== null
                 && trim($response->location) !== '';
-            $responseMetadata = ! $isRedirectResponse
-                ? ResponseMetadataExtractor::extract($response->body, $target['url'])
-                : ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            $responseInspection = ! $isRedirectResponse
+                ? ResponseMetadataExtractor::inspect($response->body, $target['url'])
+                : null;
+            $responseMetadata = $responseInspection['metadata'] ?? ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            $responseVisibleTextHash = $response->errorType === null
+                ? ($responseInspection['visible_text_hash'] ?? null)
+                : null;
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -241,6 +245,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['canonical_reference_hash'],
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
+                    $responseVisibleTextHash,
                 );
             }
 

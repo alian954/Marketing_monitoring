@@ -7,6 +7,21 @@ use PHPUnit\Framework\TestCase;
 
 class ResponseMetadataExtractorTest extends TestCase
 {
+    public function test_it_hashes_normalized_body_text_without_scripts_styles_or_whitespace_changes(): void
+    {
+        $first = ResponseMetadataExtractor::inspect(<<<'HTML'
+            <html><body><article>Campaign &amp; <strong>headline</strong></article><script>dynamic token one</script><style>.one { color: red; }</style></body></html>
+            HTML);
+        $sameText = ResponseMetadataExtractor::inspect(<<<'HTML'
+            <html><body><article>Campaign &amp; <em> headline </em></article><script>dynamic token two</script><style>.two { color: blue; }</style></body></html>
+            HTML);
+        $changedText = ResponseMetadataExtractor::inspect('<html><body><article>Campaign &amp; revised headline</article></body></html>');
+
+        $this->assertSame('71de0465ecf043c08e6d4a1f2f749de8e985f7cfe05d968d8b915606b7002995', $first['visible_text_hash']);
+        $this->assertSame($first['visible_text_hash'], $sameText['visible_text_hash']);
+        $this->assertNotSame($first['visible_text_hash'], $changedText['visible_text_hash']);
+    }
+
     public function test_it_prefers_open_graph_metadata_and_normalizes_the_values(): void
     {
         $metadata = ResponseMetadataExtractor::extract(<<<'HTML'

@@ -74,6 +74,21 @@ class FixtureProbeClient implements ProbeClient
         $matchesExpectedResponseHeader = ResponseHeaderCondition::matches($responseHeaders, $expectedResponseHeader);
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 
-        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps, null, $matchesExpectedResponseHeader, $expectedTextTermMatches);
+        return new ProbeResult(
+            $statusCode,
+            $elapsedMs,
+            $finalUrl,
+            $redirects,
+            $monitorHostIps,
+            null,
+            null,
+            $matchesExpectedText,
+            $expiry,
+            $monitorHostIps,
+            null,
+            $matchesExpectedResponseHeader,
+            $expectedTextTermMatches,
+            responseVisibleTextHash: ResponseMetadataExtractor::inspect($body)['visible_text_hash'],
+        );
     }
 }

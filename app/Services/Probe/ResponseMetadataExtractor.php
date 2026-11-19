@@ -24,8 +24,22 @@ class ResponseMetadataExtractor
      */
     public static function extract(string $html, ?string $responseUrl = null): array
     {
+        return self::inspect($html, $responseUrl)['metadata'];
+    }
+
+    /**
+     * @return array{
+     *     metadata: array{title: ?string, description: ?string, image_reference_hash: ?string, open_graph_type: ?string, canonical_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable},
+     *     visible_text_hash: ?string
+     * }
+     */
+    public static function inspect(string $html, ?string $responseUrl = null): array
+    {
         if (trim($html) === '') {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            return [
+                'metadata' => ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null],
+                'visible_text_hash' => hash('sha256', ''),
+            ];
         }
 
         $document = new DOMDocument('1.0', 'UTF-8');
@@ -42,7 +56,10 @@ class ResponseMetadataExtractor
         }
 
         if (! $loaded) {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            return [
+                'metadata' => ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null],
+                'visible_text_hash' => null,
+            ];
         }
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
@@ -110,14 +127,49 @@ class ResponseMetadataExtractor
         }
 
         return [
-            'title' => self::truncate($openGraphTitle ?? $twitterTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
-            'description' => self::truncate($openGraphDescription ?? $twitterDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
-            'image_reference_hash' => $imageReferenceHash,
-            'open_graph_type' => $openGraphType,
-            'canonical_reference_hash' => $canonicalReferenceHash,
-            'published_at' => $publishedAt,
-            'modified_at' => $modifiedAt,
+            'metadata' => [
+                'title' => self::truncate($openGraphTitle ?? $twitterTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
+                'description' => self::truncate($openGraphDescription ?? $twitterDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
+                'image_reference_hash' => $imageReferenceHash,
+                'open_graph_type' => $openGraphType,
+                'canonical_reference_hash' => $canonicalReferenceHash,
+                'published_at' => $publishedAt,
+                'modified_at' => $modifiedAt,
+            ],
+            'visible_text_hash' => self::visibleTextHash($document),
         ];
+    }
+
+    private static function visibleTextHash(DOMDocument $document): string
+    {
+        $body = $document->getElementsByTagName('body')->item(0);
+
+        if (! $body instanceof \DOMElement) {
+            return hash('sha256', '');
+        }
+
+        foreach (['script', 'style', 'template'] as $elementName) {
+            $elements = $body->getElementsByTagName($elementName);
+
+            while ($elements->length > 0) {
+                $element = $elements->item(0);
+
+                if ($element === null) {
+                    break;
+                }
+
+                $element->parentNode?->removeChild($element);
+            }
+        }
+
+        $text = trim($body->textContent);
+        $normalizedText = preg_replace('/[\s\p{Z}]+/u', ' ', $text);
+
+        if ($normalizedText === null) {
+            $normalizedText = preg_replace('/\s+/', ' ', $text) ?? $text;
+        }
+
+        return hash('sha256', trim($normalizedText));
     }
 
     private static function parseOpenGraphDateTime(string $value): ?DateTimeImmutable

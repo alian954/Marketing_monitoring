@@ -515,6 +515,42 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="response-content-history-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="response-content-history-title" class="panel-title">頁面文字變更歷史</h2>
+                <p class="panel-description">比較 HTTP 回應中的頁面文字，忽略 script、style 與空白差異。系統只保存指紋，不保存或顯示原文；首次檢查、超過讀取上限或設定版本不同時不比較，最多列出最近 10 次變更。</p>
+            </div>
+            <span class="secondary-text">{{ count($responseContentChanges) }} 次變更</span>
+        </div>
+        @if ($responseContentChanges === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚未偵測到頁面文字變更</h3>
+                <p class="empty-copy">當完成檢查發現回應中的頁面文字與前次不同，變更時間會顯示在此處。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="response-content-history-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">{{ $monitor->name }}最近的頁面文字變更</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">變更時間</th>
+                            <th scope="col">偵測結果</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($responseContentChanges as $change)
+                            <tr>
+                                <td><time class="timestamp" datetime="{{ $change['changed_at']->toIso8601String() }}">{{ $change['changed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
+                                <td>頁面文字與前次檢查不同（內容未保存）</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     @if ($latestTlsObservation)
         <section class="panel spaced-top" aria-labelledby="latest-tls-observation-title">
             <div class="panel-header">

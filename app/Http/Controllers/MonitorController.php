@@ -21,6 +21,7 @@ use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RedirectChangeHistory;
+use App\Services\ResponseContentChangeHistory;
 use App\Services\ResponseMetadataChangeHistory;
 use App\Services\RunScheduler;
 use App\Services\SlackWebhookUrlPolicy;
@@ -286,10 +287,12 @@ class MonitorController extends Controller
         Monitor $monitor,
         ResponseMetadataChangeHistory $metadataChangeHistory,
         RedirectChangeHistory $redirectChangeHistory,
+        ResponseContentChangeHistory $responseContentChangeHistory,
     ): View {
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
         $responseMetadataChanges = $metadataChangeHistory->build($monitor);
         $redirectChanges = $redirectChangeHistory->build($monitor);
+        $responseContentChanges = $responseContentChangeHistory->build($monitor);
         $latestResponseMetadataRun = $monitor->latestCheckRun;
         $previousResponseMetadataRun = $this->previousResponseMetadataRun($monitor, $latestResponseMetadataRun);
         $responseMetadataComparisonAvailable = $previousResponseMetadataRun !== null && (
@@ -455,6 +458,7 @@ class MonitorController extends Controller
             'responseMetadataChanged',
             'responseMetadataChanges',
             'redirectChanges',
+            'responseContentChanges',
             'runs',
             'dnsChanges',
             'latestTlsObservation',

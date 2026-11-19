@@ -31,6 +31,7 @@ readonly class ProbeResult
         public ?string $responseCanonicalReferenceHash = null,
         public ?\DateTimeImmutable $responsePublishedAt = null,
         public ?\DateTimeImmutable $responseModifiedAt = null,
+        public ?string $responseVisibleTextHash = null,
     ) {}
 
     public function succeeded(): bool

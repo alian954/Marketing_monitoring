@@ -131,6 +131,60 @@ class ProbeSecurityTest extends TestCase
         $this->assertSame(['93.184.216.34', '93.184.216.35'], $result->monitorHostIps);
     }
 
+    public function test_secure_probe_returns_a_fingerprint_of_normalized_page_text(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><body><article>Public post copy</article><script>dynamic token</script></body></html>',
+                    1,
+                    null,
+                    null,
+                    null,
+                );
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0');
+
+        $this->assertSame('34dacca1cadf25c7566cc46b0eaa0acaf37b10a1c4c88e643d5c0407037facbf', $result->responseVisibleTextHash);
+    }
+
+    public function test_secure_probe_does_not_fingerprint_a_truncated_response_body(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Partial response', 1, 'body_too_large', 'body limit', null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0');
+
+        $this->assertNull($result->responseVisibleTextHash);
+    }
+
     public function test_social_platform_first_party_redirects_are_followed_without_a_user_allowlist(): void
     {
         $redirectCases = [
@@ -545,6 +599,7 @@ class ProbeSecurityTest extends TestCase
 
         $this->assertTrue($result->expectedTextFound);
         $this->assertSame([true], $result->expectedTextTermMatches);
+        $this->assertSame('0f27bf8fedabdaceeead11b14b91465407c83152e1c8abeaba9123d7972b1dce', $result->responseVisibleTextHash);
     }
 
     public function test_expected_text_matcher_supports_all_any_and_absent_text_conditions(): void
