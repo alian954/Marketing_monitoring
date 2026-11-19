@@ -572,6 +572,7 @@
                 <h2 id="dns-change-history-title" class="panel-title">DNS 位址變更</h2>
                 <p class="panel-description">顯示此監測項目最近 50 筆成功排程檢查所偵測到的主機公開 IP 位址變更。</p>
             </div>
+            <a class="button button-secondary button-small" href="{{ route('monitors.dns-changes.export', $monitor) }}">匯出 DNS 變更 CSV</a>
         </div>
 
         @if ($dnsChanges->isEmpty())

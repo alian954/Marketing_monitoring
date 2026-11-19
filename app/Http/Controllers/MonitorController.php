@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckRun;
+use App\Models\DnsChangeEvent;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
@@ -816,6 +817,38 @@ class MonitorController extends Controller
 
             fclose($stream);
         }, 'check-history-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function exportDnsChanges(Monitor $monitor): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($monitor): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'dns_change_id',
+                'detected_at_utc',
+                'previous_ips',
+                'current_ips',
+                'monitor_host_only',
+            ], ',', '"', '');
+
+            $monitor->dnsChanges()
+                ->orderBy('detected_at')
+                ->orderBy('id')
+                ->lazy(500)
+                ->each(function (DnsChangeEvent $event) use ($stream): void {
+                    $fields = [
+                        (string) $event->id,
+                        $event->detected_at->utc()->toIso8601String(),
+                        implode(', ', $event->previous_ips),
+                        implode(', ', $event->current_ips),
+                        $event->monitor_host_only ? '1' : '0',
+                    ];
+
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+                });
+
+            fclose($stream);
+        }, 'dns-changes-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /** @return array{status: string, source: string, content_match: string, date_from: string, date_to: string} */

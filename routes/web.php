@@ -64,6 +64,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/monitors', [MonitorController::class, 'index'])->name('monitors.index');
     Route::get('/monitors/export.csv', [MonitorController::class, 'export'])->name('monitors.export');
     Route::get('/monitors/{monitor}/checks/export.csv', [MonitorController::class, 'exportCheckRuns'])->name('monitors.checks.export');
+    Route::get('/monitors/{monitor}/dns-changes/export.csv', [MonitorController::class, 'exportDnsChanges'])->name('monitors.dns-changes.export');
     Route::get('/monitors/import', [MonitorImportController::class, 'create'])->name('monitors.import');
     Route::get('/monitors/import/template.csv', [MonitorImportController::class, 'template'])->name('monitors.import.template');
     Route::post('/monitors/import/preview', [MonitorImportController::class, 'preview'])->name('monitors.import.preview');
