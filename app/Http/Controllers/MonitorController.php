@@ -451,6 +451,64 @@ class MonitorController extends Controller
             'segments' => $responseTimeSegments,
         ];
 
+        $responseBodySizeRuns = $historyRuns->filter(
+            fn (CheckRun $run): bool => $run->finished_at->greaterThanOrEqualTo($responseTimeStart)
+                && $run->response_body_bytes !== null,
+        )->values();
+        $responseBodySizeValues = $responseBodySizeRuns->pluck('response_body_bytes')->sort()->values();
+        $responseBodySizeP95Index = (int) ceil($responseBodySizeValues->count() * 0.95) - 1;
+        $maximumResponseBodyBytes = (int) ($responseBodySizeRuns->max('response_body_bytes') ?? 0);
+        $responseBodySizeScaleMaxBytes = max(1024, (int) (ceil($maximumResponseBodyBytes / 1024) * 1024));
+        $responseBodySizePoints = $responseBodySizeRuns->map(function (CheckRun $run) use ($responseTimeStart, $responseBodySizeScaleMaxBytes): array {
+            $elapsedSeconds = max(0, $run->finished_at->getTimestamp() - $responseTimeStart->getTimestamp());
+            $bodyBytes = (int) $run->response_body_bytes;
+            $x = 48 + (min(1, $elapsedSeconds / 86400) * 522);
+            $y = 144 - (($bodyBytes / $responseBodySizeScaleMaxBytes) * 116);
+
+            return [
+                'x' => number_format($x, 2, '.', ''),
+                'y' => number_format($y, 2, '.', ''),
+                'coordinate' => number_format($x, 2, '.', '').','.number_format($y, 2, '.', ''),
+                'finished_at' => $run->finished_at,
+                'normal_status' => $run->normal_status,
+                'body_bytes' => $bodyBytes,
+                'error_type' => $run->error_type,
+            ];
+        });
+        $responseBodySizeSegments = [];
+        $currentResponseBodySizeSegment = [];
+        $previousResponseBodySizeFinishedAt = null;
+
+        foreach ($responseBodySizePoints as $point) {
+            $finishedAtTimestamp = $point['finished_at']->getTimestamp();
+
+            if ($previousResponseBodySizeFinishedAt !== null && ($finishedAtTimestamp - $previousResponseBodySizeFinishedAt) > $maximumGapSeconds) {
+                if (count($currentResponseBodySizeSegment) > 1) {
+                    $responseBodySizeSegments[] = implode(' ', $currentResponseBodySizeSegment);
+                }
+
+                $currentResponseBodySizeSegment = [];
+            }
+
+            $currentResponseBodySizeSegment[] = $point['coordinate'];
+            $previousResponseBodySizeFinishedAt = $finishedAtTimestamp;
+        }
+
+        if (count($currentResponseBodySizeSegment) > 1) {
+            $responseBodySizeSegments[] = implode(' ', $currentResponseBodySizeSegment);
+        }
+
+        $responseBodySize = [
+            'count' => $responseBodySizeRuns->count(),
+            'average_bytes' => $responseBodySizeRuns->avg('response_body_bytes'),
+            'minimum_bytes' => $responseBodySizeRuns->min('response_body_bytes'),
+            'maximum_bytes' => $responseBodySizeRuns->max('response_body_bytes'),
+            'p95_bytes' => $responseBodySizeP95Index < 0 ? null : $responseBodySizeValues->get($responseBodySizeP95Index),
+            'scale_max_bytes' => $responseBodySizeScaleMaxBytes,
+            'points' => $responseBodySizePoints->all(),
+            'segments' => $responseBodySizeSegments,
+        ];
+
         return view('monitors.show', compact(
             'monitor',
             'previousResponseMetadataRun',
@@ -468,6 +526,7 @@ class MonitorController extends Controller
             'availabilityStats',
             'httpRecoveryStats',
             'responseTime',
+            'responseBodySize',
             'checkRunFilters',
             'checkRunExportUrl',
             'maintenanceWindows',

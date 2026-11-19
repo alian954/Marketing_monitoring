@@ -32,7 +32,7 @@ class MonitorAvailabilityReport
             ->whereNotNull('finished_at')
             ->where('finished_at', '>=', $historyQueryStart)
             ->orderBy('finished_at')
-            ->get(['id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms', 'expected_text_found', 'expected_response_header_found']);
+            ->get(['id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms', 'response_body_bytes', 'expected_text_found', 'expected_response_header_found']);
 
         $maintenanceLookupDate = $historyStart->copy()->timezone('Asia/Taipei')->subDays(7)->toDateString();
         $maintenanceWindows = $monitor->maintenanceWindows()

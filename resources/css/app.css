@@ -1359,33 +1359,33 @@ textarea {
     overflow-wrap: anywhere;
 }
 
-.response-time-chart {
+.metric-trend-chart {
     padding: 18px 20px 20px;
 }
 
-.response-time-figure {
+.metric-trend-figure {
     margin: 0;
 }
 
-.response-time-svg {
+.metric-trend-svg {
     display: block;
     width: 100%;
     height: auto;
     overflow: visible;
 }
 
-.response-time-grid-line {
+.metric-trend-grid-line {
     stroke: var(--line);
     stroke-width: 1;
 }
 
-.response-time-axis-label {
+.metric-trend-axis-label {
     fill: var(--muted);
     font-family: var(--font-sans);
     font-size: 10px;
 }
 
-.response-time-line {
+.metric-trend-line {
     fill: none;
     stroke: var(--teal);
     stroke-linecap: round;
@@ -1393,25 +1393,25 @@ textarea {
     stroke-width: 2.5;
 }
 
-.response-time-point {
+.metric-trend-point {
     fill: var(--teal);
     stroke: #fff;
     stroke-width: 1;
 }
 
-.response-time-caption {
+.metric-trend-caption {
     margin-top: 8px;
     color: var(--muted);
     font-size: 12px;
 }
 
-.response-time-data {
+.metric-trend-data {
     margin-top: 16px;
     padding-top: 13px;
     border-top: 1px solid var(--line);
 }
 
-.response-time-data summary {
+.metric-trend-data summary {
     min-height: 24px;
     color: var(--blue-dark);
     cursor: pointer;
@@ -1419,7 +1419,7 @@ textarea {
     font-weight: 650;
 }
 
-.response-time-data[open] summary {
+.metric-trend-data[open] summary {
     margin-bottom: 12px;
 }
 

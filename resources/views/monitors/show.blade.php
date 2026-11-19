@@ -73,6 +73,11 @@
         ['y' => 86, 'value' => (int) round($responseTime['scale_max_ms'] / 2)],
         ['y' => 144, 'value' => 0],
     ];
+    $responseBodySizeAxis = [
+        ['y' => 28, 'value' => $responseBodySize['scale_max_bytes']],
+        ['y' => 86, 'value' => (int) round($responseBodySize['scale_max_bytes'] / 2)],
+        ['y' => 144, 'value' => 0],
+    ];
     $maintenanceAsOf = $asOf;
     $maintenanceWindows = $maintenanceWindows
         ->filter(fn ($window): bool => $window->hasUpcomingOrActiveOccurrence($maintenanceAsOf))
@@ -801,32 +806,32 @@
                 <p class="empty-copy">新檢查會開始記錄一般使用者代理的耗時。舊紀錄只有一般檢查與 AdsBot 模擬的合計時間。</p>
             </div>
         @else
-            <div class="response-time-chart">
-                <figure class="response-time-figure">
-                    <svg class="response-time-svg" viewBox="0 0 600 190" role="img" aria-labelledby="response-time-chart-title response-time-chart-description">
+            <div class="metric-trend-chart">
+                <figure class="metric-trend-figure">
+                    <svg class="metric-trend-svg" viewBox="0 0 600 190" role="img" aria-labelledby="response-time-chart-title response-time-chart-description">
                         <title id="response-time-chart-title">最近 24 小時 HTTP 探測耗時趨勢</title>
                         <desc id="response-time-chart-description">共 {{ $responseTime['count'] }} 筆；平均 {{ number_format($responseTime['average_ms']) }} 毫秒，P95 {{ number_format($responseTime['p95_ms']) }} 毫秒（95% 探測耗時不高於此值），最快 {{ number_format($responseTime['minimum_ms']) }} 毫秒，最慢 {{ number_format($responseTime['maximum_ms']) }} 毫秒。</desc>
                         @foreach ($responseTimeAxis as $tick)
-                            <line class="response-time-grid-line" x1="48" x2="570" y1="{{ $tick['y'] }}" y2="{{ $tick['y'] }}" />
-                            <text class="response-time-axis-label" x="42" y="{{ $tick['y'] + 4 }}" text-anchor="end">{{ number_format($tick['value']) }} ms</text>
+                            <line class="metric-trend-grid-line" x1="48" x2="570" y1="{{ $tick['y'] }}" y2="{{ $tick['y'] }}" />
+                            <text class="metric-trend-axis-label" x="42" y="{{ $tick['y'] + 4 }}" text-anchor="end">{{ number_format($tick['value']) }} ms</text>
                         @endforeach
-                        <line class="response-time-grid-line" x1="48" x2="48" y1="28" y2="144" />
+                        <line class="metric-trend-grid-line" x1="48" x2="48" y1="28" y2="144" />
                         @foreach ($responseTime['segments'] as $segment)
-                            <polyline class="response-time-line" points="{{ $segment }}" />
+                            <polyline class="metric-trend-line" points="{{ $segment }}" />
                         @endforeach
                         @foreach ($responseTime['points'] as $point)
-                            <circle class="response-time-point" cx="{{ $point['x'] }}" cy="{{ $point['y'] }}" r="3" />
+                            <circle class="metric-trend-point" cx="{{ $point['x'] }}" cy="{{ $point['y'] }}" r="3" />
                         @endforeach
-                        <text class="response-time-axis-label" x="48" y="170" text-anchor="start">24 小時前</text>
-                        <text class="response-time-axis-label" x="309" y="170" text-anchor="middle">12 小時前</text>
-                        <text class="response-time-axis-label" x="570" y="170" text-anchor="end">現在</text>
+                        <text class="metric-trend-axis-label" x="48" y="170" text-anchor="start">24 小時前</text>
+                        <text class="metric-trend-axis-label" x="309" y="170" text-anchor="middle">12 小時前</text>
+                        <text class="metric-trend-axis-label" x="570" y="170" text-anchor="end">現在</text>
                     </svg>
-                    <figcaption class="response-time-caption">
+                    <figcaption class="metric-trend-caption">
                         平均 {{ number_format($responseTime['average_ms']) }} 毫秒 · P95 {{ number_format($responseTime['p95_ms']) }} 毫秒（95% 探測耗時不高於此值） · 最快 {{ number_format($responseTime['minimum_ms']) }} 毫秒 · 最慢 {{ number_format($responseTime['maximum_ms']) }} 毫秒
                     </figcaption>
                 </figure>
 
-                <details class="response-time-data">
+                <details class="metric-trend-data">
                     <summary>查看圖表資料表（{{ $responseTime['count'] }} 筆）</summary>
                     <div class="data-table-wrap">
                         <table class="data-table">
@@ -845,6 +850,77 @@
                                         <td><time class="timestamp" datetime="{{ $point['finished_at']->toIso8601String() }}">{{ $point['finished_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
                                         <td class="numeric">{{ $point['normal_status'] ?? '—' }}</td>
                                         <td class="numeric">{{ number_format($point['elapsed_ms']) }} 毫秒</td>
+                                        <td>{{ $point['error_type'] ?: '—' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            </div>
+        @endif
+    </section>
+
+    <section class="panel spaced-top" aria-labelledby="response-body-size-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="response-body-size-title" class="panel-title">HTTP 回應大小趨勢</h2>
+                <p class="panel-description">最近 24 小時完整讀取的排程 HTTP 回應本文大小，可協助辨認空白頁或登入頁等回應變化。</p>
+            </div>
+            @if ($responseBodySize['count'] > 0)
+                <span class="secondary-text">{{ $responseBodySize['count'] }} 筆</span>
+            @endif
+        </div>
+        @if ($responseBodySize['count'] === 0)
+            <div class="empty-state">
+                <h3 class="empty-title">尚無完整的 HTTP 回應大小</h3>
+                <p class="empty-copy">新完成的排程檢查會記錄完整讀取的本文大小；截斷或無法完整讀取的回應不列入統計。</p>
+            </div>
+        @else
+            <div class="metric-trend-chart">
+                <figure class="metric-trend-figure">
+                    <svg class="metric-trend-svg" viewBox="0 0 600 190" role="img" aria-labelledby="response-body-size-chart-title response-body-size-chart-description">
+                        <title id="response-body-size-chart-title">最近 24 小時 HTTP 回應大小趨勢</title>
+                        <desc id="response-body-size-chart-description">共 {{ $responseBodySize['count'] }} 筆；平均 {{ number_format($responseBodySize['average_bytes']) }} bytes，P95 {{ number_format($responseBodySize['p95_bytes']) }} bytes（95% 回應大小不高於此值），最小 {{ number_format($responseBodySize['minimum_bytes']) }} bytes，最大 {{ number_format($responseBodySize['maximum_bytes']) }} bytes。</desc>
+                        @foreach ($responseBodySizeAxis as $tick)
+                            <line class="metric-trend-grid-line" x1="48" x2="570" y1="{{ $tick['y'] }}" y2="{{ $tick['y'] }}" />
+                            <text class="metric-trend-axis-label" x="42" y="{{ $tick['y'] + 4 }}" text-anchor="end">{{ number_format($tick['value']) }} B</text>
+                        @endforeach
+                        <line class="metric-trend-grid-line" x1="48" x2="48" y1="28" y2="144" />
+                        @foreach ($responseBodySize['segments'] as $segment)
+                            <polyline class="metric-trend-line" points="{{ $segment }}" />
+                        @endforeach
+                        @foreach ($responseBodySize['points'] as $point)
+                            <circle class="metric-trend-point" cx="{{ $point['x'] }}" cy="{{ $point['y'] }}" r="3" />
+                        @endforeach
+                        <text class="metric-trend-axis-label" x="48" y="170" text-anchor="start">24 小時前</text>
+                        <text class="metric-trend-axis-label" x="309" y="170" text-anchor="middle">12 小時前</text>
+                        <text class="metric-trend-axis-label" x="570" y="170" text-anchor="end">現在</text>
+                    </svg>
+                    <figcaption class="metric-trend-caption">
+                        平均 {{ number_format($responseBodySize['average_bytes']) }} bytes · P95 {{ number_format($responseBodySize['p95_bytes']) }} bytes（95% 回應大小不高於此值） · 最小 {{ number_format($responseBodySize['minimum_bytes']) }} bytes · 最大 {{ number_format($responseBodySize['maximum_bytes']) }} bytes
+                    </figcaption>
+                </figure>
+
+                <details class="metric-trend-data">
+                    <summary>查看圖表資料表（{{ $responseBodySize['count'] }} 筆）</summary>
+                    <div class="data-table-wrap">
+                        <table class="data-table">
+                            <caption class="sr-only">最近 24 小時的 HTTP 回應大小資料</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">完成時間</th>
+                                    <th scope="col">HTTP 狀態</th>
+                                    <th scope="col">回應大小</th>
+                                    <th scope="col">訊號</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($responseBodySize['points'] as $point)
+                                    <tr>
+                                        <td><time class="timestamp" datetime="{{ $point['finished_at']->toIso8601String() }}">{{ $point['finished_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
+                                        <td class="numeric">{{ $point['normal_status'] ?? '—' }}</td>
+                                        <td class="numeric">{{ number_format($point['body_bytes']) }} bytes</td>
                                         <td>{{ $point['error_type'] ?: '—' }}</td>
                                     </tr>
                                 @endforeach
