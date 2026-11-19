@@ -170,6 +170,85 @@ class BulkMonitorStatusTest extends TestCase
         $this->assertSame(51, Monitor::query()->where('enabled', true)->count());
     }
 
+    public function test_bulk_label_updates_selected_monitors_without_changing_check_or_incident_state(): void
+    {
+        $firstMonitor = $this->createMonitor(['name' => 'Campaign one', 'label' => 'Old group']);
+        $secondMonitor = $this->createMonitor(['name' => 'Campaign two', 'label' => null]);
+        $untouchedMonitor = $this->createMonitor(['name' => 'Other campaign', 'label' => 'Other']);
+        $queuedRun = CheckRun::factory()->for($firstMonitor)->create([
+            'status' => 'queued',
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        $incident = Incident::factory()->for($firstMonitor)->create(['state' => Incident::STATE_OPEN]);
+        $configVersion = $firstMonitor->config_version;
+        $activeKey = $incident->active_key;
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'label',
+                'label' => 'Campaign',
+                'monitor_ids' => [$firstMonitor->id, $secondMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已更新 2 個監測項目標籤為「Campaign」。');
+
+        $this->assertSame('Campaign', $firstMonitor->fresh()->label);
+        $this->assertSame('Campaign', $secondMonitor->fresh()->label);
+        $this->assertSame('Other', $untouchedMonitor->fresh()->label);
+        $this->assertSame($configVersion, $firstMonitor->fresh()->config_version);
+        $this->assertDatabaseHas('check_runs', ['id' => $queuedRun->id, 'status' => 'queued']);
+        $this->assertDatabaseHas('incidents', [
+            'id' => $incident->id,
+            'state' => Incident::STATE_OPEN,
+            'active_key' => $activeKey,
+        ]);
+        $this->assertDatabaseCount('incident_events', 0);
+
+        $this->get(route('monitors.index', ['label' => 'Campaign']))
+            ->assertOk()
+            ->assertSee('Campaign one')
+            ->assertSee('Campaign two')
+            ->assertDontSee('Other campaign');
+    }
+
+    public function test_bulk_label_can_be_cleared_and_reports_unchanged_items(): void
+    {
+        $labeledMonitor = $this->createMonitor(['label' => 'Campaign']);
+        $unlabeledMonitor = $this->createMonitor(['label' => null]);
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'label',
+                'label' => '',
+                'monitor_ids' => [$labeledMonitor->id, $unlabeledMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已更新 1 個監測項目標籤（已清除）。 1 個標籤已相同，未變更。');
+
+        $this->assertNull($labeledMonitor->fresh()->label);
+        $this->assertNull($unlabeledMonitor->fresh()->label);
+    }
+
+    public function test_bulk_label_rejects_overlong_labels_without_changing_any_monitor(): void
+    {
+        $monitor = $this->createMonitor(['label' => 'Existing']);
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'label',
+                'label' => str_repeat('a', 101),
+                'monitor_ids' => [$monitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors('label');
+
+        $this->assertSame('Existing', $monitor->fresh()->label);
+    }
+
     public function test_guest_cannot_submit_bulk_monitor_status_changes(): void
     {
         $monitor = $this->createMonitor();
@@ -196,7 +275,10 @@ class BulkMonitorStatusTest extends TestCase
             ->assertSee('data-monitor-select', false)
             ->assertSee('name="monitor_ids[]" value="'.$monitor->id.'"', false)
             ->assertSee('暫停所選監測項目')
-            ->assertSee('恢復所選監測項目');
+            ->assertSee('恢復所選監測項目')
+            ->assertSee('更新所選項目的標籤')
+            ->assertSee('name="label"', false)
+            ->assertSee('留空會清除所選項目的標籤');
     }
 
     /** @param array<string, mixed> $attributes */

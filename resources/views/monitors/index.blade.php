@@ -97,9 +97,16 @@
                                 <option value="" @selected(old('action', '') === '')>選擇操作</option>
                                 <option value="pause" @selected(old('action') === 'pause')>暫停所選監測項目</option>
                                 <option value="resume" @selected(old('action') === 'resume')>恢復所選監測項目</option>
+                                <option value="label" @selected(old('action') === 'label')>更新所選項目的標籤</option>
                             </select>
                             <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。</p>
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="bulk-monitor-label">新標籤</label>
+                            <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="100" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
+                            <p id="bulk-monitor-label-help" class="field-help">只有選擇「更新所選項目的標籤」時才會使用；留空會清除所選項目的標籤。</p>
+                            @error('label')<p id="bulk-monitor-label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                     </div>
                     @error('monitor_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror

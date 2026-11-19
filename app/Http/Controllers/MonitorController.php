@@ -454,12 +454,14 @@ class MonitorController extends Controller
     public function bulkStatus(Request $request, IncidentManager $incidents): RedirectResponse
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:pause,resume'],
+            'action' => ['required', 'in:pause,resume,label'],
+            'label' => ['nullable', 'string', 'max:100'],
             'monitor_ids' => ['required', 'array', 'min:1', 'max:50'],
             'monitor_ids.*' => ['required', 'integer', 'distinct', 'exists:monitors,id'],
         ], [
             'action.required' => '請選擇要執行的批次操作。',
-            'action.in' => '批次操作只能選擇暫停或恢復。',
+            'action.in' => '請選擇有效的批次操作。',
+            'label.max' => '監測項目標籤不得超過 100 個字元。',
             'monitor_ids.required' => '請至少選取一個監測項目。',
             'monitor_ids.array' => '監測項目選取資料格式不正確。',
             'monitor_ids.min' => '請至少選取一個監測項目。',
@@ -470,8 +472,10 @@ class MonitorController extends Controller
         ]);
 
         $monitorIds = array_map('intval', $validated['monitor_ids']);
-        $shouldEnable = $validated['action'] === 'resume';
-        $changedCount = DB::transaction(function () use ($monitorIds, $shouldEnable, $incidents): int {
+        $action = $validated['action'];
+        $label = trim((string) ($validated['label'] ?? ''));
+        $label = $label === '' ? null : $label;
+        $changedCount = DB::transaction(function () use ($monitorIds, $action, $label, $incidents): int {
             $monitors = Monitor::query()
                 ->whereIn('id', $monitorIds)
                 ->orderBy('id')
@@ -485,6 +489,21 @@ class MonitorController extends Controller
             }
 
             $changedCount = 0;
+
+            if ($action === 'label') {
+                foreach ($monitors as $monitor) {
+                    if ($monitor->label === $label) {
+                        continue;
+                    }
+
+                    $monitor->forceFill(['label' => $label])->save();
+                    $changedCount++;
+                }
+
+                return $changedCount;
+            }
+
+            $shouldEnable = $action === 'resume';
 
             foreach ($monitors as $monitor) {
                 if ($monitor->enabled === $shouldEnable) {
@@ -504,6 +523,18 @@ class MonitorController extends Controller
         });
 
         $unchangedCount = count($monitorIds) - $changedCount;
+        if ($action === 'label') {
+            $labelDescription = $label === null ? '（已清除）' : '為「'.$label.'」';
+            $statusMessage = "已更新 {$changedCount} 個監測項目標籤{$labelDescription}。";
+
+            if ($unchangedCount > 0) {
+                $statusMessage .= " {$unchangedCount} 個標籤已相同，未變更。";
+            }
+
+            return back()->with('status', $statusMessage);
+        }
+
+        $shouldEnable = $action === 'resume';
         $actionLabel = $shouldEnable ? '恢復' : '暫停';
         $unchangedLabel = $shouldEnable ? '已啟用' : '已暫停';
         $statusMessage = "已{$actionLabel} {$changedCount} 個監測項目。";
