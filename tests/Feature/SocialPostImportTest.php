@@ -50,6 +50,61 @@ class SocialPostImportTest extends TestCase
         $this->app->instance(UrlSafetyPolicy::class, new UrlSafetyPolicy($resolver));
     }
 
+    public function test_guest_is_redirected_to_login_when_downloading_the_csv_template(): void
+    {
+        $this->get(route('monitors.import.template'))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_authenticated_user_downloads_a_blank_template_with_all_supported_columns_in_order(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)
+            ->get(route('monitors.import'))
+            ->assertOk()
+            ->assertSee(route('monitors.import.template'))
+            ->assertSee('下載匯入 CSV 範本');
+
+        $response = $this->actingAs($user)
+            ->get(route('monitors.import.template'))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $this->assertStringContainsString('monitor-import-template.csv', (string) $response->headers->get('content-disposition'));
+        $content = $response->streamedContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $content);
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, substr($content, 3));
+        rewind($stream);
+        $headers = fgetcsv($stream, 0, ',', '"', '');
+        $this->assertFalse(fgetcsv($stream, 0, ',', '"', ''));
+        fclose($stream);
+
+        $this->assertSame([
+            'name',
+            'url',
+            'label',
+            'expected_text',
+            'expected_text_mode',
+            'expected_response_header',
+            'interval_seconds',
+            'timeout_seconds',
+            'response_time_threshold_ms',
+            'accepted_status_codes',
+            'request_headers',
+            'allowed_redirect_hosts',
+            'notification_email',
+            'notification_escalation_email',
+            'notification_escalation_delay_minutes',
+            'notification_escalation_stage_2_email',
+            'notification_escalation_stage_2_delay_minutes',
+            'notification_slack_webhook',
+            'notification_discord_webhook',
+            'confirmation_delay_seconds',
+        ], $headers);
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_csv_can_preview_and_import_social_post_text_conditions(): void
     {
         Queue::fake([RunMonitorCheck::class]);

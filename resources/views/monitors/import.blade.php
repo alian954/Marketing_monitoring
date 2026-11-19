@@ -16,6 +16,7 @@
             <p class="page-description">上傳 CSV 後逐列檢視，確認可匯入的監測項目後才會儲存。</p>
         </div>
         <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('monitors.import.template') }}">下載匯入 CSV 範本</a>
             <a class="button button-secondary" href="{{ route('monitors.export') }}">下載目前清單</a>
         </div>
     </div>

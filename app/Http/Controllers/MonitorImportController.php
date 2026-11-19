@@ -20,6 +20,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class MonitorImportController extends Controller
@@ -56,6 +57,16 @@ class MonitorImportController extends Controller
     public function create(): View
     {
         return view('monitors.import');
+    }
+
+    public function template(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $stream = fopen('php://output', 'w');
+            fwrite($stream, "\xEF\xBB\xBF");
+            fputcsv($stream, [...self::REQUIRED_HEADERS, ...self::OPTIONAL_HEADERS], ',', '"', '');
+            fclose($stream);
+        }, 'monitor-import-template.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function preview(Request $request): View|RedirectResponse
