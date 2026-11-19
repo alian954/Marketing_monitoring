@@ -1357,6 +1357,17 @@ class MonitorController extends Controller
         $isPassed = $result->errorType === null && $statusAccepted && $contentConditionPassed && $responseHeaderConditionPassed;
         $state = $isPassed ? 'passed' : ($isIncomplete ? 'incomplete' : 'failed');
         $message = $this->probePreviewMessage($result->errorType, $result->statusCode, $statusAccepted, $contentConditionPassed, $responseHeaderConditionPassed, $isIncomplete, $validated['expected_text_mode']);
+        $expectedTextMatches = [];
+        $expectedTextTerms = ExpectedTextMatcher::terms($expectedText);
+
+        if ($result->expectedTextTermMatches !== null && count($expectedTextTerms) === count($result->expectedTextTermMatches)) {
+            foreach ($expectedTextTerms as $index => $term) {
+                $expectedTextMatches[] = [
+                    'term' => $term,
+                    'matched' => $result->expectedTextTermMatches[$index],
+                ];
+            }
+        }
 
         return back()
             ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', '_token', '_method']))
@@ -1376,6 +1387,7 @@ class MonitorController extends Controller
                 'expected_text_state' => $result->expectedTextFound === null
                     ? null
                     : ($result->expectedTextFound ? 'found' : 'missing'),
+                'expected_text_matches' => $expectedTextMatches,
                 'expected_response_header_checked' => $validated['expected_response_header'] !== null,
                 'expected_response_header_found' => $result->expectedResponseHeaderFound,
             ]);

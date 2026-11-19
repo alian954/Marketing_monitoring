@@ -90,7 +90,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe->shouldReceive('inspect')
             ->once()
             ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', $expectedText, 10, 'present_any')
-            ->andReturn(new ProbeResult(200, 60, $url, [], ['93.184.216.34'], null, null, true, null));
+            ->andReturn(new ProbeResult(200, 60, $url, [], ['93.184.216.34'], null, null, true, null, [], null, null, [true, false]));
 
         $this->actingAs(User::factory()->create())
             ->from(route('monitors.create'))
@@ -101,7 +101,11 @@ class MonitorProbePreviewTest extends TestCase
             ])
             ->assertOk()
             ->assertSee('預檢通過')
-            ->assertSee('已找到至少一個指定片段');
+            ->assertSee('已找到至少一個指定片段')
+            ->assertSee('Campaign headline')
+            ->assertSee('原始回應找到此片段')
+            ->assertSee('Spring sale')
+            ->assertSee('原始回應未找到此片段');
 
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
@@ -186,6 +190,7 @@ class MonitorProbePreviewTest extends TestCase
     public function test_social_post_preview_marks_an_oversized_response_as_indeterminate(): void
     {
         $url = 'https://www.threads.com/@creator/post/ABC123';
+        $expectedText = "Campaign headline\nSpring sale";
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
@@ -199,16 +204,24 @@ class MonitorProbePreviewTest extends TestCase
                 '回應超過讀取上限。',
                 null,
                 null,
+                [],
+                null,
+                null,
+                [true, null],
             ));
 
         $this->actingAs(User::factory()->create())
             ->from(route('monitors.create'))
             ->followingRedirects()
-            ->post(route('monitors.probe-preview'), $this->socialPost($url))
+            ->post(route('monitors.probe-preview'), $this->socialPost($url, $expectedText))
             ->assertOk()
             ->assertSee('無法完整判定')
             ->assertSee('回應超過讀取上限，指定文字比對尚未完成。')
-            ->assertSee('文字比對：無法判定');
+            ->assertSee('文字比對：無法判定')
+            ->assertSee('Campaign headline')
+            ->assertSee('原始回應找到此片段')
+            ->assertSee('Spring sale')
+            ->assertSee('無法判定');
 
         $this->assertDatabaseCount('monitors', 0);
     }

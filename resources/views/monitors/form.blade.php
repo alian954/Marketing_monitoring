@@ -54,6 +54,16 @@
                         @if ($probePreview['expected_text_checked'])
                             <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present_any'] => '已找到至少一個指定片段', ['missing', 'present_any'] => '未找到任何指定片段', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
                         @endif
+                        @if ($probePreview['expected_text_matches'] !== [])
+                            <li>
+                                逐項文字片段比對：
+                                <ul aria-label="逐項文字片段預檢結果">
+                                    @foreach ($probePreview['expected_text_matches'] as $matchDetail)
+                                        <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? '無法判定' : ($matchDetail['matched'] ? '原始回應找到此片段' : '原始回應未找到此片段') }}</li>
+                                    @endforeach
+                                </ul>
+                            </li>
+                        @endif
                         @if ($probePreview['expected_response_header_checked'])
                             <li>回應標頭比對：{{ $probePreview['expected_response_header_found'] === null ? '無法判定' : ($probePreview['expected_response_header_found'] ? '符合' : '不符合') }}</li>
                         @endif
