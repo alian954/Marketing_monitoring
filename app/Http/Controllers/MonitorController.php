@@ -7,6 +7,7 @@ use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\StatusPage;
+use App\Services\CsvFormulaSanitizer;
 use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\IncidentManager;
 use App\Services\MonitorAvailabilityCalculator;
@@ -803,7 +804,7 @@ class MonitorController extends Controller
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
                     ];
 
-                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
                 });
 
             fclose($stream);
@@ -894,7 +895,7 @@ class MonitorController extends Controller
                         (string) $run?->error_type,
                     ];
 
-                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
                 });
 
             fclose($stream);
@@ -1415,11 +1416,6 @@ class MonitorController extends Controller
                 'expected_text_mode' => '社群貼文監測需確認指定文字存在，請選擇「全部片段都需包含」或「至少包含一個片段」。',
             ]);
         }
-    }
-
-    private function escapeCsvFormula(string $value): string
-    {
-        return preg_match('/\A[\t\r ]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
     }
 
     private function pauseMonitorChecks(Monitor $monitor, IncidentManager $incidents): void

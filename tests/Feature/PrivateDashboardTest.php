@@ -66,7 +66,7 @@ class PrivateDashboardTest extends TestCase
         $user = User::factory()->create();
         $url = 'https://example.com/page?email=secret%40example.test';
         Monitor::factory()->create([
-            'name' => '=HYPERLINK("https://evil.example")',
+            'name' => "\n=HYPERLINK(\"https://evil.example\")",
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
         ]);
@@ -74,7 +74,7 @@ class PrivateDashboardTest extends TestCase
         $response = $this->actingAs($user)->get(route('monitors.export'))->assertOk();
         $content = $response->streamedContent();
 
-        $this->assertStringContainsString("'=HYPERLINK", $content);
+        $this->assertStringContainsString("\"'\n=HYPERLINK", $content);
         $this->assertStringContainsString('email=REDACTED', $content);
         $this->assertStringNotContainsString('secret%40example.test', $content);
     }

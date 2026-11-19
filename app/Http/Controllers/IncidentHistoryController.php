@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Incident;
 use App\Models\Monitor;
+use App\Services\CsvFormulaSanitizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -136,7 +137,7 @@ class IncidentHistoryController extends Controller
                         (string) $incident->note,
                     ];
 
-                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
                 });
 
             fclose($stream);
@@ -202,10 +203,5 @@ class IncidentHistoryController extends Controller
 
                 return $query->where('created_at', '<', $endExclusive);
             });
-    }
-
-    private function escapeCsvFormula(string $value): string
-    {
-        return preg_match('/\A[\t\r ]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
     }
 }

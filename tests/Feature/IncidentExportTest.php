@@ -65,7 +65,7 @@ class IncidentExportTest extends TestCase
             'acknowledged_at' => now()->subMinutes(70),
             'acknowledged_by_id' => $user->id,
             'snoozed_until' => now()->addHour(),
-            'note' => '=SUM(1+1)',
+            'note' => '＝SUM(1+1)',
         ]);
         $falseAlarmIncident = Incident::factory()->for($monitor)->create([
             'state' => Incident::STATE_RESOLVED,
@@ -116,7 +116,7 @@ class IncidentExportTest extends TestCase
 
         $this->assertCount(5, $rows);
         $this->assertStringContainsString("'=HYPERLINK", $content);
-        $this->assertStringContainsString("'=SUM", $content);
+        $this->assertStringContainsString("'＝SUM", $content);
         $this->assertStringContainsString("'@Operations manager", $content);
         $this->assertStringNotContainsString('private-url-value', $content);
         $this->assertSame('3600', $rowsByIncidentId->get((string) $resolvedIncident->id)[$columnIndexes['confirmed_duration_seconds']]);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Services\CsvFormulaSanitizer;
 use App\Services\NotificationTestDispatcher;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,7 +70,7 @@ class NotificationController extends Controller
                         $notification->sent_at?->utc()->toIso8601String() ?? '',
                     ];
 
-                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
                 });
 
             fclose($stream);
@@ -193,10 +194,5 @@ class NotificationController extends Controller
         $visibleSuffix = $localPartLength > 2 ? mb_substr($localPart, -1) : '';
 
         return $visiblePrefix.'***'.$visibleSuffix.'@'.$domain;
-    }
-
-    private function escapeCsvFormula(string $value): string
-    {
-        return preg_match('/\A[\t\r ]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
     }
 }

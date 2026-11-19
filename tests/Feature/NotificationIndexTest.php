@@ -195,7 +195,7 @@ class NotificationIndexTest extends TestCase
 
     public function test_filtered_notification_export_streams_safe_audit_fields_without_message_or_recipient(): void
     {
-        $monitor = Monitor::factory()->create(['name' => '=HYPERLINK("https://evil.example")']);
+        $monitor = Monitor::factory()->create(['name' => "\n＝HYPERLINK(\"https://evil.example\")"]);
         $incident = Incident::factory()->create(['monitor_id' => $monitor->id]);
         NotificationOutbox::factory()->create([
             'incident_id' => $incident->id,
@@ -227,13 +227,15 @@ class NotificationIndexTest extends TestCase
         $content = $response->streamedContent();
 
         $this->assertStringContainsString('event_type,monitor_name,channel,status,attempts,created_at_utc,sent_at_utc', $content);
-        $this->assertStringContainsString("'=HYPERLINK", $content);
+        $this->assertStringContainsString("\"'\n＝HYPERLINK", $content);
         $this->assertStringContainsString('異常通知', $content);
         $this->assertStringNotContainsString('private-recipient@example.test', $content);
         $this->assertStringNotContainsString('private message body', $content);
         $this->assertStringNotContainsString('filtered-out message body', $content);
         $this->assertStringNotContainsString('dns_daily_summary', $content);
-        $this->assertCount(29, explode("\n", trim($content)));
+        $rows = $this->csvRows($content);
+        $this->assertCount(28, $rows);
+        $this->assertSame("'\n＝HYPERLINK(\"https://evil.example\")", $rows[0]['monitor_name']);
     }
 
     public function test_notification_history_filters_and_exports_slack_channel_without_exposing_webhook(): void
@@ -327,9 +329,18 @@ class NotificationIndexTest extends TestCase
     /** @return array<int, array<string, string>> */
     private function csvRows(string $content): array
     {
-        $lines = preg_split('/\r\n|\n|\r/', trim($content));
-        $headers = str_getcsv(array_shift($lines));
-        $rows = array_map(static fn (string $line): array => str_getcsv($line), $lines);
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+
+        $headers = fgetcsv($stream, null, ',', '"', '');
+        $rows = [];
+
+        while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+            $rows[] = $row;
+        }
+
+        fclose($stream);
 
         return array_map(
             static fn (array $row): array => array_combine($headers, $row),

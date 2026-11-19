@@ -45,7 +45,7 @@ class MonitorCheckRunExportTest extends TestCase
             'finished_at' => '2026-11-18 01:02:08',
             'normal_status' => 503,
             'adsbot_status' => null,
-            'error_type' => '=HYPERLINK("https://evil.example")',
+            'error_type' => "\u{00A0}＝HYPERLINK(\"https://evil.example\")",
             'adsbot_error_type' => '@SUM(1+1)',
             'elapsed_ms' => 8,
             'normal_elapsed_ms' => 4,
@@ -109,7 +109,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('', $row[$columns['adsbot_status']]);
         $this->assertSame('4', $row[$columns['http_elapsed_ms']]);
         $this->assertSame('8', $row[$columns['total_elapsed_ms']]);
-        $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
+        $this->assertSame("'\u{00A0}＝HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
         $this->assertSame('0', $row[$columns['expected_text_found']]);
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
