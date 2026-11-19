@@ -7,6 +7,7 @@ use App\Models\NotificationOutbox;
 use App\Models\StatusPageSubscription;
 use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\SlackWebhookUrlPolicy;
+use App\Services\TeamsWebhookUrlPolicy;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -107,6 +108,8 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 $this->sendSlack($message);
             } elseif ($message['channel'] === NotificationOutbox::CHANNEL_DISCORD) {
                 $this->sendDiscord($message);
+            } elseif ($message['channel'] === NotificationOutbox::CHANNEL_TEAMS) {
+                $this->sendTeams($message);
             } else {
                 throw new InvalidArgumentException('Unsupported notification channel.');
             }
@@ -175,6 +178,28 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 'content' => $content,
                 'allowed_mentions' => ['parse' => []],
             ])
+            ->throw();
+    }
+
+    /** @param array{channel: string, recipient: string, subject: string, body: string} $message */
+    private function sendTeams(array $message): void
+    {
+        $webhookUrl = $message['recipient'];
+
+        if (! TeamsWebhookUrlPolicy::isAllowed($webhookUrl)) {
+            throw new InvalidArgumentException('Teams webhook URL must use an allowed Microsoft HTTPS host.');
+        }
+
+        $content = $message['subject']."\n\n".$message['body'];
+
+        if (strlen($content) > 25_000) {
+            $content = mb_strcut($content, 0, 24_980, 'UTF-8')."\n\n[內容已截斷]";
+        }
+
+        Http::connectTimeout(3)
+            ->timeout(10)
+            ->withoutRedirecting()
+            ->post($webhookUrl, ['text' => $content])
             ->throw();
     }
 }

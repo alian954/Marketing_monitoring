@@ -53,6 +53,15 @@ class NotificationDispatcher
             $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
         }
 
+        $monitorTeamsWebhookUrl = trim((string) $monitor->notification_teams_webhook);
+        $teamsWebhookUrl = $monitorTeamsWebhookUrl === ''
+            ? trim((string) config('monitoring.notify_teams_webhook'))
+            : $monitorTeamsWebhookUrl;
+
+        if ($includeWebhookChannels && $teamsWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_TEAMS, $teamsWebhookUrl];
+        }
+
         $statusSubscribersQueued = $incident->rule_key === 'monitor_stale'
             ? false
             : $this->statusPageSubscriptions->queue($incident, $monitor, $eventType);

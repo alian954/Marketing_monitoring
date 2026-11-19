@@ -110,9 +110,11 @@ class DnsDailySummaryTest extends TestCase
     {
         $slackWebhookUrl = 'https://hooks.slack.com/services/T123/SECRET/WEBHOOK';
         $discordWebhookUrl = 'https://discord.com/api/webhooks/456/SECRET';
+        $teamsWebhookUrl = 'https://tenant.environment.api.powerplatform.com/powerautomate/workflows/dns-summary?sig=TEAMSSECRET';
         Config::set('monitoring.notify_email', null);
         Config::set('monitoring.notify_slack_webhook', $slackWebhookUrl);
         Config::set('monitoring.notify_discord_webhook', $discordWebhookUrl);
+        Config::set('monitoring.notify_teams_webhook', $teamsWebhookUrl);
         Queue::fake([SendNotificationOutbox::class]);
         $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
         $monitor = Monitor::factory()->create([
@@ -128,11 +130,11 @@ class DnsDailySummaryTest extends TestCase
 
         $this->artisan('monitors:send-dns-summary')
             ->assertExitCode(0)
-            ->expectsOutputToContain('已將 1 筆 DNS 變更摘要加入 2 個通知管道。');
+            ->expectsOutputToContain('已將 1 筆 DNS 變更摘要加入 3 個通知管道。');
 
         $outboxes = NotificationOutbox::query()->orderBy('channel')->get();
-        $this->assertSame([NotificationOutbox::CHANNEL_DISCORD, NotificationOutbox::CHANNEL_SLACK], $outboxes->pluck('channel')->all());
-        $this->assertSame(2, $outboxes->pluck('event_key')->unique()->count());
+        $this->assertSame([NotificationOutbox::CHANNEL_DISCORD, NotificationOutbox::CHANNEL_SLACK, NotificationOutbox::CHANNEL_TEAMS], $outboxes->pluck('channel')->all());
+        $this->assertSame(3, $outboxes->pluck('event_key')->unique()->count());
         $this->assertTrue($outboxes->every(static fn (NotificationOutbox $outbox): bool => $outbox->event_type === 'dns_daily_summary'
             && $outbox->status === 'pending'
             && str_contains($outbox->body, 'token=REDACTED')
@@ -140,27 +142,31 @@ class DnsDailySummaryTest extends TestCase
         $encryptedRecipients = DB::table('notification_outbox')->pluck('recipient')->all();
         $this->assertNotContains($slackWebhookUrl, $encryptedRecipients);
         $this->assertNotContains($discordWebhookUrl, $encryptedRecipients);
-        Queue::assertPushed(SendNotificationOutbox::class, 2);
+        $this->assertNotContains($teamsWebhookUrl, $encryptedRecipients);
+        Queue::assertPushed(SendNotificationOutbox::class, 3);
 
         Http::fake([
             $slackWebhookUrl => Http::response('', 200),
             $discordWebhookUrl.'?wait=true' => Http::response('ok', 204),
+            'https://tenant.environment.api.powerplatform.com/*' => Http::response('', 202),
         ]);
         Mail::fake();
 
         $outboxes->each(static fn (NotificationOutbox $outbox) => (new SendNotificationOutbox($outbox->id))->handle());
 
-        $this->assertSame(2, NotificationOutbox::query()->where('status', 'sent')->count());
+        $this->assertSame(3, NotificationOutbox::query()->where('status', 'sent')->count());
         Http::assertSent(fn (Request $request): bool => $request->url() === $slackWebhookUrl
             && str_contains($request['text'], '93.184.216.34')
             && str_contains($request['text'], '93.184.216.35'));
         Http::assertSent(fn (Request $request): bool => $request->url() === $discordWebhookUrl.'?wait=true'
             && str_contains($request['content'], 'DNS 變更每日摘要')
             && $request['allowed_mentions'] === ['parse' => []]);
+        Http::assertSent(fn (Request $request): bool => $request->url() === $teamsWebhookUrl
+            && str_contains((string) $request['text'], 'DNS 變更每日摘要'));
 
         $this->artisan('monitors:send-dns-summary')->assertExitCode(0);
-        $this->assertDatabaseCount('notification_outbox', 2);
-        Queue::assertPushed(SendNotificationOutbox::class, 2);
+        $this->assertDatabaseCount('notification_outbox', 3);
+        Queue::assertPushed(SendNotificationOutbox::class, 3);
     }
 
     public function test_empty_day_or_missing_recipient_does_not_create_an_outbox_entry(): void
@@ -168,6 +174,7 @@ class DnsDailySummaryTest extends TestCase
         Config::set('monitoring.notify_email', 'owner@example.test');
         Config::set('monitoring.notify_slack_webhook', null);
         Config::set('monitoring.notify_discord_webhook', null);
+        Config::set('monitoring.notify_teams_webhook', null);
         $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
 
         $this->artisan('monitors:send-dns-summary')

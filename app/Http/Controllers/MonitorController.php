@@ -22,6 +22,7 @@ use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use App\Services\SlackWebhookUrlPolicy;
+use App\Services\TeamsWebhookUrlPolicy;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -216,7 +217,7 @@ class MonitorController extends Controller
         $fingerprint = Monitor::fingerprintUrl($normalizedUrl);
 
         if (Monitor::query()->where('url_hash', $fingerprint)->exists()) {
-            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook']));
+            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
         }
 
         $monitor = Monitor::query()->create([
@@ -231,6 +232,7 @@ class MonitorController extends Controller
             'notification_escalation_stage_2_delay_minutes' => $validated['notification_escalation_stage_2_delay_minutes'],
             'notification_slack_webhook' => $validated['notification_slack_webhook'],
             'notification_discord_webhook' => $validated['notification_discord_webhook'],
+            'notification_teams_webhook' => $validated['notification_teams_webhook'],
             'request_headers' => $validated['request_headers'],
             'expected_response_header' => $validated['expected_response_header'],
             'enabled' => true,
@@ -441,7 +443,7 @@ class MonitorController extends Controller
         $fingerprint = Monitor::fingerprintUrl($normalizedUrl);
 
         if (Monitor::query()->where('url_hash', $fingerprint)->whereKeyNot($monitor->id)->exists()) {
-            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook']));
+            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
         }
 
         $monitor = DB::transaction(function () use ($monitor, $validated, $normalizedUrl, $fingerprint): Monitor {
@@ -461,6 +463,7 @@ class MonitorController extends Controller
                 'notification_escalation_stage_2_delay_minutes' => $validated['notification_escalation_stage_2_delay_minutes'],
                 'notification_slack_webhook' => $validated['notification_slack_webhook'],
                 'notification_discord_webhook' => $validated['notification_discord_webhook'],
+                'notification_teams_webhook' => $validated['notification_teams_webhook'],
                 'request_headers' => $validated['request_headers'],
                 'expected_response_header' => $validated['expected_response_header'],
                 'accepted_status_codes' => $validated['accepted_status_codes'],
@@ -942,7 +945,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -985,6 +988,11 @@ class MonitorController extends Controller
             $request->merge(['notification_discord_webhook' => $webhookUrl === '' ? null : $webhookUrl]);
         }
 
+        if ($request->exists('notification_teams_webhook') && is_string($request->input('notification_teams_webhook'))) {
+            $webhookUrl = trim($request->input('notification_teams_webhook'));
+            $request->merge(['notification_teams_webhook' => $webhookUrl === '' ? null : $webhookUrl]);
+        }
+
         if ($request->exists('notification_escalation_email') && is_string($request->input('notification_escalation_email'))) {
             $request->merge([
                 'notification_escalation_email' => NotificationEmailRecipientParser::normalize($request->input('notification_escalation_email')),
@@ -1010,6 +1018,8 @@ class MonitorController extends Controller
             'clear_notification_slack_webhook' => ['sometimes', 'boolean'],
             'notification_discord_webhook' => ['sometimes', 'nullable', 'string', 'max:2048', 'url'],
             'clear_notification_discord_webhook' => ['sometimes', 'boolean'],
+            'notification_teams_webhook' => ['sometimes', 'nullable', 'string', 'max:2048', 'url'],
+            'clear_notification_teams_webhook' => ['sometimes', 'boolean'],
             'clear_request_headers' => ['sometimes', 'boolean'],
             'clear_expected_response_header' => ['sometimes', 'boolean'],
             'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
@@ -1053,6 +1063,8 @@ class MonitorController extends Controller
             'notification_slack_webhook.max' => 'Slack webhook 網址不得超過 2048 個字元。',
             'notification_discord_webhook.url' => '請輸入有效的 Discord webhook 網址。',
             'notification_discord_webhook.max' => 'Discord webhook 網址不得超過 2048 個字元。',
+            'notification_teams_webhook.url' => '請輸入有效的 Microsoft Teams webhook 網址。',
+            'notification_teams_webhook.max' => 'Microsoft Teams webhook 網址不得超過 2048 個字元。',
             'interval_seconds.integer' => '檢查頻率格式不正確。',
             'interval_seconds.in' => '請選擇支援的檢查頻率。',
         ]);
@@ -1194,6 +1206,18 @@ class MonitorController extends Controller
             $discordWebhookUrl = $monitor?->notification_discord_webhook;
         }
 
+        $teamsWebhookUrl = $validated['notification_teams_webhook'] ?? null;
+
+        if ($teamsWebhookUrl !== null && ! TeamsWebhookUrlPolicy::isAllowed($teamsWebhookUrl)) {
+            throw ValidationException::withMessages([
+                'notification_teams_webhook' => '請使用 Microsoft Power Automate Teams Workflow HTTPS webhook 網址。',
+            ]);
+        }
+
+        if ($teamsWebhookUrl === null && ! (bool) ($validated['clear_notification_teams_webhook'] ?? false)) {
+            $teamsWebhookUrl = $monitor?->notification_teams_webhook;
+        }
+
         try {
             $allowedHosts = $this->urlPolicy->normalizeRedirectHosts($validated['redirect_hosts'] ?? null);
         } catch (ProbeException $exception) {
@@ -1219,6 +1243,7 @@ class MonitorController extends Controller
             'notification_escalation_stage_2_delay_minutes' => $escalationStageTwoDelayMinutes,
             'notification_slack_webhook' => $slackWebhookUrl,
             'notification_discord_webhook' => $discordWebhookUrl,
+            'notification_teams_webhook' => $teamsWebhookUrl,
             'request_headers' => $requestHeaders,
             'expected_response_header' => $expectedResponseHeader,
             'accepted_status_codes' => $acceptedStatusCodes,
@@ -1334,7 +1359,7 @@ class MonitorController extends Controller
         $message = $this->probePreviewMessage($result->errorType, $result->statusCode, $statusAccepted, $contentConditionPassed, $responseHeaderConditionPassed, $isIncomplete, $validated['expected_text_mode']);
 
         return back()
-            ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'request_headers', 'expected_response_header', '_token', '_method']))
+            ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', '_token', '_method']))
             ->with('probe_preview', [
                 'state' => $state,
                 'label' => match ($state) {

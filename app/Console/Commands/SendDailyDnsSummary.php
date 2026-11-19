@@ -21,6 +21,7 @@ class SendDailyDnsSummary extends Command
         $emailRecipient = trim((string) config('monitoring.notify_email'));
         $slackWebhookUrl = trim((string) config('monitoring.notify_slack_webhook'));
         $discordWebhookUrl = trim((string) config('monitoring.notify_discord_webhook'));
+        $teamsWebhookUrl = trim((string) config('monitoring.notify_teams_webhook'));
 
         if ($emailRecipient !== '') {
             $destinations[] = [NotificationOutbox::CHANNEL_EMAIL, $emailRecipient];
@@ -32,6 +33,10 @@ class SendDailyDnsSummary extends Command
 
         if ($discordWebhookUrl !== '') {
             $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
+        }
+
+        if ($teamsWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_TEAMS, $teamsWebhookUrl];
         }
 
         if ($destinations === []) {

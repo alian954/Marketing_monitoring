@@ -83,7 +83,7 @@ class NotificationController extends Controller
 
         if ($queuedCount === 0) {
             return redirect()->route('notifications.index')
-                ->withErrors(['notification' => '尚未設定全域通知收件信箱、Slack 或 Discord webhook。']);
+                ->withErrors(['notification' => '尚未設定全域通知收件信箱、Slack、Discord 或 Teams webhook。']);
         }
 
         return redirect()->route('notifications.index', ['event_type' => NotificationOutbox::EVENT_TYPE_TEST])
@@ -111,7 +111,7 @@ class NotificationController extends Controller
         return $request->validate([
             'status' => ['nullable', 'in:pending,sending,sent,failed,unknown,cancelled'],
             'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED],
-            'channel' => ['nullable', 'in:email,slack,discord'],
+            'channel' => ['nullable', 'in:email,slack,discord,teams'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
@@ -171,12 +171,13 @@ class NotificationController extends Controller
             NotificationOutbox::CHANNEL_EMAIL => '電子郵件',
             NotificationOutbox::CHANNEL_SLACK => 'Slack webhook',
             NotificationOutbox::CHANNEL_DISCORD => 'Discord webhook',
+            NotificationOutbox::CHANNEL_TEAMS => 'Microsoft Teams workflow',
         ];
     }
 
     private function maskedRecipient(NotificationOutbox $notification): string
     {
-        if (in_array($notification->channel, [NotificationOutbox::CHANNEL_SLACK, NotificationOutbox::CHANNEL_DISCORD], true)) {
+        if (in_array($notification->channel, [NotificationOutbox::CHANNEL_SLACK, NotificationOutbox::CHANNEL_DISCORD, NotificationOutbox::CHANNEL_TEAMS], true)) {
             return 'Webhook 端點已遮蔽';
         }
 

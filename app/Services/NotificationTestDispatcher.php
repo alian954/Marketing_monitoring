@@ -40,6 +40,15 @@ class NotificationTestDispatcher
             $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
         }
 
+        $monitorTeamsWebhookUrl = trim((string) $monitor?->notification_teams_webhook);
+        $teamsWebhookUrl = $monitorTeamsWebhookUrl === ''
+            ? trim((string) config('monitoring.notify_teams_webhook'))
+            : $monitorTeamsWebhookUrl;
+
+        if ($teamsWebhookUrl !== '') {
+            $destinations[] = [NotificationOutbox::CHANNEL_TEAMS, $teamsWebhookUrl];
+        }
+
         if ($destinations === []) {
             return 0;
         }

@@ -15,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontFlash(['notification_slack_webhook', 'notification_discord_webhook']);
+        $exceptions->dontFlash(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

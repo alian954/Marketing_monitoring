@@ -5,6 +5,7 @@
     $maskedUrl = $monitor->getAttribute('masked_url');
     $hasSlackWebhook = filled($monitor->notification_slack_webhook);
     $hasDiscordWebhook = filled($monitor->notification_discord_webhook);
+    $hasTeamsWebhook = filled($monitor->notification_teams_webhook);
     $redirectHostsValue = old('redirect_hosts');
     if ($redirectHostsValue === null) {
         $redirectHosts = $monitor->allowed_redirect_hosts;
@@ -171,6 +172,28 @@
                                 </label>
                             @endif
                             @error('notification_discord_webhook')<p id="notification-discord-webhook-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
+                            <label class="field-label" for="notification_teams_webhook">Microsoft Teams Workflows Webhook</label>
+                            <p id="notification-teams-webhook-help" class="field-help">
+                                @if ($hasTeamsWebhook)
+                                    此監測已設定專用 Teams Workflows webhook（網址已遮蔽）；留白會保留目前設定。
+                                @else
+                                    選填，留白時使用全域 MONITOR_NOTIFY_TEAMS_WEBHOOK_URL。請建立 Teams Workflows Incoming Webhook，並選擇允許外部 webhook 呼叫；網址會加密儲存。<a href="https://learn.microsoft.com/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook">查看 Microsoft 設定說明</a>。
+                                @endif
+                            </p>
+                            <div class="secret-input-row">
+                                <input class="field-input @error('notification_teams_webhook') is-invalid @enderror" id="notification_teams_webhook" name="notification_teams_webhook" type="password" value="" maxlength="2048" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="notification-teams-webhook-help{{ $errors->has('notification_teams_webhook') ? ' notification-teams-webhook-error' : '' }}" @if ($errors->has('notification_teams_webhook')) aria-invalid="true" @endif>
+                                <button class="button button-secondary" type="button" data-secret-toggle aria-controls="notification_teams_webhook" aria-pressed="false" data-show-label="顯示網址" data-hide-label="隱藏網址" hidden>顯示網址</button>
+                            </div>
+                            @if ($isEditing && $hasTeamsWebhook)
+                                <label class="field-check spaced-top" for="clear_notification_teams_webhook">
+                                    <input id="clear_notification_teams_webhook" name="clear_notification_teams_webhook" type="checkbox" value="1" @checked(old('clear_notification_teams_webhook'))>
+                                    移除此監測專用 webhook，改用全域 Teams 設定
+                                </label>
+                            @endif
+                            @error('notification_teams_webhook')<p id="notification-teams-webhook-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">

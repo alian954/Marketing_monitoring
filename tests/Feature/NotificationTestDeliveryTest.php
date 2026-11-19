@@ -216,6 +216,7 @@ class NotificationTestDeliveryTest extends TestCase
         Config::set('monitoring.notify_email', null);
         Config::set('monitoring.notify_slack_webhook', ' ');
         Config::set('monitoring.notify_discord_webhook', ' ');
+        Config::set('monitoring.notify_teams_webhook', ' ');
         Queue::fake([SendNotificationOutbox::class]);
 
         $this->actingAs(User::factory()->create())
@@ -223,7 +224,7 @@ class NotificationTestDeliveryTest extends TestCase
             ->followingRedirects()
             ->post(route('notifications.test'))
             ->assertOk()
-            ->assertSee('尚未設定全域通知收件信箱、Slack 或 Discord webhook。');
+            ->assertSee('尚未設定全域通知收件信箱、Slack、Discord 或 Teams webhook。');
 
         $this->assertDatabaseCount('notification_outbox', 0);
         Queue::assertNothingPushed();

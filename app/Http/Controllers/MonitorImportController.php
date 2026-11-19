@@ -12,6 +12,7 @@ use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\SlackWebhookUrlPolicy;
+use App\Services\TeamsWebhookUrlPolicy;
 use App\Services\UrlMasker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -46,6 +47,7 @@ class MonitorImportController extends Controller
         'notification_escalation_stage_2_delay_minutes',
         'notification_slack_webhook',
         'notification_discord_webhook',
+        'notification_teams_webhook',
         'confirmation_delay_seconds',
         'enabled',
         'public_status',
@@ -102,7 +104,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -153,6 +155,7 @@ class MonitorImportController extends Controller
             $notificationEscalationStageTwoDelayMinutes = null;
             $notificationSlackWebhook = null;
             $notificationDiscordWebhook = null;
+            $notificationTeamsWebhook = null;
             $confirmationDelaySeconds = (int) config('monitoring.confirmation_delay_seconds');
             $enabled = true;
             $publicStatus = false;
@@ -273,6 +276,18 @@ class MonitorImportController extends Controller
                     $errors[] = '請使用 discord.com 的 Discord Incoming Webhook HTTPS 網址。';
                 } elseif ($notificationDiscordWebhookInput !== '') {
                     $notificationDiscordWebhook = $notificationDiscordWebhookInput;
+                }
+            }
+
+            if (isset($columnIndexes['notification_teams_webhook'])) {
+                $notificationTeamsWebhookInput = trim((string) ($cells[$columnIndexes['notification_teams_webhook']] ?? ''));
+
+                if (mb_strlen($notificationTeamsWebhookInput) > 2048) {
+                    $errors[] = 'Microsoft Teams webhook 網址不得超過 2048 個字元。';
+                } elseif ($notificationTeamsWebhookInput !== '' && ! TeamsWebhookUrlPolicy::isAllowed($notificationTeamsWebhookInput)) {
+                    $errors[] = '請使用 Microsoft Power Automate Teams Workflow HTTPS webhook 網址。';
+                } elseif ($notificationTeamsWebhookInput !== '') {
+                    $notificationTeamsWebhook = $notificationTeamsWebhookInput;
                 }
             }
 
@@ -515,6 +530,8 @@ class MonitorImportController extends Controller
                 'notification_slack_webhook_configured' => $notificationSlackWebhook !== null,
                 'notification_discord_webhook' => $notificationDiscordWebhook,
                 'notification_discord_webhook_configured' => $notificationDiscordWebhook !== null,
+                'notification_teams_webhook' => $notificationTeamsWebhook,
+                'notification_teams_webhook_configured' => $notificationTeamsWebhook !== null,
                 'confirmation_delay_seconds' => $confirmationDelaySeconds,
                 'enabled' => $enabled,
                 'public_status' => $publicStatus,
@@ -540,6 +557,7 @@ class MonitorImportController extends Controller
                 $row['notification_escalation_stage_2_email'],
                 $row['notification_slack_webhook'],
                 $row['notification_discord_webhook'],
+                $row['notification_teams_webhook'],
             );
 
             return $row;
@@ -604,6 +622,7 @@ class MonitorImportController extends Controller
                 'notification_escalation_stage_2_delay_minutes' => $row['notification_escalation_stage_2_delay_minutes'] ?? null,
                 'notification_slack_webhook' => $row['notification_slack_webhook'] ?? null,
                 'notification_discord_webhook' => $row['notification_discord_webhook'] ?? null,
+                'notification_teams_webhook' => $row['notification_teams_webhook'] ?? null,
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,
