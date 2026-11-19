@@ -1155,14 +1155,10 @@ class MonitorController extends Controller
             $discordWebhookUrl = $monitor?->notification_discord_webhook;
         }
 
-        $allowedHosts = [];
-
-        foreach (preg_split('/[\r\n,]+/', (string) ($validated['redirect_hosts'] ?? ''), flags: PREG_SPLIT_NO_EMPTY) ?: [] as $host) {
-            try {
-                $allowedHosts[] = $this->urlPolicy->normalizeHost($host);
-            } catch (ProbeException $exception) {
-                throw ValidationException::withMessages(['redirect_hosts' => $exception->getMessage()]);
-            }
+        try {
+            $allowedHosts = $this->urlPolicy->normalizeRedirectHosts($validated['redirect_hosts'] ?? null);
+        } catch (ProbeException $exception) {
+            throw ValidationException::withMessages(['redirect_hosts' => $exception->getMessage()]);
         }
 
         if (array_key_exists('accepted_status_codes', $validated)) {

@@ -7,11 +7,15 @@ use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\User;
 use App\Services\IncidentManager;
+use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeResult;
+use App\Services\Probe\ProbeTransport;
+use App\Services\Probe\SecureProbeClient;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
+use App\Services\UrlMasker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -532,6 +536,93 @@ class SocialPostImportTest extends TestCase
             ->assertSee('自訂 HTTP 標頭可能含敏感值，監測網址必須使用 HTTPS。')
             ->assertDontSee('unsafe.example')
             ->assertDontSee('do-not-show');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(2, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_import_redirect_hosts_and_follow_an_allowed_social_post_redirect(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.facebook.com/story.php?story_fbid=123';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'allowed_redirect_hosts'],
+            [['Shared campaign post', $url, 'Campaign', 'Campaign headline', " CDN.Example.com,cdn.example.com\nmedia.example.com "]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('允許的重新導向主機')
+            ->assertSee('cdn.example.com')
+            ->assertSee('media.example.com')
+            ->assertSee('可匯入');
+
+        $expectedHosts = ['cdn.example.com', 'media.example.com'];
+        $this->assertSame($expectedHosts, $preview->viewData('previewRows')[0]['allowed_redirect_hosts']);
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $this->assertSame($expectedHosts, $monitor->allowed_redirect_hosts);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($expectedHosts, $snapshot['allowed_redirect_hosts']);
+
+        $transport = new class implements ProbeTransport
+        {
+            /** @var list<string> */
+            public array $requestedHosts = [];
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->requestedHosts[] = $target['host'];
+
+                if (count($this->requestedHosts) === 1) {
+                    return new HopResponse(302, 'https://cdn.example.com/public/post', '', 20, null, null, null);
+                }
+
+                return new HopResponse(200, null, '<article>Campaign headline</article>', 25, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $completedRun = $run->fresh();
+        $this->assertSame(['www.facebook.com', 'cdn.example.com'], $transport->requestedHosts);
+        $this->assertSame(200, $completedRun->normal_status);
+        $this->assertTrue($completedRun->passesMonitorChecks());
+        $this->assertDatabaseCount('incidents', 0);
+    }
+
+    public function test_csv_rejects_invalid_or_oversized_redirect_host_lists(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'allowed_redirect_hosts'],
+            [
+                ['Invalid host', 'https://example.com/invalid-redirect-host', 'Ops', 'localhost'],
+                ['Long host list', 'https://example.com/long-redirect-host-list', 'Ops', str_repeat('a', 2001)],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('請輸入完整的公開網域名稱。')
+            ->assertSee('重新導向主機清單不得超過 2000 個字元。');
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertSame(2, $preview->viewData('invalidCount'));

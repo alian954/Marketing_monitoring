@@ -34,6 +34,7 @@ class MonitorImportController extends Controller
         'response_time_threshold_ms',
         'accepted_status_codes',
         'request_headers',
+        'allowed_redirect_hosts',
     ];
 
     public function __construct(
@@ -77,7 +78,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -117,6 +118,7 @@ class MonitorImportController extends Controller
             $acceptedStatusCodes = [];
             $requestHeaders = [];
             $requestHeaderNames = [];
+            $allowedRedirectHosts = [];
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -135,6 +137,16 @@ class MonitorImportController extends Controller
                     );
                     $requestHeaderNames = array_keys($requestHeaders);
                 } catch (InvalidArgumentException $exception) {
+                    $errors[] = $exception->getMessage();
+                }
+            }
+
+            if (isset($columnIndexes['allowed_redirect_hosts'])) {
+                try {
+                    $allowedRedirectHosts = $this->urlPolicy->normalizeRedirectHosts(
+                        (string) ($cells[$columnIndexes['allowed_redirect_hosts']] ?? ''),
+                    );
+                } catch (ProbeException $exception) {
                     $errors[] = $exception->getMessage();
                 }
             }
@@ -288,6 +300,7 @@ class MonitorImportController extends Controller
                 'accepted_status_codes' => $acceptedStatusCodes,
                 'request_headers' => $requestHeaders,
                 'request_header_names' => $requestHeaderNames,
+                'allowed_redirect_hosts' => $allowedRedirectHosts,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -355,7 +368,7 @@ class MonitorImportController extends Controller
                 'label' => $row['label'] !== '' ? $row['label'] : null,
                 'enabled' => true,
                 'config_version' => 1,
-                'allowed_redirect_hosts' => [],
+                'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
                 'request_headers' => $row['request_headers'] ?? [],
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,

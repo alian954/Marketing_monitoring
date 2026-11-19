@@ -98,6 +98,24 @@ class UrlSafetyPolicy
         return $host;
     }
 
+    /** @return list<string> */
+    public function normalizeRedirectHosts(?string $hosts): array
+    {
+        $hosts = (string) $hosts;
+
+        if (mb_strlen($hosts) > 2000) {
+            throw new ProbeException('invalid_redirect_hosts', '重新導向主機清單不得超過 2000 個字元。');
+        }
+
+        $normalizedHosts = [];
+
+        foreach (preg_split('/[\r\n,]+/', $hosts, flags: PREG_SPLIT_NO_EMPTY) ?: [] as $host) {
+            $normalizedHosts[] = $this->normalizeHost($host);
+        }
+
+        return array_values(array_unique($normalizedHosts));
+    }
+
     private function isPublicIp(string $ip): bool
     {
         $flags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;

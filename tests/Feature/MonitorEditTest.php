@@ -70,6 +70,22 @@ class MonitorEditTest extends TestCase
             ->assertSee('舊事件已因設定變更而結束');
     }
 
+    public function test_new_monitor_normalizes_and_deduplicates_redirect_hosts(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+
+        $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), [
+                'name' => 'Redirect monitoring',
+                'url' => 'https://fixture.test/ok',
+                'label' => 'Operations',
+                'redirect_hosts' => " CDN.Example.com,cdn.example.com\nmedia.example.com ",
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(['cdn.example.com', 'media.example.com'], Monitor::query()->sole()->allowed_redirect_hosts);
+    }
+
     public function test_monitor_detail_paginates_all_retained_check_runs(): void
     {
         $monitor = Monitor::factory()->create();
