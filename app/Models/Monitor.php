@@ -152,7 +152,7 @@ class Monitor extends Model
                 return $platform;
             }
 
-            if ($platform === 'Instagram' && preg_match('/\A(?:p|reel|reels|tv)\/[^\/]+\z|\Astories\/[^\/]+\/[^\/]+\z/i', $path) === 1) {
+            if ($platform === 'Instagram' && preg_match('/\A(?:p|reel|reels|tv)\/[^\/]+\z|\Ashare\/(?:p|reel)\/[^\/]+\z|\Astories\/[^\/]+\/[^\/]+\z/i', $path) === 1) {
                 return $platform;
             }
 
