@@ -1052,6 +1052,7 @@
                             @endif
                             <th scope="col">檢查總耗時</th>
                             <th scope="col">訊號</th>
+                            <th scope="col">網址路徑</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1087,6 +1088,26 @@
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>
+                                <td>
+                                    @if ($run->masked_final_url || $run->masked_redirects !== [])
+                                        <details>
+                                            <summary>{{ $run->masked_redirects === [] ? '查看最終網址' : '查看 '.count($run->masked_redirects).' 次重新導向' }}</summary>
+                                            @if ($run->masked_final_url)
+                                                <p>最終網址：<span class="masked-url">{{ $run->masked_final_url }}</span></p>
+                                            @endif
+                                            @if ($run->masked_redirects !== [])
+                                                <p>重新導向路徑：</p>
+                                                <ol>
+                                                    @foreach ($run->masked_redirects as $redirectUrl)
+                                                        <li><span class="masked-url">{{ $redirectUrl }}</span></li>
+                                                    @endforeach
+                                                </ol>
+                                            @endif
+                                        </details>
+                                    @else
+                                        <span class="secondary-text">未記錄</span>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>

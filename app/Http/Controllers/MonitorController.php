@@ -263,6 +263,10 @@ class MonitorController extends Controller
             ->latest('scheduled_at')
             ->paginate(50)
             ->withQueryString();
+        $runs->getCollection()->each(function (CheckRun $run): void {
+            $run->setAttribute('masked_final_url', $this->maskProbeUrl($run->final_url));
+            $run->setAttribute('masked_redirects', $this->maskedRedirectUrls($run->redirects));
+        });
         $checkRunExportUrl = route('monitors.checks.export', [
             'monitor' => $monitor,
             ...array_filter($checkRunFilters, static fn (string $value): bool => $value !== ''),
@@ -795,6 +799,8 @@ class MonitorController extends Controller
                 'expected_response_header_found',
                 'expected_text_mode',
                 'tls_expires_at_utc',
+                'final_url',
+                'redirect_chain',
             ], ',', '"', '');
 
             $acceptedStatusCodesByVersion = $checkRunFilters['content_match'] === ''
@@ -808,6 +814,7 @@ class MonitorController extends Controller
                 ->each(function (CheckRun $run) use ($stream): void {
                     $expectedTextMatchResult = $run->expectedTextMatchResult();
                     $expectedResponseHeaderMatchResult = $run->expectedResponseHeaderMatchResult();
+                    $redirectUrls = $this->maskedRedirectUrls($run->redirects);
                     $fields = [
                         (string) $run->id,
                         $run->scheduled_at->utc()->toIso8601String(),
@@ -825,6 +832,8 @@ class MonitorController extends Controller
                         $expectedResponseHeaderMatchResult === null ? '' : ($expectedResponseHeaderMatchResult ? '1' : '0'),
                         $run->expectedTextMode(),
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
+                        $this->maskProbeUrl($run->final_url) ?? '',
+                        implode(' -> ', $redirectUrls),
                     ];
 
                     fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
@@ -966,6 +975,44 @@ class MonitorController extends Controller
                     : []];
             })
             ->all();
+    }
+
+    private function maskProbeUrl(?string $url): ?string
+    {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+
+        $url = trim($url);
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return $url;
+        }
+
+        return $this->urlMasker->mask($url);
+    }
+
+    /** @param array<mixed>|null $redirects
+     * @return list<string>
+     */
+    private function maskedRedirectUrls(?array $redirects): array
+    {
+        $urls = [];
+
+        foreach ($redirects ?? [] as $redirect) {
+            $url = is_string($redirect)
+                ? $redirect
+                : (is_array($redirect) && is_string($redirect['url'] ?? null) ? $redirect['url'] : null);
+
+            if ($url === null || trim($url) === '') {
+                continue;
+            }
+
+            $urls[] = $this->maskProbeUrl($url) ?? '';
+        }
+
+        return array_values(array_filter($urls, static fn (string $url): bool => $url !== ''));
     }
 
     /** @param array<int, list<int>> $acceptedStatusCodesByVersion */

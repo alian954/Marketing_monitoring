@@ -51,7 +51,7 @@ class MonitorCheckRunExportTest extends TestCase
             'normal_elapsed_ms' => 4,
             'error_detail' => 'private transport error detail',
             'final_url' => 'https://private.example/redirected?secret=private-redirect-value',
-            'redirects' => [['url' => 'https://private.example/redirected?secret=private-redirect-value']],
+            'redirects' => ['https://private.example/redirected?secret=private-redirect-value'],
             'expected_text_found' => false,
             'tls_expires_at' => '2027-01-01 00:00:00',
         ]);
@@ -97,6 +97,8 @@ class MonitorCheckRunExportTest extends TestCase
             'expected_response_header_found',
             'expected_text_mode',
             'tls_expires_at_utc',
+            'final_url',
+            'redirect_chain',
         ], $headers);
         $this->assertCount(1, $rows);
         $this->assertSame((string) $run->id, $row[$columns['check_run_id']]);
@@ -115,11 +117,35 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
+        $this->assertSame('https://private.example/redirected?secret=REDACTED', $row[$columns['final_url']]);
+        $this->assertSame('https://private.example/redirected?secret=REDACTED', $row[$columns['redirect_chain']]);
         $this->assertStringNotContainsString('secret-url-value', $content);
         $this->assertStringNotContainsString('private expected phrase', $content);
         $this->assertStringNotContainsString('private transport error detail', $content);
         $this->assertStringNotContainsString('private-redirect-value', $content);
         $this->assertStringNotContainsString('other monitor private run', $content);
+    }
+
+    public function test_authenticated_user_can_inspect_masked_redirect_details_in_check_history(): void
+    {
+        $user = User::factory()->create();
+        $monitor = Monitor::factory()->create();
+        CheckRun::factory()->for($monitor)->create([
+            'final_url' => 'https://www.facebook.com/login/?next=%2Fposts%2F123&access_token=private-access-value',
+            'redirects' => [
+                'https://www.facebook.com/login/?access_token=private-access-value',
+                'https://www.facebook.com/login/?next=%2Fposts%2F123&access_token=private-access-value',
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('網址路徑')
+            ->assertSee('查看 2 次重新導向')
+            ->assertSee('https://www.facebook.com/login/?next=%2Fposts%2F123&amp;access_token=REDACTED', false)
+            ->assertSee('https://www.facebook.com/login/?access_token=REDACTED')
+            ->assertDontSee('private-access-value');
     }
 
     public function test_authenticated_user_exports_every_check_run_across_streaming_batches(): void
