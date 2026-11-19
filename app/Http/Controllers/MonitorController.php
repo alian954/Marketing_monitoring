@@ -69,6 +69,7 @@ class MonitorController extends Controller
         'search' => ['nullable', 'string', 'max:2048'],
         'label' => ['nullable', 'string', 'max:100'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents'],
+        'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
 
     /** @var array<string, string> */
@@ -76,6 +77,7 @@ class MonitorController extends Controller
         'search.max' => '搜尋條件不得超過 2048 個字元。',
         'label.max' => '標籤篩選不得超過 100 個字元。',
         'state.in' => '請選擇有效的監測狀態篩選條件。',
+        'sort.in' => '請選擇有效的監測排序方式。',
     ];
 
     public function __construct(
@@ -95,11 +97,16 @@ class MonitorController extends Controller
         $search = trim((string) ($validated['search'] ?? ''));
         $label = (string) ($validated['label'] ?? '');
         $state = $validated['state'] ?? 'all';
-        $filters = ['search' => $search, 'label' => $label, 'state' => $state];
+        $sort = $validated['sort'] ?? 'name';
+        $filters = ['search' => $search, 'label' => $label, 'state' => $state, 'sort' => $sort];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
-            ->with(['latestCheckRun', 'activeIncidents'])
-            ->orderBy('name');
+            ->with(['latestCheckRun', 'activeIncidents']);
+        $query = match ($sort) {
+            'last_checked_desc' => $query->orderByDesc('last_checked_at')->orderBy('name')->orderBy('id'),
+            'last_checked_asc' => $query->orderBy('last_checked_at')->orderBy('name')->orderBy('id'),
+            default => $query->orderBy('name')->orderBy('id'),
+        };
         $monitors = $query->paginate(50)->withQueryString();
 
         $monitors->getCollection()->each(function (Monitor $monitor): void {
@@ -117,7 +124,7 @@ class MonitorController extends Controller
         return view('monitors.index', compact('monitors', 'filters', 'labels'));
     }
 
-    /** @param array{search: string, label: string, state: string} $filters */
+    /** @param array{search: string, label: string, state: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
@@ -720,7 +727,8 @@ class MonitorController extends Controller
 
     public function export(Request $request): StreamedResponse|RedirectResponse
     {
-        $validator = Validator::make($request->query(), self::MONITOR_LIST_FILTER_RULES, self::MONITOR_LIST_FILTER_MESSAGES);
+        $exportRules = array_diff_key(self::MONITOR_LIST_FILTER_RULES, ['sort' => true]);
+        $validator = Validator::make($request->query(), $exportRules, self::MONITOR_LIST_FILTER_MESSAGES);
         if ($validator->fails()) {
             return redirect()->route('monitors.index')->withErrors($validator);
         }

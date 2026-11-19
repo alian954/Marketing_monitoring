@@ -5,9 +5,10 @@
 @section('content')
     @php
         $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['state'] !== 'all';
+        $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
-            static fn (string $filter, string $name): bool => $filter !== '' && ! ($name === 'state' && $filter === 'all'),
+            static fn (string $filter, string $name): bool => $name !== 'sort' && $filter !== '' && ! ($name === 'state' && $filter === 'all'),
             ARRAY_FILTER_USE_BOTH,
         );
         $oldMonitorIds = old('monitor_ids', []);
@@ -65,10 +66,18 @@
                                 <option value="incidents" @selected(old('state', $filters['state']) === 'incidents')>有未結束事件</option>
                             </select>
                         </div>
+                        <div class="field-group">
+                            <label class="field-label" for="monitor-sort">排序方式</label>
+                            <select class="field-select" id="monitor-sort" name="sort">
+                                <option value="name" @selected(old('sort', $filters['sort']) === 'name')>名稱（A–Z）</option>
+                                <option value="last_checked_desc" @selected(old('sort', $filters['sort']) === 'last_checked_desc')>最近檢查（新到舊）</option>
+                                <option value="last_checked_asc" @selected(old('sort', $filters['sort']) === 'last_checked_asc')>最久未檢查（未檢查項目在前）</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button class="button button-secondary" type="submit">套用篩選</button>
-                        @if ($hasFilters)
+                        @if ($hasListOptions)
                             <a class="strong-link" href="{{ route('monitors.index') }}">清除篩選</a>
                         @endif
                     </div>

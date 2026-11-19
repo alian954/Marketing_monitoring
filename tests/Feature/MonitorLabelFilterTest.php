@@ -51,6 +51,7 @@ class MonitorLabelFilterTest extends TestCase
             'search' => 'Spring',
             'label' => 'Campaign A',
             'state' => 'enabled',
+            'sort' => 'name',
         ], $response->viewData('filters'));
     }
 
@@ -102,6 +103,44 @@ class MonitorLabelFilterTest extends TestCase
         $this->assertSame($monitor->name, $rows[0]['name']);
     }
 
+    public function test_monitor_list_sorts_by_check_time_and_places_unchecked_items_first_when_oldest_is_selected(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+        $oldestMonitor = $this->createMonitor([
+            'name' => 'Older check',
+            'label' => 'Operations',
+            'last_checked_at' => '2026-11-19 08:00:00',
+        ]);
+        $newestMonitor = $this->createMonitor([
+            'name' => 'Recent check',
+            'label' => 'Operations',
+            'last_checked_at' => '2026-11-19 10:00:00',
+        ]);
+        $uncheckedMonitor = $this->createMonitor(['name' => 'Never checked', 'label' => 'Operations']);
+        $user = User::factory()->create();
+
+        $newestFirst = $this->actingAs($user)
+            ->get(route('monitors.index', ['sort' => 'last_checked_desc']))
+            ->assertOk()
+            ->assertSee('value="last_checked_desc"', false)
+            ->viewData('monitors');
+        $oldestFirst = $this->actingAs($user)
+            ->get(route('monitors.index', ['sort' => 'last_checked_asc']))
+            ->assertOk()
+            ->assertSee('value="last_checked_asc"', false)
+            ->assertSee('清除篩選')
+            ->viewData('monitors');
+
+        $this->assertSame(
+            [$newestMonitor->id, $oldestMonitor->id, $uncheckedMonitor->id],
+            $newestFirst->getCollection()->modelKeys(),
+        );
+        $this->assertSame(
+            [$uncheckedMonitor->id, $oldestMonitor->id, $newestMonitor->id],
+            $oldestFirst->getCollection()->modelKeys(),
+        );
+    }
+
     public function test_monitor_search_label_and_state_filters_are_preserved_in_pagination(): void
     {
         for ($index = 1; $index <= 51; $index++) {
@@ -117,12 +156,14 @@ class MonitorLabelFilterTest extends TestCase
                 'search' => 'Campaign',
                 'label' => 'Campaign',
                 'state' => 'enabled',
+                'sort' => 'last_checked_desc',
             ]))
             ->assertOk()
             ->assertSee(route('monitors.index', [
                 'search' => 'Campaign',
                 'label' => 'Campaign',
                 'state' => 'enabled',
+                'sort' => 'last_checked_desc',
                 'page' => 2,
             ]));
 
@@ -131,7 +172,17 @@ class MonitorLabelFilterTest extends TestCase
             'search' => 'Campaign',
             'label' => 'Campaign',
             'state' => 'enabled',
+            'sort' => 'last_checked_desc',
         ], $response->viewData('filters'));
+    }
+
+    public function test_monitor_list_rejects_unknown_sort_values(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->get(route('monitors.index', ['sort' => 'random']))
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors(['sort' => '請選擇有效的監測排序方式。']);
     }
 
     public function test_monitor_csv_export_uses_the_current_search_label_and_state_filters(): void
@@ -197,7 +248,7 @@ class MonitorLabelFilterTest extends TestCase
             ]);
     }
 
-    /** @param array{name: string, label: string, enabled?: bool} $attributes */
+    /** @param array{name: string, label: string, enabled?: bool, last_checked_at?: ?string} $attributes */
     private function createMonitor(array $attributes): Monitor
     {
         $url = 'https://example.com/monitors/'.hash('sha256', $attributes['name']);
