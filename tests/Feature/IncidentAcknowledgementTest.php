@@ -183,7 +183,7 @@ class IncidentAcknowledgementTest extends TestCase
 
     }
 
-    public function test_incident_list_only_offers_bulk_acknowledgement_for_active_unacknowledged_events(): void
+    public function test_incident_list_offers_bulk_acknowledgement_for_active_events_only(): void
     {
         $monitor = Monitor::factory()->create();
         $eligibleIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
@@ -202,8 +202,10 @@ class IncidentAcknowledgementTest extends TestCase
             ->get(route('incidents.index'))
             ->assertOk()
             ->assertSee('認領所選事件')
+            ->assertSee('data-incident-select-all', false)
+            ->assertSee('data-incident-select', false)
             ->assertSee('name="incident_ids[]" value="'.$eligibleIncident->id.'"', false)
-            ->assertDontSee('name="incident_ids[]" value="'.$acknowledgedIncident->id.'"', false)
+            ->assertSee('name="incident_ids[]" value="'.$acknowledgedIncident->id.'"', false)
             ->assertDontSee('name="incident_ids[]" value="'.$resolvedIncident->id.'"', false);
     }
 
@@ -226,6 +228,7 @@ class IncidentAcknowledgementTest extends TestCase
 
         $this->actingAs($actor)
             ->post(route('incidents.bulk-acknowledge', ['severity' => 'warning']), [
+                'acknowledgement_action' => 'acknowledge',
                 'incident_ids' => [$suspectIncident->id, $openIncident->id, $acknowledgedIncident->id, $resolvedIncident->id],
             ])
             ->assertRedirect(route('incidents.index', ['severity' => 'warning']))
@@ -243,6 +246,44 @@ class IncidentAcknowledgementTest extends TestCase
         foreach (IncidentEvent::query()->get() as $event) {
             $this->assertSame('On-call operator', $event->evidence['actor_name']);
         }
+    }
+
+    public function test_bulk_unacknowledgement_clears_active_claims_and_audits_the_change(): void
+    {
+        $actor = User::factory()->create(['name' => 'On-call operator']);
+        $previousActor = User::factory()->create(['name' => 'Previous operator']);
+        $monitor = Monitor::factory()->create();
+        $acknowledgedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'acknowledged_at' => now()->subMinute(),
+            'acknowledged_by_id' => $previousActor->id,
+        ]);
+        $unacknowledgedIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_SUSPECT]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'resolved_at' => now(),
+            'acknowledged_at' => now()->subMinute(),
+            'acknowledged_by_id' => $previousActor->id,
+        ]);
+
+        $this->actingAs($actor)
+            ->post(route('incidents.bulk-acknowledge'), [
+                'acknowledgement_action' => 'unacknowledge',
+                'incident_ids' => [$acknowledgedIncident->id, $unacknowledgedIncident->id, $resolvedIncident->id],
+            ])
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHas('status', '已解除認領 1 件事件；略過 2 件尚未認領、已恢復或已結束的事件。');
+
+        $this->assertNull($acknowledgedIncident->fresh()->acknowledged_at);
+        $this->assertNull($acknowledgedIncident->fresh()->acknowledged_by_id);
+        $this->assertNull($unacknowledgedIncident->fresh()->acknowledged_at);
+        $this->assertSame($previousActor->id, $resolvedIncident->fresh()->acknowledged_by_id);
+        $this->assertDatabaseHas('incident_events', [
+            'incident_id' => $acknowledgedIncident->id,
+            'event_type' => 'unacknowledged',
+        ]);
+        $this->assertDatabaseCount('incident_events', 1);
+        $this->assertSame('On-call operator', IncidentEvent::query()->sole()->evidence['actor_name']);
     }
 
     public function test_bulk_acknowledgement_requires_a_selection_and_authentication(): void

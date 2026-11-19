@@ -6,6 +6,7 @@
     @php
         $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
+        $hasSelectableIncidents = $incidents->getCollection()->contains(static fn ($incident): bool => in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true));
     @endphp
 
     <div class="page-heading">
@@ -131,16 +132,36 @@
                 @endif
             </div>
         @else
-            <form action="{{ route('incidents.bulk-acknowledge', request()->query()) }}" method="POST">
+            <form id="bulk-incident-acknowledgement-form" action="{{ route('incidents.bulk-acknowledge', request()->query()) }}" method="POST">
                 @csrf
+                @error('acknowledgement_action')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                 @error('incident_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                 @error('incident_ids.*')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label class="field-label" for="bulk-incident-acknowledgement-action">批次認領操作</label>
+                        <select class="field-select" id="bulk-incident-acknowledgement-action" name="acknowledgement_action" required aria-describedby="bulk-incident-help">
+                            <option value="acknowledge" @selected(old('acknowledgement_action', 'acknowledge') === 'acknowledge')>認領所選事件</option>
+                            <option value="unacknowledge" @selected(old('acknowledgement_action') === 'unacknowledge')>解除所選事件的認領</option>
+                        </select>
+                    </div>
+                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
+                </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
                     <table class="data-table">
                         <caption class="sr-only">符合篩選條件的監測事件與處理狀態</caption>
                         <thead>
                             <tr>
-                                <th scope="col"><span class="sr-only">選取</span></th>
+                                <th scope="col">
+                                    @if ($hasSelectableIncidents)
+                                        <label class="field-check monitor-selection-label">
+                                            <input type="checkbox" data-incident-select-all aria-controls="bulk-incident-acknowledgement-form">
+                                            <span class="sr-only">選取本頁所有進行中的事件</span>
+                                        </label>
+                                    @else
+                                        <span class="sr-only">選取</span>
+                                    @endif
+                                </th>
                                 <th scope="col">事件</th>
                                 <th scope="col">監測項目</th>
                                 <th scope="col">偵測訊號</th>
@@ -166,9 +187,9 @@
                                 @endphp
                                 <tr>
                                     <td>
-                                        @if (in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true) && $incident->acknowledged_at === null)
+                                        @if (in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true))
                                             <label class="field-check monitor-selection-label">
-                                                <input type="checkbox" name="incident_ids[]" value="{{ $incident->id }}" aria-label="選取事件 #{{ $incident->id }}：{{ $incident->monitor?->name ?? '已刪除的監測項目' }}" aria-describedby="bulk-incident-help">
+                                                <input type="checkbox" name="incident_ids[]" value="{{ $incident->id }}" data-incident-select aria-label="選取事件 #{{ $incident->id }}：{{ $incident->monitor?->name ?? '已刪除的監測項目' }}" aria-describedby="bulk-incident-help">
                                                 <span class="sr-only">選取事件 #{{ $incident->id }}</span>
                                             </label>
                                         @else
@@ -210,8 +231,7 @@
                     </table>
                 </div>
                 <div class="form-actions">
-                    <p id="bulk-incident-help" class="field-help">選取本頁尚未認領的進行中事件；每次最多認領 25 件。已處理或已被其他人認領的事件會略過。</p>
-                    <button class="button button-secondary" type="submit">認領所選事件</button>
+                    <button class="button button-secondary" type="submit">套用至所選事件</button>
                 </div>
             </form>
             @if ($incidents->hasPages())

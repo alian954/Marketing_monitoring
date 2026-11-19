@@ -17,9 +17,12 @@ class IncidentController extends Controller
     public function bulkAcknowledge(Request $request): RedirectResponse
     {
         $validated = $request->validate([
+            'acknowledgement_action' => ['required', 'in:acknowledge,unacknowledge'],
             'incident_ids' => ['required', 'array', 'min:1', 'max:25'],
             'incident_ids.*' => ['required', 'integer', 'distinct', 'exists:incidents,id'],
         ], [
+            'acknowledgement_action.required' => '請先選擇認領操作。',
+            'acknowledgement_action.in' => '認領操作無效，請重新選擇。',
             'incident_ids.required' => '請先選取要認領的事件。',
             'incident_ids.array' => '所選事件格式無效，請重新選取。',
             'incident_ids.min' => '請先選取要認領的事件。',
@@ -30,22 +33,24 @@ class IncidentController extends Controller
         $actor = $request->user();
         abort_unless($actor instanceof User, 401);
         $selectedIds = array_map('intval', $validated['incident_ids']);
+        $acknowledge = $validated['acknowledgement_action'] === 'acknowledge';
+        $eventType = $acknowledge ? 'acknowledged' : 'unacknowledged';
         $acknowledgedAt = now();
 
-        /** @var array{acknowledged: int, skipped: int} $result */
-        $result = DB::transaction(function () use ($selectedIds, $actor, $acknowledgedAt): array {
+        /** @var array{changed: int, skipped: int} $result */
+        $result = DB::transaction(function () use ($selectedIds, $actor, $acknowledgedAt, $acknowledge, $eventType): array {
             $lockedIncidents = Incident::query()
                 ->whereKey($selectedIds)
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
-            $acknowledgedCount = 0;
+            $changedCount = 0;
             $skippedCount = count($selectedIds) - $lockedIncidents->count();
 
             foreach ($lockedIncidents as $lockedIncident) {
                 if (
                     ! in_array($lockedIncident->state, [Incident::STATE_SUSPECT, Incident::STATE_OPEN], true)
-                    || $lockedIncident->acknowledged_at !== null
+                    || ($lockedIncident->acknowledged_at !== null) === $acknowledge
                 ) {
                     $skippedCount++;
 
@@ -53,19 +58,21 @@ class IncidentController extends Controller
                 }
 
                 $lockedIncident->forceFill([
-                    'acknowledged_at' => $acknowledgedAt,
-                    'acknowledged_by_id' => $actor->getKey(),
+                    'acknowledged_at' => $acknowledge ? $acknowledgedAt : null,
+                    'acknowledged_by_id' => $acknowledge ? $actor->getKey() : null,
                 ])->save();
-                $this->recordActivity($lockedIncident, $actor, 'acknowledged', []);
-                $acknowledgedCount++;
+                $this->recordActivity($lockedIncident, $actor, $eventType, []);
+                $changedCount++;
             }
 
-            return ['acknowledged' => $acknowledgedCount, 'skipped' => $skippedCount];
+            return ['changed' => $changedCount, 'skipped' => $skippedCount];
         });
 
-        $message = $result['acknowledged'] > 0
-            ? '已認領 '.$result['acknowledged'].' 件事件；略過 '.$result['skipped'].' 件已認領、已恢復或已結束的事件。'
-            : '所選事件均已認領、已恢復或已結束，沒有新增認領。';
+        $actionLabel = $acknowledge ? '認領' : '解除認領';
+        $skipReason = $acknowledge ? '已認領、已恢復或已結束' : '尚未認領、已恢復或已結束';
+        $message = $result['changed'] > 0
+            ? '已'.$actionLabel.' '.$result['changed'].' 件事件；略過 '.$result['skipped'].' 件'.$skipReason.'的事件。'
+            : '所選事件均'.$skipReason.'，沒有變更認領狀態。';
 
         return redirect()->route('incidents.index', $request->query())->with('status', $message);
     }

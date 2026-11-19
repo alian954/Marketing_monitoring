@@ -31,26 +31,33 @@ document.querySelectorAll('[data-secret-toggle]').forEach((toggle) => {
     });
 });
 
-const monitorSelectAll = document.querySelector('[data-monitor-select-all]');
-const monitorSelections = Array.from(document.querySelectorAll('[data-monitor-select]'));
+const setupCheckboxSelection = (selectAllSelector, selectionSelector) => {
+    const selectAll = document.querySelector(selectAllSelector);
+    const selections = Array.from(document.querySelectorAll(selectionSelector));
 
-if (monitorSelectAll instanceof HTMLInputElement && monitorSelections.length > 0) {
-    const synchronizeMonitorSelection = () => {
-        const selectedCount = monitorSelections.filter((selection) => selection.checked).length;
-        monitorSelectAll.checked = selectedCount === monitorSelections.length;
-        monitorSelectAll.indeterminate = selectedCount > 0 && selectedCount < monitorSelections.length;
+    if (!(selectAll instanceof HTMLInputElement) || selections.length === 0) {
+        return;
+    }
+
+    const synchronizeSelection = () => {
+        const selectedCount = selections.filter((selection) => selection.checked).length;
+        selectAll.checked = selectedCount === selections.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < selections.length;
     };
 
-    monitorSelectAll.addEventListener('change', () => {
-        monitorSelections.forEach((selection) => {
-            selection.checked = monitorSelectAll.checked;
+    selectAll.addEventListener('change', () => {
+        selections.forEach((selection) => {
+            selection.checked = selectAll.checked;
         });
-        synchronizeMonitorSelection();
+        synchronizeSelection();
     });
 
-    monitorSelections.forEach((selection) => {
-        selection.addEventListener('change', synchronizeMonitorSelection);
+    selections.forEach((selection) => {
+        selection.addEventListener('change', synchronizeSelection);
     });
 
-    synchronizeMonitorSelection();
-}
+    synchronizeSelection();
+};
+
+setupCheckboxSelection('[data-monitor-select-all]', '[data-monitor-select]');
+setupCheckboxSelection('[data-incident-select-all]', '[data-incident-select]');
