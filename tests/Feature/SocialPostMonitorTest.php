@@ -178,6 +178,23 @@ class SocialPostMonitorTest extends TestCase
         ]);
     }
 
+    public function test_instagram_short_domain_link_can_be_monitored_with_expected_text(): void
+    {
+        $url = 'https://instagr.am/p/ABC123/';
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost($url, 'Launch headline'));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame('Launch headline', $monitor->expected_text);
+        $this->assertSame('Instagram', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'instagram',
+        ]);
+    }
+
     public function test_social_post_stores_trimmed_and_deduplicated_lines_as_expected_text_terms(): void
     {
         $response = $this->actingAs(User::factory()->create())
@@ -294,12 +311,14 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/share/p/ABC123/'));
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/share/reel/ABC123/'));
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/stories/creator/123'));
+        $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://instagr.am/p/ABC123/'));
         $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://threads.net/@creator/post/123'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://fb.watch/ABC123/'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.facebook.com/creator'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.instagram.com/creator/'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.threads.com/@creator'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://instagram.com.attacker.test/p/123'));
+        $this->assertNull(Monitor::socialPlatformForUrl('https://instagr.am.attacker.test/p/123'));
     }
 
     public function test_social_profile_url_needs_no_post_text_and_keeps_adsbot_check(): void

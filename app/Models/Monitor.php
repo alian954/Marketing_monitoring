@@ -27,6 +27,7 @@ class Monitor extends Model
         'facebook.com' => 'Facebook',
         'fb.watch' => 'Facebook',
         'instagram.com' => 'Instagram',
+        'instagr.am' => 'Instagram',
         'threads.com' => 'Threads',
         'threads.net' => 'Threads',
     ];

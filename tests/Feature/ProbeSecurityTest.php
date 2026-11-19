@@ -138,6 +138,7 @@ class ProbeSecurityTest extends TestCase
             ['https://threads.net/@creator/post/ABC123', 'https://www.threads.com/@creator/post/ABC123'],
             ['https://instagram.com/p/ABC123/', 'https://www.instagram.com/p/ABC123/'],
             ['https://instagram.com/share/reel/ABC123/', 'https://www.instagram.com/reel/ABC123/'],
+            ['https://instagr.am/p/ABC123/', 'https://www.instagram.com/p/ABC123/'],
         ];
 
         foreach ($redirectCases as [$sourceUrl, $redirectUrl]) {

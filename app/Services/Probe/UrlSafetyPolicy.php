@@ -7,7 +7,7 @@ class UrlSafetyPolicy
     /** @var list<list<string>> */
     private const SOCIAL_REDIRECT_HOST_GROUPS = [
         ['facebook.com', 'fb.watch'],
-        ['instagram.com'],
+        ['instagram.com', 'instagr.am'],
         ['threads.com', 'threads.net'],
     ];
 
