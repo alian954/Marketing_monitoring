@@ -79,6 +79,7 @@
 
                     <button class="button button-primary login-submit" type="submit">登入</button>
                 </form>
+                <p class="login-footer"><a class="strong-link" href="{{ route('password.request') }}">忘記密碼？</a></p>
             </section>
 
             <p class="login-footer">此工作區僅供監測帳戶使用。</p>

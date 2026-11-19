@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\PasswordResetNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -16,6 +17,15 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    public function sendPasswordResetNotification(#[\SensitiveParameter] mixed $token): void
+    {
+        if (! is_string($token)) {
+            throw new \InvalidArgumentException('The password reset token must be a string.');
+        }
+
+        $this->notify(new PasswordResetNotification($token));
+    }
 
     /**
      * Get the attributes that should be cast.
