@@ -72,6 +72,36 @@ class MonitorLabelFilterTest extends TestCase
         $this->assertSame(1, $response->viewData('monitors')->total());
     }
 
+    public function test_monitor_search_finds_a_social_post_by_its_full_encrypted_url(): void
+    {
+        $url = 'https://www.threads.net/@creator/post/'.str_repeat('A', 130);
+        $monitor = Monitor::factory()->create([
+            'name' => 'Long Threads post URL',
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+        ]);
+        $this->createMonitor(['name' => 'Unrelated website', 'label' => 'Operations']);
+        $filters = ['search' => $url];
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', $filters))
+            ->assertOk()
+            ->assertSee('完整網址')
+            ->assertSee('網址請貼上完整連結。')
+            ->assertSee(route('monitors.export', $filters));
+
+        $this->assertSame([$monitor->id], $response->viewData('monitors')->getCollection()->modelKeys());
+        $this->assertSame(1, $response->viewData('monitors')->total());
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($monitor->name, $rows[0]['name']);
+    }
+
     public function test_monitor_search_label_and_state_filters_are_preserved_in_pagination(): void
     {
         for ($index = 1; $index <= 51; $index++) {

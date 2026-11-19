@@ -42,9 +42,9 @@
                 <form action="{{ route('monitors.index') }}" method="GET">
                     <div class="form-grid">
                         <div class="field-group">
-                            <label class="field-label" for="monitor-search">名稱或標籤</label>
-                            <input class="field-input" id="monitor-search" name="search" type="search" value="{{ old('search', $filters['search']) }}" maxlength="120" autocomplete="off" aria-describedby="monitor-search-help">
-                            <p id="monitor-search-help" class="field-help">只搜尋監測項目名稱與標籤，不搜尋網址。</p>
+                            <label class="field-label" for="monitor-search">名稱、標籤或完整網址</label>
+                            <input class="field-input" id="monitor-search" name="search" type="search" value="{{ old('search', $filters['search']) }}" maxlength="2048" autocomplete="off" aria-describedby="monitor-search-help">
+                            <p id="monitor-search-help" class="field-help">名稱與標籤支援部分搜尋；網址請貼上完整連結。</p>
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-label">標籤篩選</label>
@@ -80,7 +80,7 @@
             <div class="empty-state">
                 @if ($hasFilters)
                     <h3 class="empty-title">找不到符合條件的監測項目</h3>
-                    <p class="empty-copy">請調整名稱搜尋、標籤或監測狀態篩選條件。</p>
+                    <p class="empty-copy">請調整名稱、標籤、網址搜尋或監測狀態篩選條件。</p>
                     <a class="button button-secondary" href="{{ route('monitors.index') }}">清除篩選</a>
                 @else
                     <h3 class="empty-title">尚未新增監測項目</h3>

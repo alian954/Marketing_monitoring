@@ -66,14 +66,14 @@ class MonitorController extends Controller
 
     /** @var array<string, array<int, string>> */
     private const MONITOR_LIST_FILTER_RULES = [
-        'search' => ['nullable', 'string', 'max:120'],
+        'search' => ['nullable', 'string', 'max:2048'],
         'label' => ['nullable', 'string', 'max:100'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents'],
     ];
 
     /** @var array<string, string> */
     private const MONITOR_LIST_FILTER_MESSAGES = [
-        'search.max' => '搜尋文字不得超過 120 個字元。',
+        'search.max' => '搜尋條件不得超過 2048 個字元。',
         'label.max' => '標籤篩選不得超過 100 個字元。',
         'state.in' => '請選擇有效的監測狀態篩選條件。',
     ];
@@ -123,9 +123,11 @@ class MonitorController extends Controller
         return $query
             ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
                 $searchTerm = '%'.$filters['search'].'%';
-                $query->where(function (Builder $query) use ($searchTerm): void {
+                $urlFingerprint = Monitor::fingerprintUrl($filters['search']);
+                $query->where(function (Builder $query) use ($searchTerm, $urlFingerprint): void {
                     $query->where('name', 'like', $searchTerm)
-                        ->orWhere('label', 'like', $searchTerm);
+                        ->orWhere('label', 'like', $searchTerm)
+                        ->orWhere('url_hash', $urlFingerprint);
                 });
             })
             ->when($filters['label'] !== '', static fn (Builder $query) => $query->where('label', $filters['label']))
