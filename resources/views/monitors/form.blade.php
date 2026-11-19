@@ -14,6 +14,7 @@
     $acceptedStatusCodesDefault = is_array($acceptedStatusCodes) ? implode(', ', $acceptedStatusCodes) : '';
     $acceptedStatusCodesValue = old('accepted_status_codes', $acceptedStatusCodesDefault);
     $configuredRequestHeaders = $monitor->request_headers ?? [];
+    $configuredResponseHeaderName = $monitor->expectedResponseHeaderName();
 @endphp
 
 @section('title', $isEditing ? '編輯監測項目' : '新增監測項目')
@@ -52,6 +53,9 @@
                         @if ($probePreview['expected_text_checked'])
                             <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present_any'] => '已找到至少一個指定片段', ['missing', 'present_any'] => '未找到任何指定片段', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
                         @endif
+                        @if ($probePreview['expected_response_header_checked'])
+                            <li>回應標頭比對：{{ $probePreview['expected_response_header_found'] === null ? '無法判定' : ($probePreview['expected_response_header_found'] ? '符合' : '不符合') }}</li>
+                        @endif
                         @if ($probePreview['final_url'])
                             <li>最終網址：<span class="masked-url">{{ $probePreview['final_url'] }}</span></li>
                         @endif
@@ -59,7 +63,7 @@
                 </section>
             @endif
 
-            <form action="{{ $formAction }}" method="POST">
+            <form action="{{ $formAction }}" method="POST" aria-labelledby="monitor-form-title">
                 @csrf
                 @if ($isEditing)
                     @method($formMethod)
@@ -226,6 +230,25 @@
                             @error('confirmation_delay_seconds')<p id="confirmation-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">HTTP 回應標頭條件</h3>
+                    <p class="form-section-copy">可額外確認回應標頭是否存在或包含預期片語。條件會加密儲存；為避免洩漏，儲存或預檢後不會重新填入預期值。</p>
+                    <div class="field-group field-group-full">
+                        <label class="field-label" for="expected_response_header">回應標頭名稱與預期值</label>
+                        <p id="expected-response-header-help" class="field-help">格式為「名稱: 預期值」，比對不區分大小寫並檢查值是否包含片語；只確認標頭存在時，冒號後留空。留白會保留現有條件；輸入新條件會取代。最多 1200 字元。</p>
+                        <input class="field-input @error('expected_response_header') is-invalid @enderror" id="expected_response_header" name="expected_response_header" type="text" value="" maxlength="1200" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="X-Robots-Tag: noindex" aria-describedby="expected-response-header-help{{ $errors->has('expected_response_header') ? ' expected-response-header-error' : '' }}" @if ($errors->has('expected_response_header')) aria-invalid="true" @endif>
+                        @if ($configuredResponseHeaderName !== null)
+                            <p class="field-help">目前監測標頭「{{ $configuredResponseHeaderName }}」；{{ $monitor->expectedResponseHeaderChecksPresenceOnly() ? '只檢查是否存在' : '預期值已加密保存' }}。</p>
+                            <label class="field-check spaced-top" for="clear_expected_response_header">
+                                <input id="clear_expected_response_header" name="clear_expected_response_header" type="checkbox" value="1" aria-describedby="expected-response-header-help{{ $errors->has('clear_expected_response_header') ? ' clear-expected-response-header-error' : '' }}" @checked(old('clear_expected_response_header'))>
+                                移除目前回應標頭條件
+                            </label>
+                        @endif
+                        @error('expected_response_header')<p id="expected-response-header-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        @error('clear_expected_response_header')<p id="clear-expected-response-header-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                 </div>
 

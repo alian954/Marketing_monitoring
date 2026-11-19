@@ -16,6 +16,7 @@
         'probe_incomplete' => '回應過大，驗證未完成',
         'content' => '原始回應未包含預期文字',
         'forbidden_text' => '回應包含不應出現的文字',
+        'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
@@ -160,6 +161,16 @@
                         </dd>
                     </div>
                     <div class="metadata-item">
+                        <dt>HTTP 回應標頭條件</dt>
+                        <dd>
+                            @if ($monitor->expectedResponseHeaderName() !== null)
+                                {{ $monitor->expectedResponseHeaderName() }}（{{ $monitor->expectedResponseHeaderChecksPresenceOnly() ? '只檢查是否存在' : '預期值已加密保存' }}）
+                            @else
+                                未設定
+                            @endif
+                        </dd>
+                    </div>
+                    <div class="metadata-item">
                         <dt>預期內容文字片段</dt>
                         <dd>
                             @if ($monitor->expected_text)
@@ -257,6 +268,12 @@
                                 @endif
                             </dd>
                         </div>
+                        @if ($monitor->expectedResponseHeaderName() !== null)
+                            <div class="metadata-item">
+                                <dt>回應標頭比對結果</dt>
+                                <dd>{{ $monitor->latestCheckRun->expected_response_header_found === null ? '未檢查或無法判定' : ($monitor->latestCheckRun->expected_response_header_found ? '符合' : '不符合') }}</dd>
+                            </div>
+                        @endif
                         @if ($monitor->latestCheckRun->error_type || $monitor->latestCheckRun->adsbot_error_type)
                             <div class="metadata-item field-group-full">
                                 <dt>檢查訊號</dt>
@@ -411,7 +428,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-success-rate-title" class="panel-title">歷史檢查成功率</h2>
-                <p class="panel-description">以已完成或重試耗盡的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼與文字條件的檢查才列為成功。</p>
+                <p class="panel-description">以已完成或重試耗盡的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。</p>
             </div>
         </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的檢查成功率">
@@ -612,6 +629,9 @@
                                                         條件：{{ match ($event->evidence['expected_text_mode']) { 'absent' => '不得出現任一片段', 'present_any' => '至少包含一個片段', default => '必須包含全部片段' } }}；
                                                         比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : match ($event->evidence['expected_text_mode']) { 'absent' => $event->evidence['expected_text_found'] ? '原始回應找到禁止文字' : '原始回應未找到禁止文字', 'present_any' => $event->evidence['expected_text_found'] ? '原始回應找到至少一個片段' : '原始回應未找到任何片段', default => $event->evidence['expected_text_found'] ? '原始回應找到全部片段' : '原始回應缺少至少一個片段' } }}
                                                     </span>
+                                                @endif
+                                                @if ($incident->rule_key === 'response_header' && isset($event->evidence['expected_response_header_name']) && array_key_exists('expected_response_header_found', $event->evidence))
+                                                    <span class="secondary-text">標頭 {{ $event->evidence['expected_response_header_name'] }}；比對：{{ $event->evidence['expected_response_header_found'] === null ? '無法判定' : ($event->evidence['expected_response_header_found'] ? '符合' : '不符合') }}</span>
                                                 @endif
                                                 @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed', 'classification_changed', 'incident_note_added', 'incident_note_cleared'], true))
                                                     <span class="secondary-text">由 {{ $event->evidence['actor_name'] ?? '使用者' }}</span>
@@ -889,6 +909,9 @@
                             @if ($monitor->expected_text)
                                 <th scope="col">文字比對</th>
                             @endif
+                            @if ($monitor->expectedResponseHeaderName() !== null)
+                                <th scope="col">回應標頭</th>
+                            @endif
                             <th scope="col">檢查總耗時</th>
                             <th scope="col">訊號</th>
                         </tr>
@@ -905,6 +928,9 @@
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 @if ($monitor->expected_text)
                                     <td>{{ $run->expected_text_found === null ? '未進行比對' : match ($run->expectedTextMode()) { 'absent' => $run->expected_text_found ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expected_text_found ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</td>
+                                @endif
+                                @if ($monitor->expectedResponseHeaderName() !== null)
+                                    <td>{{ $run->expected_response_header_found === null ? '未檢查或無法判定' : ($run->expected_response_header_found ? '符合' : '不符合') }}</td>
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>

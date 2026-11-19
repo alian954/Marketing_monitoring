@@ -94,6 +94,7 @@ class MonitorCheckRunExportTest extends TestCase
             'error_type',
             'adsbot_error_type',
             'expected_text_found',
+            'expected_response_header_found',
             'expected_text_mode',
             'tls_expires_at_utc',
         ], $headers);
@@ -111,6 +112,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
         $this->assertSame('0', $row[$columns['expected_text_found']]);
+        $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
         $this->assertStringNotContainsString('secret-url-value', $content);

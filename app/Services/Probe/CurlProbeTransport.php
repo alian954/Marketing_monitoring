@@ -14,7 +14,7 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
         return $this->getWithHeaders($target, $userAgent, $timeoutMs, []);
     }
 
-    public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders): HopResponse
+    public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders, ?string $responseHeaderName = null): HopResponse
     {
         try {
             $headerLines = RequestHeaderParser::toCurlLines($requestHeaders);
@@ -31,6 +31,8 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
         $bodyBuffer = new BoundedResponseBodyBuffer((int) config('monitoring.max_body_bytes'));
         $location = null;
         $retryAfterHeader = null;
+        $responseHeaders = [];
+        $responseHeaderValueBytes = 0;
         $retryAfterParser = $this->retryAfterParser;
         $resolve = null;
         $requestBudgetMs = max(1, $timeoutMs);
@@ -69,7 +71,14 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
 
                 return strlen($chunk);
             },
-            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location, &$retryAfterHeader, $retryAfterParser): int {
+            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location, &$retryAfterHeader, &$responseHeaders, &$responseHeaderValueBytes, $responseHeaderName, $retryAfterParser): int {
+                if (preg_match('/\AHTTP\/\S+\s+\d{3}(?:\s|\z)/i', $line) === 1) {
+                    $location = null;
+                    $retryAfterHeader = null;
+                    $responseHeaders = [];
+                    $responseHeaderValueBytes = 0;
+                }
+
                 if (preg_match('/^Location:\s*(.*?)\s*$/i', $line, $matches) === 1) {
                     $location = trim($matches[1]);
                 }
@@ -78,6 +87,23 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
 
                 if ($retryAfterValue !== null) {
                     $retryAfterHeader = $retryAfterValue;
+                }
+
+                $separator = strpos($line, ':');
+
+                if ($responseHeaderName !== null && $separator !== false) {
+                    $name = mb_strtolower(trim(substr($line, 0, $separator)));
+                    $value = trim(substr($line, $separator + 1));
+                    $valueBytes = strlen($value);
+
+                    if (
+                        $name === mb_strtolower($responseHeaderName)
+                        && count($responseHeaders[$name] ?? []) < 16
+                        && $responseHeaderValueBytes + $valueBytes <= 32_768
+                    ) {
+                        $responseHeaders[$name][] = $value;
+                        $responseHeaderValueBytes += $valueBytes;
+                    }
                 }
 
                 return strlen($line);
@@ -111,7 +137,7 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
         }
 
         if ($bodyBuffer->exceededLimit()) {
-            return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, 'body_too_large', '回應內容超過 1 MB 讀取上限。', $tlsExpiresAt, $retryAfterSeconds);
+            return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, 'body_too_large', '回應內容超過 1 MB 讀取上限。', $tlsExpiresAt, $retryAfterSeconds, $responseHeaders);
         }
 
         if ($completed === false || $errorNumber !== 0) {
@@ -130,10 +156,10 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
                 default => '無法完成連線要求。',
             };
 
-            return new HopResponse($statusCode ?: null, $location, '', $elapsedMs, $errorType, $detail, $tlsExpiresAt, $retryAfterSeconds);
+            return new HopResponse($statusCode ?: null, $location, '', $elapsedMs, $errorType, $detail, $tlsExpiresAt, $retryAfterSeconds, $responseHeaders);
         }
 
-        return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, null, null, $tlsExpiresAt, $retryAfterSeconds);
+        return new HopResponse($statusCode ?: null, $location, $bodyBuffer->body(), $elapsedMs, null, null, $tlsExpiresAt, $retryAfterSeconds, $responseHeaders);
     }
 
     private function certificateExpiry(array|false $certificates): ?DateTimeImmutable

@@ -19,6 +19,7 @@ class IncidentHistoryController extends Controller
         'probe_incomplete' => '回應過大，驗證未完成',
         'content' => '原始回應未包含預期文字',
         'forbidden_text' => '回應包含不應出現的文字',
+        'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',

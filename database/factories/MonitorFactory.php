@@ -24,6 +24,7 @@ class MonitorFactory extends Factory
             'label' => null,
             'notification_discord_webhook' => null,
             'request_headers' => [],
+            'expected_response_header' => null,
             'enabled' => true,
             'config_version' => 1,
             'allowed_redirect_hosts' => [],

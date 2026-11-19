@@ -16,7 +16,7 @@ class SecureProbeClient implements ProbeClient
         private readonly UrlMasker $masker,
     ) {}
 
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = []): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null): ProbeResult
     {
         $startedAt = hrtime(true);
 
@@ -24,6 +24,12 @@ class SecureProbeClient implements ProbeClient
             $requestHeaders = RequestHeaderParser::normalize($requestHeaders);
         } catch (InvalidArgumentException) {
             return $this->failure(new ProbeException('invalid_request_header', '自訂 HTTP 標頭設定無效。'), $startedAt, [], [], $url);
+        }
+
+        try {
+            $expectedResponseHeader = ResponseHeaderCondition::normalizedCondition($expectedResponseHeader);
+        } catch (InvalidArgumentException) {
+            return $this->failure(new ProbeException('invalid_response_header_condition', '回應標頭檢查條件無效。'), $startedAt, [], [], $url);
         }
 
         if ($requestHeaders !== [] && mb_strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
@@ -39,6 +45,7 @@ class SecureProbeClient implements ProbeClient
         $monitorHostIps = [];
         $elapsedMs = 0;
         $maxRedirects = (int) config('monitoring.max_redirects');
+        $expectedResponseHeaderName = ResponseHeaderCondition::headerName($expectedResponseHeader);
         $deadline = $startedAt + $requestTimeoutSeconds * 1_000_000_000;
 
         for ($hop = 0; $hop <= $maxRedirects; $hop++) {
@@ -84,8 +91,8 @@ class SecureProbeClient implements ProbeClient
                 $attemptTarget = $target;
                 $attemptTarget['ips'] = [$ip];
                 $headersForHop = $this->sameOrigin($url, $target['url']) ? $requestHeaders : [];
-                $response = $this->transport instanceof HeaderAwareProbeTransport && $headersForHop !== []
-                    ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop)
+                $response = $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
+                    ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop, $expectedResponseHeaderName)
                     : $this->transport->get($attemptTarget, $userAgent, $remainingMs);
                 $elapsedMs += $response->elapsedMs;
 
@@ -109,6 +116,9 @@ class SecureProbeClient implements ProbeClient
                 && $isRedirectResponse
                 && $response->location !== null
                 && trim($response->location) !== '';
+            $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
+                ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
+                : null;
 
             $boundedPrefixMatch = null;
 
@@ -129,6 +139,7 @@ class SecureProbeClient implements ProbeClient
                     $response->tlsExpiresAt,
                     $monitorHostIps,
                     $response->retryAfterSeconds,
+                    $expectedResponseHeaderFound,
                 );
             }
 
@@ -149,6 +160,7 @@ class SecureProbeClient implements ProbeClient
                     $response->tlsExpiresAt,
                     $monitorHostIps,
                     $response->retryAfterSeconds,
+                    $expectedResponseHeaderFound,
                 );
             }
 
@@ -165,6 +177,7 @@ class SecureProbeClient implements ProbeClient
                     $response->tlsExpiresAt,
                     $monitorHostIps,
                     $response->retryAfterSeconds,
+                    null,
                 );
             }
 
@@ -185,6 +198,7 @@ class SecureProbeClient implements ProbeClient
                     $response->tlsExpiresAt,
                     $monitorHostIps,
                     $response->retryAfterSeconds,
+                    $expectedResponseHeaderFound,
                 );
             }
 

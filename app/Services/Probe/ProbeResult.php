@@ -21,6 +21,7 @@ readonly class ProbeResult
         public ?\DateTimeImmutable $tlsExpiresAt,
         public array $monitorHostIps = [],
         public ?int $retryAfterSeconds = null,
+        public ?bool $expectedResponseHeaderFound = null,
     ) {}
 
     public function succeeded(): bool

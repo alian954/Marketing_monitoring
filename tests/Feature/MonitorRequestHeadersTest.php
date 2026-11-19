@@ -252,7 +252,7 @@ class MonitorRequestHeadersTest extends TestCase
                 return array_shift($this->responses);
             }
 
-            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders): HopResponse
+            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders, ?string $responseHeaderName = null): HopResponse
             {
                 $this->headersByRequest[] = $requestHeaders;
 
@@ -292,7 +292,7 @@ class MonitorRequestHeadersTest extends TestCase
                 throw new \RuntimeException('The probe must reject HTTP before sending headers.');
             }
 
-            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders): HopResponse
+            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders, ?string $responseHeaderName = null): HopResponse
             {
                 throw new \RuntimeException('The probe must reject HTTP before sending headers.');
             }
@@ -333,7 +333,7 @@ class MonitorRequestHeadersTest extends TestCase
                 return array_shift($this->responses);
             }
 
-            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders): HopResponse
+            public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders, ?string $responseHeaderName = null): HopResponse
             {
                 $this->headersByRequest[] = $requestHeaders;
 

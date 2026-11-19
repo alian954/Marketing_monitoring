@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'tls_expires_at'])]
+#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'expected_response_header_found', 'tls_expires_at'])]
 #[Hidden(['config_snapshot'])]
 class CheckRun extends Model
 {
@@ -34,6 +34,7 @@ class CheckRun extends Model
             'resolved_public_ips' => 'array',
             'monitor_host_ips' => 'array',
             'expected_text_found' => 'boolean',
+            'expected_response_header_found' => 'boolean',
             'tls_expires_at' => 'immutable_datetime',
         ];
     }
@@ -56,13 +57,21 @@ class CheckRun extends Model
 
         $expectedText = $snapshot['expected_text'] ?? null;
 
-        if (! is_string($expectedText) || $expectedText === '') {
-            return true;
+        if (is_string($expectedText) && $expectedText !== '') {
+            $contentConditionPassed = ($snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT) === ExpectedTextMatcher::MODE_ABSENT
+                ? $this->expected_text_found === false
+                : $this->expected_text_found === true;
+
+            if (! $contentConditionPassed) {
+                return false;
+            }
         }
 
-        return ($snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT) === ExpectedTextMatcher::MODE_ABSENT
-            ? $this->expected_text_found === false
-            : $this->expected_text_found === true;
+        $expectedResponseHeader = $snapshot['expected_response_header'] ?? null;
+
+        return ! is_string($expectedResponseHeader)
+            || trim($expectedResponseHeader) === ''
+            || $this->expected_response_header_found === true;
     }
 
     public function expectedTextMode(): string

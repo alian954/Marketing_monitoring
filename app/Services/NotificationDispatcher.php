@@ -155,6 +155,7 @@ class NotificationDispatcher
             'http' => 'HTTP 連線異常',
             'content' => $monitor->socialPlatform() === null ? '缺少預期文字' : '原始回應未包含預期貼文文字',
             'forbidden_text' => '回應包含不應出現的文字',
+            'response_header' => 'HTTP 回應標頭不符合設定',
             'response_time' => 'HTTP 回應時間超過設定門檻',
             'monitor_stale' => '監測檢查結果已超過預期更新時間',
             'tls_expired' => 'TLS 憑證已過期',

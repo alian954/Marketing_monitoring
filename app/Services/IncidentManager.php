@@ -11,6 +11,7 @@ use App\Models\NotificationOutbox;
 use App\Models\TlsObservation;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeResult;
+use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\TlsCertificateResult;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -80,6 +81,23 @@ class IncidentManager
                     [
                         'expected_text_mode' => $expectedTextMode,
                         'expected_text_found' => $expectedTextFound,
+                    ],
+                ));
+            }
+
+            if ($lockedMonitor->expected_response_header !== null && $normalStatusAccepted && $normal->expectedResponseHeaderFound !== null) {
+                $delay = $this->earlierDelay($delay, $this->recordRule(
+                    $lockedMonitor,
+                    $run,
+                    'response_header',
+                    'warning',
+                    $normal->expectedResponseHeaderFound === false,
+                    $normal,
+                    true,
+                    null,
+                    [
+                        'expected_response_header_name' => ResponseHeaderCondition::headerName($lockedMonitor->expected_response_header),
+                        'expected_response_header_found' => $normal->expectedResponseHeaderFound,
                     ],
                 ));
             }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Probe\ResponseHeaderCondition;
 use Carbon\CarbonImmutable;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -12,8 +13,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'request_headers', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
-#[Hidden(['notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'request_headers'])]
+#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
+#[Hidden(['notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'request_headers', 'expected_response_header'])]
 class Monitor extends Model
 {
     public const MAX_INTERVAL_SECONDS = 3600;
@@ -49,6 +50,7 @@ class Monitor extends Model
             'notification_slack_webhook' => 'encrypted',
             'notification_discord_webhook' => 'encrypted',
             'request_headers' => 'encrypted:array',
+            'expected_response_header' => 'encrypted',
             'allowed_redirect_hosts' => 'array',
             'accepted_status_codes' => 'array',
             'enabled' => 'boolean',
@@ -106,6 +108,18 @@ class Monitor extends Model
     public function socialPlatform(): ?string
     {
         return self::socialPlatformForUrl($this->url);
+    }
+
+    public function expectedResponseHeaderName(): ?string
+    {
+        return ResponseHeaderCondition::headerName($this->expected_response_header);
+    }
+
+    public function expectedResponseHeaderChecksPresenceOnly(): bool
+    {
+        $parsed = ResponseHeaderCondition::parse($this->expected_response_header);
+
+        return $parsed !== null && $parsed['value'] === '';
     }
 
     public static function socialPlatformKeyForUrl(string $url): ?string

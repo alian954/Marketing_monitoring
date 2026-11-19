@@ -4,6 +4,7 @@ namespace App\Services\Probe;
 
 readonly class HopResponse
 {
+    /** @param array<string, list<string>> $responseHeaders */
     public function __construct(
         public ?int $statusCode,
         public ?string $location,
@@ -13,5 +14,6 @@ readonly class HopResponse
         public ?string $errorDetail,
         public ?\DateTimeImmutable $tlsExpiresAt,
         public ?int $retryAfterSeconds = null,
+        public array $responseHeaders = [],
     ) {}
 }

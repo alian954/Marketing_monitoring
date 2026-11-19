@@ -97,9 +97,14 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             ];
 
             $requestHeaders = (array) ($snapshot['request_headers'] ?? []);
+            $expectedResponseHeader = isset($snapshot['expected_response_header']) ? (string) $snapshot['expected_response_header'] : null;
 
-            if ($requestHeaders !== []) {
+            if ($requestHeaders !== [] || $expectedResponseHeader !== null) {
                 $probeArguments[] = $requestHeaders;
+            }
+
+            if ($expectedResponseHeader !== null) {
+                $probeArguments[] = $expectedResponseHeader;
             }
 
             $normal = $probe->inspect(...$probeArguments);
@@ -150,6 +155,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'resolved_public_ips' => $resolvedIps,
                 'monitor_host_ips' => $normal->monitorHostIps,
                 'expected_text_found' => $normal->expectedTextFound,
+                'expected_response_header_found' => $normal->expectedResponseHeaderFound,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
 

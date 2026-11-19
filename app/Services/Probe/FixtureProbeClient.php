@@ -6,7 +6,7 @@ use DateTimeImmutable;
 
 class FixtureProbeClient implements ProbeClient
 {
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = []): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null): ProbeResult
     {
         $startedAt = hrtime(true);
         $parts = parse_url($url);
@@ -62,8 +62,15 @@ class FixtureProbeClient implements ProbeClient
         if ($expectedText !== null && $expectedText !== '') {
             $matchesExpectedText = ExpectedTextMatcher::matches($body, $expectedText, $expectedTextMode);
         }
+        $responseHeaders = ['content-type' => ['text/html; charset=UTF-8']];
+
+        if ($path !== '/missing-response-header') {
+            $responseHeaders['x-robots-tag'] = ['index, follow'];
+        }
+
+        $matchesExpectedResponseHeader = ResponseHeaderCondition::matches($responseHeaders, $expectedResponseHeader);
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 
-        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps);
+        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps, null, $matchesExpectedResponseHeader);
     }
 }

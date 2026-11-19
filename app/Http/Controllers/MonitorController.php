@@ -15,6 +15,7 @@ use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\RequestHeaderParser;
+use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use App\Services\SlackWebhookUrlPolicy;
@@ -228,6 +229,7 @@ class MonitorController extends Controller
             'notification_slack_webhook' => $validated['notification_slack_webhook'],
             'notification_discord_webhook' => $validated['notification_discord_webhook'],
             'request_headers' => $validated['request_headers'],
+            'expected_response_header' => $validated['expected_response_header'],
             'enabled' => true,
             'config_version' => 1,
             'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
@@ -269,7 +271,7 @@ class MonitorController extends Controller
             ->whereNotNull('finished_at')
             ->where('finished_at', '>=', $historyQueryStart)
             ->orderBy('finished_at')
-            ->get(['id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms', 'expected_text_found']);
+            ->get(['id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'normal_elapsed_ms', 'expected_text_found', 'expected_response_header_found']);
         $maintenanceLookupDate = $historyStart->copy()->timezone('Asia/Taipei')->subDays(7)->toDateString();
         $maintenanceWindows = $monitor->maintenanceWindows()
             ->where(function (Builder $query) use ($historyStart, $maintenanceLookupDate): void {
@@ -451,6 +453,7 @@ class MonitorController extends Controller
                 'notification_slack_webhook' => $validated['notification_slack_webhook'],
                 'notification_discord_webhook' => $validated['notification_discord_webhook'],
                 'request_headers' => $validated['request_headers'],
+                'expected_response_header' => $validated['expected_response_header'],
                 'accepted_status_codes' => $validated['accepted_status_codes'],
                 'expected_text' => $validated['expected_text'] ?: null,
                 'expected_text_mode' => $validated['expected_text_mode'],
@@ -740,6 +743,7 @@ class MonitorController extends Controller
                 'error_type',
                 'adsbot_error_type',
                 'expected_text_found',
+                'expected_response_header_found',
                 'expected_text_mode',
                 'tls_expires_at_utc',
             ], ',', '"', '');
@@ -763,6 +767,7 @@ class MonitorController extends Controller
                         (string) $run->error_type,
                         (string) $run->adsbot_error_type,
                         $run->expected_text_found === null ? '' : ($run->expected_text_found ? '1' : '0'),
+                        $run->expected_response_header_found === null ? '' : ($run->expected_response_header_found ? '1' : '0'),
                         $run->expectedTextMode(),
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
                     ];
@@ -865,19 +870,27 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, request_headers: array<string, string>, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
+        $expectedResponseHeaderInput = $request->input('expected_response_header', '');
         $request->request->remove('request_headers');
+        $request->request->remove('expected_response_header');
         $request->query->remove('request_headers');
+        $request->query->remove('expected_response_header');
 
         if ($request->isJson()) {
             $request->json()->remove('request_headers');
+            $request->json()->remove('expected_response_header');
         }
 
         if ($requestHeadersInput !== null && ! is_string($requestHeadersInput)) {
             throw ValidationException::withMessages(['request_headers' => '自訂 HTTP 標頭格式不正確。']);
+        }
+
+        if ($expectedResponseHeaderInput !== null && ! is_string($expectedResponseHeaderInput)) {
+            throw ValidationException::withMessages(['expected_response_header' => '回應標頭條件格式不正確。']);
         }
 
         if ($request->exists('expected_text') && is_string($request->input('expected_text'))) {
@@ -926,6 +939,7 @@ class MonitorController extends Controller
             'notification_discord_webhook' => ['sometimes', 'nullable', 'string', 'max:2048', 'url'],
             'clear_notification_discord_webhook' => ['sometimes', 'boolean'],
             'clear_request_headers' => ['sometimes', 'boolean'],
+            'clear_expected_response_header' => ['sometimes', 'boolean'],
             'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
             'expected_text' => ['nullable', 'string', 'max:500'],
             'expected_text_mode' => ['sometimes', 'in:'.implode(',', [
@@ -977,6 +991,12 @@ class MonitorController extends Controller
             throw ValidationException::withMessages(['request_headers' => $exception->getMessage()]);
         }
 
+        try {
+            $expectedResponseHeader = ResponseHeaderCondition::normalizedCondition($expectedResponseHeaderInput);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['expected_response_header' => $exception->getMessage()]);
+        }
+
         $clearRequestHeaders = (bool) ($validated['clear_request_headers'] ?? false);
 
         if ($clearRequestHeaders && $requestHeaders !== []) {
@@ -987,6 +1007,18 @@ class MonitorController extends Controller
             $requestHeaders = [];
         } elseif ($requestHeaders === []) {
             $requestHeaders = $monitor?->request_headers ?? [];
+        }
+
+        $clearExpectedResponseHeader = (bool) ($validated['clear_expected_response_header'] ?? false);
+
+        if ($clearExpectedResponseHeader && $expectedResponseHeader !== null) {
+            throw ValidationException::withMessages(['clear_expected_response_header' => '清除回應標頭條件時，請先清空條件輸入欄。']);
+        }
+
+        if ($clearExpectedResponseHeader) {
+            $expectedResponseHeader = null;
+        } elseif ($expectedResponseHeader === null) {
+            $expectedResponseHeader = $monitor?->expected_response_header;
         }
 
         $requestUrl = trim((string) ($validated['url'] ?? '')) !== ''
@@ -1120,6 +1152,7 @@ class MonitorController extends Controller
             'notification_slack_webhook' => $slackWebhookUrl,
             'notification_discord_webhook' => $discordWebhookUrl,
             'request_headers' => $requestHeaders,
+            'expected_response_header' => $expectedResponseHeader,
             'accepted_status_codes' => $acceptedStatusCodes,
             'expected_text' => isset($validated['expected_text']) ? trim($validated['expected_text']) : null,
             'expected_text_mode' => $validated['expected_text_mode'] ?? $monitor?->expected_text_mode ?? 'present',
@@ -1230,6 +1263,12 @@ class MonitorController extends Controller
 
         if ($validated['request_headers'] !== []) {
             $probeArguments[] = $validated['request_headers'];
+        } elseif ($validated['expected_response_header'] !== null) {
+            $probeArguments[] = [];
+        }
+
+        if ($validated['expected_response_header'] !== null) {
+            $probeArguments[] = $validated['expected_response_header'];
         }
 
         $result = $probe->inspect(...$probeArguments);
@@ -1240,16 +1279,19 @@ class MonitorController extends Controller
             || ($validated['expected_text_mode'] === ExpectedTextMatcher::MODE_ABSENT
                 ? $result->expectedTextFound === false
                 : $result->expectedTextFound === true);
+        $responseHeaderConditionPassed = $validated['expected_response_header'] === null
+            || $result->expectedResponseHeaderFound === true;
         $isIncomplete = $result->errorType === 'body_too_large'
             && $statusAccepted
             && $expectedText !== null
-            && $result->expectedTextFound === null;
-        $isPassed = $result->errorType === null && $statusAccepted && $contentConditionPassed;
+            && $result->expectedTextFound === null
+            && $responseHeaderConditionPassed;
+        $isPassed = $result->errorType === null && $statusAccepted && $contentConditionPassed && $responseHeaderConditionPassed;
         $state = $isPassed ? 'passed' : ($isIncomplete ? 'incomplete' : 'failed');
-        $message = $this->probePreviewMessage($result->errorType, $result->statusCode, $statusAccepted, $contentConditionPassed, $isIncomplete, $validated['expected_text_mode']);
+        $message = $this->probePreviewMessage($result->errorType, $result->statusCode, $statusAccepted, $contentConditionPassed, $responseHeaderConditionPassed, $isIncomplete, $validated['expected_text_mode']);
 
         return back()
-            ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'request_headers', '_token', '_method']))
+            ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'request_headers', 'expected_response_header', '_token', '_method']))
             ->with('probe_preview', [
                 'state' => $state,
                 'label' => match ($state) {
@@ -1266,6 +1308,8 @@ class MonitorController extends Controller
                 'expected_text_state' => $result->expectedTextFound === null
                     ? null
                     : ($result->expectedTextFound ? 'found' : 'missing'),
+                'expected_response_header_checked' => $validated['expected_response_header'] !== null,
+                'expected_response_header_found' => $result->expectedResponseHeaderFound,
             ]);
     }
 
@@ -1274,6 +1318,7 @@ class MonitorController extends Controller
         ?int $statusCode,
         bool $statusAccepted,
         bool $contentConditionPassed,
+        bool $responseHeaderConditionPassed,
         bool $isIncomplete,
         string $expectedTextMode,
     ): string {
@@ -1307,6 +1352,10 @@ class MonitorController extends Controller
                 'present_any' => '原始 HTTP 回應未找到任何一個指定片段。',
                 default => '原始 HTTP 回應至少缺少一個指定片段。',
             };
+        }
+
+        if (! $responseHeaderConditionPassed) {
+            return 'HTTP 回應未包含符合設定的標頭名稱或預期值。';
         }
 
         return 'HTTP 狀態與文字條件均符合目前設定。';
