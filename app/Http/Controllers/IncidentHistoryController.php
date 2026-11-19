@@ -55,6 +55,7 @@ class IncidentHistoryController extends Controller
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'state' => $filters['state'] ?? '',
+                'acknowledgement' => $filters['acknowledgement'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
                 'rule_key' => $filters['rule_key'] ?? '',
                 'date_from' => $filters['date_from'] ?? '',
@@ -129,12 +130,13 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
+    /** @return array{search?: string, state?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'state' => ['nullable', 'in:'.implode(',', array_keys(self::STATE_LABELS))],
+            'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
@@ -143,10 +145,11 @@ class IncidentHistoryController extends Controller
             'date_from.date_format' => '開始日期格式無效。',
             'date_to.date_format' => '結束日期格式無效。',
             'date_to.after_or_equal' => '結束日期不可早於開始日期。',
+            'acknowledgement.in' => '請選擇有效的事件認領篩選條件。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
+    /** @param array{search?: string, state?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -163,6 +166,8 @@ class IncidentHistoryController extends Controller
                 });
             })
             ->when($filters['state'] ?? null, static fn (Builder $query, string $state): Builder => $query->where('state', $state))
+            ->when(($filters['acknowledgement'] ?? '') === 'acknowledged', static fn (Builder $query): Builder => $query->whereNotNull('acknowledged_at'))
+            ->when(($filters['acknowledgement'] ?? '') === 'unacknowledged', static fn (Builder $query): Builder => $query->whereNull('acknowledged_at'))
             ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))
             ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
             ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {

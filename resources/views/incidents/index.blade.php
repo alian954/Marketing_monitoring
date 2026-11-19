@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['acknowledgement'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
     @endphp
 
@@ -42,6 +42,14 @@
                                 @foreach ($stateLabels as $state => $label)
                                     <option value="{{ $state }}" @selected(old('state', $filters['state']) === $state)>{{ $label }}</option>
                                 @endforeach
+                            </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-acknowledgement">認領狀態</label>
+                            <select class="field-select" id="incident-acknowledgement" name="acknowledgement">
+                                <option value="" @selected(old('acknowledgement', $filters['acknowledgement']) === '')>全部認領狀態</option>
+                                <option value="acknowledged" @selected(old('acknowledgement', $filters['acknowledgement']) === 'acknowledged')>已認領</option>
+                                <option value="unacknowledged" @selected(old('acknowledgement', $filters['acknowledgement']) === 'unacknowledged')>尚未認領</option>
                             </select>
                         </div>
                         <div class="field-group">

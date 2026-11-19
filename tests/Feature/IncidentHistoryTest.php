@@ -106,6 +106,63 @@ class IncidentHistoryTest extends TestCase
         );
     }
 
+    public function test_incident_history_and_csv_can_filter_acknowledged_and_unacknowledged_incidents(): void
+    {
+        $user = User::factory()->create();
+        $monitor = $this->createMonitor('Acknowledgement filter campaign');
+        $acknowledgedIncident = Incident::factory()->for($monitor)->create([
+            'acknowledged_at' => now(),
+            'acknowledged_by_id' => $user->id,
+        ]);
+        $unacknowledgedIncident = Incident::factory()->for($monitor)->create([
+            'acknowledged_at' => null,
+            'acknowledged_by_id' => null,
+        ]);
+
+        $acknowledgedFilters = ['acknowledgement' => 'acknowledged'];
+        $acknowledgedResponse = $this->actingAs($user)
+            ->get(route('incidents.index', $acknowledgedFilters))
+            ->assertOk()
+            ->assertSee('<option value="acknowledged" selected>已認領</option>', false)
+            ->assertSee(route('incidents.export', $acknowledgedFilters));
+
+        $this->assertSame(
+            [$acknowledgedIncident->id],
+            $acknowledgedResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+
+        $acknowledgedExport = $this->get(route('incidents.export', $acknowledgedFilters))->assertOk();
+        $this->assertSame(
+            [(string) $acknowledgedIncident->id],
+            array_column($this->csvRows($acknowledgedExport->streamedContent()), 'incident_id'),
+        );
+
+        $unacknowledgedFilters = ['acknowledgement' => 'unacknowledged'];
+        $unacknowledgedResponse = $this->get(route('incidents.index', $unacknowledgedFilters))
+            ->assertOk()
+            ->assertSee('<option value="unacknowledged" selected>尚未認領</option>', false);
+
+        $this->assertSame(
+            [$unacknowledgedIncident->id],
+            $unacknowledgedResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+
+        $unacknowledgedExport = $this->get(route('incidents.export', $unacknowledgedFilters))->assertOk();
+        $this->assertSame(
+            [(string) $unacknowledgedIncident->id],
+            array_column($this->csvRows($unacknowledgedExport->streamedContent()), 'incident_id'),
+        );
+    }
+
+    public function test_incident_history_rejects_unknown_acknowledgement_filter(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('incidents.index'))
+            ->get(route('incidents.index', ['acknowledgement' => 'unknown']))
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHasErrors(['acknowledgement' => '請選擇有效的事件認領篩選條件。']);
+    }
+
     public function test_incident_history_rejects_invalid_or_reversed_date_filters(): void
     {
         $indexUrl = route('incidents.index');
