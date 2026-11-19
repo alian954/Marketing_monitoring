@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Jobs\RunMonitorCheck;
+use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\User;
+use App\Services\IncidentManager;
 use App\Services\Probe\HostResolver;
+use App\Services\Probe\ProbeClient;
+use App\Services\Probe\ProbeResult;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -328,6 +332,52 @@ class SocialPostImportTest extends TestCase
             ->assertRedirect(route('monitors.index'));
 
         $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_imported_response_time_threshold_creates_an_incident_for_a_slow_successful_post(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/SLOW123/';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'timeout_seconds', 'response_time_threshold_ms'],
+            [['Slow campaign post', $url, 'Campaign', 'Campaign headline', '15', '1000']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 15, 'present')
+            ->andReturn(new ProbeResult(200, 1001, $url, [], ['93.184.216.34'], null, null, true, null));
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'normal_elapsed_ms' => 1001,
+            'expected_text_found' => 1,
+        ]);
+        $incident = Incident::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('rule_key', 'response_time')
+            ->sole();
+        $this->assertSame('warning', $incident->severity);
+        $this->assertSame(Incident::STATE_SUSPECT, $incident->state);
+        $failureEvent = $incident->events()->where('event_type', 'failure_seen')->sole();
+        $this->assertSame(1000, $failureEvent->evidence['threshold_ms']);
     }
 
     public function test_csv_rejects_optional_columns_in_a_noncanonical_order(): void
