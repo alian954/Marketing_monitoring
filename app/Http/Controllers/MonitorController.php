@@ -58,8 +58,12 @@ class MonitorController extends Controller
         'tls_daily' => '每日 TLS 檢查',
     ];
 
-    /** @var list<string> */
-    private const CHECK_RUN_CONTENT_MATCH_FILTERS = ['found', 'missing', 'not_checked'];
+    /** @var array<string, string> */
+    private const CHECK_RUN_CONTENT_MATCH_OPTIONS = [
+        'found' => '比對結果為「找到」',
+        'missing' => '比對結果為「未找到」',
+        'not_checked' => '未進行比對',
+    ];
 
     /** @var array<string, array<int, string>> */
     private const MONITOR_LIST_FILTER_RULES = [
@@ -398,7 +402,7 @@ class MonitorController extends Controller
         ) + [
             'checkRunStatusOptions' => self::CHECK_RUN_STATUS_OPTIONS,
             'checkRunSourceOptions' => self::CHECK_RUN_SOURCE_OPTIONS,
-            'checkRunContentMatchOptions' => $this->checkRunContentMatchOptions($monitor),
+            'checkRunContentMatchOptions' => self::CHECK_RUN_CONTENT_MATCH_OPTIONS,
         ]);
     }
 
@@ -771,7 +775,7 @@ class MonitorController extends Controller
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_STATUS_OPTIONS))],
             'source' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_SOURCE_OPTIONS))],
-            'content_match' => ['nullable', 'string', 'in:'.implode(',', self::CHECK_RUN_CONTENT_MATCH_FILTERS)],
+            'content_match' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_CONTENT_MATCH_OPTIONS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ], [
@@ -1247,22 +1251,6 @@ class MonitorController extends Controller
         }
 
         return 'HTTP 狀態與全部文字條件均符合目前設定。';
-    }
-
-    /** @return array<string, string> */
-    private function checkRunContentMatchOptions(Monitor $monitor): array
-    {
-        return $monitor->expected_text_mode === 'absent'
-            ? [
-                'found' => '找到不得出現的片段',
-                'missing' => '未找到不得出現的片段',
-                'not_checked' => '未進行比對',
-            ]
-            : [
-                'found' => '已找到全部指定片段',
-                'missing' => '缺少至少一個指定片段',
-                'not_checked' => '未進行比對',
-            ];
     }
 
     /** @param array{expected_text?: ?string, expected_text_mode?: string} $validated */

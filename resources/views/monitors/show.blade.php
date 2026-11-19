@@ -241,9 +241,9 @@
                                 @if ($monitor->latestCheckRun->expected_text_found === null)
                                     未檢查
                                 @elseif ($monitor->latestCheckRun->expected_text_found)
-                                    {{ $monitor->expected_text_mode === 'absent' ? '原始回應找到禁止文字' : '原始回應找到全部指定片段' }}
+                                    {{ $monitor->latestCheckRun->expectedTextMode() === 'absent' ? '原始回應找到禁止文字' : '原始回應找到全部指定片段' }}
                                 @else
-                                    {{ $monitor->expected_text_mode === 'absent' ? '原始回應未找到禁止文字' : '原始回應缺少至少一個指定片段' }}
+                                    {{ $monitor->latestCheckRun->expectedTextMode() === 'absent' ? '原始回應未找到禁止文字' : '原始回應缺少至少一個指定片段' }}
                                 @endif
                             </dd>
                         </div>
@@ -837,6 +837,7 @@
                                 <option value="{{ $matchValue }}" @selected($checkRunFilters['content_match'] === $matchValue)>{{ $matchLabel }}</option>
                             @endforeach
                         </select>
+                        <p class="field-help">篩選依每次檢查當時的文字比對結果；歷史紀錄會顯示當次使用的條件。</p>
                         @error('content_match')
                             <p id="check-run-content-match-error" class="field-error">{{ $message }}</p>
                         @enderror
@@ -893,7 +894,7 @@
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 @if ($monitor->expected_text)
-                                    <td>{{ $run->expected_text_found === null ? '未進行比對' : ($monitor->expected_text_mode === 'absent' ? ($run->expected_text_found ? '找到禁止文字' : '未找到禁止文字') : ($run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段')) }}</td>
+                                    <td>{{ $run->expected_text_found === null ? '未進行比對' : ($run->expectedTextMode() === 'absent' ? ($run->expected_text_found ? '找到禁止文字' : '未找到禁止文字') : ($run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段')) }}</td>
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>

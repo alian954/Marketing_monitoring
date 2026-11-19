@@ -62,6 +62,13 @@ class CheckRun extends Model
             : $this->expected_text_found === true;
     }
 
+    public function expectedTextMode(): string
+    {
+        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+
+        return ($snapshot['expected_text_mode'] ?? 'present') === 'absent' ? 'absent' : 'present';
+    }
+
     public function hasIndeterminateContentMatch(): bool
     {
         if ($this->error_type !== 'body_too_large' || $this->expected_text_found !== null || $this->normal_status === null) {
