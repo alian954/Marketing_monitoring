@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Services\NotificationTestDispatcher;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,8 @@ class NotificationController extends Controller
                 'event_type' => $filters['event_type'] ?? '',
                 'channel' => $filters['channel'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
+                'date_from' => $filters['date_from'] ?? '',
+                'date_to' => $filters['date_to'] ?? '',
             ],
             'eventLabels' => $this->eventLabels(),
             'channelLabels' => $this->channelLabels(),
@@ -101,7 +104,7 @@ class NotificationController extends Controller
         ])->with('status', "已排入 {$queuedCount} 筆「{$monitor->name}」測試通知；可查看各收件管道的寄送狀態。");
     }
 
-    /** @return array{status?: string, event_type?: string, channel?: string, monitor_id?: int|string} */
+    /** @return array{status?: string, event_type?: string, channel?: string, monitor_id?: int|string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
@@ -109,10 +112,16 @@ class NotificationController extends Controller
             'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED],
             'channel' => ['nullable', 'in:email,slack,discord'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ], [
+            'date_from.date_format' => '開始日期格式無效。',
+            'date_to.date_format' => '結束日期格式無效。',
+            'date_to.after_or_equal' => '結束日期不可早於開始日期。',
         ]);
     }
 
-    /** @param array{status?: string, event_type?: string, channel?: string, monitor_id?: int|string} $filters */
+    /** @param array{status?: string, event_type?: string, channel?: string, monitor_id?: int|string, date_from?: string, date_to?: string} $filters */
     private function notificationQuery(array $filters): Builder
     {
         return NotificationOutbox::query()
@@ -125,6 +134,16 @@ class NotificationController extends Controller
                     $query->where('monitor_id', $monitorId)
                         ->orWhereHas('incident', static fn (Builder $incidentQuery): Builder => $incidentQuery->where('monitor_id', $monitorId));
                 });
+            })
+            ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {
+                $start = CarbonImmutable::parse($dateFrom, 'Asia/Taipei')->startOfDay()->utc();
+
+                return $query->where('created_at', '>=', $start);
+            })
+            ->when($filters['date_to'] ?? null, static function (Builder $query, string $dateTo): Builder {
+                $endExclusive = CarbonImmutable::parse($dateTo, 'Asia/Taipei')->addDay()->startOfDay()->utc();
+
+                return $query->where('created_at', '<', $endExclusive);
             });
     }
 

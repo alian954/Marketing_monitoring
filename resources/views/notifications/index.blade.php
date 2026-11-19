@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['status'] !== '' || $filters['event_type'] !== '' || $filters['channel'] !== '' || $filters['monitor_id'] !== '';
+        $hasFilters = $filters['status'] !== '' || $filters['event_type'] !== '' || $filters['channel'] !== '' || $filters['monitor_id'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
     @endphp
 
     <div class="page-heading">
@@ -79,7 +79,36 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div class="field-group">
+                            <label class="field-label" for="notification-date-from">建立日期（起）</label>
+                            <input
+                                class="field-input @error('date_from') is-invalid @enderror"
+                                id="notification-date-from"
+                                name="date_from"
+                                type="date"
+                                value="{{ old('date_from', $filters['date_from']) }}"
+                                @if ($errors->has('date_from')) aria-invalid="true" aria-describedby="notification-date-from-error" @endif
+                            >
+                            @error('date_from')
+                                <p id="notification-date-from-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="notification-date-to">建立日期（迄）</label>
+                            <input
+                                class="field-input @error('date_to') is-invalid @enderror"
+                                id="notification-date-to"
+                                name="date_to"
+                                type="date"
+                                value="{{ old('date_to', $filters['date_to']) }}"
+                                @if ($errors->has('date_to')) aria-invalid="true" aria-describedby="notification-date-to-error" @endif
+                            >
+                            @error('date_to')
+                                <p id="notification-date-to-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
+                    <p class="field-help">日期依通知建立時間的台灣日期篩選，起訖日都包含當日。</p>
                     <div class="form-actions">
                         <button class="button button-secondary" type="submit">套用篩選</button>
                         @if ($hasFilters)
@@ -94,7 +123,7 @@
             <div class="empty-state">
                 @if ($hasFilters)
                     <h3 class="empty-title">找不到符合條件的通知</h3>
-                    <p class="empty-copy">請調整寄送狀態、通知類型或通知管道篩選條件。</p>
+                    <p class="empty-copy">請調整通知篩選條件。</p>
                     <a class="button button-secondary" href="{{ route('notifications.index') }}">清除篩選</a>
                 @else
                     <h3 class="empty-title">尚無通知紀錄</h3>

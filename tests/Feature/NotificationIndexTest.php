@@ -77,8 +77,16 @@ class NotificationIndexTest extends TestCase
             'status' => 'sent',
         ]);
 
+        $date = now('Asia/Taipei')->toDateString();
+        $filters = [
+            'status' => 'failed',
+            'event_type' => 'dns_daily_summary',
+            'channel' => 'slack',
+            'date_from' => $date,
+            'date_to' => $date,
+        ];
         $response = $this->actingAs(User::factory()->create())
-            ->get(route('notifications.index', ['status' => 'failed', 'event_type' => 'dns_daily_summary', 'channel' => 'slack']))
+            ->get(route('notifications.index', $filters))
             ->assertOk()
             ->assertSee('status=failed')
             ->assertSee('event_type=dns_daily_summary')
@@ -86,16 +94,63 @@ class NotificationIndexTest extends TestCase
 
         $this->assertSame(26, $response->viewData('notifications')->total());
         $response->assertSee(route('notifications.index', [
-            'status' => 'failed',
-            'event_type' => 'dns_daily_summary',
-            'channel' => 'slack',
+            ...$filters,
             'page' => 2,
         ]));
-        $response->assertSee(route('notifications.export', [
-            'status' => 'failed',
-            'event_type' => 'dns_daily_summary',
-            'channel' => 'slack',
-        ]));
+        $response->assertSee(route('notifications.export', $filters));
+    }
+
+    public function test_notification_history_and_export_filter_inclusive_taiwan_creation_dates(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+        $user = User::factory()->create();
+        $notifications = [
+            'before' => NotificationOutbox::factory()->create(['incident_id' => null, 'created_at' => '2026-11-18 15:59:59']),
+            'start' => NotificationOutbox::factory()->create(['incident_id' => null, 'created_at' => '2026-11-18 16:00:00']),
+            'end' => NotificationOutbox::factory()->create(['incident_id' => null, 'created_at' => '2026-11-19 15:59:59']),
+            'after' => NotificationOutbox::factory()->create(['incident_id' => null, 'created_at' => '2026-11-19 16:00:00']),
+        ];
+        $filters = ['date_from' => '2026-11-19', 'date_to' => '2026-11-19'];
+
+        $detailResponse = $this->actingAs($user)
+            ->get(route('notifications.index', $filters))
+            ->assertOk()
+            ->assertSee('日期依通知建立時間的台灣日期篩選，起訖日都包含當日。')
+            ->assertSee(route('notifications.export', $filters));
+
+        $this->assertEqualsCanonicalizing(
+            [$notifications['start']->id, $notifications['end']->id],
+            $detailResponse->viewData('notifications')->getCollection()->modelKeys(),
+        );
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('notifications.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(2, $rows);
+        $this->assertEqualsCanonicalizing(
+            ['2026-11-18T16:00:00+00:00', '2026-11-19T15:59:59+00:00'],
+            array_column($rows, 'created_at_utc'),
+        );
+    }
+
+    public function test_notification_history_rejects_invalid_or_reversed_creation_date_filters(): void
+    {
+        $indexUrl = route('notifications.index');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from($indexUrl)
+            ->get(route('notifications.index', ['date_from' => '2026-02-30']))
+            ->assertRedirect($indexUrl)
+            ->assertSessionHasErrors(['date_from' => '開始日期格式無效。']);
+
+        $this->actingAs($user)
+            ->from($indexUrl)
+            ->get(route('notifications.index', ['date_from' => '2026-11-20', 'date_to' => '2026-11-19']))
+            ->assertRedirect($indexUrl)
+            ->assertSessionHasErrors(['date_to' => '結束日期不可早於開始日期。']);
     }
 
     public function test_notification_history_can_filter_incident_and_test_notices_by_monitor(): void
@@ -267,5 +322,18 @@ class NotificationIndexTest extends TestCase
 
         $this->assertDatabaseHas('notification_outbox', ['id' => $outbox->id, 'status' => 'pending']);
         Queue::assertNothingPushed();
+    }
+
+    /** @return array<int, array<string, string>> */
+    private function csvRows(string $content): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', trim($content));
+        $headers = str_getcsv(array_shift($lines));
+        $rows = array_map(static fn (string $line): array => str_getcsv($line), $lines);
+
+        return array_map(
+            static fn (array $row): array => array_combine($headers, $row),
+            $rows,
+        );
     }
 }
