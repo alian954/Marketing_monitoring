@@ -260,6 +260,11 @@ class MonitorController extends Controller
             'monitor' => $monitor,
             ...array_filter($checkRunFilters, static fn (string $value): bool => $value !== ''),
         ]);
+        $dnsChanges = $monitor->dnsChanges()
+            ->orderByDesc('detected_at')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get(['id', 'monitor_id', 'previous_ips', 'current_ips', 'monitor_host_only', 'detected_at']);
         $latestTlsObservation = $monitor->tlsObservations()->latest('observed_on')->first();
         $incidents = $monitor->incidents()->with(['events', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
@@ -395,6 +400,7 @@ class MonitorController extends Controller
         return view('monitors.show', compact(
             'monitor',
             'runs',
+            'dnsChanges',
             'latestTlsObservation',
             'incidents',
             'checkSuccessStats',

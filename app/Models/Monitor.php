@@ -81,6 +81,11 @@ class Monitor extends Model
         return $this->hasMany(Incident::class);
     }
 
+    public function dnsChanges(): HasMany
+    {
+        return $this->hasMany(DnsChangeEvent::class);
+    }
+
     public function maintenanceWindows(): HasMany
     {
         return $this->hasMany(MaintenanceWindow::class);
