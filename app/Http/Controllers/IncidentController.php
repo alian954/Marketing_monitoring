@@ -14,6 +14,62 @@ use Illuminate\Validation\ValidationException;
 
 class IncidentController extends Controller
 {
+    public function bulkAcknowledge(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'incident_ids' => ['required', 'array', 'min:1', 'max:25'],
+            'incident_ids.*' => ['required', 'integer', 'distinct', 'exists:incidents,id'],
+        ], [
+            'incident_ids.required' => '請先選取要認領的事件。',
+            'incident_ids.array' => '所選事件格式無效，請重新選取。',
+            'incident_ids.min' => '請先選取要認領的事件。',
+            'incident_ids.max' => '每次最多只能認領 25 件事件。',
+            'incident_ids.*.distinct' => '事件清單有重複項目，請重新選取。',
+            'incident_ids.*.exists' => '部分事件已不存在，請重新整理後再試。',
+        ]);
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 401);
+        $selectedIds = array_map('intval', $validated['incident_ids']);
+        $acknowledgedAt = now();
+
+        /** @var array{acknowledged: int, skipped: int} $result */
+        $result = DB::transaction(function () use ($selectedIds, $actor, $acknowledgedAt): array {
+            $lockedIncidents = Incident::query()
+                ->whereKey($selectedIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $acknowledgedCount = 0;
+            $skippedCount = count($selectedIds) - $lockedIncidents->count();
+
+            foreach ($lockedIncidents as $lockedIncident) {
+                if (
+                    ! in_array($lockedIncident->state, [Incident::STATE_SUSPECT, Incident::STATE_OPEN], true)
+                    || $lockedIncident->acknowledged_at !== null
+                ) {
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                $lockedIncident->forceFill([
+                    'acknowledged_at' => $acknowledgedAt,
+                    'acknowledged_by_id' => $actor->getKey(),
+                ])->save();
+                $this->recordActivity($lockedIncident, $actor, 'acknowledged', []);
+                $acknowledgedCount++;
+            }
+
+            return ['acknowledged' => $acknowledgedCount, 'skipped' => $skippedCount];
+        });
+
+        $message = $result['acknowledged'] > 0
+            ? '已認領 '.$result['acknowledged'].' 件事件；略過 '.$result['skipped'].' 件已認領、已恢復或已結束的事件。'
+            : '所選事件均已認領、已恢復或已結束，沒有新增認領。';
+
+        return redirect()->route('incidents.index', $request->query())->with('status', $message);
+    }
+
     public function acknowledge(Request $request, Incident $incident): RedirectResponse
     {
         $actor = $request->user();

@@ -55,6 +55,7 @@ Route::middleware('auth')->group(function (): void {
         ->name('notifications.test');
     Route::get('/incidents', [IncidentHistoryController::class, 'index'])->name('incidents.index');
     Route::get('/incidents/export.csv', [IncidentHistoryController::class, 'export'])->name('incidents.export');
+    Route::post('/incidents/bulk-acknowledge', [IncidentController::class, 'bulkAcknowledge'])->name('incidents.bulk-acknowledge');
     Route::post('/logout', [AuthController::class, 'destroy'])->name('logout');
     Route::get('/status-page', [StatusPageController::class, 'edit'])->name('status-pages.edit');
     Route::post('/status-page', [StatusPageController::class, 'update'])->name('status-pages.update');

@@ -131,69 +131,89 @@
                 @endif
             </div>
         @else
-            <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
-                <table class="data-table">
-                    <caption class="sr-only">符合篩選條件的監測事件與處理狀態</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">事件</th>
-                            <th scope="col">監測項目</th>
-                            <th scope="col">偵測訊號</th>
-                            <th scope="col">嚴重度</th>
-                            <th scope="col">狀態</th>
-                            <th scope="col">分類</th>
-                            <th scope="col">失敗次數</th>
-                            <th scope="col">首次發現</th>
-                            <th scope="col">成立時間</th>
-                            <th scope="col">恢復時間</th>
-                            <th scope="col">認領者</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($incidents as $incident)
-                            @php
-                                $classificationLabel = match ($incident->classification) {
-                                    'true_issue' => '確認為異常',
-                                    'false_alarm' => '誤報',
-                                    'unknown' => '尚不確定',
-                                    default => '未分類',
-                                };
-                            @endphp
+            <form action="{{ route('incidents.bulk-acknowledge', request()->query()) }}" method="POST">
+                @csrf
+                @error('incident_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+                @error('incident_ids.*')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+                <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
+                    <table class="data-table">
+                        <caption class="sr-only">符合篩選條件的監測事件與處理狀態</caption>
+                        <thead>
                             <tr>
-                                <th scope="row">#{{ $incident->id }}</th>
-                                <td>
-                                    @if ($incident->monitor)
-                                        <a class="monitor-name-link" href="{{ route('monitors.show', $incident->monitor) }}">{{ $incident->monitor->name }}</a>
-                                    @else
-                                        <span class="secondary-text">已刪除的監測項目</span>
-                                    @endif
-                                </td>
-                                <td>{{ $ruleLabels[$incident->rule_key] ?? '其他監測異常' }}</td>
-                                <td><x-state-badge :state="$incident->severity" /></td>
-                                <td><x-state-badge :state="$incident->state" /></td>
-                                <td>{{ $classificationLabel }}</td>
-                                <td class="numeric">{{ $incident->failure_count }}</td>
-                                <td><time class="timestamp" datetime="{{ $incident->created_at->toIso8601String() }}">{{ $incident->created_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
-                                <td>
-                                    @if ($incident->opened_at)
-                                        <time class="timestamp" datetime="{{ $incident->opened_at->toIso8601String() }}">{{ $incident->opened_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
-                                    @else
-                                        <span class="secondary-text">尚未成立</span>
-                                    @endif
-                                </td>
-                                <td>
-                                    @if ($incident->resolved_at)
-                                        <time class="timestamp" datetime="{{ $incident->resolved_at->toIso8601String() }}">{{ $incident->resolved_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
-                                    @else
-                                        <span class="secondary-text">—</span>
-                                    @endif
-                                </td>
-                                <td>{{ $incident->acknowledgedBy?->name ?? '—' }}</td>
+                                <th scope="col"><span class="sr-only">選取</span></th>
+                                <th scope="col">事件</th>
+                                <th scope="col">監測項目</th>
+                                <th scope="col">偵測訊號</th>
+                                <th scope="col">嚴重度</th>
+                                <th scope="col">狀態</th>
+                                <th scope="col">分類</th>
+                                <th scope="col">失敗次數</th>
+                                <th scope="col">首次發現</th>
+                                <th scope="col">成立時間</th>
+                                <th scope="col">恢復時間</th>
+                                <th scope="col">認領者</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            @foreach ($incidents as $incident)
+                                @php
+                                    $classificationLabel = match ($incident->classification) {
+                                        'true_issue' => '確認為異常',
+                                        'false_alarm' => '誤報',
+                                        'unknown' => '尚不確定',
+                                        default => '未分類',
+                                    };
+                                @endphp
+                                <tr>
+                                    <td>
+                                        @if (in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true) && $incident->acknowledged_at === null)
+                                            <label class="field-check monitor-selection-label">
+                                                <input type="checkbox" name="incident_ids[]" value="{{ $incident->id }}" aria-label="選取事件 #{{ $incident->id }}：{{ $incident->monitor?->name ?? '已刪除的監測項目' }}" aria-describedby="bulk-incident-help">
+                                                <span class="sr-only">選取事件 #{{ $incident->id }}</span>
+                                            </label>
+                                        @else
+                                            <span class="secondary-text" aria-hidden="true">—</span><span class="sr-only">此事件不符合批次認領條件</span>
+                                        @endif
+                                    </td>
+                                    <th scope="row">#{{ $incident->id }}</th>
+                                    <td>
+                                        @if ($incident->monitor)
+                                            <a class="monitor-name-link" href="{{ route('monitors.show', $incident->monitor) }}">{{ $incident->monitor->name }}</a>
+                                        @else
+                                            <span class="secondary-text">已刪除的監測項目</span>
+                                        @endif
+                                    </td>
+                                    <td>{{ $ruleLabels[$incident->rule_key] ?? '其他監測異常' }}</td>
+                                    <td><x-state-badge :state="$incident->severity" /></td>
+                                    <td><x-state-badge :state="$incident->state" /></td>
+                                    <td>{{ $classificationLabel }}</td>
+                                    <td class="numeric">{{ $incident->failure_count }}</td>
+                                    <td><time class="timestamp" datetime="{{ $incident->created_at->toIso8601String() }}">{{ $incident->created_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
+                                    <td>
+                                        @if ($incident->opened_at)
+                                            <time class="timestamp" datetime="{{ $incident->opened_at->toIso8601String() }}">{{ $incident->opened_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        @else
+                                            <span class="secondary-text">尚未成立</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if ($incident->resolved_at)
+                                            <time class="timestamp" datetime="{{ $incident->resolved_at->toIso8601String() }}">{{ $incident->resolved_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        @else
+                                            <span class="secondary-text">—</span>
+                                        @endif
+                                    </td>
+                                    <td>{{ $incident->acknowledgedBy?->name ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-actions">
+                    <p id="bulk-incident-help" class="field-help">選取本頁尚未認領的進行中事件；每次最多認領 25 件。已處理或已被其他人認領的事件會略過。</p>
+                    <button class="button button-secondary" type="submit">認領所選事件</button>
+                </div>
+            </form>
             @if ($incidents->hasPages())
                 <div class="panel-body pagination-wrap">{{ $incidents->links('vendor.pagination.monitor') }}</div>
             @endif

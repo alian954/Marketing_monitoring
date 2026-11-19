@@ -182,4 +182,80 @@ class IncidentAcknowledgementTest extends TestCase
             ->assertSee('Former operator');
 
     }
+
+    public function test_incident_list_only_offers_bulk_acknowledgement_for_active_unacknowledged_events(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $eligibleIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+        $operator = User::factory()->create();
+        $acknowledgedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'acknowledged_at' => now(),
+            'acknowledged_by_id' => $operator->id,
+        ]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'resolved_at' => now(),
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('incidents.index'))
+            ->assertOk()
+            ->assertSee('認領所選事件')
+            ->assertSee('name="incident_ids[]" value="'.$eligibleIncident->id.'"', false)
+            ->assertDontSee('name="incident_ids[]" value="'.$acknowledgedIncident->id.'"', false)
+            ->assertDontSee('name="incident_ids[]" value="'.$resolvedIncident->id.'"', false);
+    }
+
+    public function test_bulk_acknowledgement_audits_active_events_and_skips_ineligible_events(): void
+    {
+        $actor = User::factory()->create(['name' => 'On-call operator']);
+        $previousActor = User::factory()->create(['name' => 'Previous operator']);
+        $monitor = Monitor::factory()->create();
+        $suspectIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_SUSPECT]);
+        $openIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+        $acknowledgedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'acknowledged_at' => now()->subMinute(),
+            'acknowledged_by_id' => $previousActor->id,
+        ]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'resolved_at' => now(),
+        ]);
+
+        $this->actingAs($actor)
+            ->post(route('incidents.bulk-acknowledge', ['severity' => 'warning']), [
+                'incident_ids' => [$suspectIncident->id, $openIncident->id, $acknowledgedIncident->id, $resolvedIncident->id],
+            ])
+            ->assertRedirect(route('incidents.index', ['severity' => 'warning']))
+            ->assertSessionHas('status', '已認領 2 件事件；略過 2 件已認領、已恢復或已結束的事件。');
+
+        foreach ([$suspectIncident, $openIncident] as $incident) {
+            $this->assertSame($actor->id, $incident->fresh()->acknowledged_by_id);
+            $this->assertNotNull($incident->fresh()->acknowledged_at);
+        }
+        $this->assertSame($previousActor->id, $acknowledgedIncident->fresh()->acknowledged_by_id);
+        $this->assertNull($resolvedIncident->fresh()->acknowledged_at);
+        $this->assertDatabaseCount('incident_events', 2);
+        $this->assertSame(['acknowledged', 'acknowledged'], IncidentEvent::query()->orderBy('id')->pluck('event_type')->all());
+
+        foreach (IncidentEvent::query()->get() as $event) {
+            $this->assertSame('On-call operator', $event->evidence['actor_name']);
+        }
+    }
+
+    public function test_bulk_acknowledgement_requires_a_selection_and_authentication(): void
+    {
+        $this->post(route('incidents.bulk-acknowledge'))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('incidents.index'))
+            ->post(route('incidents.bulk-acknowledge'))
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHasErrors('incident_ids');
+
+        $this->assertDatabaseCount('incident_events', 0);
+    }
 }
