@@ -21,6 +21,35 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    public function editPassword(): View
+    {
+        return view('auth.change-password');
+    }
+
+    public function updatePassword(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string', 'max:200', 'current_password'],
+            'password' => ['required', 'string', 'min:12', 'max:200', 'confirmed', 'different:current_password'],
+        ], [
+            'current_password.required' => '請輸入目前密碼。',
+            'current_password.current_password' => '目前密碼不正確。',
+            'password.min' => '新密碼至少需要 12 個字元。',
+            'password.max' => '新密碼不得超過 200 個字元。',
+            'password.confirmed' => '兩次輸入的新密碼不一致。',
+            'password.different' => '新密碼必須與目前密碼不同。',
+        ]);
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $user->forceFill([
+            'password' => Hash::make($validated['password']),
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        return back()->with('status', '密碼已更新。舊的「保持登入」憑證已失效，目前瀏覽器仍保持登入。');
+    }
+
     public function showLinkRequestForm(): View
     {
         return view('auth.forgot-password');

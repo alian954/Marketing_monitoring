@@ -46,6 +46,8 @@ Route::post('/status-subscriptions/{subscription}/unsubscribe', [StatusPageSubsc
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
+    Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('/notifications/export.csv', [NotificationController::class, 'export'])->name('notifications.export');
     Route::post('/notifications/test', [NotificationController::class, 'sendTestNotification'])
