@@ -39,7 +39,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="monitor-form-title" class="panel-title">監測目標</h2>
-                <p class="panel-description">檢查會使用具備重新導向與目的地保護的安全 HTTP 請求，不會登入社群平台或呼叫平台 API。可先預檢一次網址；預檢不保存回應內容，也不建立監測紀錄或事件。</p>
+                <p class="panel-description">檢查會使用具備重新導向與目的地保護的安全 HTTP 請求，不會登入社群平台或呼叫平台 API。可先預檢一次網址；完整原始回應不會保存，回應提供的分享標題、摘要與圖片參照狀態只會暫時顯示，且不會建立監測紀錄或事件。</p>
             </div>
         </div>
         <div class="panel-body">
@@ -51,6 +51,9 @@
                     <ul>
                         <li>HTTP 狀態碼：{{ $probePreview['status_code'] ?? '未收到' }}</li>
                         <li>回應時間：{{ $probePreview['elapsed_ms'] }} 毫秒</li>
+                        <li>分享標題：{{ $probePreview['response_metadata']['title'] ?? '未提供' }}</li>
+                        <li>分享摘要：{{ $probePreview['response_metadata']['description'] ?? '未提供' }}</li>
+                        <li>分享預覽圖片參照：{{ ($probePreview['response_metadata']['image_reference_present'] ?? false) ? '已偵測' : '未提供' }}</li>
                         @if ($probePreview['expected_text_checked'])
                             <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present_any'] => '已找到至少一個指定片段', ['missing', 'present_any'] => '未找到任何指定片段', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
                         @endif

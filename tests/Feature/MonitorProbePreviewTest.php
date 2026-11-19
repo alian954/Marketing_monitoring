@@ -37,7 +37,7 @@ class MonitorProbePreviewTest extends TestCase
             ->assertOk()
             ->assertSee('預檢網址')
             ->assertSee('formaction="'.route('monitors.probe-preview').'"', false)
-            ->assertSee('不保存回應內容，也不建立監測紀錄或事件');
+            ->assertSee('完整原始回應不會保存');
     }
 
     public function test_probe_preview_requires_authentication(): void
@@ -66,6 +66,9 @@ class MonitorProbePreviewTest extends TestCase
                 null,
                 true,
                 null,
+                responseTitle: 'Campaign <script>alert(1)</script>',
+                responseDescription: '<img src=x onerror=alert(2)>',
+                responseImageReferenceHash: str_repeat('d', 64),
             ));
 
         $response = $this->actingAs(User::factory()->create())
@@ -77,6 +80,12 @@ class MonitorProbePreviewTest extends TestCase
             ->assertSee('預檢通過')
             ->assertSee('已找到全部指定片段')
             ->assertSee('HTTP 狀態與文字條件均符合目前設定。')
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertSee('&lt;img src=x onerror=alert(2)&gt;', false)
+            ->assertSee('分享預覽圖片參照：已偵測')
+            ->assertDontSee('<script>alert(1)</script>', false)
+            ->assertDontSee('<img src=x onerror=alert(2)>', false)
+            ->assertDontSee(str_repeat('d', 64))
             ->assertDontSee('<article>Campaign headline</article>', false);
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
@@ -127,7 +136,10 @@ class MonitorProbePreviewTest extends TestCase
             ->post(route('monitors.probe-preview'), $data)
             ->assertOk()
             ->assertSee('預檢通過')
-            ->assertSee('HTTP 狀態與文字條件均符合目前設定。');
+            ->assertSee('HTTP 狀態與文字條件均符合目前設定。')
+            ->assertSee('分享標題：未提供')
+            ->assertSee('分享摘要：未提供')
+            ->assertSee('分享預覽圖片參照：未提供');
 
         $this->assertDatabaseCount('monitors', 0);
     }

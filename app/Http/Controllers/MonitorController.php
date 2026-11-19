@@ -1665,6 +1665,11 @@ class MonitorController extends Controller
                 'status_code' => $result->statusCode,
                 'elapsed_ms' => $result->elapsedMs,
                 'final_url' => $result->finalUrl,
+                'response_metadata' => [
+                    'title' => $result->responseTitle,
+                    'description' => $result->responseDescription,
+                    'image_reference_present' => $result->responseImageReferenceHash !== null,
+                ],
                 'expected_text_checked' => $expectedTextChecked,
                 'expected_text_mode' => $validated['expected_text_mode'],
                 'expected_text_state' => ! $expectedTextChecked || $result->expectedTextFound === null
