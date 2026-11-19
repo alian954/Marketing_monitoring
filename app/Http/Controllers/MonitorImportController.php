@@ -47,6 +47,7 @@ class MonitorImportController extends Controller
         'notification_slack_webhook',
         'notification_discord_webhook',
         'confirmation_delay_seconds',
+        'enabled',
     ];
 
     public function __construct(
@@ -100,7 +101,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds、enabled；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -152,6 +153,7 @@ class MonitorImportController extends Controller
             $notificationSlackWebhook = null;
             $notificationDiscordWebhook = null;
             $confirmationDelaySeconds = (int) config('monitoring.confirmation_delay_seconds');
+            $enabled = true;
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -288,6 +290,20 @@ class MonitorImportController extends Controller
                         } else {
                             $confirmationDelaySeconds = $parsedConfirmationDelay;
                         }
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['enabled'])) {
+                $enabledInput = trim((string) ($cells[$columnIndexes['enabled']] ?? ''));
+
+                if ($enabledInput !== '') {
+                    $parsedEnabled = filter_var($enabledInput, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+                    if ($parsedEnabled === null) {
+                        $errors[] = '啟用狀態只接受 1、0、true、false、yes、no、on 或 off。';
+                    } else {
+                        $enabled = $parsedEnabled;
                     }
                 }
             }
@@ -484,6 +500,7 @@ class MonitorImportController extends Controller
                 'notification_discord_webhook' => $notificationDiscordWebhook,
                 'notification_discord_webhook_configured' => $notificationDiscordWebhook !== null,
                 'confirmation_delay_seconds' => $confirmationDelaySeconds,
+                'enabled' => $enabled,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -557,7 +574,7 @@ class MonitorImportController extends Controller
                 'name' => $row['name'],
                 'url' => $row['url'],
                 'label' => $row['label'] !== '' ? $row['label'] : null,
-                'enabled' => true,
+                'enabled' => $row['enabled'] ?? true,
                 'config_version' => 1,
                 'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
@@ -576,7 +593,7 @@ class MonitorImportController extends Controller
                 'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
                 'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
-                'next_check_at' => now(),
+                'next_check_at' => ($row['enabled'] ?? true) ? now() : null,
             ]);
 
             if ($monitor->wasRecentlyCreated) {

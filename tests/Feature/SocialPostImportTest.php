@@ -101,7 +101,91 @@ class SocialPostImportTest extends TestCase
             'notification_slack_webhook',
             'notification_discord_webhook',
             'confirmation_delay_seconds',
+            'enabled',
         ], $headers);
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_stage_social_monitors_as_paused_until_they_are_ready(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $enabledCases = [
+            'false' => false,
+            '0' => false,
+            'no' => false,
+            'off' => false,
+            'true' => true,
+            '1' => true,
+            'yes' => true,
+            'on' => true,
+            '' => true,
+        ];
+        $rows = [];
+
+        foreach ($enabledCases as $enabledInput => $expectedEnabled) {
+            $postId = str_pad((string) (count($rows) + 1), 2, '0', STR_PAD_LEFT);
+            $rows[] = [
+                'Monitor '.$postId,
+                'https://www.threads.com/@creator/post/PAUSED'.$postId,
+                'Campaign',
+                'Launch announcement',
+                $enabledInput,
+            ];
+        }
+
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'enabled'],
+            $rows,
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('匯入後監測狀態')
+            ->assertSee('啟用，排程檢查')
+            ->assertSee('已暫停，不排程檢查');
+
+        $this->assertSame(9, $preview->viewData('validCount'));
+        $this->assertSame(array_values($enabledCases), array_column($preview->viewData('previewRows'), 'enabled'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 9);
+
+        foreach (array_values($enabledCases) as $index => $expectedEnabled) {
+            $monitor = Monitor::query()->where('name', 'Monitor '.str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT))->sole();
+            $this->assertSame($expectedEnabled, $monitor->enabled);
+            $this->assertSame($expectedEnabled, $monitor->next_check_at !== null);
+        }
+
+        $pausedMonitor = Monitor::query()->where('name', 'Monitor 01')->sole();
+        $this->assertNull(app(RunScheduler::class)->enqueue($pausedMonitor, 'scheduled'));
+        $this->assertDatabaseCount('check_runs', 0);
+    }
+
+    public function test_csv_rejects_unrecognized_monitor_enabled_values(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'enabled'],
+            [['Invalid enabled state', 'https://www.threads.com/@creator/post/PAUSEDINVALID', 'Campaign', 'headline', 'sometimes']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('啟用狀態只接受 1、0、true、false、yes、no、on 或 off。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(1, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
         $this->assertDatabaseCount('monitors', 0);
     }
 
