@@ -40,34 +40,44 @@ class ExpectedTextMatcher
 
     public static function matches(string $body, string $expectedText, string $mode = 'present'): bool
     {
-        $terms = self::terms($expectedText);
-
-        if ($terms === []) {
-            return false;
-        }
-
-        $matchedTerms = array_filter($terms, static fn (string $term): bool => self::matchesTerm($body, $term));
-
-        return in_array($mode, [self::MODE_ABSENT, self::MODE_PRESENT_ANY], true)
-            ? $matchedTerms !== []
-            : count($matchedTerms) === count($terms);
+        return self::evaluate($body, $expectedText, $mode)['found'] ?? false;
     }
 
     public static function matchesBoundedPrefix(string $body, string $expectedText, string $mode = 'present'): ?bool
     {
+        return self::evaluate($body, $expectedText, $mode, true)['found'];
+    }
+
+    /**
+     * @return array{found: ?bool, terms: list<array{term: string, matched: ?bool}>}
+     */
+    public static function evaluate(string $body, string $expectedText, string $mode = 'present', bool $isBoundedPrefix = false): array
+    {
         $terms = self::terms($expectedText);
 
         if ($terms === []) {
-            return null;
+            return ['found' => null, 'terms' => []];
         }
 
-        $matchedTerms = array_filter($terms, static fn (string $term): bool => self::matchesTerm($body, $term));
+        $termMatches = array_map(
+            static fn (string $term): ?bool => self::matchesTerm($body, $term) ? true : ($isBoundedPrefix ? null : false),
+            $terms,
+        );
+        $matchedCount = count(array_filter($termMatches, static fn (?bool $matched): bool => $matched === true));
+        $isAnyCondition = in_array($mode, [self::MODE_ABSENT, self::MODE_PRESENT_ANY], true);
 
-        if (in_array($mode, [self::MODE_ABSENT, self::MODE_PRESENT_ANY], true)) {
-            return $matchedTerms === [] ? null : true;
-        }
+        $found = $isBoundedPrefix
+            ? ($matchedCount > 0 && $isAnyCondition ? true : ($matchedCount === count($terms) ? true : null))
+            : ($isAnyCondition ? $matchedCount > 0 : $matchedCount === count($terms));
 
-        return count($matchedTerms) === count($terms) ? true : null;
+        return [
+            'found' => $found,
+            'terms' => array_map(
+                static fn (string $term, ?bool $matched): array => ['term' => $term, 'matched' => $matched],
+                $terms,
+                $termMatches,
+            ),
+        ];
     }
 
     private static function matchesTerm(string $body, string $expectedText): bool

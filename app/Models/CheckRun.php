@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'expected_response_header_found', 'tls_expires_at'])]
-#[Hidden(['config_snapshot'])]
+#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'expected_text_term_matches', 'expected_response_header_found', 'tls_expires_at'])]
+#[Hidden(['config_snapshot', 'expected_text_term_matches'])]
 class CheckRun extends Model
 {
     /** @use HasFactory<CheckRunFactory> */
@@ -34,6 +34,7 @@ class CheckRun extends Model
             'resolved_public_ips' => 'array',
             'monitor_host_ips' => 'array',
             'expected_text_found' => 'boolean',
+            'expected_text_term_matches' => 'encrypted:array',
             'expected_response_header_found' => 'boolean',
             'tls_expires_at' => 'immutable_datetime',
         ];
@@ -102,6 +103,34 @@ class CheckRun extends Model
 
         return ($this->normal_status >= 200 && $this->normal_status < 400)
             || in_array($this->normal_status, $acceptedStatusCodes, true);
+    }
+
+    /**
+     * @return list<array{term: string, matched: ?bool}>|null
+     */
+    public function expectedTextMatchDetails(): ?array
+    {
+        $matchedTerms = $this->expected_text_term_matches;
+
+        if (! is_array($matchedTerms)) {
+            return null;
+        }
+
+        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $terms = ExpectedTextMatcher::terms($snapshot['expected_text'] ?? null);
+
+        if ($terms === [] || count($terms) !== count($matchedTerms)) {
+            return null;
+        }
+
+        return array_map(
+            static fn (string $term, mixed $matched): array => [
+                'term' => $term,
+                'matched' => $matched === null ? null : (bool) $matched,
+            ],
+            $terms,
+            $matchedTerms,
+        );
     }
 
     public function monitor(): BelongsTo

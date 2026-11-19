@@ -544,6 +544,7 @@ class ProbeSecurityTest extends TestCase
         );
 
         $this->assertTrue($result->expectedTextFound);
+        $this->assertSame([true], $result->expectedTextTermMatches);
     }
 
     public function test_expected_text_matcher_supports_all_any_and_absent_text_conditions(): void
@@ -559,6 +560,20 @@ class ProbeSecurityTest extends TestCase
         $this->assertFalse(ExpectedTextMatcher::matches('<p>Other copy</p>', $expectedText, 'present_any'));
         $this->assertTrue(ExpectedTextMatcher::matches('<p>Public launch. Embargoed details.</p>', "Internal draft\nEmbargoed", 'absent'));
         $this->assertFalse(ExpectedTextMatcher::matches('<p>Public launch.</p>', "Internal draft\nEmbargoed", 'absent'));
+        $this->assertSame([
+            'found' => false,
+            'terms' => [
+                ['term' => 'Campaign headline', 'matched' => true],
+                ['term' => 'Spring sale', 'matched' => false],
+            ],
+        ], ExpectedTextMatcher::evaluate('<p>Campaign headline</p>', $expectedText));
+        $this->assertSame([
+            'found' => true,
+            'terms' => [
+                ['term' => 'Internal draft', 'matched' => false],
+                ['term' => 'Embargoed', 'matched' => true],
+            ],
+        ], ExpectedTextMatcher::evaluate('<p>Public launch. Embargoed details.</p>', "Internal draft\nEmbargoed", 'absent'));
     }
 
     public function test_expected_text_matcher_decodes_json_unicode_escapes_for_social_post_text(): void
@@ -609,16 +624,22 @@ class ProbeSecurityTest extends TestCase
 
         $this->assertNull($allPresent->errorType);
         $this->assertTrue($allPresent->expectedTextFound);
+        $this->assertSame([true, true], $allPresent->expectedTextTermMatches);
         $this->assertSame('body_too_large', $partialPresent->errorType);
         $this->assertNull($partialPresent->expectedTextFound);
+        $this->assertSame([true, null], $partialPresent->expectedTextTermMatches);
         $this->assertNull($anyPresent->errorType);
         $this->assertTrue($anyPresent->expectedTextFound);
+        $this->assertSame([true, null], $anyPresent->expectedTextTermMatches);
         $this->assertSame('body_too_large', $anyNotSeen->errorType);
         $this->assertNull($anyNotSeen->expectedTextFound);
+        $this->assertSame([null, null], $anyNotSeen->expectedTextTermMatches);
         $this->assertNull($forbiddenFound->errorType);
         $this->assertTrue($forbiddenFound->expectedTextFound);
+        $this->assertSame([null, true], $forbiddenFound->expectedTextTermMatches);
         $this->assertSame('body_too_large', $forbiddenNotSeen->errorType);
         $this->assertNull($forbiddenNotSeen->expectedTextFound);
+        $this->assertSame([null, null], $forbiddenNotSeen->expectedTextTermMatches);
     }
 
     public function test_iana_special_use_ranges_are_blocked_for_literals_and_dns_answers(): void

@@ -58,9 +58,12 @@ class FixtureProbeClient implements ProbeClient
         };
         $elapsedMs = (int) round((hrtime(true) - $startedAt) / 1_000_000) + 2;
         $matchesExpectedText = null;
+        $expectedTextTermMatches = null;
 
         if ($expectedText !== null && $expectedText !== '') {
-            $matchesExpectedText = ExpectedTextMatcher::matches($body, $expectedText, $expectedTextMode);
+            $matchDetails = ExpectedTextMatcher::evaluate($body, $expectedText, $expectedTextMode);
+            $matchesExpectedText = $matchDetails['found'];
+            $expectedTextTermMatches = array_column($matchDetails['terms'], 'matched');
         }
         $responseHeaders = ['content-type' => ['text/html; charset=UTF-8']];
 
@@ -71,6 +74,6 @@ class FixtureProbeClient implements ProbeClient
         $matchesExpectedResponseHeader = ResponseHeaderCondition::matches($responseHeaders, $expectedResponseHeader);
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 
-        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps, null, $matchesExpectedResponseHeader);
+        return new ProbeResult($statusCode, $elapsedMs, $finalUrl, $redirects, $monitorHostIps, null, null, $matchesExpectedText, $expiry, $monitorHostIps, null, $matchesExpectedResponseHeader, $expectedTextTermMatches);
     }
 }

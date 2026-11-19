@@ -9,6 +9,7 @@ use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Models\User;
 use App\Services\IncidentManager;
 use App\Services\NotificationDispatcher;
 use App\Services\Probe\ProbeClient;
@@ -28,6 +29,62 @@ use Tests\TestCase;
 class MonitorWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_check_run_stores_encrypted_text_match_details_and_displays_each_phrase(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $monitor = Monitor::factory()->create([
+            'expected_text' => "Campaign headline\nSpring sale",
+            'expected_text_mode' => 'present_any',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+
+        $this->assertNotNull($run);
+        $normal = new ProbeResult(
+            200,
+            31,
+            'https://example.com/landing',
+            [],
+            ['93.184.216.34'],
+            null,
+            null,
+            true,
+            null,
+            ['93.184.216.34'],
+            null,
+            null,
+            [true, false],
+        );
+        $adsbot = new ProbeResult(200, 29, 'https://example.com/landing', [], ['93.184.216.34'], null, null, null, null);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')->twice()->andReturn($normal, $adsbot);
+
+        (new RunMonitorCheck($run->id))->handle(
+            $probe,
+            app(IncidentManager::class),
+            app(RunScheduler::class),
+        );
+
+        $completedRun = $run->fresh();
+        $rawTermMatches = (string) DB::table('check_runs')->where('id', $run->id)->value('expected_text_term_matches');
+
+        $this->assertSame([true, false], $completedRun->expected_text_term_matches);
+        $this->assertNotSame('[true,false]', $rawTermMatches);
+        $this->assertStringNotContainsString('Campaign headline', $rawTermMatches);
+        $this->assertSame([
+            ['term' => 'Campaign headline', 'matched' => true],
+            ['term' => 'Spring sale', 'matched' => false],
+        ], $completedRun->expectedTextMatchDetails());
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('Campaign headline')
+            ->assertSee('Spring sale')
+            ->assertSee('原始回應有此片段')
+            ->assertSee('原始回應未找到此片段')
+            ->assertSee('查看逐項片段結果');
+    }
 
     public function test_scheduled_run_persists_two_user_agent_results_once(): void
     {

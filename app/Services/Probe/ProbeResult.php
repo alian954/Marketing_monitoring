@@ -8,6 +8,7 @@ readonly class ProbeResult
      * @param  list<string>  $redirects
      * @param  list<string>  $resolvedPublicIps
      * @param  list<string>  $monitorHostIps
+     * @param  list<?bool>|null  $expectedTextTermMatches
      */
     public function __construct(
         public ?int $statusCode,
@@ -22,6 +23,7 @@ readonly class ProbeResult
         public array $monitorHostIps = [],
         public ?int $retryAfterSeconds = null,
         public ?bool $expectedResponseHeaderFound = null,
+        public ?array $expectedTextTermMatches = null,
     ) {}
 
     public function succeeded(): bool

@@ -266,6 +266,16 @@
                                 @else
                                     {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '原始回應未找到禁止文字', 'present_any' => '原始回應未找到任何指定片段', default => '原始回應缺少至少一個指定片段' } }}
                                 @endif
+                                @php
+                                    $latestTextMatchDetails = $monitor->latestCheckRun->expectedTextMatchDetails();
+                                @endphp
+                                @if ($latestTextMatchDetails !== null)
+                                    <ul aria-label="逐項文字片段結果">
+                                        @foreach ($latestTextMatchDetails as $matchDetail)
+                                            <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? '回應截斷，無法判定' : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
+                                        @endforeach
+                                    </ul>
+                                @endif
                             </dd>
                         </div>
                         @if ($monitor->expectedResponseHeaderName() !== null)
@@ -972,7 +982,22 @@
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 @if ($monitor->expected_text)
-                                    <td>{{ $run->expected_text_found === null ? '未進行比對' : match ($run->expectedTextMode()) { 'absent' => $run->expected_text_found ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expected_text_found ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</td>
+                                    <td>
+                                        <p>{{ $run->expected_text_found === null ? '未進行比對或無法判定' : match ($run->expectedTextMode()) { 'absent' => $run->expected_text_found ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expected_text_found ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>
+                                        @php
+                                            $textMatchDetails = $run->expectedTextMatchDetails();
+                                        @endphp
+                                        @if ($textMatchDetails !== null)
+                                            <details>
+                                                <summary>查看逐項片段結果</summary>
+                                                <ul aria-label="逐項文字片段結果">
+                                                    @foreach ($textMatchDetails as $matchDetail)
+                                                        <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? '回應截斷，無法判定' : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
+                                                    @endforeach
+                                                </ul>
+                                            </details>
+                                        @endif
+                                    </td>
                                 @endif
                                 @if ($monitor->expectedResponseHeaderName() !== null)
                                     <td>{{ $run->expected_response_header_found === null ? '未檢查或無法判定' : ($run->expected_response_header_found ? '符合' : '不符合') }}</td>

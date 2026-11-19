@@ -121,9 +121,12 @@ class SecureProbeClient implements ProbeClient
                 : null;
 
             $boundedPrefixMatch = null;
+            $expectedTextTermMatches = null;
 
             if ($response->errorType === 'body_too_large' && $expectedText !== null && $expectedText !== '') {
-                $boundedPrefixMatch = ExpectedTextMatcher::matchesBoundedPrefix($response->body, $expectedText, $expectedTextMode);
+                $matchDetails = ExpectedTextMatcher::evaluate($response->body, $expectedText, $expectedTextMode, true);
+                $boundedPrefixMatch = $matchDetails['found'];
+                $expectedTextTermMatches = array_column($matchDetails['terms'], 'matched');
             }
 
             if ($response->errorType === 'body_too_large' && ! $isRedirectResponse && $boundedPrefixMatch === true) {
@@ -140,6 +143,7 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostIps,
                     $response->retryAfterSeconds,
                     $expectedResponseHeaderFound,
+                    $expectedTextTermMatches,
                 );
             }
 
@@ -178,13 +182,18 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostIps,
                     $response->retryAfterSeconds,
                     null,
+                    $expectedTextTermMatches,
                 );
             }
 
             if (! $isRedirectResponse) {
-                $matchesExpectedText = $expectedText === null || $expectedText === ''
+                $matchDetails = $expectedText === null || $expectedText === ''
                     ? null
-                    : ExpectedTextMatcher::matches($response->body, $expectedText, $expectedTextMode);
+                    : ExpectedTextMatcher::evaluate($response->body, $expectedText, $expectedTextMode);
+                $matchesExpectedText = $matchDetails['found'] ?? null;
+                $expectedTextTermMatches = $matchDetails === null
+                    ? null
+                    : array_column($matchDetails['terms'], 'matched');
 
                 return new ProbeResult(
                     $response->statusCode,
@@ -199,6 +208,7 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostIps,
                     $response->retryAfterSeconds,
                     $expectedResponseHeaderFound,
+                    $expectedTextTermMatches,
                 );
             }
 

@@ -155,6 +155,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'resolved_public_ips' => $resolvedIps,
                 'monitor_host_ips' => $normal->monitorHostIps,
                 'expected_text_found' => $normal->expectedTextFound,
+                'expected_text_term_matches' => $normal->expectedTextTermMatches,
                 'expected_response_header_found' => $normal->expectedResponseHeaderFound,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
