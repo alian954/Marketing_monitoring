@@ -6,6 +6,7 @@ use App\Jobs\RunMonitorCheck;
 use App\Jobs\SendNotificationOutbox;
 use App\Models\CheckRun;
 use App\Models\Incident;
+use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\User;
@@ -683,6 +684,166 @@ class SocialPostImportTest extends TestCase
         );
         $this->assertDatabaseMissing('notification_outbox', ['recipient' => 'global@example.test']);
         Queue::assertPushed(SendNotificationOutbox::class, 2);
+    }
+
+    public function test_csv_can_import_encrypted_escalation_recipients_and_queue_both_stages(): void
+    {
+        Queue::fake([SendNotificationOutbox::class]);
+        $firstStageInput = 'backup@example.test, ONCALL@example.test; BACKUP@example.test';
+        $secondStageInput = 'manager@example.test; vp@example.test';
+        $csv = $this->csvContent(
+            [
+                'name',
+                'url',
+                'label',
+                'expected_text',
+                'notification_escalation_email',
+                'notification_escalation_delay_minutes',
+                'notification_escalation_stage_2_email',
+                'notification_escalation_stage_2_delay_minutes',
+            ],
+            [[
+                'Campaign escalation',
+                'https://www.threads.com/@creator/post/ESCALATE123',
+                'Campaign',
+                'Launch announcement',
+                $firstStageInput,
+                '30',
+                $secondStageInput,
+                '60',
+            ]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('升級通知')
+            ->assertSee('第一階段：2 個／30 分鐘')
+            ->assertSee('第二階段：2 個／60 分鐘')
+            ->assertDontSee('backup@example.test')
+            ->assertDontSee('ONCALL@example.test')
+            ->assertDontSee('manager@example.test')
+            ->assertDontSee('vp@example.test');
+
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertSame(2, $previewRow['notification_escalation_email_count']);
+        $this->assertSame(30, $previewRow['notification_escalation_delay_minutes']);
+        $this->assertSame(2, $previewRow['notification_escalation_stage_2_email_count']);
+        $this->assertSame(60, $previewRow['notification_escalation_stage_2_delay_minutes']);
+        $this->assertArrayNotHasKey('notification_escalation_email', $previewRow);
+        $this->assertArrayNotHasKey('notification_escalation_stage_2_email', $previewRow);
+        $encryptedPreview = (string) session('monitor_import_preview');
+        $this->assertStringNotContainsString('backup@example.test', $encryptedPreview);
+        $this->assertStringNotContainsString('manager@example.test', $encryptedPreview);
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $normalizedFirstStage = "backup@example.test\nONCALL@example.test";
+        $this->assertSame($normalizedFirstStage, $monitor->notification_escalation_email);
+        $this->assertSame(30, $monitor->notification_escalation_delay_minutes);
+        $this->assertSame("manager@example.test\nvp@example.test", $monitor->notification_escalation_stage_2_email);
+        $this->assertSame(60, $monitor->notification_escalation_stage_2_delay_minutes);
+        $this->assertStringNotContainsString(
+            'backup@example.test',
+            (string) DB::table('monitors')->where('id', $monitor->id)->value('notification_escalation_email'),
+        );
+        $this->assertStringNotContainsString(
+            'manager@example.test',
+            (string) DB::table('monitors')->where('id', $monitor->id)->value('notification_escalation_stage_2_email'),
+        );
+
+        $openedAt = now()->subMinutes(61);
+        $run = CheckRun::factory()->for($monitor)->create([
+            'scheduled_at' => $openedAt,
+            'finished_at' => $openedAt,
+            'normal_status' => 503,
+        ]);
+        $incident = Incident::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'opened_at' => $openedAt,
+            'last_seen_at' => $openedAt,
+        ]);
+        IncidentEvent::factory()->for($incident)->for($run)->create([
+            'event_type' => 'failure_seen',
+            'created_at' => $openedAt,
+        ]);
+
+        $this->assertSame(2, app(IncidentManager::class)->queueDueEscalations());
+        $firstStageOutbox = NotificationOutbox::query()
+            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
+            ->get();
+        $secondStageOutbox = NotificationOutbox::query()
+            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2)
+            ->get();
+
+        $this->assertEqualsCanonicalizing(
+            ['backup@example.test', 'ONCALL@example.test'],
+            $firstStageOutbox->pluck('recipient')->all(),
+        );
+        $this->assertEqualsCanonicalizing(
+            ['manager@example.test', 'vp@example.test'],
+            $secondStageOutbox->pluck('recipient')->all(),
+        );
+        Queue::assertPushed(SendNotificationOutbox::class, 4);
+    }
+
+    public function test_csv_rejects_invalid_escalation_recipients_and_stage_delays(): void
+    {
+        $tooManyRecipients = implode(', ', array_map(
+            static fn (int $index): string => 'escalation'.$index.'@example.test',
+            range(1, 11),
+        ));
+        $headers = [
+            'name',
+            'url',
+            'label',
+            'expected_text',
+            'notification_escalation_email',
+            'notification_escalation_delay_minutes',
+            'notification_escalation_stage_2_email',
+            'notification_escalation_stage_2_delay_minutes',
+        ];
+        $rows = [
+            ['Missing delay', 'https://www.threads.com/@creator/post/ESCALATE001', 'Social', 'headline', 'backup@example.test', '', '', ''],
+            ['Invalid email', 'https://www.threads.com/@creator/post/ESCALATE002', 'Social', 'headline', 'not-an-email', '30', '', ''],
+            ['Too many emails', 'https://www.threads.com/@creator/post/ESCALATE003', 'Social', 'headline', $tooManyRecipients, '30', '', ''],
+            ['Stage two without one', 'https://www.threads.com/@creator/post/ESCALATE004', 'Social', 'headline', '', '', 'manager@example.test', '60'],
+            ['Missing stage two delay', 'https://www.threads.com/@creator/post/ESCALATE005', 'Social', 'headline', 'backup@example.test', '30', 'manager@example.test', ''],
+            ['Stage two too early', 'https://www.threads.com/@creator/post/ESCALATE006', 'Social', 'headline', 'backup@example.test', '30', 'manager@example.test', '30'],
+            ['Non-integer delay', 'https://www.threads.com/@creator/post/ESCALATE007', 'Social', 'headline', 'backup@example.test', 'later', '', ''],
+            ['Delay too short', 'https://www.threads.com/@creator/post/ESCALATE008', 'Social', 'headline', 'backup@example.test', '4', '', ''],
+            ['Delay too long', 'https://www.threads.com/@creator/post/ESCALATE009', 'Social', 'headline', 'backup@example.test', '1441', '', ''],
+        ];
+        $csv = $this->csvContent($headers, $rows);
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('設定升級告警收件信箱時，請同時設定等待時間。')
+            ->assertSee('每個告警收件信箱都必須是有效電子郵件地址，且單一地址不得超過 254 個字元。')
+            ->assertSee('最多可設定 10 個告警收件信箱。')
+            ->assertSee('設定第二階段時，請先設定第一階段升級收件人。')
+            ->assertSee('設定第二階段升級收件人時，請同時設定等待時間。')
+            ->assertSee('第二階段等待時間必須晚於第一階段。')
+            ->assertSee('升級等待時間必須是整數分鐘。')
+            ->assertSee('升級等待時間必須介於 5 至 1440 分鐘。')
+            ->assertDontSee('not-an-email')
+            ->assertDontSee('manager@example.test');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(count($rows), $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_csv_rejects_invalid_oversized_and_excessive_notification_recipients(): void

@@ -37,6 +37,10 @@ class MonitorImportController extends Controller
         'request_headers',
         'allowed_redirect_hosts',
         'notification_email',
+        'notification_escalation_email',
+        'notification_escalation_delay_minutes',
+        'notification_escalation_stage_2_email',
+        'notification_escalation_stage_2_delay_minutes',
     ];
 
     public function __construct(
@@ -80,7 +84,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -123,6 +127,12 @@ class MonitorImportController extends Controller
             $allowedRedirectHosts = [];
             $notificationEmail = null;
             $notificationEmailCount = 0;
+            $notificationEscalationEmail = null;
+            $notificationEscalationEmailCount = 0;
+            $notificationEscalationDelayMinutes = null;
+            $notificationEscalationStageTwoEmail = null;
+            $notificationEscalationStageTwoEmailCount = 0;
+            $notificationEscalationStageTwoDelayMinutes = null;
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -169,6 +179,83 @@ class MonitorImportController extends Controller
                         $errors[] = $notificationEmailError;
                     }
                 }
+            }
+
+            if (isset($columnIndexes['notification_escalation_email'])) {
+                $notificationEscalationEmailInput = (string) ($cells[$columnIndexes['notification_escalation_email']] ?? '');
+
+                if (mb_strlen($notificationEscalationEmailInput) > 2549) {
+                    $errors[] = '升級告警收件信箱清單過長。';
+                } else {
+                    $notificationEscalationEmail = NotificationEmailRecipientParser::normalize($notificationEscalationEmailInput);
+                    $notificationEscalationEmailCount = count(NotificationEmailRecipientParser::parse($notificationEscalationEmail));
+                    $notificationEscalationEmailError = NotificationEmailRecipientParser::validationError($notificationEscalationEmail);
+
+                    if ($notificationEscalationEmailError !== null) {
+                        $errors[] = $notificationEscalationEmailError;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['notification_escalation_delay_minutes'])) {
+                $notificationEscalationDelayMinutes = $this->parseEscalationDelay(
+                    (string) ($cells[$columnIndexes['notification_escalation_delay_minutes']] ?? ''),
+                    '升級',
+                    $errors,
+                );
+            }
+
+            if (isset($columnIndexes['notification_escalation_stage_2_email'])) {
+                $notificationEscalationStageTwoEmailInput = (string) ($cells[$columnIndexes['notification_escalation_stage_2_email']] ?? '');
+
+                if (mb_strlen($notificationEscalationStageTwoEmailInput) > 2549) {
+                    $errors[] = '第二階段升級收件信箱清單過長。';
+                } else {
+                    $notificationEscalationStageTwoEmail = NotificationEmailRecipientParser::normalize($notificationEscalationStageTwoEmailInput);
+                    $notificationEscalationStageTwoEmailCount = count(NotificationEmailRecipientParser::parse($notificationEscalationStageTwoEmail));
+                    $notificationEscalationStageTwoEmailError = NotificationEmailRecipientParser::validationError($notificationEscalationStageTwoEmail);
+
+                    if ($notificationEscalationStageTwoEmailError !== null) {
+                        $errors[] = '第二階段'.$notificationEscalationStageTwoEmailError;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['notification_escalation_stage_2_delay_minutes'])) {
+                $notificationEscalationStageTwoDelayMinutes = $this->parseEscalationDelay(
+                    (string) ($cells[$columnIndexes['notification_escalation_stage_2_delay_minutes']] ?? ''),
+                    '第二階段升級',
+                    $errors,
+                );
+            }
+
+            if ($notificationEscalationEmail !== null && $notificationEscalationDelayMinutes === null) {
+                $errors[] = '設定升級告警收件信箱時，請同時設定等待時間。';
+            }
+
+            if ($notificationEscalationEmail === null) {
+                $notificationEscalationDelayMinutes = null;
+            }
+
+            if ($notificationEscalationStageTwoEmail !== null && $notificationEscalationEmail === null) {
+                $errors[] = '設定第二階段時，請先設定第一階段升級收件人。';
+            }
+
+            if ($notificationEscalationStageTwoEmail !== null && $notificationEscalationStageTwoDelayMinutes === null) {
+                $errors[] = '設定第二階段升級收件人時，請同時設定等待時間。';
+            }
+
+            if (
+                $notificationEscalationStageTwoEmail !== null
+                && $notificationEscalationDelayMinutes !== null
+                && $notificationEscalationStageTwoDelayMinutes !== null
+                && $notificationEscalationStageTwoDelayMinutes <= $notificationEscalationDelayMinutes
+            ) {
+                $errors[] = '第二階段等待時間必須晚於第一階段。';
+            }
+
+            if ($notificationEscalationStageTwoEmail === null) {
+                $notificationEscalationStageTwoDelayMinutes = null;
             }
 
             if (isset($columnIndexes['expected_response_header'])) {
@@ -323,6 +410,12 @@ class MonitorImportController extends Controller
                 'allowed_redirect_hosts' => $allowedRedirectHosts,
                 'notification_email' => $notificationEmail,
                 'notification_email_count' => $notificationEmailCount,
+                'notification_escalation_email' => $notificationEscalationEmail,
+                'notification_escalation_email_count' => $notificationEscalationEmailCount,
+                'notification_escalation_delay_minutes' => $notificationEscalationDelayMinutes,
+                'notification_escalation_stage_2_email' => $notificationEscalationStageTwoEmail,
+                'notification_escalation_stage_2_email_count' => $notificationEscalationStageTwoEmailCount,
+                'notification_escalation_stage_2_delay_minutes' => $notificationEscalationStageTwoDelayMinutes,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -337,7 +430,13 @@ class MonitorImportController extends Controller
             'monitor_import_token' => $previewToken,
         ]);
         $previewRows = array_map(static function (array $row): array {
-            unset($row['expected_response_header'], $row['request_headers'], $row['notification_email']);
+            unset(
+                $row['expected_response_header'],
+                $row['request_headers'],
+                $row['notification_email'],
+                $row['notification_escalation_email'],
+                $row['notification_escalation_stage_2_email'],
+            );
 
             return $row;
         }, $rows);
@@ -394,6 +493,10 @@ class MonitorImportController extends Controller
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
                 'request_headers' => $row['request_headers'] ?? [],
                 'notification_email' => $row['notification_email'] ?? null,
+                'notification_escalation_email' => $row['notification_escalation_email'] ?? null,
+                'notification_escalation_delay_minutes' => $row['notification_escalation_delay_minutes'] ?? null,
+                'notification_escalation_stage_2_email' => $row['notification_escalation_stage_2_email'] ?? null,
+                'notification_escalation_stage_2_delay_minutes' => $row['notification_escalation_stage_2_delay_minutes'] ?? null,
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,
@@ -429,5 +532,31 @@ class MonitorImportController extends Controller
         }
 
         return $this->urlPolicy->validateAndResolve($url)['url'];
+    }
+
+    /** @param list<string> $errors */
+    private function parseEscalationDelay(string $input, string $label, array &$errors): ?int
+    {
+        $input = trim($input);
+
+        if ($input === '') {
+            return null;
+        }
+
+        if (! ctype_digit($input)) {
+            $errors[] = $label.'等待時間必須是整數分鐘。';
+
+            return null;
+        }
+
+        $delayMinutes = (int) $input;
+
+        if ($delayMinutes < 5 || $delayMinutes > 1440) {
+            $errors[] = $label.'等待時間必須介於 5 至 1440 分鐘。';
+
+            return null;
+        }
+
+        return $delayMinutes;
     }
 }
