@@ -110,6 +110,20 @@
                         </div>
 
                         <div class="field-group field-group-full">
+                            <label class="field-label" for="notification_escalation_stage_2_email">第二階段升級收件信箱</label>
+                            <textarea class="field-textarea @error('notification_escalation_stage_2_email') is-invalid @enderror" id="notification_escalation_stage_2_email" name="notification_escalation_stage_2_email" rows="2" maxlength="2549" autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('notification_escalation_stage_2_email') ? 'notification-escalation-stage-2-email-help notification-escalation-stage-2-email-error' : 'notification-escalation-stage-2-email-help' }}" @if ($errors->has('notification_escalation_stage_2_email')) aria-invalid="true" @endif>{{ old('notification_escalation_stage_2_email', $monitor->notification_escalation_stage_2_email) }}</textarea>
+                            <p id="notification-escalation-stage-2-email-help" class="field-help">選填，第一階段後仍未恢復且未被認領時，等待第二階段時間後通知這組收件人。需先設定第一階段。</p>
+                            @error('notification_escalation_stage_2_email')<p id="notification-escalation-stage-2-email-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group">
+                            <label class="field-label" for="notification_escalation_stage_2_delay_minutes">第二階段等待時間（分鐘）</label>
+                            <input class="field-input @error('notification_escalation_stage_2_delay_minutes') is-invalid @enderror" id="notification_escalation_stage_2_delay_minutes" name="notification_escalation_stage_2_delay_minutes" type="number" inputmode="numeric" min="5" max="1440" step="1" value="{{ old('notification_escalation_stage_2_delay_minutes', $monitor->notification_escalation_stage_2_delay_minutes) }}" aria-invalid="{{ $errors->has('notification_escalation_stage_2_delay_minutes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('notification_escalation_stage_2_delay_minutes') ? 'notification-escalation-stage-2-delay-help notification-escalation-stage-2-delay-error' : 'notification-escalation-stage-2-delay-help' }}">
+                            <p id="notification-escalation-stage-2-delay-help" class="field-help">設定第二階段收件信箱時必填，範圍為 5–1440 分鐘，且必須晚於第一階段；時間從事件開始計算。</p>
+                            @error('notification_escalation_stage_2_delay_minutes')<p id="notification-escalation-stage-2-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
                             <label class="field-label" for="notification_slack_webhook">Slack Incoming Webhook</label>
                             <p id="notification-slack-webhook-help" class="field-help">
                                 @if ($hasSlackWebhook)

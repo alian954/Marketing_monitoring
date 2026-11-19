@@ -208,12 +208,24 @@ class IncidentManager
             ->where('state', Incident::STATE_OPEN)
             ->whereNull('acknowledged_at')
             ->whereNotNull('opened_at')
-            ->whereHas('monitor', static function (Builder $query): void {
-                $query->whereNotNull('notification_escalation_email')
-                    ->whereNotNull('notification_escalation_delay_minutes');
-            })
-            ->whereDoesntHave('outboxMessages', static function (Builder $query): void {
-                $query->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION);
+            ->where(function (Builder $query): void {
+                $query->where(function (Builder $query): void {
+                    $query->whereHas('monitor', function (Builder $monitorQuery): void {
+                        $monitorQuery->whereNotNull('notification_escalation_email')
+                            ->whereNotNull('notification_escalation_delay_minutes');
+                        $this->whereEscalationStageDue($monitorQuery, 'notification_escalation_delay_minutes');
+                    })->whereDoesntHave('outboxMessages', static function (Builder $outboxQuery): void {
+                        $outboxQuery->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION);
+                    });
+                })->orWhere(function (Builder $query): void {
+                    $query->whereHas('monitor', function (Builder $monitorQuery): void {
+                        $monitorQuery->whereNotNull('notification_escalation_stage_2_email')
+                            ->whereNotNull('notification_escalation_stage_2_delay_minutes');
+                        $this->whereEscalationStageDue($monitorQuery, 'notification_escalation_stage_2_delay_minutes');
+                    })->whereDoesntHave('outboxMessages', static function (Builder $outboxQuery): void {
+                        $outboxQuery->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2);
+                    });
+                });
             })
             ->orderBy('opened_at')
             ->orderBy('id')
@@ -224,7 +236,7 @@ class IncidentManager
         $queuedEscalations = 0;
 
         foreach ($incidentIds as $incidentId) {
-            $wasQueued = DB::transaction(function () use ($incidentId): bool {
+            $queuedStageCount = DB::transaction(function () use ($incidentId): int {
                 $incident = Incident::query()->lockForUpdate()->with('monitor')->find($incidentId);
 
                 if (
@@ -236,21 +248,10 @@ class IncidentManager
                     || $incident->config_version !== $incident->monitor->config_version
                     || $this->isInMaintenance($incident->monitor)
                 ) {
-                    return false;
+                    return 0;
                 }
 
                 $monitor = $incident->monitor;
-                $delayMinutes = (int) $monitor->notification_escalation_delay_minutes;
-
-                if (
-                    $delayMinutes < 1
-                    || $monitor->notification_escalation_email === null
-                    || $incident->opened_at->addMinutes($delayMinutes)->isFuture()
-                    || $incident->outboxMessages()->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)->exists()
-                ) {
-                    return false;
-                }
-
                 $failureRun = IncidentEvent::query()
                     ->where('incident_id', $incident->id)
                     ->where('event_type', 'failure_seen')
@@ -258,38 +259,77 @@ class IncidentManager
                     ->with('checkRun')
                     ->latest('created_at')
                     ->first()?->checkRun;
-                $recipients = NotificationEmailRecipientParser::parse($monitor->notification_escalation_email);
-
-                if ($failureRun === null || $recipients === []) {
-                    return false;
+                if ($failureRun === null) {
+                    return 0;
                 }
 
-                $wasQueued = $this->notifications->queue(
-                    $incident,
-                    $monitor,
-                    $failureRun,
-                    NotificationOutbox::EVENT_TYPE_ESCALATION,
-                    emailRecipientsOverride: $recipients,
-                    includeSlack: false,
-                );
+                $stages = [
+                    [
+                        'number' => 1,
+                        'email' => $monitor->notification_escalation_email,
+                        'delay_minutes' => $monitor->notification_escalation_delay_minutes,
+                        'event_type' => NotificationOutbox::EVENT_TYPE_ESCALATION,
+                    ],
+                    [
+                        'number' => 2,
+                        'email' => $monitor->notification_escalation_stage_2_email,
+                        'delay_minutes' => $monitor->notification_escalation_stage_2_delay_minutes,
+                        'event_type' => NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+                    ],
+                ];
+                $queuedStages = 0;
 
-                if ($wasQueued) {
-                    IncidentEvent::query()->firstOrCreate([
-                        'incident_id' => $incident->id,
-                        'check_run_id' => null,
-                        'event_type' => 'escalation_queued',
-                    ], [
-                        'evidence' => ['recipient_count' => count($recipients), 'delay_minutes' => $delayMinutes],
-                        'created_at' => now(),
-                    ]);
+                foreach ($stages as $stage) {
+                    $email = $stage['email'];
+                    $delayMinutes = $stage['delay_minutes'];
+                    $eventType = $stage['event_type'];
+
+                    if (
+                        ! is_string($email)
+                        || $email === ''
+                        || ! is_int($delayMinutes)
+                        || $delayMinutes < 1
+                        || $incident->opened_at->addMinutes($delayMinutes)->isFuture()
+                        || $incident->outboxMessages()->where('event_type', $eventType)->exists()
+                    ) {
+                        continue;
+                    }
+
+                    $recipients = NotificationEmailRecipientParser::parse($email);
+
+                    if ($recipients === []) {
+                        continue;
+                    }
+
+                    $wasQueued = $this->notifications->queue(
+                        $incident,
+                        $monitor,
+                        $failureRun,
+                        $eventType,
+                        emailRecipientsOverride: $recipients,
+                        includeSlack: false,
+                    );
+
+                    if ($wasQueued) {
+                        IncidentEvent::query()->forceCreate([
+                            'incident_id' => $incident->id,
+                            'check_run_id' => null,
+                            'event_type' => 'escalation_queued',
+                            'evidence' => [
+                                'stage' => $stage['number'],
+                                'recipient_count' => count($recipients),
+                                'delay_minutes' => $delayMinutes,
+                            ],
+                            'created_at' => now(),
+                        ]);
+                        $queuedStages++;
+                    }
                 }
 
-                return $wasQueued;
+                return $queuedStages;
             });
 
-            if ($wasQueued) {
-                $queuedEscalations++;
-            }
+            $queuedEscalations += $queuedStageCount;
         }
 
         return $queuedEscalations;
@@ -555,6 +595,18 @@ class IncidentManager
         return $monitor->maintenanceWindows()
             ->get()
             ->contains(fn (MaintenanceWindow $window): bool => $window->isActiveAt($currentTime));
+    }
+
+    private function whereEscalationStageDue(Builder $monitorQuery, string $delayColumn): void
+    {
+        $deadlineExpression = match (DB::connection()->getDriverName()) {
+            'mysql' => 'DATE_ADD(incidents.opened_at, INTERVAL monitors.'.$delayColumn.' MINUTE) <= ?',
+            'pgsql' => "incidents.opened_at + (monitors.{$delayColumn} * INTERVAL '1 minute') <= ?",
+            'sqlite' => "datetime(incidents.opened_at, '+' || monitors.{$delayColumn} || ' minutes') <= ?",
+            default => throw new \RuntimeException('The current database driver cannot compare escalation deadlines.'),
+        };
+
+        $monitorQuery->whereRaw($deadlineExpression, [now()->toDateTimeString()]);
     }
 
     private function hasOpenedNotification(Incident $incident): bool

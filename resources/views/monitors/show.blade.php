@@ -32,6 +32,7 @@
         'reminder_queued' => '事件仍未恢復，已排入提醒',
         'escalation_queued' => '升級告警已排入通知',
         'escalation' => '升級告警',
+        'escalation_stage_2' => '第二階段升級告警',
         'paused' => '監測已暫停',
         'superseded' => '舊事件已因設定變更而結束',
         'acknowledged' => '事件已認領',
@@ -578,6 +579,9 @@
                                             <span class="timeline-rail"><span class="timeline-point" aria-hidden="true"></span></span>
                                             <span class="timeline-copy">
                                                 {{ $eventLabels[$event->event_type] ?? '事件狀態更新' }}
+                                                @if ($event->event_type === 'escalation_queued' && isset($event->evidence['stage']))
+                                                    <span class="secondary-text">第 {{ $event->evidence['stage'] }} 階段</span>
+                                                @endif
                                                 @if ($incident->rule_key === 'response_time' && isset($event->evidence['threshold_ms'], $event->evidence['elapsed_ms']))
                                                     <span class="secondary-text">HTTP 回應 {{ number_format((int) $event->evidence['elapsed_ms']) }} 毫秒；門檻 {{ number_format((int) $event->evidence['threshold_ms']) }} 毫秒</span>
                                                 @endif

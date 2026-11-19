@@ -12,8 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_slack_webhook', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
-#[Hidden(['notification_escalation_email', 'notification_slack_webhook'])]
+#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
+#[Hidden(['notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook'])]
 class Monitor extends Model
 {
     public const MAX_INTERVAL_SECONDS = 3600;
@@ -36,6 +36,7 @@ class Monitor extends Model
             'url' => 'encrypted',
             'notification_email' => 'encrypted',
             'notification_escalation_email' => 'encrypted',
+            'notification_escalation_stage_2_email' => 'encrypted',
             'notification_slack_webhook' => 'encrypted',
             'allowed_redirect_hosts' => 'array',
             'accepted_status_codes' => 'array',
@@ -45,6 +46,7 @@ class Monitor extends Model
             'timeout_seconds' => 'integer',
             'confirmation_delay_seconds' => 'integer',
             'notification_escalation_delay_minutes' => 'integer',
+            'notification_escalation_stage_2_delay_minutes' => 'integer',
             'public_status' => 'boolean',
             'interval_seconds' => 'integer',
             'next_check_at' => 'immutable_datetime',

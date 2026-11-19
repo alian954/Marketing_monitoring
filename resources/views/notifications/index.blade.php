@@ -54,6 +54,7 @@
                                 <option value="recovered" @selected($filters['event_type'] === 'recovered')>恢復通知</option>
                                 <option value="reminder" @selected($filters['event_type'] === 'reminder')>持續事件提醒</option>
                                 <option value="escalation" @selected($filters['event_type'] === 'escalation')>事件升級通知</option>
+                                <option value="escalation_stage_2" @selected($filters['event_type'] === 'escalation_stage_2')>第二階段升級通知</option>
                                 <option value="dns_daily_summary" @selected($filters['event_type'] === 'dns_daily_summary')>每日 DNS 變更摘要</option>
                                 <option value="{{ \App\Models\NotificationOutbox::EVENT_TYPE_STATUS_OPENED }}" @selected($filters['event_type'] === \App\Models\NotificationOutbox::EVENT_TYPE_STATUS_OPENED)>公開狀態頁異常更新</option>
                                 <option value="{{ \App\Models\NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED }}" @selected($filters['event_type'] === \App\Models\NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED)>公開狀態頁恢復更新</option>

@@ -56,7 +56,10 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 }
             }
 
-            if ($outbox->event_type === NotificationOutbox::EVENT_TYPE_ESCALATION) {
+            if (in_array($outbox->event_type, [
+                NotificationOutbox::EVENT_TYPE_ESCALATION,
+                NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+            ], true)) {
                 $incident = Incident::query()->lockForUpdate()->find($outbox->incident_id);
 
                 if (

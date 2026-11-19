@@ -76,6 +76,7 @@ class NotificationDispatcher
             'opened' => '異常已確認',
             'reminder' => '異常仍未恢復',
             NotificationOutbox::EVENT_TYPE_ESCALATION => '異常仍未確認，已升級告警',
+            NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2 => '異常仍未確認，第二階段已升級告警',
             default => '連續兩次檢查正常，事件已恢復',
         };
         $subject = '['.config('app.name').'] '.$monitor->name.' '.$stateText;

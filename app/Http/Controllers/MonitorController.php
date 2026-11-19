@@ -164,6 +164,8 @@ class MonitorController extends Controller
             'notification_email' => $validated['notification_email'],
             'notification_escalation_email' => $validated['notification_escalation_email'],
             'notification_escalation_delay_minutes' => $validated['notification_escalation_delay_minutes'],
+            'notification_escalation_stage_2_email' => $validated['notification_escalation_stage_2_email'],
+            'notification_escalation_stage_2_delay_minutes' => $validated['notification_escalation_stage_2_delay_minutes'],
             'notification_slack_webhook' => $validated['notification_slack_webhook'],
             'enabled' => true,
             'config_version' => 1,
@@ -383,6 +385,8 @@ class MonitorController extends Controller
                 'notification_email' => $validated['notification_email'],
                 'notification_escalation_email' => $validated['notification_escalation_email'],
                 'notification_escalation_delay_minutes' => $validated['notification_escalation_delay_minutes'],
+                'notification_escalation_stage_2_email' => $validated['notification_escalation_stage_2_email'],
+                'notification_escalation_stage_2_delay_minutes' => $validated['notification_escalation_stage_2_delay_minutes'],
                 'notification_slack_webhook' => $validated['notification_slack_webhook'],
                 'accepted_status_codes' => $validated['accepted_status_codes'],
                 'expected_text' => $validated['expected_text'] ?: null,
@@ -673,7 +677,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_slack_webhook: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         if ($request->exists('notification_email') && is_string($request->input('notification_email'))) {
@@ -693,6 +697,12 @@ class MonitorController extends Controller
             ]);
         }
 
+        if ($request->exists('notification_escalation_stage_2_email') && is_string($request->input('notification_escalation_stage_2_email'))) {
+            $request->merge([
+                'notification_escalation_stage_2_email' => NotificationEmailRecipientParser::normalize($request->input('notification_escalation_stage_2_email')),
+            ]);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
@@ -700,6 +710,8 @@ class MonitorController extends Controller
             'notification_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_delay_minutes' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:1440'],
+            'notification_escalation_stage_2_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
+            'notification_escalation_stage_2_delay_minutes' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:1440'],
             'notification_slack_webhook' => ['sometimes', 'nullable', 'string', 'max:2048', 'url'],
             'clear_notification_slack_webhook' => ['sometimes', 'boolean'],
             'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
@@ -730,6 +742,11 @@ class MonitorController extends Controller
             'notification_escalation_delay_minutes.integer' => '升級等待時間必須是整數分鐘。',
             'notification_escalation_delay_minutes.min' => '升級等待時間不得短於 5 分鐘。',
             'notification_escalation_delay_minutes.max' => '升級等待時間不得超過 1440 分鐘。',
+            'notification_escalation_stage_2_email.string' => '第二階段升級收件信箱格式不正確。',
+            'notification_escalation_stage_2_email.max' => '第二階段升級收件信箱清單過長。',
+            'notification_escalation_stage_2_delay_minutes.integer' => '第二階段等待時間必須是整數分鐘。',
+            'notification_escalation_stage_2_delay_minutes.min' => '第二階段等待時間不得短於 5 分鐘。',
+            'notification_escalation_stage_2_delay_minutes.max' => '第二階段等待時間不得超過 1440 分鐘。',
             'notification_slack_webhook.url' => '請輸入有效的 Slack webhook 網址。',
             'notification_slack_webhook.max' => 'Slack webhook 網址不得超過 2048 個字元。',
             'interval_seconds.integer' => '檢查頻率格式不正確。',
@@ -766,6 +783,41 @@ class MonitorController extends Controller
 
         if ($escalationEmail === null) {
             $escalationDelayMinutes = null;
+        }
+
+        $escalationStageTwoEmail = array_key_exists('notification_escalation_stage_2_email', $validated)
+            ? $validated['notification_escalation_stage_2_email']
+            : $monitor?->notification_escalation_stage_2_email;
+        $escalationStageTwoDelayMinutes = array_key_exists('notification_escalation_stage_2_delay_minutes', $validated)
+            ? ($validated['notification_escalation_stage_2_delay_minutes'] === null ? null : (int) $validated['notification_escalation_stage_2_delay_minutes'])
+            : $monitor?->notification_escalation_stage_2_delay_minutes;
+        $this->validateNotificationEmailRecipients($escalationStageTwoEmail, 'notification_escalation_stage_2_email');
+
+        if ($escalationStageTwoEmail !== null && $escalationEmail === null) {
+            throw ValidationException::withMessages([
+                'notification_escalation_stage_2_email' => '設定第二階段時，請先設定第一階段升級收件人。',
+            ]);
+        }
+
+        if ($escalationStageTwoEmail !== null && $escalationStageTwoDelayMinutes === null) {
+            throw ValidationException::withMessages([
+                'notification_escalation_stage_2_delay_minutes' => '設定第二階段升級收件人時，請同時設定等待時間。',
+            ]);
+        }
+
+        if (
+            $escalationStageTwoEmail !== null
+            && $escalationDelayMinutes !== null
+            && $escalationStageTwoDelayMinutes !== null
+            && $escalationStageTwoDelayMinutes <= $escalationDelayMinutes
+        ) {
+            throw ValidationException::withMessages([
+                'notification_escalation_stage_2_delay_minutes' => '第二階段等待時間必須晚於第一階段。',
+            ]);
+        }
+
+        if ($escalationStageTwoEmail === null) {
+            $escalationStageTwoDelayMinutes = null;
         }
 
         $slackWebhookUrl = $validated['notification_slack_webhook'] ?? null;
@@ -805,6 +857,8 @@ class MonitorController extends Controller
                 : $monitor?->notification_email,
             'notification_escalation_email' => $escalationEmail,
             'notification_escalation_delay_minutes' => $escalationDelayMinutes,
+            'notification_escalation_stage_2_email' => $escalationStageTwoEmail,
+            'notification_escalation_stage_2_delay_minutes' => $escalationStageTwoDelayMinutes,
             'notification_slack_webhook' => $slackWebhookUrl,
             'accepted_status_codes' => $acceptedStatusCodes,
             'expected_text' => isset($validated['expected_text']) ? trim($validated['expected_text']) : null,

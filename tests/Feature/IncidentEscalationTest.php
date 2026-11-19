@@ -30,6 +30,7 @@ class IncidentEscalationTest extends TestCase
             ->assertOk()
             ->assertSee('升級告警收件信箱')
             ->assertSee('升級等待時間（分鐘）')
+            ->assertSee('第二階段升級收件信箱')
             ->assertSee('事件持續未恢復且未被認領');
     }
 
@@ -44,6 +45,8 @@ class IncidentEscalationTest extends TestCase
                 'url' => 'https://fixture.test/health',
                 'notification_escalation_email' => $emailList,
                 'notification_escalation_delay_minutes' => 30,
+                'notification_escalation_stage_2_email' => "manager@example.test\nvp@example.test",
+                'notification_escalation_stage_2_delay_minutes' => 90,
             ])
             ->assertSessionHasNoErrors();
 
@@ -54,6 +57,13 @@ class IncidentEscalationTest extends TestCase
         $this->assertSame(30, $monitor->notification_escalation_delay_minutes);
         $this->assertNotSame($emailList, $storedEmail);
         $this->assertArrayNotHasKey('notification_escalation_email', $monitor->toArray());
+        $this->assertSame("manager@example.test\nvp@example.test", $monitor->notification_escalation_stage_2_email);
+        $this->assertSame(90, $monitor->notification_escalation_stage_2_delay_minutes);
+        $this->assertNotSame(
+            "manager@example.test\nvp@example.test",
+            DB::table('monitors')->where('id', $monitor->id)->value('notification_escalation_stage_2_email'),
+        );
+        $this->assertArrayNotHasKey('notification_escalation_stage_2_email', $monitor->toArray());
     }
 
     public function test_escalation_recipients_require_a_valid_delay_and_valid_email_addresses(): void
@@ -88,12 +98,52 @@ class IncidentEscalationTest extends TestCase
                 ->assertSessionHasErrors('notification_escalation_delay_minutes');
         }
 
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), $baseInput + [
+                'notification_escalation_stage_2_email' => 'manager@example.test',
+                'notification_escalation_stage_2_delay_minutes' => 60,
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('notification_escalation_stage_2_email');
+
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), $baseInput + [
+                'notification_escalation_email' => 'backup@example.test',
+                'notification_escalation_delay_minutes' => 30,
+                'notification_escalation_stage_2_email' => 'manager@example.test',
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('notification_escalation_stage_2_delay_minutes');
+
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), $baseInput + [
+                'notification_escalation_email' => 'backup@example.test',
+                'notification_escalation_delay_minutes' => 30,
+                'notification_escalation_stage_2_email' => 'manager@example.test',
+                'notification_escalation_stage_2_delay_minutes' => 30,
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('notification_escalation_stage_2_delay_minutes');
+
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), $baseInput + [
+                'notification_escalation_email' => 'backup@example.test',
+                'notification_escalation_delay_minutes' => 30,
+                'notification_escalation_stage_2_email' => 'not-an-email',
+                'notification_escalation_stage_2_delay_minutes' => 60,
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('notification_escalation_stage_2_email');
+
         $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_monitor_edit_can_clear_the_entire_escalation_policy(): void
     {
-        $monitor = $this->monitor(9);
+        $monitor = $this->monitor(9, [
+            'notification_escalation_stage_2_email' => 'manager@example.test',
+            'notification_escalation_stage_2_delay_minutes' => 90,
+        ]);
 
         $this->actingAs(User::factory()->create())
             ->put(route('monitors.update', $monitor), [
@@ -101,11 +151,15 @@ class IncidentEscalationTest extends TestCase
                 'url' => '',
                 'notification_escalation_email' => '',
                 'notification_escalation_delay_minutes' => 30,
+                'notification_escalation_stage_2_email' => '',
+                'notification_escalation_stage_2_delay_minutes' => 90,
             ])
             ->assertRedirect(route('monitors.show', $monitor));
 
         $this->assertNull($monitor->fresh()->notification_escalation_email);
         $this->assertNull($monitor->fresh()->notification_escalation_delay_minutes);
+        $this->assertNull($monitor->fresh()->notification_escalation_stage_2_email);
+        $this->assertNull($monitor->fresh()->notification_escalation_stage_2_delay_minutes);
     }
 
     public function test_scheduler_queues_one_escalation_to_secondary_recipients_after_the_delay(): void
@@ -125,10 +179,9 @@ class IncidentEscalationTest extends TestCase
 
         $outboxes = NotificationOutbox::query()
             ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
-            ->orderBy('recipient')
             ->get();
         $this->assertCount(2, $outboxes);
-        $this->assertSame(['backup@example.test', 'oncall@example.test'], $outboxes->pluck('recipient')->all());
+        $this->assertSame(['backup@example.test', 'oncall@example.test'], $outboxes->pluck('recipient')->sort()->values()->all());
         $this->assertTrue($outboxes->every(static fn (NotificationOutbox $outbox): bool => $outbox->channel === NotificationOutbox::CHANNEL_EMAIL
             && str_contains($outbox->subject, '已升級告警')
             && str_contains($outbox->body, 'HTTP 狀態碼：503')));
@@ -193,15 +246,67 @@ class IncidentEscalationTest extends TestCase
     {
         $this->travelTo(Carbon::parse('2026-11-20 12:00:00', 'UTC'));
         Queue::fake([SendNotificationOutbox::class]);
-        $monitor = $this->monitor(10);
-        $this->openIncident($monitor, now()->subHour());
+        $monitor = $this->monitor(10, [
+            'notification_escalation_stage_2_email' => 'manager@example.test',
+            'notification_escalation_stage_2_delay_minutes' => 60,
+        ]);
+        $this->openIncident($monitor, now()->subHours(2));
 
         $this->artisan('monitors:dispatch-due')
-            ->expectsOutput('已將 0 個到期監測檢查加入佇列，排入 0 個持續事件提醒與 1 個升級通知。')
+            ->expectsOutput('已將 0 個到期監測檢查加入佇列，排入 0 個持續事件提醒與 2 個升級通知。')
             ->assertExitCode(0);
 
-        Queue::assertPushed(SendNotificationOutbox::class, 1);
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
+        $this->assertDatabaseCount('notification_outbox', 2);
+    }
+
+    public function test_second_escalation_stage_waits_for_its_deadline_and_notifies_its_own_recipients_once(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-20 12:00:00', 'UTC'));
+        Queue::fake([SendNotificationOutbox::class]);
+        $monitor = $this->monitor(11, [
+            'notification_escalation_delay_minutes' => 30,
+            'notification_escalation_stage_2_email' => "manager@example.test\nvp@example.test",
+            'notification_escalation_stage_2_delay_minutes' => 60,
+        ]);
+        $incident = $this->openIncident($monitor, now()->subMinutes(31));
+
+        $this->assertSame(1, app(IncidentManager::class)->queueDueEscalations());
         $this->assertDatabaseCount('notification_outbox', 1);
+
+        $this->travelTo(now()->copy()->addMinutes(29));
+        $this->assertSame(1, app(IncidentManager::class)->queueDueEscalations());
+
+        $stageOne = NotificationOutbox::query()
+            ->where('incident_id', $incident->id)
+            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
+            ->get();
+        $stageTwo = NotificationOutbox::query()
+            ->where('incident_id', $incident->id)
+            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2)
+            ->get();
+
+        $this->assertSame(['escalation@example.test'], $stageOne->pluck('recipient')->all());
+        $this->assertSame(['manager@example.test', 'vp@example.test'], $stageTwo->pluck('recipient')->sort()->values()->all());
+        $this->assertTrue($stageTwo->every(static fn (NotificationOutbox $outbox): bool => str_contains($outbox->subject, '第二階段')));
+        $this->assertSame(2, IncidentEvent::query()
+            ->where('incident_id', $incident->id)
+            ->where('event_type', 'escalation_queued')
+            ->count());
+        $this->assertSame(0, app(IncidentManager::class)->queueDueEscalations());
+        $this->assertDatabaseCount('notification_outbox', 3);
+        Queue::assertPushed(SendNotificationOutbox::class, 3);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('notifications.index', ['event_type' => NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2]))
+            ->assertOk()
+            ->assertSee('第二階段升級通知')
+            ->assertSee('m***r@example.test');
+
+        $this->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('第二階段升級告警')
+            ->assertSee('第 2 階段');
     }
 
     public function test_queued_escalations_are_cancelled_if_the_incident_is_acknowledged_or_resolved_before_sending(): void
@@ -209,17 +314,28 @@ class IncidentEscalationTest extends TestCase
         $this->travelTo(Carbon::parse('2026-11-20 12:00:00', 'UTC'));
         Queue::fake([SendNotificationOutbox::class]);
         $acknowledgedIncident = $this->openIncident(
-            $this->monitor(7, ['notification_escalation_delay_minutes' => 5]),
-            now()->subMinutes(10),
+            $this->monitor(7, [
+                'notification_escalation_delay_minutes' => 5,
+                'notification_escalation_stage_2_email' => 'manager@example.test',
+                'notification_escalation_stage_2_delay_minutes' => 10,
+            ]),
+            now()->subMinutes(20),
         );
         $resolvedIncident = $this->openIncident(
-            $this->monitor(8, ['notification_escalation_delay_minutes' => 5]),
-            now()->subMinutes(10),
+            $this->monitor(8, [
+                'notification_escalation_delay_minutes' => 5,
+                'notification_escalation_stage_2_email' => 'manager@example.test',
+                'notification_escalation_stage_2_delay_minutes' => 10,
+            ]),
+            now()->subMinutes(20),
         );
 
-        $this->assertSame(2, app(IncidentManager::class)->queueDueEscalations());
+        $this->assertSame(4, app(IncidentManager::class)->queueDueEscalations());
         $outboxes = NotificationOutbox::query()
-            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
+            ->whereIn('event_type', [
+                NotificationOutbox::EVENT_TYPE_ESCALATION,
+                NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+            ])
             ->orderBy('incident_id')
             ->get();
         $operator = User::factory()->create();
@@ -233,13 +349,20 @@ class IncidentEscalationTest extends TestCase
             (new SendNotificationOutbox($outbox->id))->handle();
         }
 
-        $this->assertSame(2, NotificationOutbox::query()
-            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
+        $this->assertSame(4, NotificationOutbox::query()
+            ->whereIn('event_type', [
+                NotificationOutbox::EVENT_TYPE_ESCALATION,
+                NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+            ])
             ->where('status', 'cancelled')
             ->count());
         $this->assertSame(0, NotificationOutbox::query()
-            ->where('event_type', NotificationOutbox::EVENT_TYPE_ESCALATION)
+            ->whereIn('event_type', [
+                NotificationOutbox::EVENT_TYPE_ESCALATION,
+                NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2,
+            ])
             ->sum('attempts'));
+        Queue::assertPushed(SendNotificationOutbox::class, 4);
         Mail::assertOutgoingCount(0);
     }
 
