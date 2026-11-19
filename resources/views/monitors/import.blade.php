@@ -24,7 +24,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="csv-upload-title" class="panel-title">CSV 檔案</h2>
-                <p class="panel-description">最多 500 列。第一列必須以 <code>name,url,label</code> 開頭，可再加上文字條件、<code>expected_response_header</code> 與 <code>interval_seconds</code>。</p>
+                <p class="panel-description">最多 500 列。第一列必須以 <code>name,url,label</code> 開頭，可依序加入文字、HTTP 標頭、排程與效能條件。</p>
             </div>
         </div>
         <div class="panel-body">
@@ -33,7 +33,7 @@
                 <div class="field-group">
                     <label class="field-label" for="csv_file">選擇 CSV 檔案<span class="required-mark" aria-hidden="true">*</span></label>
                     <input class="field-input @error('csv_file') is-invalid @enderror" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required aria-describedby="{{ $errors->has('csv_file') ? 'csv-help csv-file-error' : 'csv-help' }}">
-                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。延伸欄位依序為 <code>expected_text</code>、<code>expected_text_mode</code>、<code>expected_response_header</code>、<code>interval_seconds</code>；可省略不用欄位，但需保持順序。可用 <code>expected_text_mode=present</code> 要求全部片段都出現，或用 <code>present_any</code> 只要求任一片段出現；<code>absent</code> 會在任一片段出現時告警。社群貼文需加入 <code>expected_text</code>，並使用 <code>present</code> 或 <code>present_any</code>。省略比對方式時預設為 <code>present</code>。可選擇加入 <code>expected_response_header</code>，格式為 <code>X-Robots-Tag: noindex</code>；空白預期值只檢查標頭是否存在。可用 <code>interval_seconds</code> 設定 60、300、900、1800 或 3600 秒；留空或省略時使用全域預設。所有資料列先預覽，確認後才匯入；網址與標頭條件值不會在預覽顯示。</p>
+                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。延伸欄位依序為 <code>expected_text</code>、<code>expected_text_mode</code>、<code>expected_response_header</code>、<code>interval_seconds</code>、<code>timeout_seconds</code>、<code>response_time_threshold_ms</code>；可省略不用欄位，但需保持順序。可用 <code>expected_text_mode=present</code> 要求全部片段都出現，或用 <code>present_any</code> 只要求任一片段出現；<code>absent</code> 會在任一片段出現時告警。社群貼文需加入 <code>expected_text</code>，並使用 <code>present</code> 或 <code>present_any</code>。省略比對方式時預設為 <code>present</code>。<code>expected_response_header</code> 格式為 <code>X-Robots-Tag: noindex</code>；空白預期值只檢查標頭是否存在。<code>interval_seconds</code> 支援 60、300、900、1800 或 3600 秒；留空或省略時使用全域預設。<code>timeout_seconds</code> 可設 1–15 秒；<code>response_time_threshold_ms</code> 可設 100–14,000 毫秒，且必須低於逾時上限；留空時不啟用回應時間警示。所有資料列先預覽，確認後才匯入；網址與標頭條件值不會在預覽顯示。</p>
                     @error('csv_file')<p id="csv-file-error" class="field-error">{{ $message }}</p>@enderror
                 </div>
                 <div class="form-actions">
@@ -71,7 +71,7 @@
                 @else
                     <div class="data-table-wrap preview-table-frame" role="region" aria-labelledby="preview-title" tabindex="0">
                         <table class="data-table">
-                            <caption class="sr-only">CSV 資料列、遮罩目的網址、檢查頻率、預期文字與 HTTP 標頭條件及匯入資格</caption>
+                            <caption class="sr-only">CSV 資料列、遮罩目的網址、檢查頻率、請求逾時、回應時間門檻、預期文字與 HTTP 標頭條件及匯入資格</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">列號</th>
@@ -79,6 +79,8 @@
                                     <th scope="col">目的網址</th>
                                     <th scope="col">標籤</th>
                                     <th scope="col">檢查頻率</th>
+                                    <th scope="col">請求逾時</th>
+                                    <th scope="col">回應時間門檻</th>
                                     <th scope="col">預期文字條件</th>
                                     <th scope="col">HTTP 標頭條件</th>
                                     <th scope="col">檢查結果</th>
@@ -94,6 +96,8 @@
                                         $intervalLabel = $intervalSeconds >= 3600 && $intervalSeconds % 3600 === 0
                                             ? intdiv($intervalSeconds, 3600).' 小時'
                                             : intdiv($intervalSeconds, 60).' 分鐘';
+                                        $timeoutSeconds = (int) data_get($previewRow, 'timeout_seconds', config('monitoring.request_timeout_seconds'));
+                                        $responseTimeThresholdMs = data_get($previewRow, 'response_time_threshold_ms');
                                     @endphp
                                     <tr>
                                         <td class="numeric">{{ data_get($previewRow, 'line', '—') }}</td>
@@ -101,6 +105,8 @@
                                         <td><span class="masked-url">{{ data_get($previewRow, 'masked_url', '—') }}</span></td>
                                         <td>{{ data_get($previewRow, 'label') ?: '—' }}</td>
                                         <td>{{ $intervalLabel }}</td>
+                                        <td>{{ $timeoutSeconds }} 秒</td>
+                                        <td>{{ $responseTimeThresholdMs === null ? '—' : number_format((int) $responseTimeThresholdMs).' 毫秒' }}</td>
                                         <td>
                                             @if (data_get($previewRow, 'expected_text', '') !== '')
                                                 {{ match (data_get($previewRow, 'expected_text_mode')) { 'absent' => '不得出現任一片段：', 'present_any' => '至少包含一個片段：', default => '必須包含全部片段：' } }}{{ str_replace("\n", '、', data_get($previewRow, 'expected_text')) }}

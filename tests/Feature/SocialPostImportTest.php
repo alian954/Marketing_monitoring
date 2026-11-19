@@ -185,9 +185,10 @@ class SocialPostImportTest extends TestCase
     {
         Queue::fake([RunMonitorCheck::class]);
         $this->freezeTime();
+        config(['monitoring.request_timeout_seconds' => 10]);
         $condition = 'X-Robots-Tag: campaign-index';
         $csv = $this->csvContent(
-            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds'],
+            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds', 'timeout_seconds', 'response_time_threshold_ms'],
             [[
                 'Spring campaign',
                 'https://www.instagram.com/reel/ABC123/',
@@ -196,12 +197,16 @@ class SocialPostImportTest extends TestCase
                 'present_any',
                 $condition,
                 '300',
+                '15',
+                '14000',
             ], [
                 'Default frequency',
                 'https://example.com/default-frequency',
                 'Ops',
                 '',
                 'present',
+                '',
+                '',
                 '',
                 '',
             ]],
@@ -216,6 +221,7 @@ class SocialPostImportTest extends TestCase
             ->assertSee('HTTP 標頭條件')
             ->assertSee('5 分鐘')
             ->assertSee('15 分鐘')
+            ->assertSee('14,000 毫秒')
             ->assertDontSee('campaign-index');
 
         $this->assertSame(2, $preview->viewData('validCount'));
@@ -223,7 +229,11 @@ class SocialPostImportTest extends TestCase
         $previewRow = $previewRows[0];
         $this->assertSame(300, $previewRow['interval_seconds']);
         $this->assertSame('X-Robots-Tag', $previewRow['expected_response_header_name']);
+        $this->assertSame(15, $previewRow['timeout_seconds']);
+        $this->assertSame(14000, $previewRow['response_time_threshold_ms']);
         $this->assertSame((int) config('monitoring.interval_seconds'), $previewRows[1]['interval_seconds']);
+        $this->assertSame((int) config('monitoring.request_timeout_seconds'), $previewRows[1]['timeout_seconds']);
+        $this->assertNull($previewRows[1]['response_time_threshold_ms']);
         $this->assertDatabaseCount('monitors', 0);
 
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
@@ -234,14 +244,20 @@ class SocialPostImportTest extends TestCase
         $this->assertSame(300, $monitor->interval_seconds);
         $this->assertSame('present_any', $monitor->expected_text_mode);
         $this->assertSame($condition, $monitor->expected_response_header);
+        $this->assertSame(15, $monitor->timeout_seconds);
+        $this->assertSame(14000, $monitor->response_time_threshold_ms);
         $defaultFrequencyMonitor = Monitor::query()->where('name', 'Default frequency')->sole();
         $this->assertSame((int) config('monitoring.interval_seconds'), $defaultFrequencyMonitor->interval_seconds);
+        $this->assertSame((int) config('monitoring.request_timeout_seconds'), $defaultFrequencyMonitor->timeout_seconds);
+        $this->assertNull($defaultFrequencyMonitor->response_time_threshold_ms);
 
         $run = app(RunScheduler::class)->enqueue($monitor, 'scheduled', now());
         $this->assertNotNull($run);
         $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(300, $snapshot['interval_seconds']);
         $this->assertSame($condition, $snapshot['expected_response_header']);
+        $this->assertSame(15, $snapshot['timeout_seconds']);
+        $this->assertSame(14000, $snapshot['response_time_threshold_ms']);
         $this->assertSame(
             now()->addSeconds(300)->utc()->toIso8601String(),
             $monitor->fresh()->next_check_at->utc()->toIso8601String(),
@@ -271,6 +287,63 @@ class SocialPostImportTest extends TestCase
 
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
             ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_rejects_invalid_timeouts_and_response_time_thresholds(): void
+    {
+        config(['monitoring.request_timeout_seconds' => 10]);
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'timeout_seconds', 'response_time_threshold_ms'],
+            [
+                ['Invalid timeout text', 'https://example.com/invalid-timeout-text', 'Ops', 'slow', '2500'],
+                ['Timeout below minimum', 'https://example.com/timeout-below-minimum', 'Ops', '0', '2500'],
+                ['Timeout above maximum', 'https://example.com/timeout-above-maximum', 'Ops', '16', '2500'],
+                ['Threshold not integer', 'https://example.com/threshold-not-integer', 'Ops', '10', 'fast'],
+                ['Threshold below minimum', 'https://example.com/threshold-below-minimum', 'Ops', '10', '99'],
+                ['Threshold above maximum', 'https://example.com/threshold-above-maximum', 'Ops', '15', '14001'],
+                ['Threshold reaches timeout', 'https://example.com/threshold-reaches-timeout', 'Ops', '10', '10000'],
+                ['Threshold reaches custom timeout', 'https://example.com/threshold-reaches-custom-timeout', 'Ops', '14', '14000'],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('請求逾時秒數必須是整數。')
+            ->assertSee('請求逾時秒數不得低於 1 秒。')
+            ->assertSee('請求逾時秒數不得高於 15 秒。')
+            ->assertSee('回應時間門檻必須是整數。')
+            ->assertSee('回應時間門檻不得低於 100 毫秒。')
+            ->assertSee('回應時間門檻不得高於 14000 毫秒。')
+            ->assertSee('回應時間門檻必須低於請求逾時上限（10000 毫秒）。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(8, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_rejects_optional_columns_in_a_noncanonical_order(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'interval_seconds', 'expected_text'],
+            [],
+        );
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.import'))
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertRedirect(route('monitors.import'))
+            ->assertSessionHasErrors('csv_file');
 
         $this->assertDatabaseCount('monitors', 0);
     }

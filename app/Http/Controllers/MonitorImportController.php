@@ -19,20 +19,17 @@ use Throwable;
 
 class MonitorImportController extends Controller
 {
-    /** @var list<list<string>> */
-    private const SUPPORTED_HEADERS = [
-        ['name', 'url', 'label'],
-        ['name', 'url', 'label', 'expected_text'],
-        ['name', 'url', 'label', 'expected_text', 'expected_text_mode'],
-        ['name', 'url', 'label', 'expected_response_header'],
-        ['name', 'url', 'label', 'expected_text', 'expected_response_header'],
-        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header'],
-        ['name', 'url', 'label', 'interval_seconds'],
-        ['name', 'url', 'label', 'expected_text', 'interval_seconds'],
-        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'interval_seconds'],
-        ['name', 'url', 'label', 'expected_response_header', 'interval_seconds'],
-        ['name', 'url', 'label', 'expected_text', 'expected_response_header', 'interval_seconds'],
-        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds'],
+    /** @var list<string> */
+    private const REQUIRED_HEADERS = ['name', 'url', 'label'];
+
+    /** @var list<string> */
+    private const OPTIONAL_HEADERS = [
+        'expected_text',
+        'expected_text_mode',
+        'expected_response_header',
+        'interval_seconds',
+        'timeout_seconds',
+        'response_time_threshold_ms',
     ];
 
     public function __construct(
@@ -58,15 +55,26 @@ class MonitorImportController extends Controller
 
         if (! is_array($header)) {
             fclose($stream);
-            throw ValidationException::withMessages(['csv_file' => 'CSV 檔案是空的。請新增標題列：name,url,label；也可加上 expected_text,expected_text_mode。']);
+            throw ValidationException::withMessages(['csv_file' => 'CSV 檔案是空的。請新增標題列：name,url,label。']);
         }
 
         $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
         $header = array_map(static fn ($cell): string => mb_strtolower(trim((string) $cell)), $header);
+        $optionalHeaders = array_slice($header, count(self::REQUIRED_HEADERS));
+        $orderedOptionalHeaders = array_values(array_intersect(self::OPTIONAL_HEADERS, $optionalHeaders));
+        $containsExpectedTextModeWithoutText = in_array('expected_text_mode', $optionalHeaders, true)
+            && ! in_array('expected_text', $optionalHeaders, true);
 
-        if (! in_array($header, self::SUPPORTED_HEADERS, true)) {
+        if (
+            array_slice($header, 0, count(self::REQUIRED_HEADERS)) !== self::REQUIRED_HEADERS
+            || $optionalHeaders !== $orderedOptionalHeaders
+            || count($optionalHeaders) !== count(array_unique($optionalHeaders))
+            || $containsExpectedTextModeWithoutText
+        ) {
             fclose($stream);
-            throw ValidationException::withMessages(['csv_file' => '標題列必須依序使用 name,url,label，並可選擇加入 expected_text,expected_text_mode。']);
+            throw ValidationException::withMessages([
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms；expected_text_mode 需搭配 expected_text。',
+            ]);
         }
 
         $columnIndexes = array_flip($header);
@@ -99,6 +107,9 @@ class MonitorImportController extends Controller
             $expectedResponseHeader = null;
             $expectedResponseHeaderName = null;
             $intervalSeconds = (int) config('monitoring.interval_seconds');
+            $timeoutSeconds = (int) config('monitoring.request_timeout_seconds');
+            $timeoutIsValid = true;
+            $responseTimeThresholdMs = null;
 
             if (isset($columnIndexes['expected_response_header'])) {
                 try {
@@ -121,6 +132,47 @@ class MonitorImportController extends Controller
                         $errors[] = '檢查間隔只能使用 '.implode('、', Monitor::SUPPORTED_INTERVAL_SECONDS).' 秒。';
                     } else {
                         $intervalSeconds = $parsedInterval;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['timeout_seconds'])) {
+                $timeoutInput = trim((string) ($cells[$columnIndexes['timeout_seconds']] ?? ''));
+
+                if ($timeoutInput !== '') {
+                    $parsedTimeout = ctype_digit($timeoutInput) ? (int) $timeoutInput : null;
+
+                    if ($parsedTimeout === null) {
+                        $timeoutIsValid = false;
+                        $errors[] = '請求逾時秒數必須是整數。';
+                    } elseif ($parsedTimeout < 1) {
+                        $timeoutIsValid = false;
+                        $errors[] = '請求逾時秒數不得低於 1 秒。';
+                    } elseif ($parsedTimeout > 15) {
+                        $timeoutIsValid = false;
+                        $errors[] = '請求逾時秒數不得高於 15 秒。';
+                    } else {
+                        $timeoutSeconds = $parsedTimeout;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['response_time_threshold_ms'])) {
+                $thresholdInput = trim((string) ($cells[$columnIndexes['response_time_threshold_ms']] ?? ''));
+
+                if ($thresholdInput !== '') {
+                    $parsedThreshold = ctype_digit($thresholdInput) ? (int) $thresholdInput : null;
+
+                    if ($parsedThreshold === null) {
+                        $errors[] = '回應時間門檻必須是整數。';
+                    } elseif ($parsedThreshold < 100) {
+                        $errors[] = '回應時間門檻不得低於 100 毫秒。';
+                    } elseif ($parsedThreshold > 14000) {
+                        $errors[] = '回應時間門檻不得高於 14000 毫秒。';
+                    } elseif ($timeoutIsValid && $parsedThreshold >= $timeoutSeconds * 1000) {
+                        $errors[] = '回應時間門檻必須低於請求逾時上限（'.($timeoutSeconds * 1000).' 毫秒）。';
+                    } else {
+                        $responseTimeThresholdMs = $parsedThreshold;
                     }
                 }
             }
@@ -199,6 +251,8 @@ class MonitorImportController extends Controller
                 'expected_response_header' => $expectedResponseHeader,
                 'expected_response_header_name' => $expectedResponseHeaderName,
                 'interval_seconds' => $intervalSeconds,
+                'timeout_seconds' => $timeoutSeconds,
+                'response_time_threshold_ms' => $responseTimeThresholdMs,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -271,9 +325,10 @@ class MonitorImportController extends Controller
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,
-                'timeout_seconds' => (int) config('monitoring.request_timeout_seconds'),
+                'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
                 'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
+                'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
                 'next_check_at' => now(),
             ]);
 
