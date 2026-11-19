@@ -433,7 +433,7 @@ class SocialPostMonitorTest extends TestCase
         {
             public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
             {
-                return new HopResponse(403, null, '<html><head><title>Instagram</title><meta name="twitter:title" content="貼文分享標題 &amp; &lt;script&gt;alert(1)&lt;/script&gt;"><meta name="twitter:description" content="請登入查看貼文"><meta name="twitter:image" content="/media/share.png?token=private-preview-value"></head><body><main>Log in to continue</main></body></html>', 40, null, null, null);
+                return new HopResponse(403, null, '<html><head><title>Instagram</title><meta name="twitter:title" content="貼文分享標題 &amp; &lt;script&gt;alert(1)&lt;/script&gt;"><meta name="twitter:description" content="請登入查看貼文"><meta name="twitter:image" content="/media/share.png?token=private-preview-value"><meta property="article:published_time" content="2026-11-19T09:30:00+08:00"><meta property="article:modified_time" content="2026-11-20T20:45:00+08:00"></head><body><main>Log in to continue</main></body></html>', 40, null, null, null);
             }
         };
         $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
@@ -450,6 +450,8 @@ class SocialPostMonitorTest extends TestCase
             'response_title' => '貼文分享標題 & <script>alert(1)</script>',
             'response_description' => '請登入查看貼文',
             'response_image_reference_hash' => '35c9b93e6fdbdc899962ed7c818c5696c0b9dc7772a168df068b7f9d9fc54a2b',
+            'response_published_at' => '2026-11-19 01:30:00',
+            'response_modified_at' => '2026-11-20 12:45:00',
         ]);
         $this->assertDatabaseHas('incidents', [
             'monitor_id' => $monitor->id,
@@ -471,6 +473,8 @@ class SocialPostMonitorTest extends TestCase
             ->assertDontSee('<script>alert(1)</script>', false)
             ->assertSee('請登入查看貼文')
             ->assertSee('分享預覽圖片參照：已偵測')
+            ->assertSee('分享發佈時間：2026/11/19 09:30:00（台灣時間）')
+            ->assertSee('分享修改時間：2026/11/20 20:45:00（台灣時間）')
             ->assertDontSee('private-preview-value')
             ->assertDontSee('缺少至少一個指定片段');
 
@@ -492,6 +496,8 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('貼文分享標題 & <script>alert(1)</script>', $row[array_flip($headers)['response_title']]);
         $this->assertSame('請登入查看貼文', $row[array_flip($headers)['response_description']]);
         $this->assertSame('1', $row[array_flip($headers)['response_image_reference_present']]);
+        $this->assertSame('2026-11-19T01:30:00+00:00', $row[array_flip($headers)['response_published_at_utc']]);
+        $this->assertSame('2026-11-20T12:45:00+00:00', $row[array_flip($headers)['response_modified_at_utc']]);
         $this->assertStringNotContainsString('35c9b93e6fdbdc899962ed7c818c5696c0b9dc7772a168df068b7f9d9fc54a2b', $content);
         $this->assertStringNotContainsString('private-preview-value', $content);
     }

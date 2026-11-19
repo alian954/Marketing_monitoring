@@ -69,6 +69,8 @@ class MonitorProbePreviewTest extends TestCase
                 responseTitle: 'Campaign <script>alert(1)</script>',
                 responseDescription: '<img src=x onerror=alert(2)>',
                 responseImageReferenceHash: str_repeat('d', 64),
+                responsePublishedAt: new \DateTimeImmutable('2026-11-19T01:30:00+00:00'),
+                responseModifiedAt: new \DateTimeImmutable('2026-11-20T12:45:00+00:00'),
             ));
 
         $response = $this->actingAs(User::factory()->create())
@@ -83,6 +85,8 @@ class MonitorProbePreviewTest extends TestCase
             ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
             ->assertSee('&lt;img src=x onerror=alert(2)&gt;', false)
             ->assertSee('分享預覽圖片參照：已偵測')
+            ->assertSee('分享發佈時間（UTC）：2026-11-19T01:30:00+00:00')
+            ->assertSee('分享修改時間（UTC）：2026-11-20T12:45:00+00:00')
             ->assertDontSee('<script>alert(1)</script>', false)
             ->assertDontSee('<img src=x onerror=alert(2)>', false)
             ->assertDontSee(str_repeat('d', 64))

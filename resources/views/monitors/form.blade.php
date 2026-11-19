@@ -54,6 +54,8 @@
                         <li>分享標題：{{ $probePreview['response_metadata']['title'] ?? '未提供' }}</li>
                         <li>分享摘要：{{ $probePreview['response_metadata']['description'] ?? '未提供' }}</li>
                         <li>分享預覽圖片參照：{{ ($probePreview['response_metadata']['image_reference_present'] ?? false) ? '已偵測' : '未提供' }}</li>
+                        <li>分享發佈時間（UTC）：{{ $probePreview['response_metadata']['published_at_utc'] ?? '未提供' }}</li>
+                        <li>分享修改時間（UTC）：{{ $probePreview['response_metadata']['modified_at_utc'] ?? '未提供' }}</li>
                         @if ($probePreview['expected_text_checked'])
                             <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present_any'] => '已找到至少一個指定片段', ['missing', 'present_any'] => '未找到任何指定片段', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
                         @endif

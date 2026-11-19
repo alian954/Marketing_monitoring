@@ -27,6 +27,8 @@ readonly class ProbeResult
         public ?string $responseTitle = null,
         public ?string $responseDescription = null,
         public ?string $responseImageReferenceHash = null,
+        public ?\DateTimeImmutable $responsePublishedAt = null,
+        public ?\DateTimeImmutable $responseModifiedAt = null,
     ) {}
 
     public function succeeded(): bool

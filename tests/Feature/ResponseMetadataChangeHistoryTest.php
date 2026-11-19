@@ -108,6 +108,34 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $this->assertArrayNotHasKey('current_image_reference_hash', $changes[0]);
     }
 
+    public function test_monitor_detail_lists_modified_time_changes_in_taiwan_time(): void
+    {
+        $monitor = $this->createMonitor();
+        $this->createRun(
+            $monitor,
+            now()->subMinutes(2),
+            null,
+            null,
+        );
+        $this->createRun(
+            $monitor,
+            now()->subMinute(),
+            null,
+            null,
+            modifiedAt: new \DateTimeImmutable('2026-11-19T02:00:00+00:00'),
+        );
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('修改時間')
+            ->assertSee('未提供')
+            ->assertSee('2026/11/19 10:00:00（台灣時間）');
+        $changes = $response->viewData('responseMetadataChanges');
+
+        $this->assertSame(['modified_at'], $changes[0]['changed_fields']);
+    }
+
     public function test_monitor_detail_limits_the_change_history_to_the_ten_most_recent_differences(): void
     {
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
@@ -172,6 +200,8 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         string $source = 'scheduled',
         ?int $configVersion = null,
         ?string $imageReferenceHash = null,
+        ?DateTimeInterface $publishedAt = null,
+        ?DateTimeInterface $modifiedAt = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -184,6 +214,8 @@ class ResponseMetadataChangeHistoryTest extends TestCase
             'response_title' => $title,
             'response_description' => $description,
             'response_image_reference_hash' => $imageReferenceHash,
+            'response_published_at' => $publishedAt,
+            'response_modified_at' => $modifiedAt,
         ]);
     }
 }

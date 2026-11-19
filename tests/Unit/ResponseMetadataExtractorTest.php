@@ -25,6 +25,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => '社群貼文 & 活動',
             'description' => '最新活動 詳情',
             'image_reference_hash' => null,
+            'published_at' => null,
+            'modified_at' => null,
         ], $metadata);
     }
 
@@ -41,6 +43,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => 'Page title',
             'description' => 'Page description',
             'image_reference_hash' => null,
+            'published_at' => null,
+            'modified_at' => null,
         ], $metadata);
     }
 
@@ -59,6 +63,8 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => 'Twitter card title',
             'description' => 'Twitter card description',
             'image_reference_hash' => null,
+            'published_at' => null,
+            'modified_at' => null,
         ], $metadata);
     }
 
@@ -71,8 +77,8 @@ class ResponseMetadataExtractorTest extends TestCase
 
         $this->assertSame(255, mb_strlen($metadata['title']));
         $this->assertSame(500, mb_strlen($metadata['description']));
-        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null], ResponseMetadataExtractor::extract(''));
-        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null], ResponseMetadataExtractor::extract('<html><body>no metadata</body></html>'));
+        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract(''));
+        $this->assertSame(['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null], ResponseMetadataExtractor::extract('<html><body>no metadata</body></html>'));
     }
 
     public function test_it_hashes_a_normalized_open_graph_image_reference_without_query_or_fragment(): void
@@ -87,7 +93,38 @@ class ResponseMetadataExtractorTest extends TestCase
             'title' => null,
             'description' => null,
             'image_reference_hash' => '4822f7225b9ec55db19c608f6d37b25d9f6cc7442502a566525bce0629833c6c',
+            'published_at' => null,
+            'modified_at' => null,
         ], $metadata);
+    }
+
+    public function test_it_normalizes_publication_times_to_utc_and_skips_invalid_dates(): void
+    {
+        $metadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head>
+                <meta property="article:published_time" content="2026-11-19T09:30:00+08:00">
+                <meta property="article:published_time" content="2026-11-19T01:00:00Z">
+                <meta property="article:modified_time" content="2026-02-31T01:00:00Z">
+                <meta name="article:modified_time" content="2026-11-20T12:45:00Z">
+            </head></html>
+            HTML);
+
+        $this->assertSame('2026-11-19T01:30:00+00:00', $metadata['published_at']?->format(DATE_ATOM));
+        $this->assertSame('2026-11-20T12:45:00+00:00', $metadata['modified_at']?->format(DATE_ATOM));
+    }
+
+    public function test_it_preserves_fractional_seconds_and_rejects_invalid_datetime_values(): void
+    {
+        $metadata = ResponseMetadataExtractor::extract(<<<'HTML'
+            <html><head>
+                <meta property="article:published_time" content="2026-11-19T09:30:00.123456+08:00">
+                <meta property="article:modified_time" content="2026-11-19">
+                <meta property="article:modified_time" content="0999-11-19T09:30:00Z">
+            </head></html>
+            HTML);
+
+        $this->assertSame('2026-11-19T01:30:00.123456+00:00', $metadata['published_at']?->format('Y-m-d\TH:i:s.uP'));
+        $this->assertNull($metadata['modified_at']);
     }
 
     public function test_it_resolves_relative_twitter_images_and_rejects_unsafe_references(): void

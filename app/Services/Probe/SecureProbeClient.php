@@ -118,7 +118,7 @@ class SecureProbeClient implements ProbeClient
                 && trim($response->location) !== '';
             $responseMetadata = ! $isRedirectResponse
                 ? ResponseMetadataExtractor::extract($response->body, $target['url'])
-                : ['title' => null, 'description' => null, 'image_reference_hash' => null];
+                : ['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -150,6 +150,8 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['title'],
                     $responseMetadata['description'],
                     $responseMetadata['image_reference_hash'],
+                    $responseMetadata['published_at'],
+                    $responseMetadata['modified_at'],
                 );
             }
 
@@ -175,6 +177,8 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['title'],
                     $responseMetadata['description'],
                     $responseMetadata['image_reference_hash'],
+                    $responseMetadata['published_at'],
+                    $responseMetadata['modified_at'],
                 );
             }
 
@@ -196,6 +200,8 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['title'],
                     $responseMetadata['description'],
                     $responseMetadata['image_reference_hash'],
+                    $responseMetadata['published_at'],
+                    $responseMetadata['modified_at'],
                 );
             }
 
@@ -225,6 +231,8 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['title'],
                     $responseMetadata['description'],
                     $responseMetadata['image_reference_hash'],
+                    $responseMetadata['published_at'],
+                    $responseMetadata['modified_at'],
                 );
             }
 

@@ -2,6 +2,8 @@
 
 namespace App\Services\Probe;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use DOMDocument;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
@@ -16,12 +18,12 @@ class ResponseMetadataExtractor
     private const MAX_IMAGE_REFERENCE_LENGTH = 2_048;
 
     /**
-     * @return array{title: ?string, description: ?string, image_reference_hash: ?string}
+     * @return array{title: ?string, description: ?string, image_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable}
      */
     public static function extract(string $html, ?string $responseUrl = null): array
     {
         if (trim($html) === '') {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
         }
 
         $document = new DOMDocument('1.0', 'UTF-8');
@@ -38,7 +40,7 @@ class ResponseMetadataExtractor
         }
 
         if (! $loaded) {
-            return ['title' => null, 'description' => null, 'image_reference_hash' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
         }
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
@@ -48,6 +50,8 @@ class ResponseMetadataExtractor
         $twitterDescription = null;
         $metaDescription = null;
         $imageReferenceHash = null;
+        $publishedAt = null;
+        $modifiedAt = null;
 
         foreach ($document->getElementsByTagName('meta') as $meta) {
             $property = mb_strtolower(trim($meta->getAttribute('property')));
@@ -83,13 +87,47 @@ class ResponseMetadataExtractor
                     || in_array($name, ['og:image', 'twitter:image', 'twitter:image:src'], true))) {
                 $imageReferenceHash = self::imageReferenceHash($content, $responseUrl);
             }
+
+            if ($publishedAt === null && ($property === 'article:published_time' || $name === 'article:published_time')) {
+                $publishedAt = self::parseOpenGraphDateTime($content);
+            }
+
+            if ($modifiedAt === null && ($property === 'article:modified_time' || $name === 'article:modified_time')) {
+                $modifiedAt = self::parseOpenGraphDateTime($content);
+            }
         }
 
         return [
             'title' => self::truncate($openGraphTitle ?? $twitterTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
             'description' => self::truncate($openGraphDescription ?? $twitterDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
             'image_reference_hash' => $imageReferenceHash,
+            'published_at' => $publishedAt,
+            'modified_at' => $modifiedAt,
         ];
+    }
+
+    private static function parseOpenGraphDateTime(string $value): ?DateTimeImmutable
+    {
+        $value = trim($value);
+
+        if (mb_strlen($value) > 80
+            || preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?\z/i', $value) !== 1) {
+            return null;
+        }
+
+        $parsedValue = date_parse($value);
+
+        if (($parsedValue['error_count'] ?? 1) > 0
+            || ($parsedValue['warning_count'] ?? 1) > 0
+            || ($parsedValue['year'] ?? 0) < 1000) {
+            return null;
+        }
+
+        try {
+            return (new DateTimeImmutable($value, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'));
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private static function imageReferenceHash(string $reference, ?string $responseUrl): ?string

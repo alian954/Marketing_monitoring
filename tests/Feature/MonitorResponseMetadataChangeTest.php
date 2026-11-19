@@ -44,6 +44,36 @@ class MonitorResponseMetadataChangeTest extends TestCase
             ->assertDontSee(str_repeat('b', 64));
     }
 
+    public function test_latest_response_metadata_reports_when_the_modified_time_changes(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createRun(
+            $monitor,
+            now()->subMinutes(10),
+            'completed',
+            null,
+            null,
+            publishedAt: new \DateTimeImmutable('2026-11-19T01:30:00+00:00'),
+            modifiedAt: new \DateTimeImmutable('2026-11-19T01:30:00+00:00'),
+        );
+        $this->createRun(
+            $monitor,
+            now()->subMinutes(2),
+            'completed',
+            null,
+            null,
+            publishedAt: new \DateTimeImmutable('2026-11-19T01:30:00+00:00'),
+            modifiedAt: new \DateTimeImmutable('2026-11-19T02:00:00+00:00'),
+        );
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('與上次完成檢查相比已變更。')
+            ->assertSee('上次分享修改時間：2026/11/19 09:30:00（台灣時間）')
+            ->assertSee('分享修改時間：2026/11/19 10:00:00（台灣時間）');
+    }
+
     public function test_latest_response_metadata_reports_when_the_summary_is_unchanged(): void
     {
         $monitor = Monitor::factory()->create();
@@ -119,6 +149,8 @@ class MonitorResponseMetadataChangeTest extends TestCase
         ?string $description,
         ?int $configVersion = null,
         ?string $imageReferenceHash = null,
+        ?DateTimeInterface $publishedAt = null,
+        ?DateTimeInterface $modifiedAt = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -137,6 +169,8 @@ class MonitorResponseMetadataChangeTest extends TestCase
             'response_title' => $title,
             'response_description' => $description,
             'response_image_reference_hash' => $imageReferenceHash,
+            'response_published_at' => $publishedAt,
+            'response_modified_at' => $modifiedAt,
         ]);
     }
 }
