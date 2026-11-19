@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['notification_status'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
         $hasSelectableIncidents = $incidents->getCollection()->contains(static fn ($incident): bool => in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true));
     @endphp
@@ -60,6 +60,14 @@
                                 <option value="" @selected(old('acknowledgement', $filters['acknowledgement']) === '')>全部認領狀態</option>
                                 <option value="acknowledged" @selected(old('acknowledgement', $filters['acknowledgement']) === 'acknowledged')>已認領</option>
                                 <option value="unacknowledged" @selected(old('acknowledgement', $filters['acknowledgement']) === 'unacknowledged')>尚未認領</option>
+                            </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-notification-status">提醒狀態</label>
+                            <select class="field-select" id="incident-notification-status" name="notification_status">
+                                <option value="" @selected(old('notification_status', $filters['notification_status']) === '')>全部提醒狀態</option>
+                                <option value="active" @selected(old('notification_status', $filters['notification_status']) === 'active')>提醒啟用</option>
+                                <option value="snoozed" @selected(old('notification_status', $filters['notification_status']) === 'snoozed')>提醒暫停中</option>
                             </select>
                         </div>
                         <div class="field-group">
@@ -167,6 +175,7 @@
                                 <th scope="col">偵測訊號</th>
                                 <th scope="col">嚴重度</th>
                                 <th scope="col">狀態</th>
+                                <th scope="col">提醒狀態</th>
                                 <th scope="col">分類</th>
                                 <th scope="col">失敗次數</th>
                                 <th scope="col">首次發現</th>
@@ -207,6 +216,13 @@
                                     <td>{{ $ruleLabels[$incident->rule_key] ?? '其他監測異常' }}</td>
                                     <td><x-state-badge :state="$incident->severity" /></td>
                                     <td><x-state-badge :state="$incident->state" /></td>
+                                    <td>
+                                        @if ($incident->snoozed_until?->isFuture())
+                                            提醒暫停至 <time class="timestamp" datetime="{{ $incident->snoozed_until->toIso8601String() }}">{{ $incident->snoozed_until->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        @else
+                                            提醒啟用
+                                        @endif
+                                    </td>
                                     <td>{{ $classificationLabel }}</td>
                                     <td class="numeric">{{ $incident->failure_count }}</td>
                                     <td><time class="timestamp" datetime="{{ $incident->created_at->toIso8601String() }}">{{ $incident->created_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>

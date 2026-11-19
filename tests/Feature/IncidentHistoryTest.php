@@ -154,6 +154,42 @@ class IncidentHistoryTest extends TestCase
         );
     }
 
+    public function test_incident_history_and_csv_can_filter_paused_and_active_reminders(): void
+    {
+        $this->travelTo('2026-11-19 12:00:00');
+        $user = User::factory()->create();
+        $monitor = $this->createMonitor('Reminder status campaign');
+        $snoozedIncident = Incident::factory()->for($monitor)->create(['snoozed_until' => now()->addHour()]);
+        $activeIncident = Incident::factory()->for($monitor)->create(['snoozed_until' => null]);
+        $expiredSnoozeIncident = Incident::factory()->for($monitor)->create(['snoozed_until' => now()->subMinute()]);
+
+        $snoozedFilters = ['notification_status' => 'snoozed'];
+        $snoozedResponse = $this->actingAs($user)
+            ->get(route('incidents.index', $snoozedFilters))
+            ->assertOk()
+            ->assertSee('<option value="snoozed" selected>提醒暫停中</option>', false)
+            ->assertSee('提醒暫停至')
+            ->assertSee(route('incidents.export', $snoozedFilters));
+
+        $this->assertSame([$snoozedIncident->id], $snoozedResponse->viewData('incidents')->getCollection()->modelKeys());
+        $snoozedCsv = $this->get(route('incidents.export', $snoozedFilters))->assertOk();
+        $this->assertSame(
+            [(string) $snoozedIncident->id],
+            array_column($this->csvRows($snoozedCsv->streamedContent()), 'incident_id'),
+        );
+
+        $activeFilters = ['notification_status' => 'active'];
+        $activeResponse = $this->get(route('incidents.index', $activeFilters))
+            ->assertOk()
+            ->assertSee('<option value="active" selected>提醒啟用</option>', false)
+            ->assertSee('提醒啟用');
+
+        $this->assertEqualsCanonicalizing(
+            [$activeIncident->id, $expiredSnoozeIncident->id],
+            $activeResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+    }
+
     public function test_incident_history_and_csv_can_filter_by_severity(): void
     {
         $monitor = $this->createMonitor('Severity filter campaign');
@@ -213,6 +249,15 @@ class IncidentHistoryTest extends TestCase
             ->get(route('incidents.index', ['acknowledgement' => 'unknown']))
             ->assertRedirect(route('incidents.index'))
             ->assertSessionHasErrors(['acknowledgement' => '請選擇有效的事件認領篩選條件。']);
+    }
+
+    public function test_incident_history_rejects_unknown_notification_status_filter(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('incidents.index'))
+            ->get(route('incidents.index', ['notification_status' => 'paused']))
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHasErrors(['notification_status' => '請選擇有效的提醒狀態篩選條件。']);
     }
 
     public function test_incident_history_rejects_invalid_or_reversed_date_filters(): void

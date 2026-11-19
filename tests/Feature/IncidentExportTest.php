@@ -40,6 +40,7 @@ class IncidentExportTest extends TestCase
             'confirmed_duration_seconds',
             'acknowledged_by',
             'acknowledged_at_utc',
+            'notifications_snoozed_until_utc',
             'last_seen_at_utc',
             'note',
         ], $headers);
@@ -63,6 +64,7 @@ class IncidentExportTest extends TestCase
             'resolved_at' => now()->subHour(),
             'acknowledged_at' => now()->subMinutes(70),
             'acknowledged_by_id' => $user->id,
+            'snoozed_until' => now()->addHour(),
             'note' => '=SUM(1+1)',
         ]);
         $falseAlarmIncident = Incident::factory()->for($monitor)->create([
@@ -120,6 +122,7 @@ class IncidentExportTest extends TestCase
         $this->assertSame('3600', $rowsByIncidentId->get((string) $resolvedIncident->id)[$columnIndexes['confirmed_duration_seconds']]);
         $this->assertSame('', $rowsByIncidentId->get((string) $falseAlarmIncident->id)[$columnIndexes['confirmed_duration_seconds']]);
         $this->assertSame('1200', $rowsByIncidentId->get((string) $openIncident->id)[$columnIndexes['confirmed_duration_seconds']]);
+        $this->assertSame(now()->addHour()->utc()->toIso8601String(), $rowsByIncidentId->get((string) $resolvedIncident->id)[$columnIndexes['notifications_snoozed_until_utc']]);
         $this->assertSame('', $rowsByIncidentId->get((string) $suspectIncident->id)[$columnIndexes['confirmed_duration_seconds']]);
         $this->assertSame('', $rowsByIncidentId->get((string) $pausedIncident->id)[$columnIndexes['confirmed_duration_seconds']]);
     }

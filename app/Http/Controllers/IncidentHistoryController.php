@@ -65,6 +65,7 @@ class IncidentHistoryController extends Controller
                 'state' => $filters['state'] ?? '',
                 'severity' => $filters['severity'] ?? '',
                 'acknowledgement' => $filters['acknowledgement'] ?? '',
+                'notification_status' => $filters['notification_status'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
                 'rule_key' => $filters['rule_key'] ?? '',
                 'date_from' => $filters['date_from'] ?? '',
@@ -95,6 +96,7 @@ class IncidentHistoryController extends Controller
                 'confirmed_duration_seconds',
                 'acknowledged_by',
                 'acknowledged_at_utc',
+                'notifications_snoozed_until_utc',
                 'last_seen_at_utc',
                 'note',
             ]);
@@ -128,6 +130,7 @@ class IncidentHistoryController extends Controller
                         $confirmedDurationSeconds,
                         $incident->acknowledgedBy?->name ?? '',
                         $incident->acknowledged_at?->utc()->toIso8601String() ?? '',
+                        $incident->snoozed_until?->utc()->toIso8601String() ?? '',
                         $incident->last_seen_at?->utc()->toIso8601String() ?? '',
                         (string) $incident->note,
                     ];
@@ -139,7 +142,7 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
+    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
@@ -147,6 +150,7 @@ class IncidentHistoryController extends Controller
             'state' => ['nullable', 'in:'.implode(',', array_keys(self::STATE_LABELS))],
             'severity' => ['nullable', 'in:'.implode(',', array_keys(self::SEVERITY_LABELS))],
             'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
+            'notification_status' => ['nullable', 'in:active,snoozed'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
@@ -157,10 +161,11 @@ class IncidentHistoryController extends Controller
             'date_to.after_or_equal' => '結束日期不可早於開始日期。',
             'severity.in' => '請選擇有效的事件嚴重度篩選條件。',
             'acknowledgement.in' => '請選擇有效的事件認領篩選條件。',
+            'notification_status.in' => '請選擇有效的提醒狀態篩選條件。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
+    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -180,6 +185,10 @@ class IncidentHistoryController extends Controller
             ->when($filters['severity'] ?? null, static fn (Builder $query, string $severity): Builder => $query->where('severity', $severity))
             ->when(($filters['acknowledgement'] ?? '') === 'acknowledged', static fn (Builder $query): Builder => $query->whereNotNull('acknowledged_at'))
             ->when(($filters['acknowledgement'] ?? '') === 'unacknowledged', static fn (Builder $query): Builder => $query->whereNull('acknowledged_at'))
+            ->when(($filters['notification_status'] ?? '') === 'snoozed', static fn (Builder $query): Builder => $query->where('snoozed_until', '>', now()))
+            ->when(($filters['notification_status'] ?? '') === 'active', static fn (Builder $query): Builder => $query->where(static function (Builder $statusQuery): void {
+                $statusQuery->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
+            }))
             ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))
             ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
             ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {
