@@ -304,7 +304,14 @@
                         @if ($monitor->latestCheckRun->error_type || $monitor->latestCheckRun->adsbot_error_type)
                             <div class="metadata-item field-group-full">
                                 <dt>檢查訊號</dt>
-                                <dd>{{ $monitor->latestCheckRun->error_type ?: $monitor->latestCheckRun->adsbot_error_type }}</dd>
+                                <dd>
+                                    @if ($monitor->latestCheckRun->error_type)
+                                        <p>一般探測：{{ $monitor->latestCheckRun->error_type }}</p>
+                                    @endif
+                                    @if ($monitor->latestCheckRun->adsbot_error_type)
+                                        <p>AdsBot 模擬：{{ $monitor->latestCheckRun->adsbot_error_type }}</p>
+                                    @endif
+                                </dd>
                             </div>
                         @endif
                         @if ($monitor->latestCheckRun->tls_expires_at)
@@ -887,7 +894,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-history-title" class="panel-title">檢查紀錄</h2>
-                <p class="panel-description">顯示保留期間內的檢查結果；不顯示敏感的目的地詳細資料。</p>
+                <p class="panel-description">顯示保留期間內的檢查結果；可展開查看最終網址與重新導向路徑，網址中的敏感參數會遮罩。</p>
             </div>
             <div class="row-actions">
                 <a class="button button-secondary button-small" href="{{ $checkRunExportUrl }}">匯出檢查 CSV</a>
@@ -958,6 +965,26 @@
                     <p id="check-run-http-status-help" class="field-help">輸入 100–599 的狀態碼，例如 403 或 429。</p>
                     @error('http_status')
                         <p id="check-run-http-status-error" class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label" for="check-run-signal">訊號代碼</label>
+                    <input
+                        class="field-input @error('signal') is-invalid @enderror"
+                        id="check-run-signal"
+                        name="signal"
+                        type="text"
+                        maxlength="40"
+                        value="{{ $checkRunFilters['signal'] }}"
+                        autocomplete="off"
+                        spellcheck="false"
+                        aria-describedby="{{ $errors->has('signal') ? 'check-run-signal-help check-run-signal-error' : 'check-run-signal-help' }}"
+                        @if ($errors->has('signal')) aria-invalid="true" @endif
+                    >
+                    <p id="check-run-signal-help" class="field-help">輸入表格中的代碼精確篩選，例如 dns_timeout 或 tls_verify；一般與 AdsBot 訊號都會搜尋。</p>
+                    @error('signal')
+                        <p id="check-run-signal-error" class="field-error">{{ $message }}</p>
                     @enderror
                 </div>
 
@@ -1051,7 +1078,7 @@
                                 <th scope="col">回應標頭</th>
                             @endif
                             <th scope="col">檢查總耗時</th>
-                            <th scope="col">訊號</th>
+                            <th scope="col">一般／AdsBot 訊號</th>
                             <th scope="col">網址路徑</th>
                         </tr>
                     </thead>
@@ -1087,7 +1114,17 @@
                                     <td>{{ $run->expectedResponseHeaderMatchResult() === null ? '未檢查或無法判定' : ($run->expectedResponseHeaderMatchResult() ? '符合' : '不符合') }}</td>
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
-                                <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>
+                                <td>
+                                    @if ($run->error_type)
+                                        <p>一般探測：{{ $run->error_type }}</p>
+                                    @endif
+                                    @if ($run->adsbot_error_type)
+                                        <p>AdsBot 模擬：{{ $run->adsbot_error_type }}</p>
+                                    @endif
+                                    @if (! $run->error_type && ! $run->adsbot_error_type)
+                                        <span class="secondary-text">—</span>
+                                    @endif
+                                </td>
                                 <td>
                                     @if ($run->masked_final_url || $run->masked_redirects !== [])
                                         <details>

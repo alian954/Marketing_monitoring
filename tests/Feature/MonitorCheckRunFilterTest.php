@@ -82,6 +82,48 @@ class MonitorCheckRunFilterTest extends TestCase
         $this->assertSame('429', $exportRows[0]['http_status']);
     }
 
+    public function test_monitor_detail_filters_and_exports_by_normal_or_adsbot_signal_code(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $user = User::factory()->create();
+        $normalSignalRun = CheckRun::factory()->for($monitor)->create(['error_type' => 'dns_timeout']);
+        $adsbotSignalRun = CheckRun::factory()->for($monitor)->create([
+            'error_type' => null,
+            'adsbot_error_type' => 'dns_timeout',
+        ]);
+        $normalAndAdsbotSignalRun = CheckRun::factory()->for($monitor)->create([
+            'error_type' => 'connection_error',
+            'adsbot_error_type' => 'dns_timeout',
+        ]);
+        CheckRun::factory()->for($monitor)->create(['error_type' => 'tls_verify']);
+        CheckRun::factory()->for($monitor)->create(['error_type' => null, 'adsbot_error_type' => null]);
+        $filters = ['signal' => 'dns_timeout'];
+
+        $detailResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, ...$filters]))
+            ->assertOk()
+            ->assertSee('訊號代碼')
+            ->assertSee('value="dns_timeout"', false)
+            ->assertSee('一般探測：connection_error')
+            ->assertSee('AdsBot 模擬：dns_timeout')
+            ->assertSee(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]));
+
+        $this->assertEqualsCanonicalizing(
+            [$normalSignalRun->id, $adsbotSignalRun->id, $normalAndAdsbotSignalRun->id],
+            $detailResponse->viewData('runs')->getCollection()->modelKeys(),
+        );
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]))
+            ->assertOk();
+        $exportRows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertEqualsCanonicalizing(
+            [(string) $normalSignalRun->id, (string) $adsbotSignalRun->id, (string) $normalAndAdsbotSignalRun->id],
+            array_column($exportRows, 'check_run_id'),
+        );
+    }
+
     public function test_monitor_detail_filters_and_exports_each_text_match_result(): void
     {
         $monitor = Monitor::factory()->create(['expected_text' => 'Campaign headline']);
@@ -268,12 +310,13 @@ class MonitorCheckRunFilterTest extends TestCase
 
         $this->actingAs($user)
             ->from($monitorUrl)
-            ->get(route('monitors.show', ['monitor' => $monitor, 'status' => 'unexpected', 'source' => 'unexpected', 'http_status' => '700', 'content_match' => 'unexpected']))
+            ->get(route('monitors.show', ['monitor' => $monitor, 'status' => 'unexpected', 'source' => 'unexpected', 'http_status' => '700', 'signal' => 'bad signal', 'content_match' => 'unexpected']))
             ->assertRedirect($monitorUrl)
             ->assertSessionHasErrors([
                 'status' => '請選擇有效的檢查執行狀態。',
                 'source' => '請選擇有效的檢查來源。',
                 'http_status' => 'HTTP 回應碼必須介於 100 到 599。',
+                'signal' => '訊號代碼只能使用小寫英文字母、數字與底線。',
                 'content_match' => '請選擇有效的文字比對篩選條件。',
             ]);
     }
@@ -304,12 +347,14 @@ class MonitorCheckRunFilterTest extends TestCase
         CheckRun::factory()->for($monitor)->count(51)->create([
             'source' => 'scheduled',
             'status' => 'failed',
+            'error_type' => 'dns_timeout',
             'expected_text_found' => true,
         ]);
         $filters = [
             'status' => 'failed',
             'source' => 'scheduled',
             'http_status' => '200',
+            'signal' => 'dns_timeout',
             'content_match' => 'found',
             'date_from' => '2026-11-01',
             'date_to' => '2026-11-30',
