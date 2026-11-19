@@ -153,7 +153,7 @@ class Monitor extends Model
                 return $platform;
             }
 
-            if ($platform === 'Instagram' && preg_match('/\A(?:p|reel|reels|tv)\/[^\/]+\z|\Ashare\/(?:p|reel)\/[^\/]+\z|\Astories\/[^\/]+\/[^\/]+\z/i', $path) === 1) {
+            if ($platform === 'Instagram' && self::isInstagramPostUrl($path)) {
                 return $platform;
             }
 
@@ -193,6 +193,19 @@ class Monitor extends Model
         }
 
         return preg_match('/\A(?:[^\/]+\/)?photos\/[^\/]+\/[^\/]+\z/i', $path) === 1;
+    }
+
+    private static function isInstagramPostUrl(string $path): bool
+    {
+        if (preg_match('/\A(?:p|reel|reels|tv)\/[^\/]+\z|\Astories\/[^\/]+\/[^\/]+\z/i', $path) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\Ashare\/(?:p|reel)\/[^\/]+\z/i', $path) === 1) {
+            return true;
+        }
+
+        return preg_match('/\Ashare\/(?!p\z|reel\z)[^\/]+\z/i', $path) === 1;
     }
 
     public static function fingerprintUrl(string $url): string
