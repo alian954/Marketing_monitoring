@@ -463,6 +463,58 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="redirect-history-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="redirect-history-title" class="panel-title">重新導向變更歷史</h2>
+                <p class="panel-description">比較完成檢查記錄的重新導向路徑；網址的查詢字串與片段不列入比較或顯示，設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+            </div>
+            <span class="secondary-text">{{ count($redirectChanges) }} 次變更</span>
+        </div>
+        @if ($redirectChanges === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚未偵測到重新導向變更</h3>
+                <p class="empty-copy">當完成檢查發現重新導向路徑與前次不同，變更時間與前後路徑會顯示在此處。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="redirect-history-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">{{ $monitor->name }}最近的重新導向變更</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">變更時間</th>
+                            <th scope="col">變更前路徑</th>
+                            <th scope="col">變更後路徑</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($redirectChanges as $change)
+                            <tr>
+                                <td>
+                                    <time class="timestamp" datetime="{{ $change['changed_at']->toIso8601String() }}">{{ $change['changed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
+                                </td>
+                                <td>
+                                    @forelse ($change['previous_redirects'] as $redirect)
+                                        <p>{{ $loop->iteration }}. <span class="masked-url">{{ $redirect }}</span></p>
+                                    @empty
+                                        <p>無重新導向</p>
+                                    @endforelse
+                                </td>
+                                <td>
+                                    @forelse ($change['current_redirects'] as $redirect)
+                                        <p>{{ $loop->iteration }}. <span class="masked-url">{{ $redirect }}</span></p>
+                                    @empty
+                                        <p>無重新導向</p>
+                                    @endforelse
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     @if ($latestTlsObservation)
         <section class="panel spaced-top" aria-labelledby="latest-tls-observation-title">
             <div class="panel-header">
