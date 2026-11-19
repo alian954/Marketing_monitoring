@@ -517,14 +517,16 @@ class MonitorController extends Controller
     public function bulkStatus(Request $request, IncidentManager $incidents, RunScheduler $scheduler): RedirectResponse
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:pause,resume,label,check'],
+            'action' => ['required', 'in:pause,resume,label,check,delete'],
             'label' => ['nullable', 'string', 'max:100'],
+            'confirm_delete' => ['exclude_unless:action,delete', 'accepted'],
             'monitor_ids' => ['required', 'array', 'min:1', 'max:50'],
             'monitor_ids.*' => ['required', 'integer', 'distinct', 'exists:monitors,id'],
         ], [
             'action.required' => '請選擇要執行的批次操作。',
             'action.in' => '請選擇有效的批次操作。',
             'label.max' => '監測項目標籤不得超過 100 個字元。',
+            'confirm_delete.accepted' => '刪除前請勾選確認方塊。',
             'monitor_ids.required' => '請至少選取一個監測項目。',
             'monitor_ids.array' => '監測項目選取資料格式不正確。',
             'monitor_ids.min' => '請至少選取一個監測項目。',
@@ -555,6 +557,15 @@ class MonitorController extends Controller
             }
 
             return back()->with('status', $this->bulkManualCheckStatus($counts));
+        }
+
+        if ($action === 'delete') {
+            $pageWasUnpublished = $this->deleteMonitors($monitorIds);
+            $statusMessage = $pageWasUnpublished
+                ? '已刪除 '.count($monitorIds).' 個監測項目及其相關紀錄；最後一個公開項目已移除，狀態頁也已取消發布。'
+                : '已刪除 '.count($monitorIds).' 個監測項目及其相關紀錄。';
+
+            return back()->with('status', $statusMessage);
         }
 
         $changedCount = DB::transaction(function () use ($monitorIds, $action, $label, $incidents): int {
@@ -693,12 +704,38 @@ class MonitorController extends Controller
 
     public function destroy(Monitor $monitor): RedirectResponse
     {
-        $pageWasUnpublished = DB::transaction(function () use ($monitor): bool {
-            $lockedMonitor = Monitor::query()->lockForUpdate()->findOrFail($monitor->id);
-            $wasPublic = $lockedMonitor->public_status;
-            $lockedMonitor->delete();
+        $pageWasUnpublished = $this->deleteMonitors([(int) $monitor->id]);
 
-            if (! $wasPublic || Monitor::query()->where('public_status', true)->exists()) {
+        $statusMessage = $pageWasUnpublished
+            ? '監測項目及其相關記錄已刪除；最後一個公開項目已移除，狀態頁也已取消發布。'
+            : '監測項目及其相關記錄已刪除。';
+
+        return redirect()->route('monitors.index')->with('status', $statusMessage);
+    }
+
+    /** @param list<int> $monitorIds */
+    private function deleteMonitors(array $monitorIds): bool
+    {
+        return DB::transaction(function () use ($monitorIds): bool {
+            $monitors = Monitor::query()
+                ->whereIn('id', $monitorIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($monitors->count() !== count($monitorIds)) {
+                throw ValidationException::withMessages([
+                    'monitor_ids' => '部分監測項目已不存在，請重新載入清單後再試。',
+                ]);
+            }
+
+            $removedPublicMonitor = $monitors->contains(static fn (Monitor $monitor): bool => $monitor->public_status);
+
+            foreach ($monitors as $monitor) {
+                $monitor->delete();
+            }
+
+            if (! $removedPublicMonitor || Monitor::query()->where('public_status', true)->exists()) {
                 return false;
             }
 
@@ -715,12 +752,6 @@ class MonitorController extends Controller
 
             return true;
         });
-
-        $statusMessage = $pageWasUnpublished
-            ? '監測項目及其相關記錄已刪除；最後一個公開項目已移除，狀態頁也已取消發布。'
-            : '監測項目及其相關記錄已刪除。';
-
-        return redirect()->route('monitors.index')->with('status', $statusMessage);
     }
 
     public function exportCheckRuns(Request $request, Monitor $monitor): StreamedResponse

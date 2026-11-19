@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Jobs\RunMonitorCheck;
 use App\Models\CheckRun;
 use App\Models\Incident;
+use App\Models\IncidentEvent;
 use App\Models\Monitor;
+use App\Models\NotificationOutbox;
+use App\Models\StatusPage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -323,6 +326,120 @@ class BulkMonitorStatusTest extends TestCase
         $this->assertSame('Existing', $monitor->fresh()->label);
     }
 
+    public function test_bulk_delete_requires_explicit_confirmation_and_keeps_monitor_data_on_failure(): void
+    {
+        $monitor = $this->createMonitor();
+        $checkRun = CheckRun::factory()->for($monitor)->create();
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'delete',
+                'monitor_ids' => [$monitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors('confirm_delete');
+
+        $this->assertModelExists($monitor);
+        $this->assertModelExists($checkRun);
+    }
+
+    public function test_bulk_delete_removes_selected_monitors_and_their_related_records(): void
+    {
+        $firstMonitor = $this->createMonitor();
+        $secondMonitor = $this->createMonitor();
+        $untouchedMonitor = $this->createMonitor();
+        $checkRun = CheckRun::factory()->for($firstMonitor)->create();
+        $incident = Incident::factory()->for($firstMonitor)->create();
+        $incidentEvent = IncidentEvent::factory()->for($incident)->for($checkRun)->create();
+        $outbox = NotificationOutbox::factory()->for($incident)->create();
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'delete',
+                'confirm_delete' => '1',
+                'monitor_ids' => [$firstMonitor->id, $secondMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已刪除 2 個監測項目及其相關紀錄。');
+
+        $this->assertModelMissing($firstMonitor);
+        $this->assertModelMissing($secondMonitor);
+        $this->assertModelExists($untouchedMonitor);
+        $this->assertModelMissing($checkRun);
+        $this->assertModelMissing($incident);
+        $this->assertModelMissing($incidentEvent);
+        $this->assertModelMissing($outbox);
+    }
+
+    public function test_individual_delete_still_unpublishes_the_page_when_it_removes_the_last_public_monitor(): void
+    {
+        $statusPage = StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'is_published' => true,
+        ]);
+        $monitor = $this->createMonitor(['public_status' => true]);
+
+        $this->actingAs(User::factory()->create())
+            ->delete(route('monitors.destroy', $monitor))
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '監測項目及其相關記錄已刪除；最後一個公開項目已移除，狀態頁也已取消發布。');
+
+        $this->assertModelMissing($monitor);
+        $this->assertFalse($statusPage->fresh()->is_published);
+    }
+
+    public function test_bulk_delete_unpublishes_the_status_page_only_after_removing_its_last_public_monitor(): void
+    {
+        $statusPage = StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'is_published' => true,
+        ]);
+        $firstPublicMonitor = $this->createMonitor(['public_status' => true]);
+        $lastPublicMonitor = $this->createMonitor(['public_status' => true]);
+        $privateMonitor = $this->createMonitor();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'delete',
+                'confirm_delete' => '1',
+                'monitor_ids' => [$firstPublicMonitor->id, $privateMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已刪除 2 個監測項目及其相關紀錄。');
+
+        $this->assertTrue($statusPage->fresh()->is_published);
+
+        $this->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'delete',
+                'confirm_delete' => '1',
+                'monitor_ids' => [$lastPublicMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已刪除 1 個監測項目及其相關紀錄；最後一個公開項目已移除，狀態頁也已取消發布。');
+
+        $this->assertFalse($statusPage->fresh()->is_published);
+    }
+
+    public function test_guest_cannot_bulk_delete_monitors(): void
+    {
+        $monitor = $this->createMonitor();
+
+        $this->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'delete',
+                'confirm_delete' => '1',
+                'monitor_ids' => [$monitor->id],
+            ])
+            ->assertRedirect(route('login'));
+
+        $this->assertModelExists($monitor);
+    }
+
     public function test_guest_cannot_submit_bulk_monitor_status_changes(): void
     {
         $monitor = $this->createMonitor();
@@ -345,6 +462,8 @@ class BulkMonitorStatusTest extends TestCase
             ->get(route('monitors.index'))
             ->assertOk()
             ->assertSee(route('monitors.bulk-status'), false)
+            ->assertSee('刪除所選監測項目')
+            ->assertSee('name="confirm_delete"', false)
             ->assertSee('data-monitor-select-all', false)
             ->assertSee('data-monitor-select', false)
             ->assertSee('name="monitor_ids[]" value="'.$monitor->id.'"', false)

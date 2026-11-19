@@ -124,6 +124,7 @@
                                 <option value="resume" @selected(old('action') === 'resume')>恢復所選監測項目</option>
                                 <option value="label" @selected(old('action') === 'label')>更新所選項目的標籤</option>
                                 <option value="check" @selected(old('action') === 'check')>立即檢查所選項目</option>
+                                <option value="delete" @selected(old('action') === 'delete')>刪除所選監測項目</option>
                             </select>
                             <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。立即檢查會略過已暫停、冷卻中或已有檢查執行的項目。</p>
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
@@ -133,6 +134,14 @@
                             <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="100" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
                             <p id="bulk-monitor-label-help" class="field-help">只有選擇「更新所選項目的標籤」時才會使用；留空會清除所選項目的標籤。</p>
                             @error('label')<p id="bulk-monitor-label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-check" for="bulk-monitor-delete-confirmation">
+                                <input id="bulk-monitor-delete-confirmation" name="confirm_delete" type="checkbox" value="1" aria-describedby="bulk-monitor-delete-help{{ $errors->has('confirm_delete') ? ' bulk-monitor-delete-error' : '' }}" @checked(old('confirm_delete')) @if ($errors->has('confirm_delete')) aria-invalid="true" @endif>
+                                <span>我了解刪除會永久移除所選監測項目與歷史紀錄</span>
+                            </label>
+                            <p id="bulk-monitor-delete-help" class="field-help">只有選擇刪除時才需要勾選；未勾選時系統不會刪除資料。</p>
+                            @error('confirm_delete')<p id="bulk-monitor-delete-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                     </div>
                     @error('monitor_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror
