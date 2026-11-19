@@ -184,6 +184,7 @@ class SocialPostImportTest extends TestCase
     public function test_csv_can_import_custom_intervals_with_social_post_conditions(): void
     {
         Queue::fake([RunMonitorCheck::class]);
+        $this->freezeTime();
         $condition = 'X-Robots-Tag: campaign-index';
         $csv = $this->csvContent(
             ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds'],
@@ -236,11 +237,15 @@ class SocialPostImportTest extends TestCase
         $defaultFrequencyMonitor = Monitor::query()->where('name', 'Default frequency')->sole();
         $this->assertSame((int) config('monitoring.interval_seconds'), $defaultFrequencyMonitor->interval_seconds);
 
-        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $run = app(RunScheduler::class)->enqueue($monitor, 'scheduled', now());
         $this->assertNotNull($run);
         $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(300, $snapshot['interval_seconds']);
         $this->assertSame($condition, $snapshot['expected_response_header']);
+        $this->assertSame(
+            now()->addSeconds(300)->utc()->toIso8601String(),
+            $monitor->fresh()->next_check_at->utc()->toIso8601String(),
+        );
         Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
