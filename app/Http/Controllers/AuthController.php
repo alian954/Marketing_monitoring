@@ -124,7 +124,11 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'max:200'],
         ]);
         $credentials['email'] = mb_strtolower(trim($credentials['email']));
-        $key = 'login:'.$request->ip();
+        $key = 'login-failed:'.hash_hmac(
+            'sha256',
+            $credentials['email'].'|'.$request->ip(),
+            (string) config('app.key'),
+        );
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             throw ValidationException::withMessages(['email' => '登入嘗試次數過多，請於一分鐘後再試。']);

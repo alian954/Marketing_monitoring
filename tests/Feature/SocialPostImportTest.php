@@ -319,6 +319,7 @@ class SocialPostImportTest extends TestCase
 
     public function test_csv_can_set_an_imported_confirmation_delay_and_uses_the_global_default_when_blank(): void
     {
+        $this->freezeTime();
         config(['monitoring.confirmation_delay_seconds' => 75]);
         Queue::fake([RunMonitorCheck::class]);
         $csv = $this->csvContent(
