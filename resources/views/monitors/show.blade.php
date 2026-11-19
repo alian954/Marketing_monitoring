@@ -632,7 +632,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-change-history-title" class="panel-title">DNS 位址變更</h2>
-                <p class="panel-description">顯示此監測項目最近 50 筆成功排程檢查所偵測到的主機公開 IP 位址變更。</p>
+                <p class="panel-description">顯示最近 50 筆已完成排程檢查偵測到的公開 A/AAAA IP 回答變更，也包含主機暫時沒有公開 IP 回答的中斷。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.dns-changes.export', $monitor) }}">匯出 DNS 變更 CSV</a>
         </div>
@@ -640,7 +640,7 @@
         @if ($dnsChanges->isEmpty())
             <div class="empty-state">
                 <h3 class="empty-title">尚無 DNS 位址變更記錄</h3>
-                <p class="empty-copy">累積至少兩次成功的排程檢查後，若主機公開 IP 集不同，變更紀錄會顯示於此處。</p>
+                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 回答改變或變成無公開回答，變更紀錄會顯示於此處。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="dns-change-history-title" tabindex="0">
@@ -658,11 +658,11 @@
                             <tr>
                                 <td><time class="timestamp" datetime="{{ $dnsChange->detected_at->toIso8601String() }}">{{ $dnsChange->detected_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
                                 <td class="numeric">
-                                    {{ implode(', ', $dnsChange->previous_ips) }}
+                                    {{ $dnsChange->previousIpsLabel() }}
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                                 <td class="numeric">
-                                    {{ implode(', ', $dnsChange->current_ips) }}
+                                    {{ $dnsChange->currentIpsLabel() }}
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                             </tr>

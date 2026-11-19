@@ -107,7 +107,7 @@ class SendDailyDnsSummary extends Command
             'DNS 變更每日摘要 — '.$reportDate,
             '摘要日期時區：'.config('app.timezone'),
             '共偵測到 '.$events->count().' 筆主機 IP 變更。',
-            '本摘要只比較探測期間驗證為公開位址的主機 IP，不代表完整 DNS 記錄集。',
+            '本摘要只比較探測期間驗證為公開位址的 A/AAAA 主機 IP；「無公開 IP 回答」表示檢查時未取得公開 IP 位址。',
             '',
         ];
 
@@ -121,8 +121,8 @@ class SendDailyDnsSummary extends Command
             $lines[] = $monitor->name;
             $lines[] = '網址：'.$urlMasker->mask($monitor->url);
             $lines[] = '偵測時間（UTC）：'.$event->detected_at->utc()->toIso8601String();
-            $lines[] = '變更前：'.implode(', ', $event->previous_ips ?? []);
-            $lines[] = '變更後：'.implode(', ', $event->current_ips ?? []);
+            $lines[] = '變更前：'.$event->previousIpsLabel();
+            $lines[] = '變更後：'.$event->currentIpsLabel();
             $lines[] = '';
         }
 

@@ -347,13 +347,13 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-changes-title" class="panel-title">DNS 位址變更</h2>
-                <p class="panel-description">新紀錄只追蹤監測網址主機的安全公開 IP；舊版紀錄可能包含重新導向目的主機。</p>
+                <p class="panel-description">新紀錄只追蹤監測網址主機的公開 A/AAAA IP 回答，並記錄解析中斷；舊版紀錄可能包含重新導向目的主機。</p>
             </div>
         </div>
         @if ($dnsChanges->isEmpty())
             <div class="empty-state">
                 <h3 class="empty-title">尚未偵測到 DNS 位址變更</h3>
-                <p class="empty-copy">累積至少兩次排程檢查後，若公開 IP 集不同，變更紀錄會顯示於此處。</p>
+                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 回答改變或變成無公開回答，變更紀錄會顯示於此處。</p>
             </div>
         @else
             <div class="data-table-wrap">
@@ -379,11 +379,11 @@
                                 </td>
                                 <td><time class="timestamp" datetime="{{ $dnsChange->detected_at->toIso8601String() }}">{{ $dnsChange->detected_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
                                 <td class="masked-url">
-                                    {{ implode(', ', $dnsChange->previous_ips) }}
+                                    {{ $dnsChange->previousIpsLabel() }}
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                                 <td class="masked-url">
-                                    {{ implode(', ', $dnsChange->current_ips) }}
+                                    {{ $dnsChange->currentIpsLabel() }}
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                             </tr>

@@ -98,4 +98,23 @@ class MonitorDnsChangeExportTest extends TestCase
 
         $this->assertCount(502, $lines);
     }
+
+    public function test_authenticated_user_export_labels_a_dns_answer_without_public_ip_addresses(): void
+    {
+        $user = User::factory()->create();
+        $monitor = Monitor::factory()->create();
+        $event = DnsChangeEvent::factory()->for($monitor)->create([
+            'previous_ips' => ['93.184.216.34'],
+            'current_ips' => [],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('monitors.dns-changes.export', $monitor))
+            ->assertOk();
+        $lines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+        $rows = array_map(static fn (string $line): array => str_getcsv($line), array_slice($lines, 1));
+
+        $this->assertSame((string) $event->id, $rows[0][0]);
+        $this->assertSame('無公開 IP 回答', $rows[0][3]);
+    }
 }

@@ -28,7 +28,7 @@ class MonitorDnsChangeHistoryTest extends TestCase
         for ($index = 0; $index < 51; $index++) {
             $change = DnsChangeEvent::factory()->for($monitor)->create([
                 'previous_ips' => ['203.0.113.'.$index],
-                'current_ips' => ['198.51.100.'.$index],
+                'current_ips' => $index === 1 ? [] : ['198.51.100.'.$index],
                 'detected_at' => now()->subMinutes($index),
             ]);
 
@@ -53,6 +53,7 @@ class MonitorDnsChangeHistoryTest extends TestCase
             ->assertSee('主機先前 IP')
             ->assertSee('主機目前 IP')
             ->assertSee('198.51.100.0')
+            ->assertSee('無公開 IP 回答')
             ->assertDontSee('198.51.100.50')
             ->assertDontSee('192.0.2.99')
             ->assertSee('token=REDACTED')
@@ -82,7 +83,7 @@ class MonitorDnsChangeHistoryTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('尚無 DNS 位址變更記錄')
-            ->assertSee('累積至少兩次成功的排程檢查後')
+            ->assertSee('累積至少兩次排程檢查後')
             ->assertDontSee('192.0.2.77');
 
         $this->assertCount(0, $response->viewData('dnsChanges'));

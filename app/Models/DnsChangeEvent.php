@@ -33,4 +33,20 @@ class DnsChangeEvent extends Model
     {
         return $this->belongsTo(CheckRun::class);
     }
+
+    public function previousIpsLabel(): string
+    {
+        return $this->ipSetLabel($this->previous_ips ?? []);
+    }
+
+    public function currentIpsLabel(): string
+    {
+        return $this->ipSetLabel($this->current_ips ?? []);
+    }
+
+    /** @param list<string> $ips */
+    private function ipSetLabel(array $ips): string
+    {
+        return $ips === [] ? '無公開 IP 回答' : implode(', ', $ips);
+    }
 }

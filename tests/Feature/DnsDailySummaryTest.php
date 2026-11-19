@@ -106,6 +106,27 @@ class DnsDailySummaryTest extends TestCase
         Queue::assertPushed(SendNotificationOutbox::class, 1);
     }
 
+    public function test_daily_summary_explains_a_dns_answer_without_public_ip_addresses(): void
+    {
+        Config::set('monitoring.notify_email', 'owner@example.test');
+        Config::set('monitoring.notify_slack_webhook', null);
+        Config::set('monitoring.notify_discord_webhook', null);
+        Config::set('monitoring.notify_teams_webhook', null);
+        Queue::fake([SendNotificationOutbox::class]);
+        $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
+        $monitor = Monitor::factory()->create();
+        DnsChangeEvent::factory()->for($monitor)->create([
+            'previous_ips' => ['93.184.216.34'],
+            'current_ips' => [],
+            'detected_at' => now()->subDay()->startOfDay()->addHours(12),
+        ]);
+
+        $this->artisan('monitors:send-dns-summary')->assertExitCode(0);
+
+        $outbox = NotificationOutbox::query()->sole();
+        $this->assertStringContainsString('變更後：無公開 IP 回答', $outbox->body);
+    }
+
     public function test_daily_command_dispatches_a_masked_dns_summary_to_webhooks_without_email(): void
     {
         $slackWebhookUrl = 'https://hooks.slack.com/services/T123/SECRET/WEBHOOK';

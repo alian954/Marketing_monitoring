@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CheckRun;
 use App\Models\DnsChangeEvent;
+use Illuminate\Database\Eloquent\Builder;
 
 class DnsChangeRecorder
 {
@@ -15,7 +16,7 @@ class DnsChangeRecorder
 
         $currentIps = $this->normalizeIps($run->monitor_host_ips);
 
-        if ($currentIps === []) {
+        if ($run->monitor_host_ips === null || ($currentIps === [] && $run->error_type !== 'dns_nxdomain')) {
             return;
         }
 
@@ -25,10 +26,15 @@ class DnsChangeRecorder
             ->where('source', 'scheduled')
             ->where('status', 'completed')
             ->whereNotNull('finished_at')
+            ->whereNotNull('monitor_host_ips')
+            ->where(function (Builder $query): void {
+                $query->whereJsonLength('monitor_host_ips', '>', 0)
+                    ->orWhere('error_type', 'dns_nxdomain');
+            })
             ->where('id', '<>', $run->id)
             ->orderByDesc('finished_at')
             ->orderByDesc('id')
-            ->first(['id', 'monitor_host_ips']);
+            ->first(['id', 'monitor_host_ips', 'error_type']);
 
         if ($previousRun === null || $previousRun->monitor_host_ips === null) {
             return;
@@ -36,7 +42,7 @@ class DnsChangeRecorder
 
         $previousIps = $this->normalizeIps($previousRun->monitor_host_ips);
 
-        if ($previousIps === [] || $previousIps === $currentIps) {
+        if ($previousIps === $currentIps) {
             return;
         }
 
@@ -53,7 +59,7 @@ class DnsChangeRecorder
     }
 
     /** @param list<string>|null $ips
-     *  @return list<string>
+     * @return list<string>
      */
     private function normalizeIps(?array $ips): array
     {

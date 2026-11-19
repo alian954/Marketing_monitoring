@@ -845,8 +845,8 @@ class MonitorController extends Controller
                     $fields = [
                         (string) $event->id,
                         $event->detected_at->utc()->toIso8601String(),
-                        implode(', ', $event->previous_ips),
-                        implode(', ', $event->current_ips),
+                        $event->previousIpsLabel(),
+                        $event->currentIpsLabel(),
                         $event->monitor_host_only ? '1' : '0',
                     ];
 
