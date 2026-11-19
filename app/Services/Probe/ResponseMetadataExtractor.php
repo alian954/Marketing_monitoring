@@ -3,6 +3,9 @@
 namespace App\Services\Probe;
 
 use DOMDocument;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
+use Throwable;
 
 class ResponseMetadataExtractor
 {
@@ -10,13 +13,15 @@ class ResponseMetadataExtractor
 
     private const MAX_DESCRIPTION_LENGTH = 500;
 
+    private const MAX_IMAGE_REFERENCE_LENGTH = 2_048;
+
     /**
-     * @return array{title: ?string, description: ?string}
+     * @return array{title: ?string, description: ?string, image_reference_hash: ?string}
      */
-    public static function extract(string $html): array
+    public static function extract(string $html, ?string $responseUrl = null): array
     {
         if (trim($html) === '') {
-            return ['title' => null, 'description' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null];
         }
 
         $document = new DOMDocument('1.0', 'UTF-8');
@@ -33,13 +38,14 @@ class ResponseMetadataExtractor
         }
 
         if (! $loaded) {
-            return ['title' => null, 'description' => null];
+            return ['title' => null, 'description' => null, 'image_reference_hash' => null];
         }
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
         $openGraphTitle = null;
         $openGraphDescription = null;
         $metaDescription = null;
+        $imageReferenceHash = null;
 
         foreach ($document->getElementsByTagName('meta') as $meta) {
             $property = mb_strtolower(trim($meta->getAttribute('property')));
@@ -61,12 +67,56 @@ class ResponseMetadataExtractor
             if ($metaDescription === null && $name === 'description') {
                 $metaDescription = $content;
             }
+
+            if ($imageReferenceHash === null
+                && (in_array($property, ['og:image', 'og:image:url', 'og:image:secure_url'], true)
+                    || in_array($name, ['og:image', 'twitter:image', 'twitter:image:src'], true))) {
+                $imageReferenceHash = self::imageReferenceHash($content, $responseUrl);
+            }
         }
 
         return [
             'title' => self::truncate($openGraphTitle ?? $pageTitle, self::MAX_TITLE_LENGTH),
             'description' => self::truncate($openGraphDescription ?? $metaDescription, self::MAX_DESCRIPTION_LENGTH),
+            'image_reference_hash' => $imageReferenceHash,
         ];
+    }
+
+    private static function imageReferenceHash(string $reference, ?string $responseUrl): ?string
+    {
+        if (mb_strlen($reference) > self::MAX_IMAGE_REFERENCE_LENGTH) {
+            return null;
+        }
+
+        try {
+            $imageUri = new Uri($reference);
+
+            if ($imageUri->getScheme() === '' || $imageUri->getAuthority() === '') {
+                if ($responseUrl === null || trim($responseUrl) === '') {
+                    return null;
+                }
+
+                $imageUri = UriResolver::resolve(new Uri($responseUrl), $imageUri);
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        $scheme = mb_strtolower($imageUri->getScheme());
+        $host = mb_strtolower($imageUri->getHost());
+
+        if (! in_array($scheme, ['http', 'https'], true)
+            || $host === ''
+            || $imageUri->getUserInfo() !== '') {
+            return null;
+        }
+
+        $port = $imageUri->getPort();
+        $includePort = $port !== null && ! (($scheme === 'http' && $port === 80) || ($scheme === 'https' && $port === 443));
+        $path = $imageUri->getPath() === '' ? '/' : $imageUri->getPath();
+        $canonicalReference = $scheme.'://'.$host.($includePort ? ':'.$port : '').$path;
+
+        return hash('sha256', $canonicalReference);
     }
 
     private static function normalize(?string $value): ?string

@@ -289,12 +289,15 @@ class MonitorController extends Controller
         $responseMetadataComparisonAvailable = $previousResponseMetadataRun !== null && (
             $latestResponseMetadataRun?->response_title !== null
             || $latestResponseMetadataRun?->response_description !== null
+            || $latestResponseMetadataRun?->response_image_reference_hash !== null
             || $previousResponseMetadataRun->response_title !== null
             || $previousResponseMetadataRun->response_description !== null
+            || $previousResponseMetadataRun->response_image_reference_hash !== null
         );
         $responseMetadataChanged = $responseMetadataComparisonAvailable && (
             $latestResponseMetadataRun?->response_title !== $previousResponseMetadataRun->response_title
             || $latestResponseMetadataRun?->response_description !== $previousResponseMetadataRun->response_description
+            || $latestResponseMetadataRun?->response_image_reference_hash !== $previousResponseMetadataRun->response_image_reference_hash
         );
         $checkRunFilters = $this->validateCheckRunFilters($request);
         $acceptedStatusCodesByVersion = $checkRunFilters['content_match'] === ''
@@ -472,7 +475,7 @@ class MonitorController extends Controller
             })
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')
-            ->first(['id', 'scheduled_at', 'response_title', 'response_description']);
+            ->first(['id', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash']);
     }
 
     public function edit(Monitor $monitor): View
@@ -845,6 +848,7 @@ class MonitorController extends Controller
                 'expected_response_header_found',
                 'response_title',
                 'response_description',
+                'response_image_reference_present',
                 'expected_text_mode',
                 'tls_expires_at_utc',
                 'final_url',
@@ -880,6 +884,7 @@ class MonitorController extends Controller
                         $expectedResponseHeaderMatchResult === null ? '' : ($expectedResponseHeaderMatchResult ? '1' : '0'),
                         (string) $run->response_title,
                         (string) $run->response_description,
+                        $run->response_image_reference_hash === null ? '0' : '1',
                         $run->expectedTextMode(),
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
                         $this->maskProbeUrl($run->final_url) ?? '',

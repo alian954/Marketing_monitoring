@@ -55,6 +55,7 @@ class MonitorCheckRunExportTest extends TestCase
             'expected_text_found' => false,
             'response_title' => '=HYPERLINK("https://evil.example")',
             'response_description' => 'Public campaign page summary.',
+            'response_image_reference_hash' => str_repeat('c', 64),
             'tls_expires_at' => '2027-01-01 00:00:00',
         ]);
         CheckRun::factory()->for($otherMonitor)->create([
@@ -99,6 +100,7 @@ class MonitorCheckRunExportTest extends TestCase
             'expected_response_header_found',
             'response_title',
             'response_description',
+            'response_image_reference_present',
             'expected_text_mode',
             'tls_expires_at_utc',
             'final_url',
@@ -121,6 +123,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_title']]);
         $this->assertSame('Public campaign page summary.', $row[$columns['response_description']]);
+        $this->assertSame('1', $row[$columns['response_image_reference_present']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
         $this->assertSame('https://private.example/redirected?secret=REDACTED', $row[$columns['final_url']]);
@@ -129,7 +132,9 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertStringNotContainsString('private expected phrase', $content);
         $this->assertStringNotContainsString('private transport error detail', $content);
         $this->assertStringNotContainsString('private-redirect-value', $content);
+        $this->assertStringNotContainsString(str_repeat('c', 64), $content);
         $this->assertStringNotContainsString('other monitor private run', $content);
+        $this->assertArrayNotHasKey('response_image_reference_hash', $run->fresh()->toArray());
     }
 
     public function test_authenticated_user_can_inspect_masked_redirect_details_in_check_history(): void

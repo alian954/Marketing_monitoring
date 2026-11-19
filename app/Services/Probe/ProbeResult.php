@@ -26,6 +26,7 @@ readonly class ProbeResult
         public ?array $expectedTextTermMatches = null,
         public ?string $responseTitle = null,
         public ?string $responseDescription = null,
+        public ?string $responseImageReferenceHash = null,
     ) {}
 
     public function succeeded(): bool

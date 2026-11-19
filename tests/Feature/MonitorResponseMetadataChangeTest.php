@@ -28,6 +28,22 @@ class MonitorResponseMetadataChangeTest extends TestCase
             ->assertSee('上次分享摘要：Coming soon.');
     }
 
+    public function test_latest_response_metadata_reports_when_the_image_reference_changes(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createRun($monitor, now()->subMinutes(10), 'completed', null, null, imageReferenceHash: str_repeat('a', 64));
+        $this->createRun($monitor, now()->subMinutes(2), 'completed', null, null, imageReferenceHash: str_repeat('b', 64));
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('分享預覽圖片參照：已偵測')
+            ->assertSee('與上次完成檢查相比已變更。')
+            ->assertSee('上次分享預覽圖片參照：已偵測')
+            ->assertDontSee(str_repeat('a', 64))
+            ->assertDontSee(str_repeat('b', 64));
+    }
+
     public function test_latest_response_metadata_reports_when_the_summary_is_unchanged(): void
     {
         $monitor = Monitor::factory()->create();
@@ -67,7 +83,7 @@ class MonitorResponseMetadataChangeTest extends TestCase
             ->assertOk()
             ->assertSee('與上次完成檢查相比已變更。')
             ->assertSee('上次分享標題：Live campaign title')
-            ->assertSee('回應沒有提供頁面標題或摘要。');
+            ->assertSee('回應沒有提供可用的分享預覽資料。');
     }
 
     public function test_latest_response_metadata_is_not_compared_across_configuration_versions(): void
@@ -79,7 +95,7 @@ class MonitorResponseMetadataChangeTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertDontSee('摘要變化')
+            ->assertDontSee('分享預覽變化')
             ->assertSee('分享標題：New configuration title');
     }
 
@@ -92,7 +108,7 @@ class MonitorResponseMetadataChangeTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertDontSee('摘要變化');
+            ->assertDontSee('分享預覽變化');
     }
 
     private function createRun(
@@ -102,6 +118,7 @@ class MonitorResponseMetadataChangeTest extends TestCase
         ?string $title,
         ?string $description,
         ?int $configVersion = null,
+        ?string $imageReferenceHash = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -119,6 +136,7 @@ class MonitorResponseMetadataChangeTest extends TestCase
             'error_type' => $status === 'completed' ? null : 'queue_job_failed',
             'response_title' => $title,
             'response_description' => $description,
+            'response_image_reference_hash' => $imageReferenceHash,
         ]);
     }
 }

@@ -13,11 +13,13 @@ class ResponseMetadataChangeHistory
     /**
      * @return list<array{
      *     changed_at: CarbonImmutable,
-     *     changed_fields: list<'title'|'description'>,
+     *     changed_fields: list<'title'|'description'|'image_reference'>,
      *     previous_title: ?string,
      *     current_title: ?string,
      *     previous_description: ?string,
-     *     current_description: ?string
+     *     current_description: ?string,
+     *     previous_image_reference_present: bool,
+     *     current_image_reference_present: bool
      * }>
      */
     public function build(Monitor $monitor): array
@@ -30,7 +32,7 @@ class ResponseMetadataChangeHistory
             ->whereNotIn('source', ['tls_daily', 'domain_daily'])
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')
-            ->select(['id', 'config_version', 'scheduled_at', 'response_title', 'response_description'])
+            ->select(['id', 'config_version', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash'])
             ->cursor() as $run) {
             if ($newerRun instanceof CheckRun && $newerRun->config_version === $run->config_version) {
                 $changedFields = [];
@@ -43,6 +45,10 @@ class ResponseMetadataChangeHistory
                     $changedFields[] = 'description';
                 }
 
+                if ($newerRun->response_image_reference_hash !== $run->response_image_reference_hash) {
+                    $changedFields[] = 'image_reference';
+                }
+
                 if ($changedFields !== []) {
                     $changes[] = [
                         'changed_at' => $newerRun->scheduled_at,
@@ -51,6 +57,8 @@ class ResponseMetadataChangeHistory
                         'current_title' => $newerRun->response_title,
                         'previous_description' => $run->response_description,
                         'current_description' => $newerRun->response_description,
+                        'previous_image_reference_present' => $run->response_image_reference_hash !== null,
+                        'current_image_reference_present' => $newerRun->response_image_reference_hash !== null,
                     ];
 
                     if (count($changes) >= self::MAX_CHANGES) {

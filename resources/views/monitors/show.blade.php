@@ -243,7 +243,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="recent-run-title" class="panel-title">最近一次檢查</h2>
-                    <p class="panel-description">顯示 HTTP 回應的分享標題與摘要，並與同設定版本的前次完成檢查比較。</p>
+                    <p class="panel-description">顯示 HTTP 回應提供的分享標題、摘要與預覽圖片參照，並與同設定版本的前次完成檢查比較。</p>
                 </div>
             </div>
             @if ($monitor->latestCheckRun)
@@ -302,23 +302,24 @@
                             </div>
                         @endif
                         <div class="metadata-item field-group-full">
-                            <dt>頁面回應摘要</dt>
+                            <dt>分享預覽資料</dt>
                             <dd>
-                                @if ($monitor->latestCheckRun->response_title || $monitor->latestCheckRun->response_description)
+                                @if ($monitor->latestCheckRun->response_title || $monitor->latestCheckRun->response_description || $monitor->latestCheckRun->response_image_reference_hash)
                                     @if ($monitor->latestCheckRun->response_title)
                                         <p>分享標題：{{ $monitor->latestCheckRun->response_title }}</p>
                                     @endif
                                     @if ($monitor->latestCheckRun->response_description)
                                         <p>分享摘要：{{ $monitor->latestCheckRun->response_description }}</p>
                                     @endif
+                                    <p>分享預覽圖片參照：{{ $monitor->latestCheckRun->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
                                 @else
-                                    <span class="secondary-text">回應沒有提供頁面標題或摘要。</span>
+                                    <span class="secondary-text">回應沒有提供可用的分享預覽資料。</span>
                                 @endif
                             </dd>
                         </div>
                         @if ($responseMetadataComparisonAvailable)
                             <div class="metadata-item field-group-full">
-                                <dt>摘要變化</dt>
+                                <dt>分享預覽變化</dt>
                                 <dd>
                                     @if ($responseMetadataChanged)
                                         <p>與上次完成檢查相比已變更。</p>
@@ -327,6 +328,7 @@
                                         </p>
                                         <p>上次分享標題：{{ $previousResponseMetadataRun->response_title ?? '未提供' }}</p>
                                         <p>上次分享摘要：{{ $previousResponseMetadataRun->response_description ?? '未提供' }}</p>
+                                        <p>上次分享預覽圖片參照：{{ $previousResponseMetadataRun->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
                                     @else
                                         <p>與上次完成檢查一致。</p>
                                     @endif
@@ -366,20 +368,20 @@
     <section class="panel spaced-top" aria-labelledby="response-metadata-history-title">
         <div class="panel-header">
             <div>
-                <h2 id="response-metadata-history-title" class="panel-title">分享摘要變更歷史</h2>
-                <p class="panel-description">比對完成檢查提供的分享標題與摘要；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+                <h2 id="response-metadata-history-title" class="panel-title">分享預覽變更歷史</h2>
+                <p class="panel-description">比對完成檢查提供的分享標題、摘要與預覽圖片參照；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
             </div>
             <span class="secondary-text">{{ count($responseMetadataChanges) }} 次變更</span>
         </div>
         @if ($responseMetadataChanges === [])
             <div class="empty-state">
-                <h3 class="empty-title">尚未偵測到分享摘要變更</h3>
-                <p class="empty-copy">當完成檢查發現分享標題或摘要與前次不同，變更時間與前後內容會顯示在此處。</p>
+                <h3 class="empty-title">尚未偵測到分享預覽變更</h3>
+                <p class="empty-copy">當完成檢查發現分享標題、摘要或預覽圖片參照與前次不同，變更時間與前後狀態會顯示在此處。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="response-metadata-history-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $monitor->name }}最近的分享摘要變更</caption>
+                    <caption class="sr-only">{{ $monitor->name }}最近的分享預覽變更</caption>
                     <thead>
                         <tr>
                             <th scope="col">變更時間</th>
@@ -394,7 +396,7 @@
                                     <time class="timestamp" datetime="{{ $change['changed_at']->toIso8601String() }}">{{ $change['changed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
                                     <span class="secondary-text">
                                         @foreach ($change['changed_fields'] as $field)
-                                            {{ $field === 'title' ? '標題' : '摘要' }}@if (! $loop->last)、@endif
+                                            {{ match ($field) { 'title' => '標題', 'description' => '摘要', 'image_reference' => '預覽圖片參照' } }}@if (! $loop->last)、@endif
                                         @endforeach
                                         變更
                                     </span>
@@ -406,6 +408,9 @@
                                     @if (in_array('description', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享摘要：</span>{{ $change['previous_description'] ?? '未提供' }}</p>
                                     @endif
+                                    @if (in_array('image_reference', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享預覽圖片參照：</span>{{ $change['previous_image_reference_present'] ? '已偵測' : '未提供' }}</p>
+                                    @endif
                                 </td>
                                 <td>
                                     @if (in_array('title', $change['changed_fields'], true))
@@ -413,6 +418,9 @@
                                     @endif
                                     @if (in_array('description', $change['changed_fields'], true))
                                         <p><span class="secondary-text">分享摘要：</span>{{ $change['current_description'] ?? '未提供' }}</p>
+                                    @endif
+                                    @if (in_array('image_reference', $change['changed_fields'], true))
+                                        <p><span class="secondary-text">分享預覽圖片參照：</span>{{ $change['current_image_reference_present'] ? '已偵測（參照已變更）' : '未提供' }}</p>
                                     @endif
                                 </td>
                             </tr>
@@ -1164,7 +1172,7 @@
                             <th scope="col">執行狀態</th>
                             <th scope="col">HTTP</th>
                             <th scope="col">AdsBot</th>
-                            <th scope="col">頁面回應摘要</th>
+                            <th scope="col">分享預覽資料</th>
                             @if ($monitor->expected_text)
                                 <th scope="col">文字比對</th>
                             @endif
@@ -1187,15 +1195,16 @@
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 <td>
-                                    @if ($run->response_title || $run->response_description)
+                                    @if ($run->response_title || $run->response_description || $run->response_image_reference_hash)
                                         <details>
-                                            <summary>查看回應摘要</summary>
+                                            <summary>查看分享預覽資料</summary>
                                             @if ($run->response_title)
                                                 <p>分享標題：{{ $run->response_title }}</p>
                                             @endif
                                             @if ($run->response_description)
                                                 <p>分享摘要：{{ $run->response_description }}</p>
                                             @endif
+                                            <p>分享預覽圖片參照：{{ $run->response_image_reference_hash ? '已偵測' : '未提供' }}</p>
                                         </details>
                                     @else
                                         <span class="secondary-text">未提供</span>

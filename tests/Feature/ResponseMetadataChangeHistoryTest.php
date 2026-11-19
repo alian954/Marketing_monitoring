@@ -31,7 +31,7 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('分享摘要變更歷史')
+            ->assertSee('分享預覽變更歷史')
             ->assertSee('分享摘要：The launch is live.')
             ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
             ->assertDontSee('<script>alert(1)</script>', false);
@@ -59,7 +59,7 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('尚未偵測到分享摘要變更');
+            ->assertSee('尚未偵測到分享預覽變更');
 
         $this->assertSame([], $response->viewData('responseMetadataChanges'));
     }
@@ -81,6 +81,31 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $this->assertCount(1, $changes);
         $this->assertSame('Earlier', $changes[0]['previous_title']);
         $this->assertSame('Later', $changes[0]['current_title']);
+    }
+
+    public function test_monitor_detail_shows_image_reference_only_changes_without_exposing_hashes(): void
+    {
+        $monitor = $this->createMonitor();
+        $previousHash = str_repeat('a', 64);
+        $currentHash = str_repeat('b', 64);
+        $this->createRun($monitor, now()->subMinutes(2), null, null, imageReferenceHash: $previousHash);
+        $this->createRun($monitor, now()->subMinute(), null, null, imageReferenceHash: $currentHash);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('分享預覽圖片參照')
+            ->assertSee('已偵測（參照已變更）')
+            ->assertDontSee($previousHash)
+            ->assertDontSee($currentHash);
+        $changes = $response->viewData('responseMetadataChanges');
+
+        $this->assertTrue($response->viewData('responseMetadataChanged'));
+        $this->assertSame(['image_reference'], $changes[0]['changed_fields']);
+        $this->assertTrue($changes[0]['previous_image_reference_present']);
+        $this->assertTrue($changes[0]['current_image_reference_present']);
+        $this->assertArrayNotHasKey('previous_image_reference_hash', $changes[0]);
+        $this->assertArrayNotHasKey('current_image_reference_hash', $changes[0]);
     }
 
     public function test_monitor_detail_limits_the_change_history_to_the_ten_most_recent_differences(): void
@@ -146,6 +171,7 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         string $status = 'completed',
         string $source = 'scheduled',
         ?int $configVersion = null,
+        ?string $imageReferenceHash = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -157,6 +183,7 @@ class ResponseMetadataChangeHistoryTest extends TestCase
             'error_type' => $status === 'completed' ? null : 'queue_job_failed',
             'response_title' => $title,
             'response_description' => $description,
+            'response_image_reference_hash' => $imageReferenceHash,
         ]);
     }
 }

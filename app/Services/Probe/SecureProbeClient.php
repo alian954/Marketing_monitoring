@@ -117,8 +117,8 @@ class SecureProbeClient implements ProbeClient
                 && $response->location !== null
                 && trim($response->location) !== '';
             $responseMetadata = ! $isRedirectResponse
-                ? ResponseMetadataExtractor::extract($response->body)
-                : ['title' => null, 'description' => null];
+                ? ResponseMetadataExtractor::extract($response->body, $target['url'])
+                : ['title' => null, 'description' => null, 'image_reference_hash' => null];
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -149,6 +149,7 @@ class SecureProbeClient implements ProbeClient
                     $expectedTextTermMatches,
                     $responseMetadata['title'],
                     $responseMetadata['description'],
+                    $responseMetadata['image_reference_hash'],
                 );
             }
 
@@ -173,6 +174,7 @@ class SecureProbeClient implements ProbeClient
                     null,
                     $responseMetadata['title'],
                     $responseMetadata['description'],
+                    $responseMetadata['image_reference_hash'],
                 );
             }
 
@@ -193,6 +195,7 @@ class SecureProbeClient implements ProbeClient
                     $expectedTextTermMatches,
                     $responseMetadata['title'],
                     $responseMetadata['description'],
+                    $responseMetadata['image_reference_hash'],
                 );
             }
 
@@ -221,6 +224,7 @@ class SecureProbeClient implements ProbeClient
                     $expectedTextTermMatches,
                     $responseMetadata['title'],
                     $responseMetadata['description'],
+                    $responseMetadata['image_reference_hash'],
                 );
             }
 
