@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['acknowledgement'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
     @endphp
 
@@ -12,7 +12,7 @@
         <div class="heading-copy">
             <p class="eyebrow">工作區</p>
             <h1 class="page-title">事件紀錄</h1>
-            <p class="page-description">集中檢視所有監測事件，依監測項目、訊號與處理狀態搜尋；完整事件脈絡可在監測詳情頁查看。</p>
+            <p class="page-description">集中檢視所有監測事件，依監測項目、訊號、嚴重度與處理狀態搜尋；完整事件脈絡可在監測詳情頁查看。</p>
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('incidents.export', $exportFilters) }}">匯出符合條件的 CSV</a>
@@ -41,6 +41,15 @@
                                 <option value="" @selected(old('state', $filters['state']) === '')>全部狀態</option>
                                 @foreach ($stateLabels as $state => $label)
                                     <option value="{{ $state }}" @selected(old('state', $filters['state']) === $state)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-severity">嚴重度</label>
+                            <select class="field-select" id="incident-severity" name="severity">
+                                <option value="" @selected(old('severity', $filters['severity']) === '')>全部嚴重度</option>
+                                @foreach ($severityLabels as $severity => $label)
+                                    <option value="{{ $severity }}" @selected(old('severity', $filters['severity']) === $severity)>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -130,6 +139,7 @@
                             <th scope="col">事件</th>
                             <th scope="col">監測項目</th>
                             <th scope="col">偵測訊號</th>
+                            <th scope="col">嚴重度</th>
                             <th scope="col">狀態</th>
                             <th scope="col">分類</th>
                             <th scope="col">失敗次數</th>
@@ -159,6 +169,7 @@
                                     @endif
                                 </td>
                                 <td>{{ $ruleLabels[$incident->rule_key] ?? '其他監測異常' }}</td>
+                                <td><x-state-badge :state="$incident->severity" /></td>
                                 <td><x-state-badge :state="$incident->state" /></td>
                                 <td>{{ $classificationLabel }}</td>
                                 <td class="numeric">{{ $incident->failure_count }}</td>

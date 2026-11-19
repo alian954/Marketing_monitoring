@@ -7,6 +7,7 @@
         'issue' => '異常',
         'suspect' => '確認中',
         'warning' => '警告',
+        'critical' => '嚴重',
         'stale' => '逾時',
         'paused' => '已暫停',
         'superseded' => '設定已變更',

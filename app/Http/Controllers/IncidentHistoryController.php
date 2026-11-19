@@ -37,6 +37,12 @@ class IncidentHistoryController extends Controller
         Incident::STATE_SUPERSEDED => '設定已變更',
     ];
 
+    /** @var array<string, string> */
+    private const SEVERITY_LABELS = [
+        'critical' => '嚴重',
+        'warning' => '警告',
+    ];
+
     public function index(Request $request): View
     {
         $filters = $this->validatedFilters($request);
@@ -52,9 +58,11 @@ class IncidentHistoryController extends Controller
             'monitors' => $monitors,
             'ruleLabels' => self::RULE_LABELS,
             'stateLabels' => self::STATE_LABELS,
+            'severityLabels' => self::SEVERITY_LABELS,
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'state' => $filters['state'] ?? '',
+                'severity' => $filters['severity'] ?? '',
                 'acknowledgement' => $filters['acknowledgement'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
                 'rule_key' => $filters['rule_key'] ?? '',
@@ -130,12 +138,13 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
+    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'state' => ['nullable', 'in:'.implode(',', array_keys(self::STATE_LABELS))],
+            'severity' => ['nullable', 'in:'.implode(',', array_keys(self::SEVERITY_LABELS))],
             'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
@@ -145,11 +154,12 @@ class IncidentHistoryController extends Controller
             'date_from.date_format' => '開始日期格式無效。',
             'date_to.date_format' => '結束日期格式無效。',
             'date_to.after_or_equal' => '結束日期不可早於開始日期。',
+            'severity.in' => '請選擇有效的事件嚴重度篩選條件。',
             'acknowledgement.in' => '請選擇有效的事件認領篩選條件。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
+    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -166,6 +176,7 @@ class IncidentHistoryController extends Controller
                 });
             })
             ->when($filters['state'] ?? null, static fn (Builder $query, string $state): Builder => $query->where('state', $state))
+            ->when($filters['severity'] ?? null, static fn (Builder $query, string $severity): Builder => $query->where('severity', $severity))
             ->when(($filters['acknowledgement'] ?? '') === 'acknowledged', static fn (Builder $query): Builder => $query->whereNotNull('acknowledged_at'))
             ->when(($filters['acknowledgement'] ?? '') === 'unacknowledged', static fn (Builder $query): Builder => $query->whereNull('acknowledged_at'))
             ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))

@@ -154,6 +154,58 @@ class IncidentHistoryTest extends TestCase
         );
     }
 
+    public function test_incident_history_and_csv_can_filter_by_severity(): void
+    {
+        $monitor = $this->createMonitor('Severity filter campaign');
+        $criticalIncident = Incident::factory()->for($monitor)->create(['severity' => 'critical']);
+        $warningIncident = Incident::factory()->for($monitor)->create(['severity' => 'warning']);
+
+        $criticalFilters = ['severity' => 'critical'];
+        $criticalResponse = $this->actingAs(User::factory()->create())
+            ->get(route('incidents.index', $criticalFilters))
+            ->assertOk()
+            ->assertSee('<option value="critical" selected>嚴重</option>', false)
+            ->assertSee('badge-critical')
+            ->assertSee('嚴重')
+            ->assertSee(route('incidents.export', $criticalFilters));
+
+        $this->assertSame(
+            [$criticalIncident->id],
+            $criticalResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+
+        $criticalExport = $this->get(route('incidents.export', $criticalFilters))->assertOk();
+        $this->assertSame(
+            [(string) $criticalIncident->id],
+            array_column($this->csvRows($criticalExport->streamedContent()), 'incident_id'),
+        );
+
+        $warningFilters = ['severity' => 'warning'];
+        $warningResponse = $this->get(route('incidents.index', $warningFilters))
+            ->assertOk()
+            ->assertSee('<option value="warning" selected>警告</option>', false);
+
+        $this->assertSame(
+            [$warningIncident->id],
+            $warningResponse->viewData('incidents')->getCollection()->modelKeys(),
+        );
+
+        $warningExport = $this->get(route('incidents.export', $warningFilters))->assertOk();
+        $this->assertSame(
+            [(string) $warningIncident->id],
+            array_column($this->csvRows($warningExport->streamedContent()), 'incident_id'),
+        );
+    }
+
+    public function test_incident_history_rejects_unknown_severity_filter(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('incidents.index'))
+            ->get(route('incidents.index', ['severity' => 'informational']))
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHasErrors(['severity' => '請選擇有效的事件嚴重度篩選條件。']);
+    }
+
     public function test_incident_history_rejects_unknown_acknowledgement_filter(): void
     {
         $this->actingAs(User::factory()->create())

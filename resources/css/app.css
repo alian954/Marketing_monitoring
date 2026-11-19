@@ -925,7 +925,8 @@ textarea {
 
 .badge-issue,
 .badge-failed,
-.badge-error {
+.badge-error,
+.badge-critical {
     border-color: #efcece;
     color: #a23d3d;
     background: #fbebeb;
