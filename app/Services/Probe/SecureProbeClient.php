@@ -15,7 +15,7 @@ class SecureProbeClient implements ProbeClient
         private readonly UrlMasker $masker,
     ) {}
 
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present'): ProbeResult
     {
         $startedAt = hrtime(true);
         $requestTimeoutSeconds = max(1, min(15, $timeoutSeconds ?? (int) config('monitoring.request_timeout_seconds')));
@@ -95,13 +95,13 @@ class SecureProbeClient implements ProbeClient
                 && $response->location !== null
                 && trim($response->location) !== '';
 
-            if (
-                $response->errorType === 'body_too_large'
-                && ! $isRedirectResponse
-                && $expectedText !== null
-                && $expectedText !== ''
-                && $this->matchesExpectedText($response->body, $expectedText)
-            ) {
+            $boundedPrefixMatch = null;
+
+            if ($response->errorType === 'body_too_large' && $expectedText !== null && $expectedText !== '') {
+                $boundedPrefixMatch = ExpectedTextMatcher::matchesBoundedPrefix($response->body, $expectedText, $expectedTextMode);
+            }
+
+            if ($response->errorType === 'body_too_large' && ! $isRedirectResponse && $boundedPrefixMatch === true) {
                 return new ProbeResult(
                     $response->statusCode,
                     $elapsedMs,
@@ -156,7 +156,7 @@ class SecureProbeClient implements ProbeClient
             if (! $isRedirectResponse) {
                 $matchesExpectedText = $expectedText === null || $expectedText === ''
                     ? null
-                    : $this->matchesExpectedText($response->body, $expectedText);
+                    : ExpectedTextMatcher::matches($response->body, $expectedText, $expectedTextMode);
 
                 return new ProbeResult(
                     $response->statusCode,
@@ -193,30 +193,6 @@ class SecureProbeClient implements ProbeClient
         }
 
         return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs, monitorHostIps: $monitorHostIps);
-    }
-
-    private function matchesExpectedText(string $body, string $expectedText): bool
-    {
-        $decodedBody = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $plainTextBody = html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $bodyWithTagSeparators = preg_replace('/<[^>]*>/u', ' ', $body) ?? $body;
-        $normalizedBody = html_entity_decode(strip_tags($bodyWithTagSeparators), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $normalizedBody = preg_replace('/\s+/u', ' ', trim($normalizedBody)) ?? trim($normalizedBody);
-        $normalizedExpectedText = preg_replace('/\s+/u', ' ', trim($expectedText)) ?? trim($expectedText);
-        $encodedExpectedText = json_encode($expectedText);
-        $encodedExpectedText = $encodedExpectedText === false
-            ? null
-            : substr($encodedExpectedText, 1, -1);
-        $unescapedSlashExpectedText = $encodedExpectedText === null
-            ? null
-            : str_replace('\\/', '/', $encodedExpectedText);
-
-        return mb_stripos($body, $expectedText) !== false
-            || mb_stripos($decodedBody, $expectedText) !== false
-            || mb_stripos($plainTextBody, $expectedText) !== false
-            || ($encodedExpectedText !== null && mb_stripos($body, $encodedExpectedText) !== false)
-            || ($unescapedSlashExpectedText !== null && mb_stripos($body, $unescapedSlashExpectedText) !== false)
-            || ($normalizedExpectedText !== '' && mb_stripos($normalizedBody, $normalizedExpectedText) !== false);
     }
 
     private function remainingMilliseconds(int $deadline): int

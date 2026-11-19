@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
@@ -540,6 +541,61 @@ class ProbeSecurityTest extends TestCase
         );
 
         $this->assertTrue($result->expectedTextFound);
+    }
+
+    public function test_expected_text_matcher_requires_all_present_terms_and_matches_any_absent_term(): void
+    {
+        $expectedText = "\n Campaign headline \n\nSpring sale\nCampaign headline\n";
+        $body = '<article><p>Campaign</p><p>headline</p><p>Spring sale</p></article>';
+
+        $this->assertSame("Campaign headline\nSpring sale", ExpectedTextMatcher::normalize($expectedText));
+        $this->assertSame(['Campaign headline', 'Spring sale'], ExpectedTextMatcher::terms($expectedText));
+        $this->assertTrue(ExpectedTextMatcher::matches($body, $expectedText));
+        $this->assertFalse(ExpectedTextMatcher::matches('<p>Campaign headline</p>', $expectedText));
+        $this->assertTrue(ExpectedTextMatcher::matches('<p>Public launch. Embargoed details.</p>', "Internal draft\nEmbargoed", 'absent'));
+        $this->assertFalse(ExpectedTextMatcher::matches('<p>Public launch.</p>', "Internal draft\nEmbargoed", 'absent'));
+    }
+
+    public function test_oversized_response_only_confirms_text_when_the_bounded_prefix_proves_the_condition(): void
+    {
+        $makeProbe = static function (string $body): SecureProbeClient {
+            $resolver = new class implements HostResolver
+            {
+                public function resolve(string $hostname): array
+                {
+                    return ['93.184.216.34'];
+                }
+            };
+            $transport = new class($body) implements ProbeTransport
+            {
+                public function __construct(private readonly string $body) {}
+
+                public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+                {
+                    return new HopResponse(200, null, $this->body, 40, 'body_too_large', '回應超過讀取上限。', null);
+                }
+            };
+
+            return new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+        };
+
+        $allPresent = $makeProbe('<p>Campaign headline</p><p>Spring sale</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale");
+        $partialPresent = $makeProbe('<p>Campaign headline</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale");
+        $forbiddenFound = $makeProbe('<p>Embargoed</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Internal draft\nEmbargoed", null, 'absent');
+        $forbiddenNotSeen = $makeProbe('<p>Public launch</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Internal draft\nEmbargoed", null, 'absent');
+
+        $this->assertNull($allPresent->errorType);
+        $this->assertTrue($allPresent->expectedTextFound);
+        $this->assertSame('body_too_large', $partialPresent->errorType);
+        $this->assertNull($partialPresent->expectedTextFound);
+        $this->assertNull($forbiddenFound->errorType);
+        $this->assertTrue($forbiddenFound->expectedTextFound);
+        $this->assertSame('body_too_large', $forbiddenNotSeen->errorType);
+        $this->assertNull($forbiddenNotSeen->expectedTextFound);
     }
 
     public function test_iana_special_use_ranges_are_blocked_for_literals_and_dns_answers(): void

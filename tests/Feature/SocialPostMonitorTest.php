@@ -48,7 +48,7 @@ class SocialPostMonitorTest extends TestCase
     {
         $this->actingAs(User::factory()->create())
             ->from(route('monitors.create'))
-            ->post(route('monitors.store'), $this->socialPost('https://www.instagram.com/p/ABC123/'))
+            ->post(route('monitors.store'), $this->socialPost('https://www.instagram.com/p/ABC123/', "\n   \n"))
             ->assertRedirect(route('monitors.create'))
             ->assertSessionHasErrors('expected_text');
 
@@ -101,6 +101,33 @@ class SocialPostMonitorTest extends TestCase
         ]);
     }
 
+    public function test_social_post_stores_trimmed_and_deduplicated_lines_as_expected_text_terms(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost(
+                'https://www.instagram.com/p/MULTI123/',
+                "\n Campaign headline \n\nSpring sale\nCampaign headline\n",
+            ));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame("Campaign headline\nSpring sale", $monitor->expected_text);
+    }
+
+    public function test_social_post_form_exposes_an_accessible_multiline_text_condition_field(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.create'))
+            ->assertOk()
+            ->assertSee('<textarea', false)
+            ->assertSee('id="expected_text"', false)
+            ->assertSee('maxlength="500"', false)
+            ->assertSee('aria-describedby="expected-text-help"', false)
+            ->assertSee('每行輸入一個文字片段')
+            ->assertSee('每個片段都要找到');
+    }
+
     public function test_editing_a_social_post_updates_its_stored_platform(): void
     {
         $oldUrl = 'https://www.instagram.com/p/ABC123/';
@@ -149,8 +176,8 @@ class SocialPostMonitorTest extends TestCase
             ->get(route('monitors.index'))
             ->assertOk()
             ->assertSee('文字比對：')
-            ->assertSee('已找到指定文字')
-            ->assertSee('未找到指定文字')
+            ->assertSee('已找到全部片段')
+            ->assertSee('缺少至少一個片段')
             ->assertSee('尚未比對')
             ->assertSee('尚未檢查')
             ->assertDontSee('Private launch phrase')
@@ -210,7 +237,7 @@ class SocialPostMonitorTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10, 'present')
             ->andReturn($normal);
         $probe->shouldReceive('inspect')
             ->once()
@@ -242,7 +269,7 @@ class SocialPostMonitorTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
             ->andReturn($normal);
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
@@ -364,7 +391,7 @@ class SocialPostMonitorTest extends TestCase
         $monitor = Monitor::factory()->create([
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
-            'expected_text' => 'Campaign headline & launch',
+            'expected_text' => "Campaign headline & launch\nSpring sale",
         ]);
         $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
         $this->assertNotNull($run);
@@ -372,7 +399,7 @@ class SocialPostMonitorTest extends TestCase
         {
             public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
             {
-                return new HopResponse(200, null, '<article><p>Campaign</p><p>headline &amp; launch</p></article>', 40, null, null, null);
+                return new HopResponse(200, null, '<article><p>Campaign</p><p>headline &amp; launch</p><p>Spring sale</p></article>', 40, null, null, null);
             }
         };
         $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
@@ -401,6 +428,98 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame(1, $response->viewData('invalidCount'));
         $this->assertStringContainsString('社群貼文必須提供 expected_text 欄位中的預期文字', $response->viewData('previewRows')[0]['errors'][0]);
         $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_import_preserves_multiple_expected_text_lines_from_a_quoted_cell(): void
+    {
+        $csv = "name,url,label,expected_text,expected_text_mode\nSocial post,https://www.threads.com/@creator/post/MULTI123,Campaign,\"Campaign headline\nSpring sale\",present\n";
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, $response->viewData('validCount'));
+        $this->assertSame("Campaign headline\nSpring sale", $response->viewData('previewRows')[0]['expected_text']);
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $response->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseHas('monitors', [
+            'url_hash' => Monitor::fingerprintUrl('https://www.threads.com/@creator/post/MULTI123'),
+            'expected_text' => "Campaign headline\nSpring sale",
+            'expected_text_mode' => 'present',
+        ]);
+    }
+
+    public function test_social_post_requires_every_expected_text_line_to_be_present(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/PARTIAL123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => "Campaign headline\nSpring sale",
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Campaign headline</article>', 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'expected_text_found' => 0,
+        ]);
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'content',
+            'severity' => 'warning',
+        ]);
+    }
+
+    public function test_absent_text_condition_alerts_when_any_forbidden_line_is_present(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.facebook.com/page/posts/FORBIDDEN123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => "Internal draft\nEmbargoed",
+            'expected_text_mode' => 'absent',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Public launch. Embargoed details.</article>', 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'expected_text_found' => 1,
+        ]);
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'forbidden_text',
+            'severity' => 'warning',
+        ]);
     }
 
     public function test_social_post_content_alert_explains_the_raw_http_limit_in_its_notification(): void

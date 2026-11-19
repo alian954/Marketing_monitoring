@@ -107,7 +107,7 @@
     @endif
     @if ($socialPlatform)
         <div class="form-note spaced-bottom">
-            {{ $socialPlatform }} 貼文以指定文字比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
+            {{ $socialPlatform }} 貼文以每行一個文字片段比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；必須包含條件要求全部片段都出現。每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
         </div>
     @endif
     @error('check')
@@ -153,7 +153,7 @@
                         <dt>預期內容文字片段</dt>
                         <dd>
                             @if ($monitor->expected_text)
-                                {{ $monitor->expected_text_mode === 'absent' ? '不得包含：' : '必須包含：' }}{{ $monitor->expected_text }}
+                                {{ $monitor->expected_text_mode === 'absent' ? '不得出現任一片段：' : '必須包含全部片段：' }}{{ str_replace("\n", '、', $monitor->expected_text) }}
                             @else
                                 未設定文字條件
                             @endif
@@ -241,9 +241,9 @@
                                 @if ($monitor->latestCheckRun->expected_text_found === null)
                                     未檢查
                                 @elseif ($monitor->latestCheckRun->expected_text_found)
-                                        已在原始回應找到指定文字
+                                    {{ $monitor->expected_text_mode === 'absent' ? '原始回應找到禁止文字' : '原始回應找到全部指定片段' }}
                                 @else
-                                        原始回應未包含指定文字
+                                    {{ $monitor->expected_text_mode === 'absent' ? '原始回應未找到禁止文字' : '原始回應缺少至少一個指定片段' }}
                                 @endif
                             </dd>
                         </div>
@@ -599,8 +599,8 @@
                                                 @endif
                                                 @if (in_array($incident->rule_key, ['content', 'forbidden_text'], true) && isset($event->evidence['expected_text_mode']) && array_key_exists('expected_text_found', $event->evidence))
                                                     <span class="secondary-text">
-                                                        條件：{{ $event->evidence['expected_text_mode'] === 'absent' ? '不得包含' : '必須包含' }}；
-                                                        比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : ($event->evidence['expected_text_found'] ? '原始回應已找到指定文字' : '原始回應未找到指定文字') }}
+                                                        條件：{{ $event->evidence['expected_text_mode'] === 'absent' ? '不得出現任一片段' : '必須包含全部片段' }}；
+                                                        比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : ($event->evidence['expected_text_mode'] === 'absent' ? ($event->evidence['expected_text_found'] ? '原始回應找到禁止文字' : '原始回應未找到禁止文字') : ($event->evidence['expected_text_found'] ? '原始回應找到全部片段' : '原始回應缺少至少一個片段')) }}
                                                     </span>
                                                 @endif
                                                 @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed', 'classification_changed', 'incident_note_added', 'incident_note_cleared'], true))
@@ -893,7 +893,7 @@
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 @if ($monitor->expected_text)
-                                    <td>{{ $run->expected_text_found === null ? '未進行比對' : ($run->expected_text_found ? '找到指定文字' : '未找到指定文字') }}</td>
+                                    <td>{{ $run->expected_text_found === null ? '未進行比對' : ($monitor->expected_text_mode === 'absent' ? ($run->expected_text_found ? '找到禁止文字' : '未找到禁止文字') : ($run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段')) }}</td>
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>

@@ -62,8 +62,8 @@ class MonitorCheckRunFilterTest extends TestCase
         ];
 
         $filterCases = [
-            ['filter' => 'found', 'run' => $runsByTextMatch['found'], 'label' => '找到指定文字', 'csv_value' => '1'],
-            ['filter' => 'missing', 'run' => $runsByTextMatch['missing'], 'label' => '未找到指定文字', 'csv_value' => '0'],
+            ['filter' => 'found', 'run' => $runsByTextMatch['found'], 'label' => '已找到全部指定片段', 'csv_value' => '1'],
+            ['filter' => 'missing', 'run' => $runsByTextMatch['missing'], 'label' => '缺少至少一個指定片段', 'csv_value' => '0'],
             ['filter' => 'not_checked', 'run' => $runsByTextMatch['not_checked'], 'label' => '未進行比對', 'csv_value' => ''],
         ];
 
@@ -87,6 +87,31 @@ class MonitorCheckRunFilterTest extends TestCase
             $this->assertSame((string) $filterCase['run']->id, $exportRows[0]['check_run_id']);
             $this->assertSame($filterCase['csv_value'], $exportRows[0]['expected_text_found']);
         }
+    }
+
+    public function test_monitor_detail_uses_forbidden_phrase_labels_for_absent_conditions(): void
+    {
+        $monitor = Monitor::factory()->create([
+            'expected_text' => "Internal draft\nEmbargoed",
+            'expected_text_mode' => 'absent',
+        ]);
+        $foundRun = CheckRun::factory()->for($monitor)->create(['expected_text_found' => true]);
+        $missingRun = CheckRun::factory()->for($monitor)->create(['expected_text_found' => false]);
+        $user = User::factory()->create();
+
+        $foundResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'content_match' => 'found']))
+            ->assertOk()
+            ->assertSee('找到不得出現的片段')
+            ->assertSee('找到禁止文字');
+        $this->assertSame([$foundRun->id], $foundResponse->viewData('runs')->getCollection()->modelKeys());
+
+        $missingResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'content_match' => 'missing']))
+            ->assertOk()
+            ->assertSee('未找到不得出現的片段')
+            ->assertSee('未找到禁止文字');
+        $this->assertSame([$missingRun->id], $missingResponse->viewData('runs')->getCollection()->modelKeys());
     }
 
     public function test_monitor_without_a_text_condition_does_not_show_text_filter_or_history_column(): void

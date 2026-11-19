@@ -93,6 +93,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'MarketingMonitor/1.0 (+authorized landing page check)',
                 isset($snapshot['expected_text']) ? (string) $snapshot['expected_text'] : null,
                 $timeoutSeconds,
+                (string) ($snapshot['expected_text_mode'] ?? 'present'),
             );
 
             if ($monitor->socialPlatform() === null) {

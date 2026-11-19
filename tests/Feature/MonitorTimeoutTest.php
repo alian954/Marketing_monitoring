@@ -142,7 +142,7 @@ class MonitorTimeoutTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 7)
+            ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 7, 'present')
             ->andReturn($normal);
         $probe->shouldReceive('inspect')
             ->once()
@@ -188,7 +188,7 @@ class MonitorTimeoutTest extends TestCase
             $probe = $this->mock(ProbeClient::class);
             $probe->shouldReceive('inspect')
                 ->once()
-                ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10)
+                ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10, 'present')
                 ->andReturn($normal);
             $probe->shouldReceive('inspect')
                 ->once()

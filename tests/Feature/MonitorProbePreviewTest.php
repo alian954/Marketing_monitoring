@@ -55,7 +55,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
             ->andReturn(new ProbeResult(
                 200,
                 245,
@@ -75,8 +75,8 @@ class MonitorProbePreviewTest extends TestCase
 
         $response->assertOk()
             ->assertSee('預檢通過')
-            ->assertSee('找到指定文字')
-            ->assertSee('HTTP 狀態與指定文字條件均符合目前設定。')
+            ->assertSee('已找到全部指定片段')
+            ->assertSee('HTTP 狀態與全部文字條件均符合目前設定。')
             ->assertDontSee('<article>Campaign headline</article>', false);
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
@@ -88,7 +88,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10, 'present')
             ->andReturn(new ProbeResult(204, 35, $url, [], ['93.184.216.34'], null, null, null, null));
         $data = $this->socialPost($url, '');
 
@@ -98,7 +98,7 @@ class MonitorProbePreviewTest extends TestCase
             ->post(route('monitors.probe-preview'), $data)
             ->assertOk()
             ->assertSee('預檢通過')
-            ->assertSee('HTTP 狀態與指定文字條件均符合目前設定。');
+            ->assertSee('HTTP 狀態與全部文字條件均符合目前設定。');
 
         $this->assertDatabaseCount('monitors', 0);
     }
@@ -127,10 +127,35 @@ class MonitorProbePreviewTest extends TestCase
             ->post(route('monitors.probe-preview'), $this->socialPost($url))
             ->assertOk()
             ->assertSee('預檢未通過')
-            ->assertSee('原始 HTTP 回應未找到指定文字。');
+            ->assertSee('原始 HTTP 回應至少缺少一個指定片段。');
 
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('incidents', 0);
+    }
+
+    public function test_preview_applies_the_absent_condition_to_any_forbidden_line(): void
+    {
+        $url = 'https://example.test/landing';
+        $expectedText = "Internal draft\nEmbargoed";
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', $expectedText, 10, 'absent')
+            ->andReturn(new ProbeResult(200, 85, $url, [], ['93.184.216.34'], null, null, true, null));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->followingRedirects()
+            ->post(route('monitors.probe-preview'), [
+                ...$this->socialPost($url, $expectedText),
+                'expected_text_mode' => 'absent',
+            ])
+            ->assertOk()
+            ->assertSee('預檢未通過')
+            ->assertSee('找到不得出現的文字')
+            ->assertSee('包含至少一個不得出現的片段');
+
+        $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_social_post_preview_marks_an_oversized_response_as_indeterminate(): void
@@ -174,7 +199,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
             ->andReturn(new ProbeResult(200, 30, $url, [], ['93.184.216.34'], null, null, true, null));
 
         $this->actingAs(User::factory()->create())

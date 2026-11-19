@@ -131,7 +131,7 @@ class SocialPostImportTest extends TestCase
                 'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
             ])
             ->assertOk()
-            ->assertSee('不得包含：Scheduled maintenance');
+            ->assertSee('不得出現任一片段：Scheduled maintenance');
 
         $this->assertSame(1, $preview->viewData('validCount'));
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Monitor;
+use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\UrlMasker;
@@ -76,7 +77,7 @@ class MonitorImportController extends Controller
             $url = trim((string) ($cells[1] ?? ''));
             $label = trim((string) ($cells[2] ?? ''));
             $expectedText = isset($columnIndexes['expected_text'])
-                ? trim((string) ($cells[$columnIndexes['expected_text']] ?? ''))
+                ? (ExpectedTextMatcher::normalize((string) ($cells[$columnIndexes['expected_text']] ?? '')) ?? '')
                 : '';
             $expectedTextMode = isset($columnIndexes['expected_text_mode'])
                 ? mb_strtolower(trim((string) ($cells[$columnIndexes['expected_text_mode']] ?? '')))

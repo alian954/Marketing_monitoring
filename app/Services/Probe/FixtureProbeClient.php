@@ -6,7 +6,7 @@ use DateTimeImmutable;
 
 class FixtureProbeClient implements ProbeClient
 {
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present'): ProbeResult
     {
         $startedAt = hrtime(true);
         $parts = parse_url($url);
@@ -57,12 +57,10 @@ class FixtureProbeClient implements ProbeClient
             default => '<html>fixture healthy landing page</html>',
         };
         $elapsedMs = (int) round((hrtime(true) - $startedAt) / 1_000_000) + 2;
-        $decodedBody = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $matchesExpectedText = null;
 
         if ($expectedText !== null && $expectedText !== '') {
-            $matchesExpectedText = mb_stripos($body, $expectedText) !== false
-                || mb_stripos($decodedBody, $expectedText) !== false;
+            $matchesExpectedText = ExpectedTextMatcher::matches($body, $expectedText, $expectedTextMode);
         }
         $expiry = str_starts_with($finalUrl, 'https://') ? (new DateTimeImmutable('+30 days')) : null;
 

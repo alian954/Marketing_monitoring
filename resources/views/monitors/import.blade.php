@@ -96,7 +96,7 @@
                                         <td>{{ data_get($previewRow, 'label') ?: '—' }}</td>
                                         <td>
                                             @if (data_get($previewRow, 'expected_text', '') !== '')
-                                                {{ data_get($previewRow, 'expected_text_mode') === 'absent' ? '不得包含：' : '必須包含：' }}{{ data_get($previewRow, 'expected_text') }}
+                                                {{ data_get($previewRow, 'expected_text_mode') === 'absent' ? '不得出現任一片段：' : '必須包含全部片段：' }}{{ str_replace("\n", '、', data_get($previewRow, 'expected_text')) }}
                                             @else
                                                 —
                                             @endif

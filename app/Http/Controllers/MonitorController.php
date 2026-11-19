@@ -11,6 +11,7 @@ use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\IncidentManager;
 use App\Services\MonitorAvailabilityCalculator;
 use App\Services\NotificationEmailRecipientParser;
+use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\UrlSafetyPolicy;
@@ -57,12 +58,8 @@ class MonitorController extends Controller
         'tls_daily' => '每日 TLS 檢查',
     ];
 
-    /** @var array<string, string> */
-    private const CHECK_RUN_CONTENT_MATCH_OPTIONS = [
-        'found' => '找到指定文字',
-        'missing' => '未找到指定文字',
-        'not_checked' => '未進行比對',
-    ];
+    /** @var list<string> */
+    private const CHECK_RUN_CONTENT_MATCH_FILTERS = ['found', 'missing', 'not_checked'];
 
     /** @var array<string, array<int, string>> */
     private const MONITOR_LIST_FILTER_RULES = [
@@ -401,7 +398,7 @@ class MonitorController extends Controller
         ) + [
             'checkRunStatusOptions' => self::CHECK_RUN_STATUS_OPTIONS,
             'checkRunSourceOptions' => self::CHECK_RUN_SOURCE_OPTIONS,
-            'checkRunContentMatchOptions' => self::CHECK_RUN_CONTENT_MATCH_OPTIONS,
+            'checkRunContentMatchOptions' => $this->checkRunContentMatchOptions($monitor),
         ]);
     }
 
@@ -774,7 +771,7 @@ class MonitorController extends Controller
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_STATUS_OPTIONS))],
             'source' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_SOURCE_OPTIONS))],
-            'content_match' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_CONTENT_MATCH_OPTIONS))],
+            'content_match' => ['nullable', 'string', 'in:'.implode(',', self::CHECK_RUN_CONTENT_MATCH_FILTERS)],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ], [
@@ -862,6 +859,10 @@ class MonitorController extends Controller
     /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
+        if ($request->exists('expected_text') && is_string($request->input('expected_text'))) {
+            $request->merge(['expected_text' => ExpectedTextMatcher::normalize($request->input('expected_text'))]);
+        }
+
         if ($request->exists('notification_email') && is_string($request->input('notification_email'))) {
             $request->merge([
                 'notification_email' => NotificationEmailRecipientParser::normalize($request->input('notification_email')),
@@ -1169,6 +1170,7 @@ class MonitorController extends Controller
             'MarketingMonitor/1.0 (+authorized landing page check)',
             $expectedText,
             $validated['timeout_seconds'],
+            $validated['expected_text_mode'],
         );
         $statusAccepted = $result->statusCode !== null
             && (($result->statusCode >= 200 && $result->statusCode < 400)
@@ -1199,6 +1201,7 @@ class MonitorController extends Controller
                 'elapsed_ms' => $result->elapsedMs,
                 'final_url' => $result->finalUrl,
                 'expected_text_checked' => $expectedText !== null,
+                'expected_text_mode' => $validated['expected_text_mode'],
                 'expected_text_state' => $result->expectedTextFound === null
                     ? null
                     : ($result->expectedTextFound ? 'found' : 'missing'),
@@ -1239,11 +1242,27 @@ class MonitorController extends Controller
 
         if (! $contentConditionPassed) {
             return $expectedTextMode === 'absent'
-                ? '原始 HTTP 回應仍包含指定文字。'
-                : '原始 HTTP 回應未找到指定文字。';
+                ? '原始 HTTP 回應包含至少一個不得出現的片段。'
+                : '原始 HTTP 回應至少缺少一個指定片段。';
         }
 
-        return 'HTTP 狀態與指定文字條件均符合目前設定。';
+        return 'HTTP 狀態與全部文字條件均符合目前設定。';
+    }
+
+    /** @return array<string, string> */
+    private function checkRunContentMatchOptions(Monitor $monitor): array
+    {
+        return $monitor->expected_text_mode === 'absent'
+            ? [
+                'found' => '找到不得出現的片段',
+                'missing' => '未找到不得出現的片段',
+                'not_checked' => '未進行比對',
+            ]
+            : [
+                'found' => '已找到全部指定片段',
+                'missing' => '缺少至少一個指定片段',
+                'not_checked' => '未進行比對',
+            ];
     }
 
     /** @param array{expected_text?: ?string, expected_text_mode?: string} $validated */
