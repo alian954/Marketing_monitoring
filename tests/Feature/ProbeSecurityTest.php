@@ -543,7 +543,7 @@ class ProbeSecurityTest extends TestCase
         $this->assertTrue($result->expectedTextFound);
     }
 
-    public function test_expected_text_matcher_requires_all_present_terms_and_matches_any_absent_term(): void
+    public function test_expected_text_matcher_supports_all_any_and_absent_text_conditions(): void
     {
         $expectedText = "\n Campaign headline \n\nSpring sale\nCampaign headline\n";
         $body = '<article><p>Campaign</p><p>headline</p><p>Spring sale</p></article>';
@@ -552,6 +552,8 @@ class ProbeSecurityTest extends TestCase
         $this->assertSame(['Campaign headline', 'Spring sale'], ExpectedTextMatcher::terms($expectedText));
         $this->assertTrue(ExpectedTextMatcher::matches($body, $expectedText));
         $this->assertFalse(ExpectedTextMatcher::matches('<p>Campaign headline</p>', $expectedText));
+        $this->assertTrue(ExpectedTextMatcher::matches('<p>Campaign headline</p>', $expectedText, 'present_any'));
+        $this->assertFalse(ExpectedTextMatcher::matches('<p>Other copy</p>', $expectedText, 'present_any'));
         $this->assertTrue(ExpectedTextMatcher::matches('<p>Public launch. Embargoed details.</p>', "Internal draft\nEmbargoed", 'absent'));
         $this->assertFalse(ExpectedTextMatcher::matches('<p>Public launch.</p>', "Internal draft\nEmbargoed", 'absent'));
     }
@@ -583,6 +585,10 @@ class ProbeSecurityTest extends TestCase
             ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale");
         $partialPresent = $makeProbe('<p>Campaign headline</p>')
             ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale");
+        $anyPresent = $makeProbe('<p>Campaign headline</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale", null, 'present_any');
+        $anyNotSeen = $makeProbe('<p>Other copy</p>')
+            ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Campaign headline\nSpring sale", null, 'present_any');
         $forbiddenFound = $makeProbe('<p>Embargoed</p>')
             ->inspect('https://landing.example', [], 'MonitorTest/1.0', "Internal draft\nEmbargoed", null, 'absent');
         $forbiddenNotSeen = $makeProbe('<p>Public launch</p>')
@@ -592,6 +598,10 @@ class ProbeSecurityTest extends TestCase
         $this->assertTrue($allPresent->expectedTextFound);
         $this->assertSame('body_too_large', $partialPresent->errorType);
         $this->assertNull($partialPresent->expectedTextFound);
+        $this->assertNull($anyPresent->errorType);
+        $this->assertTrue($anyPresent->expectedTextFound);
+        $this->assertSame('body_too_large', $anyNotSeen->errorType);
+        $this->assertNull($anyNotSeen->expectedTextFound);
         $this->assertNull($forbiddenFound->errorType);
         $this->assertTrue($forbiddenFound->expectedTextFound);
         $this->assertSame('body_too_large', $forbiddenNotSeen->errorType);

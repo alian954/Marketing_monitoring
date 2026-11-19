@@ -737,6 +737,7 @@ class MonitorController extends Controller
                 'error_type',
                 'adsbot_error_type',
                 'expected_text_found',
+                'expected_text_mode',
                 'tls_expires_at_utc',
             ], ',', '"', '');
 
@@ -759,6 +760,7 @@ class MonitorController extends Controller
                         (string) $run->error_type,
                         (string) $run->adsbot_error_type,
                         $run->expected_text_found === null ? '' : ($run->expected_text_found ? '1' : '0'),
+                        $run->expectedTextMode(),
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
                     ];
 
@@ -910,7 +912,11 @@ class MonitorController extends Controller
             'clear_notification_discord_webhook' => ['sometimes', 'boolean'],
             'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
             'expected_text' => ['nullable', 'string', 'max:500'],
-            'expected_text_mode' => ['sometimes', 'in:present,absent'],
+            'expected_text_mode' => ['sometimes', 'in:'.implode(',', [
+                ExpectedTextMatcher::MODE_PRESENT,
+                ExpectedTextMatcher::MODE_PRESENT_ANY,
+                ExpectedTextMatcher::MODE_ABSENT,
+            ])],
             'response_time_threshold_ms' => ['nullable', 'integer', 'min:100', 'max:14000'],
             'timeout_seconds' => ['sometimes', 'integer', 'min:1', 'max:15'],
             'confirmation_delay_seconds' => ['sometimes', 'integer', 'min:30', 'max:300'],
@@ -1180,7 +1186,7 @@ class MonitorController extends Controller
             && (($result->statusCode >= 200 && $result->statusCode < 400)
                 || in_array($result->statusCode, $validated['accepted_status_codes'], true));
         $contentConditionPassed = $expectedText === null
-            || ($validated['expected_text_mode'] === 'absent'
+            || ($validated['expected_text_mode'] === ExpectedTextMatcher::MODE_ABSENT
                 ? $result->expectedTextFound === false
                 : $result->expectedTextFound === true);
         $isIncomplete = $result->errorType === 'body_too_large'
@@ -1245,12 +1251,14 @@ class MonitorController extends Controller
         }
 
         if (! $contentConditionPassed) {
-            return $expectedTextMode === 'absent'
-                ? '原始 HTTP 回應包含至少一個不得出現的片段。'
-                : '原始 HTTP 回應至少缺少一個指定片段。';
+            return match ($expectedTextMode) {
+                'absent' => '原始 HTTP 回應包含至少一個不得出現的片段。',
+                'present_any' => '原始 HTTP 回應未找到任何一個指定片段。',
+                default => '原始 HTTP 回應至少缺少一個指定片段。',
+            };
         }
 
-        return 'HTTP 狀態與全部文字條件均符合目前設定。';
+        return 'HTTP 狀態與文字條件均符合目前設定。';
     }
 
     /** @param array{expected_text?: ?string, expected_text_mode?: string} $validated */
@@ -1268,9 +1276,12 @@ class MonitorController extends Controller
             ]);
         }
 
-        if (($validated['expected_text_mode'] ?? 'present') !== 'present') {
+        if (! in_array($validated['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT, [
+            ExpectedTextMatcher::MODE_PRESENT,
+            ExpectedTextMatcher::MODE_PRESENT_ANY,
+        ], true)) {
             throw ValidationException::withMessages([
-                'expected_text_mode' => '社群貼文監測需確認指定文字存在，請選擇「回應中必須包含」。',
+                'expected_text_mode' => '社群貼文監測需確認指定文字存在，請選擇「全部片段都需包含」或「至少包含一個片段」。',
             ]);
         }
     }

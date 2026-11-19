@@ -106,8 +106,12 @@ class MonitorImportController extends Controller
                 $errors[] = '預期文字不得超過 500 個字元。';
             }
 
-            if (! in_array($expectedTextMode, ['present', 'absent'], true)) {
-                $errors[] = '預期文字比對方式只能是 present 或 absent。';
+            if (! in_array($expectedTextMode, [
+                ExpectedTextMatcher::MODE_PRESENT,
+                ExpectedTextMatcher::MODE_PRESENT_ANY,
+                ExpectedTextMatcher::MODE_ABSENT,
+            ], true)) {
+                $errors[] = '預期文字比對方式只能是 present、present_any 或 absent。';
             }
 
             $normalizedUrl = $url;
@@ -128,8 +132,11 @@ class MonitorImportController extends Controller
                 $errors[] = '社群貼文必須提供 expected_text 欄位中的預期文字。';
             }
 
-            if ($socialPlatform !== null && $expectedTextMode !== 'present') {
-                $errors[] = '社群貼文的 expected_text_mode 必須是 present。';
+            if ($socialPlatform !== null && ! in_array($expectedTextMode, [
+                ExpectedTextMatcher::MODE_PRESENT,
+                ExpectedTextMatcher::MODE_PRESENT_ANY,
+            ], true)) {
+                $errors[] = '社群貼文的 expected_text_mode 必須是 present 或 present_any。';
             }
 
             if ($hash !== null && isset($existingHashes[$hash])) {

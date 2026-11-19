@@ -82,6 +82,37 @@ class SocialPostImportTest extends TestCase
         Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
+    public function test_csv_can_preview_and_import_any_match_social_post_conditions(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'expected_text_mode'],
+            [[
+                'Alternative headline',
+                'https://www.threads.com/@creator/post/ANY123',
+                'Campaign',
+                "Campaign headline\nSpring sale",
+                'present_any',
+            ]],
+        );
+
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('至少包含一個片段：Campaign headline、Spring sale')
+            ->assertSee('可匯入');
+
+        $this->assertSame('present_any', $response->viewData('previewRows')[0]['expected_text_mode']);
+        $this->post(route('monitors.import.commit'), ['preview_token' => $response->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseHas('monitors', [
+            'url_hash' => Monitor::fingerprintUrl('https://www.threads.com/@creator/post/ANY123'),
+            'expected_text_mode' => 'present_any',
+        ]);
+    }
+
     public function test_csv_rejects_social_posts_without_expected_text(): void
     {
         $csv = $this->csvContent(
@@ -113,7 +144,7 @@ class SocialPostImportTest extends TestCase
                 'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
             ])
             ->assertOk()
-            ->assertSee('社群貼文的 expected_text_mode 必須是 present。');
+            ->assertSee('社群貼文的 expected_text_mode 必須是 present 或 present_any。');
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertDatabaseCount('monitors', 0);
@@ -158,7 +189,7 @@ class SocialPostImportTest extends TestCase
                 'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
             ])
             ->assertOk()
-            ->assertSee('預期文字比對方式只能是 present 或 absent。')
+            ->assertSee('預期文字比對方式只能是 present、present_any 或 absent。')
             ->assertSee('預期文字不得超過 500 個字元。')
             ->assertSee('資料欄位數量與標題列不一致。');
 

@@ -187,9 +187,9 @@
                                             @elseif ($monitor->latestCheckRun->expected_text_found === null)
                                                 尚未比對
                                             @elseif ($monitor->latestCheckRun->expected_text_found)
-                                                {{ $monitor->latestCheckRun->expectedTextMode() === 'absent' ? '找到禁止文字' : '已找到全部片段' }}
+                                                {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '找到禁止文字', 'present_any' => '已找到至少一個片段', default => '已找到全部片段' } }}
                                             @else
-                                                {{ $monitor->latestCheckRun->expectedTextMode() === 'absent' ? '未找到禁止文字' : '缺少至少一個片段' }}
+                                                {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '未找到禁止文字', 'present_any' => '未找到任何片段', default => '缺少至少一個片段' } }}
                                             @endif
                                         </span>
                                     @endif

@@ -76,8 +76,33 @@ class MonitorProbePreviewTest extends TestCase
         $response->assertOk()
             ->assertSee('預檢通過')
             ->assertSee('已找到全部指定片段')
-            ->assertSee('HTTP 狀態與全部文字條件均符合目前設定。')
+            ->assertSee('HTTP 狀態與文字條件均符合目前設定。')
             ->assertDontSee('<article>Campaign headline</article>', false);
+        $this->assertDatabaseCount('monitors', 0);
+        $this->assertDatabaseCount('check_runs', 0);
+    }
+
+    public function test_social_post_preview_accepts_any_expected_text_match(): void
+    {
+        $url = 'https://www.threads.com/@creator/post/ANY123';
+        $expectedText = "Campaign headline\nSpring sale";
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', $expectedText, 10, 'present_any')
+            ->andReturn(new ProbeResult(200, 60, $url, [], ['93.184.216.34'], null, null, true, null));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->followingRedirects()
+            ->post(route('monitors.probe-preview'), [
+                ...$this->socialPost($url, $expectedText),
+                'expected_text_mode' => 'present_any',
+            ])
+            ->assertOk()
+            ->assertSee('預檢通過')
+            ->assertSee('已找到至少一個指定片段');
+
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
     }
@@ -98,7 +123,7 @@ class MonitorProbePreviewTest extends TestCase
             ->post(route('monitors.probe-preview'), $data)
             ->assertOk()
             ->assertSee('預檢通過')
-            ->assertSee('HTTP 狀態與全部文字條件均符合目前設定。');
+            ->assertSee('HTTP 狀態與文字條件均符合目前設定。');
 
         $this->assertDatabaseCount('monitors', 0);
     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Probe\ExpectedTextMatcher;
 use Database\Factories\CheckRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -57,7 +58,7 @@ class CheckRun extends Model
             return true;
         }
 
-        return ($snapshot['expected_text_mode'] ?? 'present') === 'absent'
+        return ($snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT) === ExpectedTextMatcher::MODE_ABSENT
             ? $this->expected_text_found === false
             : $this->expected_text_found === true;
     }
@@ -66,7 +67,11 @@ class CheckRun extends Model
     {
         $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
 
-        return ($snapshot['expected_text_mode'] ?? 'present') === 'absent' ? 'absent' : 'present';
+        $mode = $snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT;
+
+        return in_array($mode, [ExpectedTextMatcher::MODE_ABSENT, ExpectedTextMatcher::MODE_PRESENT_ANY], true)
+            ? $mode
+            : ExpectedTextMatcher::MODE_PRESENT;
     }
 
     public function hasIndeterminateContentMatch(): bool

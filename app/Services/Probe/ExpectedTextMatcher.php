@@ -4,6 +4,12 @@ namespace App\Services\Probe;
 
 class ExpectedTextMatcher
 {
+    public const MODE_ABSENT = 'absent';
+
+    public const MODE_PRESENT = 'present';
+
+    public const MODE_PRESENT_ANY = 'present_any';
+
     public static function normalize(?string $expectedText): ?string
     {
         $terms = self::terms($expectedText);
@@ -42,7 +48,7 @@ class ExpectedTextMatcher
 
         $matchedTerms = array_filter($terms, static fn (string $term): bool => self::matchesTerm($body, $term));
 
-        return $mode === 'absent'
+        return in_array($mode, [self::MODE_ABSENT, self::MODE_PRESENT_ANY], true)
             ? $matchedTerms !== []
             : count($matchedTerms) === count($terms);
     }
@@ -57,7 +63,7 @@ class ExpectedTextMatcher
 
         $matchedTerms = array_filter($terms, static fn (string $term): bool => self::matchesTerm($body, $term));
 
-        if ($mode === 'absent') {
+        if (in_array($mode, [self::MODE_ABSENT, self::MODE_PRESENT_ANY], true)) {
             return $matchedTerms === [] ? null : true;
         }
 

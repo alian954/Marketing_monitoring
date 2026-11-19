@@ -36,6 +36,7 @@ class MonitorCheckRunExportTest extends TestCase
             'config_snapshot' => json_encode([
                 'url' => $privateUrl,
                 'expected_text' => 'private expected phrase',
+                'expected_text_mode' => 'present_any',
             ], JSON_THROW_ON_ERROR),
             'source' => 'scheduled',
             'status' => 'failed',
@@ -93,6 +94,7 @@ class MonitorCheckRunExportTest extends TestCase
             'error_type',
             'adsbot_error_type',
             'expected_text_found',
+            'expected_text_mode',
             'tls_expires_at_utc',
         ], $headers);
         $this->assertCount(1, $rows);
@@ -109,6 +111,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
         $this->assertSame('0', $row[$columns['expected_text_found']]);
+        $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
         $this->assertStringNotContainsString('secret-url-value', $content);
         $this->assertStringNotContainsString('private expected phrase', $content);

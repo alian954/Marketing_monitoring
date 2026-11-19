@@ -49,7 +49,7 @@
                         <li>HTTP 狀態碼：{{ $probePreview['status_code'] ?? '未收到' }}</li>
                         <li>回應時間：{{ $probePreview['elapsed_ms'] }} 毫秒</li>
                         @if ($probePreview['expected_text_checked'])
-                            <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
+                            <li>文字比對：{{ match ([$probePreview['expected_text_state'], $probePreview['expected_text_mode']]) { ['found', 'absent'] => '找到不得出現的文字', ['missing', 'absent'] => '未找到不得出現的文字', ['found', 'present_any'] => '已找到至少一個指定片段', ['missing', 'present_any'] => '未找到任何指定片段', ['found', 'present'] => '已找到全部指定片段', ['missing', 'present'] => '至少缺少一個指定片段', default => '無法判定' } }}</li>
                         @endif
                         @if ($probePreview['final_url'])
                             <li>最終網址：<span class="masked-url">{{ $probePreview['final_url'] }}</span></li>
@@ -189,17 +189,18 @@
                         <div class="field-group field-group-full">
                             <label class="field-label" for="expected_text">預期貼文／回應文字片段</label>
                             <textarea class="field-textarea @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" rows="4" maxlength="500" autocomplete="off" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}" @if ($errors->has('expected_text')) aria-invalid="true" @endif>{{ old('expected_text', $monitor->expected_text) }}</textarea>
-                            <p id="expected-text-help" class="field-help">每行輸入一個文字片段，最多 500 字。選「回應中必須包含」時，每個片段都要找到；選「回應中不得包含」時，任何一個片段出現就違反條件。社群貼文需填文字並選擇「回應中必須包含」。系統不保存整份回應或截圖；比對不區分大小寫。</p>
+                            <p id="expected-text-help" class="field-help">每行輸入一個文字片段，最多 500 字。「全部片段都需包含」要求每一行都找到；「至少包含一個片段」找到任一行即可；「不得出現」只要找到任一行就告警。任一片段模式適合原始回應只呈現部分貼文文字的情況；請使用具辨識度的片語降低誤符合。社群貼文需填文字並選擇前兩種條件之一。系統不保存整份回應或截圖；比對不區分大小寫。</p>
                             @error('expected_text')<p id="expected-text-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="expected_text_mode">文字符合條件</label>
                             <select class="field-select @error('expected_text_mode') is-invalid @enderror" id="expected_text_mode" name="expected_text_mode" required aria-describedby="{{ $errors->has('expected_text_mode') ? 'expected-text-mode-help expected-text-mode-error' : 'expected-text-mode-help' }}" @if ($errors->has('expected_text_mode')) aria-invalid="true" @endif>
-                                <option value="present" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'present')>回應中必須包含</option>
+                                <option value="present" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'present')>全部片段都需包含</option>
+                                <option value="present_any" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'present_any')>至少包含一個片段</option>
                                 <option value="absent" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'absent')>回應中不得包含</option>
                             </select>
-                            <p id="expected-text-mode-help" class="field-help">只在上方輸入文字時套用。必須包含會檢查每一行；不得包含會在找到任一行時告警。</p>
+                            <p id="expected-text-mode-help" class="field-help">只在上方輸入文字時套用。全部片段都需包含會檢查每一行；至少包含一個片段會檢查任一行；不得包含會在找到任一行時告警。</p>
                             @error('expected_text_mode')<p id="expected-text-mode-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 

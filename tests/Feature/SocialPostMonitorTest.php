@@ -66,6 +66,21 @@ class SocialPostMonitorTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_social_post_accepts_the_any_expected_text_condition(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost(
+                'https://www.instagram.com/p/ANY123/',
+                "Campaign headline\nSpring sale",
+                'present_any',
+            ));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame('present_any', $monitor->expected_text_mode);
+    }
+
     public function test_editing_a_social_post_cannot_remove_its_expected_text(): void
     {
         $url = 'https://www.instagram.com/p/ABC123/';
@@ -125,7 +140,9 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('maxlength="500"', false)
             ->assertSee('aria-describedby="expected-text-help"', false)
             ->assertSee('每行輸入一個文字片段')
-            ->assertSee('每個片段都要找到');
+            ->assertSee('全部片段都需包含')
+            ->assertSee('至少包含一個片段')
+            ->assertSee('option value="present_any"', false);
     }
 
     public function test_editing_a_social_post_updates_its_stored_platform(): void
@@ -485,6 +502,67 @@ class SocialPostMonitorTest extends TestCase
             'rule_key' => 'content',
             'severity' => 'warning',
         ]);
+    }
+
+    public function test_any_expected_text_condition_passes_when_one_line_is_found_and_warns_when_none_are_found(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $matchingUrl = 'https://www.instagram.com/p/ANYMATCH123/';
+        $missingUrl = 'https://www.instagram.com/p/ANYMISS123/';
+        $matchingMonitor = Monitor::factory()->create([
+            'url' => $matchingUrl,
+            'url_hash' => Monitor::fingerprintUrl($matchingUrl),
+            'expected_text' => "Campaign headline\nSpring sale",
+            'expected_text_mode' => 'present_any',
+        ]);
+        $missingMonitor = Monitor::factory()->create([
+            'url' => $missingUrl,
+            'url_hash' => Monitor::fingerprintUrl($missingUrl),
+            'expected_text' => "Campaign headline\nSpring sale",
+            'expected_text_mode' => 'present_any',
+        ]);
+        $matchingRun = app(RunScheduler::class)->enqueue($matchingMonitor, 'manual');
+        $missingRun = app(RunScheduler::class)->enqueue($missingMonitor, 'manual');
+        $this->assertNotNull($matchingRun);
+        $this->assertNotNull($missingRun);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $body = str_contains($target['url'], 'ANYMATCH123')
+                    ? '<article>Campaign headline</article>'
+                    : '<article>Other copy</article>';
+
+                return new HopResponse(200, null, $body, 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+        $incidents = app(IncidentManager::class);
+        $scheduler = app(RunScheduler::class);
+
+        (new RunMonitorCheck($matchingRun->id))->handle($probe, $incidents, $scheduler);
+        (new RunMonitorCheck($missingRun->id))->handle($probe, $incidents, $scheduler);
+
+        $this->assertTrue($matchingRun->fresh()->passesMonitorChecks());
+        $this->assertSame('present_any', $matchingRun->fresh()->expectedTextMode());
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $matchingMonitor->id,
+            'rule_key' => 'content',
+        ]);
+        $this->assertFalse($missingRun->fresh()->passesMonitorChecks());
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $missingRun->id,
+            'expected_text_found' => false,
+        ]);
+        $incident = Incident::query()->where('monitor_id', $missingMonitor->id)->where('rule_key', 'content')->sole();
+        $contentEvent = $incident->events()->where('event_type', 'failure_seen')->sole();
+        $this->assertSame('present_any', $contentEvent->evidence['expected_text_mode']);
+        $this->assertFalse($contentEvent->evidence['expected_text_found']);
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $missingMonitor))
+            ->assertOk()
+            ->assertSee('至少包含一個片段：')
+            ->assertSee('原始回應未找到任何片段');
     }
 
     public function test_absent_text_condition_alerts_when_any_forbidden_line_is_present(): void

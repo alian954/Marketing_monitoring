@@ -9,6 +9,7 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\TlsObservation;
+use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeResult;
 use App\Services\Probe\TlsCertificateResult;
 use Illuminate\Database\Eloquent\Builder;
@@ -57,14 +58,16 @@ class IncidentManager
             ));
 
             $expectedText = $lockedMonitor->expected_text;
-            $expectedTextMode = $lockedMonitor->expected_text_mode === 'absent' ? 'absent' : 'present';
+            $expectedTextMode = in_array($lockedMonitor->expected_text_mode, [ExpectedTextMatcher::MODE_ABSENT, ExpectedTextMatcher::MODE_PRESENT_ANY], true)
+                ? $lockedMonitor->expected_text_mode
+                : ExpectedTextMatcher::MODE_PRESENT;
 
             if ($expectedText !== null && $expectedText !== '' && $normalProbeSucceeded) {
                 $expectedTextFound = $normal->expectedTextFound;
-                $contentFailure = $expectedTextMode === 'absent'
+                $contentFailure = $expectedTextMode === ExpectedTextMatcher::MODE_ABSENT
                     ? $expectedTextFound === true
                     : $expectedTextFound === false;
-                $contentRuleKey = $expectedTextMode === 'absent' ? 'forbidden_text' : 'content';
+                $contentRuleKey = $expectedTextMode === ExpectedTextMatcher::MODE_ABSENT ? 'forbidden_text' : 'content';
                 $delay = $this->earlierDelay($delay, $this->recordRule(
                     $lockedMonitor,
                     $run,

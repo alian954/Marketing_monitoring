@@ -33,7 +33,7 @@
                 <div class="field-group">
                     <label class="field-label" for="csv_file">選擇 CSV 檔案<span class="required-mark" aria-hidden="true">*</span></label>
                     <input class="field-input @error('csv_file') is-invalid @enderror" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required aria-describedby="{{ $errors->has('csv_file') ? 'csv-help csv-file-error' : 'csv-help' }}">
-                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。社群貼文需加入 <code>expected_text</code>，並使用 <code>expected_text_mode=present</code>；一般網站可用 <code>absent</code> 檢查文字是否消失。省略比對方式時預設為 <code>present</code>。所有資料列先預覽，確認後才匯入；網址預覽會遮罩。</p>
+                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。可用 <code>expected_text_mode=present</code> 要求全部片段都出現，或用 <code>present_any</code> 只要求任一片段出現；<code>absent</code> 會在任一片段出現時告警。社群貼文需加入 <code>expected_text</code>，並使用 <code>present</code> 或 <code>present_any</code>。省略比對方式時預設為 <code>present</code>。所有資料列先預覽，確認後才匯入；網址預覽會遮罩。</p>
                     @error('csv_file')<p id="csv-file-error" class="field-error">{{ $message }}</p>@enderror
                 </div>
                 <div class="form-actions">
@@ -96,7 +96,7 @@
                                         <td>{{ data_get($previewRow, 'label') ?: '—' }}</td>
                                         <td>
                                             @if (data_get($previewRow, 'expected_text', '') !== '')
-                                                {{ data_get($previewRow, 'expected_text_mode') === 'absent' ? '不得出現任一片段：' : '必須包含全部片段：' }}{{ str_replace("\n", '、', data_get($previewRow, 'expected_text')) }}
+                                                {{ match (data_get($previewRow, 'expected_text_mode')) { 'absent' => '不得出現任一片段：', 'present_any' => '至少包含一個片段：', default => '必須包含全部片段：' } }}{{ str_replace("\n", '、', data_get($previewRow, 'expected_text')) }}
                                             @else
                                                 —
                                             @endif
