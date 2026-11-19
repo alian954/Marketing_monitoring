@@ -132,7 +132,9 @@ class MonitorController extends Controller
             ->orderBy('label')
             ->pluck('label');
 
-        return view('monitors.index', compact('monitors', 'filters', 'labels'));
+        return view('monitors.index', compact('monitors', 'filters', 'labels') + [
+            'intervalOptions' => self::INTERVAL_OPTIONS,
+        ]);
     }
 
     /** @param array{search: string, label: string, platform: string, state: string, sort?: string} $filters */
@@ -458,10 +460,7 @@ class MonitorController extends Controller
 
         $monitor = DB::transaction(function () use ($monitor, $validated, $normalizedUrl, $fingerprint): Monitor {
             $lockedMonitor = Monitor::query()->lockForUpdate()->findOrFail($monitor->id);
-            $previousVersion = $lockedMonitor->config_version;
-            $nextVersion = $previousVersion + 1;
-
-            $lockedMonitor->forceFill([
+            $this->persistMonitorConfigurationVersion($lockedMonitor, [
                 'name' => $validated['name'],
                 'url' => $normalizedUrl,
                 'url_hash' => $fingerprint,
@@ -484,38 +483,7 @@ class MonitorController extends Controller
                 'confirmation_delay_seconds' => $validated['confirmation_delay_seconds'],
                 'interval_seconds' => $validated['interval_seconds'],
                 'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
-                'config_version' => $nextVersion,
-                'next_check_at' => $lockedMonitor->enabled ? now() : null,
-            ])->save();
-
-            CheckRun::query()
-                ->where('monitor_id', $lockedMonitor->id)
-                ->where('config_version', $previousVersion)
-                ->where('status', 'queued')
-                ->update(['status' => 'stale_config', 'finished_at' => now(), 'updated_at' => now()]);
-
-            $activeIncidents = Incident::query()
-                ->where('monitor_id', $lockedMonitor->id)
-                ->where('config_version', $previousVersion)
-                ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($activeIncidents as $incident) {
-                $incident->forceFill([
-                    'state' => Incident::STATE_SUPERSEDED,
-                    'active_key' => null,
-                    'confirm_after' => null,
-                ])->save();
-
-                IncidentEvent::query()->forceCreate([
-                    'incident_id' => $incident->id,
-                    'check_run_id' => null,
-                    'event_type' => 'superseded',
-                    'evidence' => ['previous_config_version' => $previousVersion, 'new_config_version' => $nextVersion],
-                    'created_at' => now(),
-                ]);
-            }
+            ]);
 
             return $lockedMonitor;
         });
@@ -539,8 +507,9 @@ class MonitorController extends Controller
     public function bulkStatus(Request $request, IncidentManager $incidents, RunScheduler $scheduler): RedirectResponse
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:pause,resume,label,check,delete'],
+            'action' => ['required', 'in:pause,resume,label,interval,check,delete'],
             'label' => ['nullable', 'string', 'max:100'],
+            'interval_seconds' => ['exclude_unless:action,interval', 'required', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
             'confirm_delete' => ['exclude_unless:action,delete', 'accepted'],
             'monitor_ids' => ['required', 'array', 'min:1', 'max:50'],
             'monitor_ids.*' => ['required', 'integer', 'distinct', 'exists:monitors,id'],
@@ -548,6 +517,9 @@ class MonitorController extends Controller
             'action.required' => '請選擇要執行的批次操作。',
             'action.in' => '請選擇有效的批次操作。',
             'label.max' => '監測項目標籤不得超過 100 個字元。',
+            'interval_seconds.required' => '選擇此批次操作時，請指定檢查頻率。',
+            'interval_seconds.integer' => '檢查頻率必須是秒數。',
+            'interval_seconds.in' => '請選擇支援的檢查頻率。',
             'confirm_delete.accepted' => '刪除前請勾選確認方塊。',
             'monitor_ids.required' => '請至少選取一個監測項目。',
             'monitor_ids.array' => '監測項目選取資料格式不正確。',
@@ -562,6 +534,9 @@ class MonitorController extends Controller
         $action = $validated['action'];
         $label = trim((string) ($validated['label'] ?? ''));
         $label = $label === '' ? null : $label;
+        $intervalSeconds = array_key_exists('interval_seconds', $validated)
+            ? (int) $validated['interval_seconds']
+            : null;
 
         if ($action === 'check') {
             $monitors = Monitor::query()->whereIn('id', $monitorIds)->orderBy('id')->get();
@@ -590,7 +565,7 @@ class MonitorController extends Controller
             return back()->with('status', $statusMessage);
         }
 
-        $changedCount = DB::transaction(function () use ($monitorIds, $action, $label, $incidents): int {
+        $changedCount = DB::transaction(function () use ($monitorIds, $action, $label, $intervalSeconds, $incidents): int {
             $monitors = Monitor::query()
                 ->whereIn('id', $monitorIds)
                 ->orderBy('id')
@@ -612,6 +587,19 @@ class MonitorController extends Controller
                     }
 
                     $monitor->forceFill(['label' => $label])->save();
+                    $changedCount++;
+                }
+
+                return $changedCount;
+            }
+
+            if ($action === 'interval' && $intervalSeconds !== null) {
+                foreach ($monitors as $monitor) {
+                    if ($monitor->interval_seconds === $intervalSeconds) {
+                        continue;
+                    }
+
+                    $this->persistMonitorConfigurationVersion($monitor, ['interval_seconds' => $intervalSeconds]);
                     $changedCount++;
                 }
 
@@ -644,6 +632,22 @@ class MonitorController extends Controller
 
             if ($unchangedCount > 0) {
                 $statusMessage .= " {$unchangedCount} 個標籤已相同，未變更。";
+            }
+
+            return back()->with('status', $statusMessage);
+        }
+
+        if ($action === 'interval' && $intervalSeconds !== null) {
+            $intervalLabel = self::INTERVAL_OPTIONS[$intervalSeconds];
+
+            if ($changedCount === 0) {
+                return back()->with('status', '所選監測項目皆已是「'.$intervalLabel.'」，未變更。');
+            }
+
+            $statusMessage = '已調整 '.$changedCount.' 個監測項目的檢查頻率為「'.$intervalLabel.'」。';
+
+            if ($unchangedCount > 0) {
+                $statusMessage .= ' '.$unchangedCount.' 個項目已是此頻率，未變更。';
             }
 
             return back()->with('status', $statusMessage);
@@ -1660,5 +1664,47 @@ class MonitorController extends Controller
     private function resumeMonitorChecks(Monitor $monitor): void
     {
         $monitor->forceFill(['enabled' => true, 'next_check_at' => now()])->save();
+    }
+
+    /** @param array<string, mixed> $configuration */
+    private function persistMonitorConfigurationVersion(Monitor $monitor, array $configuration): void
+    {
+        $previousVersion = $monitor->config_version;
+        $nextVersion = $previousVersion + 1;
+
+        $monitor->forceFill([
+            ...$configuration,
+            'config_version' => $nextVersion,
+            'next_check_at' => $monitor->enabled ? now() : null,
+        ])->save();
+
+        CheckRun::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('config_version', $previousVersion)
+            ->where('status', 'queued')
+            ->update(['status' => 'stale_config', 'finished_at' => now(), 'updated_at' => now()]);
+
+        $activeIncidents = Incident::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('config_version', $previousVersion)
+            ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($activeIncidents as $incident) {
+            $incident->forceFill([
+                'state' => Incident::STATE_SUPERSEDED,
+                'active_key' => null,
+                'confirm_after' => null,
+            ])->save();
+
+            IncidentEvent::query()->forceCreate([
+                'incident_id' => $incident->id,
+                'check_run_id' => null,
+                'event_type' => 'superseded',
+                'evidence' => ['previous_config_version' => $previousVersion, 'new_config_version' => $nextVersion],
+                'created_at' => now(),
+            ]);
+        }
     }
 }

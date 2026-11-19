@@ -123,6 +123,7 @@
                                 <option value="pause" @selected(old('action') === 'pause')>暫停所選監測項目</option>
                                 <option value="resume" @selected(old('action') === 'resume')>恢復所選監測項目</option>
                                 <option value="label" @selected(old('action') === 'label')>更新所選項目的標籤</option>
+                                <option value="interval" @selected(old('action') === 'interval')>調整所選項目的檢查頻率</option>
                                 <option value="check" @selected(old('action') === 'check')>立即檢查所選項目</option>
                                 <option value="delete" @selected(old('action') === 'delete')>刪除所選監測項目</option>
                             </select>
@@ -134,6 +135,17 @@
                             <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="100" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
                             <p id="bulk-monitor-label-help" class="field-help">只有選擇「更新所選項目的標籤」時才會使用；留空會清除所選項目的標籤。</p>
                             @error('label')<p id="bulk-monitor-label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="bulk-monitor-interval">新檢查頻率</label>
+                            <select class="field-select @error('interval_seconds') is-invalid @enderror" id="bulk-monitor-interval" name="interval_seconds" aria-describedby="bulk-monitor-interval-help{{ $errors->has('interval_seconds') ? ' bulk-monitor-interval-error' : '' }}" @if ($errors->has('interval_seconds')) aria-invalid="true" @endif>
+                                <option value="">選擇頻率</option>
+                                @foreach ($intervalOptions as $seconds => $intervalLabel)
+                                    <option value="{{ $seconds }}" @selected((string) old('interval_seconds', '') === (string) $seconds)>{{ $intervalLabel }}</option>
+                                @endforeach
+                            </select>
+                            <p id="bulk-monitor-interval-help" class="field-help">只有選擇「調整所選項目的檢查頻率」時才會使用。調整後會建立新設定版本，啟用中的項目會立即排入下一次檢查。</p>
+                            @error('interval_seconds')<p id="bulk-monitor-interval-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
                             <label class="field-check" for="bulk-monitor-delete-confirmation">

@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class BulkMonitorStatusTest extends TestCase
@@ -45,6 +46,7 @@ class BulkMonitorStatusTest extends TestCase
             ->from(route('monitors.index'))
             ->post(route('monitors.bulk-status'), [
                 'action' => 'pause',
+                'interval_seconds' => '',
                 'monitor_ids' => [$firstMonitor->id, $secondMonitor->id],
             ])
             ->assertRedirect(route('monitors.index'))
@@ -326,6 +328,128 @@ class BulkMonitorStatusTest extends TestCase
         $this->assertSame('Existing', $monitor->fresh()->label);
     }
 
+    public function test_bulk_interval_change_updates_selected_schedules_and_supersedes_old_configuration(): void
+    {
+        $this->travelTo(now()->startOfMinute());
+        $changedMonitor = $this->createMonitor([
+            'interval_seconds' => 900,
+            'next_check_at' => now()->addHour(),
+        ]);
+        $unchangedMonitor = $this->createMonitor([
+            'interval_seconds' => 300,
+            'next_check_at' => now()->addHour(),
+        ]);
+        $pausedMonitor = $this->createMonitor([
+            'enabled' => false,
+            'interval_seconds' => 900,
+            'next_check_at' => null,
+        ]);
+        $untouchedMonitor = $this->createMonitor([
+            'interval_seconds' => 900,
+            'next_check_at' => now()->addHour(),
+        ]);
+        $queuedRun = CheckRun::factory()->for($changedMonitor)->create([
+            'config_version' => 1,
+            'status' => 'queued',
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        $incident = Incident::factory()->for($changedMonitor)->create([
+            'config_version' => 1,
+            'state' => Incident::STATE_OPEN,
+            'confirm_after' => now()->addMinute(),
+        ]);
+        $unchangedDueAt = $unchangedMonitor->next_check_at->toDateTimeString();
+        $untouchedDueAt = $untouchedMonitor->next_check_at->toDateTimeString();
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'interval',
+                'interval_seconds' => 300,
+                'monitor_ids' => [$changedMonitor->id, $unchangedMonitor->id, $pausedMonitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHas('status', '已調整 2 個監測項目的檢查頻率為「每 5 分鐘」。 1 個項目已是此頻率，未變更。');
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $changedMonitor->id,
+            'interval_seconds' => 300,
+            'config_version' => 2,
+            'next_check_at' => now()->toDateTimeString(),
+        ]);
+        $this->assertDatabaseHas('monitors', [
+            'id' => $pausedMonitor->id,
+            'enabled' => false,
+            'interval_seconds' => 300,
+            'config_version' => 2,
+            'next_check_at' => null,
+        ]);
+        $this->assertDatabaseHas('monitors', [
+            'id' => $unchangedMonitor->id,
+            'interval_seconds' => 300,
+            'config_version' => 1,
+        ]);
+        $this->assertSame($unchangedDueAt, $unchangedMonitor->fresh()->next_check_at->toDateTimeString());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $untouchedMonitor->id,
+            'interval_seconds' => 900,
+            'config_version' => 1,
+        ]);
+        $this->assertSame($untouchedDueAt, $untouchedMonitor->fresh()->next_check_at->toDateTimeString());
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $queuedRun->id,
+            'status' => 'stale_config',
+            'finished_at' => now()->toDateTimeString(),
+        ]);
+        $this->assertDatabaseHas('incidents', [
+            'id' => $incident->id,
+            'state' => Incident::STATE_SUPERSEDED,
+            'active_key' => null,
+            'confirm_after' => null,
+        ]);
+        $this->assertDatabaseHas('incident_events', [
+            'incident_id' => $incident->id,
+            'event_type' => 'superseded',
+        ]);
+    }
+
+    #[DataProvider('invalidBulkIntervalValues')]
+    public function test_bulk_interval_change_rejects_values_outside_supported_frequency_options(
+        string $intervalSeconds,
+        string $errorMessage,
+    ): void {
+        $monitor = $this->createMonitor();
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'interval',
+                'interval_seconds' => $intervalSeconds,
+                'monitor_ids' => [$monitor->id],
+            ])
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors(['interval_seconds' => $errorMessage]);
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'interval_seconds' => 900,
+            'config_version' => 1,
+        ]);
+        $this->assertDatabaseCount('check_runs', 0);
+        $this->assertDatabaseCount('incident_events', 0);
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function invalidBulkIntervalValues(): array
+    {
+        return [
+            'frequency is missing' => ['', '選擇此批次操作時，請指定檢查頻率。'],
+            'frequency is not an integer' => ['quickly', '檢查頻率必須是秒數。'],
+            'frequency is unsupported' => ['120', '請選擇支援的檢查頻率。'],
+        ];
+    }
+
     public function test_bulk_delete_requires_explicit_confirmation_and_keeps_monitor_data_on_failure(): void
     {
         $monitor = $this->createMonitor();
@@ -471,6 +595,9 @@ class BulkMonitorStatusTest extends TestCase
             ->assertSee('恢復所選監測項目')
             ->assertSee('更新所選項目的標籤')
             ->assertSee('立即檢查所選項目')
+            ->assertSee('調整所選項目的檢查頻率')
+            ->assertSee('name="interval_seconds"', false)
+            ->assertSee('bulk-monitor-interval', false)
             ->assertSee('name="label"', false)
             ->assertSee('留空會清除所選項目的標籤');
     }
