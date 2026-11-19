@@ -53,6 +53,8 @@ class MonitorCheckRunExportTest extends TestCase
             'final_url' => 'https://private.example/redirected?secret=private-redirect-value',
             'redirects' => ['https://private.example/redirected?secret=private-redirect-value'],
             'expected_text_found' => false,
+            'response_title' => '=HYPERLINK("https://evil.example")',
+            'response_description' => 'Public campaign page summary.',
             'tls_expires_at' => '2027-01-01 00:00:00',
         ]);
         CheckRun::factory()->for($otherMonitor)->create([
@@ -95,6 +97,8 @@ class MonitorCheckRunExportTest extends TestCase
             'adsbot_error_type',
             'expected_text_found',
             'expected_response_header_found',
+            'response_title',
+            'response_description',
             'expected_text_mode',
             'tls_expires_at_utc',
             'final_url',
@@ -115,6 +119,8 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
         $this->assertSame('', $row[$columns['expected_text_found']]);
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
+        $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_title']]);
+        $this->assertSame('Public campaign page summary.', $row[$columns['response_description']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
         $this->assertSame('https://private.example/redirected?secret=REDACTED', $row[$columns['final_url']]);

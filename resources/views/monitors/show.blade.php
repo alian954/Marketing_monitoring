@@ -301,6 +301,21 @@
                                 <dd>{{ $monitor->latestCheckRun->expectedResponseHeaderMatchResult() === null ? '未檢查或無法判定' : ($monitor->latestCheckRun->expectedResponseHeaderMatchResult() ? '符合' : '不符合') }}</dd>
                             </div>
                         @endif
+                        <div class="metadata-item field-group-full">
+                            <dt>頁面回應摘要</dt>
+                            <dd>
+                                @if ($monitor->latestCheckRun->response_title || $monitor->latestCheckRun->response_description)
+                                    @if ($monitor->latestCheckRun->response_title)
+                                        <p>分享標題：{{ $monitor->latestCheckRun->response_title }}</p>
+                                    @endif
+                                    @if ($monitor->latestCheckRun->response_description)
+                                        <p>分享摘要：{{ $monitor->latestCheckRun->response_description }}</p>
+                                    @endif
+                                @else
+                                    <span class="secondary-text">回應沒有提供頁面標題或摘要。</span>
+                                @endif
+                            </dd>
+                        </div>
                         @if ($monitor->latestCheckRun->error_type || $monitor->latestCheckRun->adsbot_error_type)
                             <div class="metadata-item field-group-full">
                                 <dt>檢查訊號</dt>
@@ -1071,6 +1086,7 @@
                             <th scope="col">執行狀態</th>
                             <th scope="col">HTTP</th>
                             <th scope="col">AdsBot</th>
+                            <th scope="col">頁面回應摘要</th>
                             @if ($monitor->expected_text)
                                 <th scope="col">文字比對</th>
                             @endif
@@ -1092,6 +1108,21 @@
                                 <td><x-state-badge :state="$run->status" /></td>
                                 <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
+                                <td>
+                                    @if ($run->response_title || $run->response_description)
+                                        <details>
+                                            <summary>查看回應摘要</summary>
+                                            @if ($run->response_title)
+                                                <p>分享標題：{{ $run->response_title }}</p>
+                                            @endif
+                                            @if ($run->response_description)
+                                                <p>分享摘要：{{ $run->response_description }}</p>
+                                            @endif
+                                        </details>
+                                    @else
+                                        <span class="secondary-text">未提供</span>
+                                    @endif
+                                </td>
                                 @if ($monitor->expected_text)
                                     <td>
                                         <p>{{ $run->expectedTextMatchResult() === null ? '未進行比對或無法判定' : match ($run->expectedTextMode()) { 'absent' => $run->expectedTextMatchResult() ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expectedTextMatchResult() ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expectedTextMatchResult() ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>

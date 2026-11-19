@@ -116,6 +116,9 @@ class SecureProbeClient implements ProbeClient
                 && $isRedirectResponse
                 && $response->location !== null
                 && trim($response->location) !== '';
+            $responseMetadata = ! $isRedirectResponse
+                ? ResponseMetadataExtractor::extract($response->body)
+                : ['title' => null, 'description' => null];
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -144,6 +147,8 @@ class SecureProbeClient implements ProbeClient
                     $response->retryAfterSeconds,
                     $expectedResponseHeaderFound,
                     $expectedTextTermMatches,
+                    $responseMetadata['title'],
+                    $responseMetadata['description'],
                 );
             }
 
@@ -165,6 +170,9 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostIps,
                     $response->retryAfterSeconds,
                     $expectedResponseHeaderFound,
+                    null,
+                    $responseMetadata['title'],
+                    $responseMetadata['description'],
                 );
             }
 
@@ -183,6 +191,8 @@ class SecureProbeClient implements ProbeClient
                     $response->retryAfterSeconds,
                     null,
                     $expectedTextTermMatches,
+                    $responseMetadata['title'],
+                    $responseMetadata['description'],
                 );
             }
 
@@ -209,6 +219,8 @@ class SecureProbeClient implements ProbeClient
                     $response->retryAfterSeconds,
                     $expectedResponseHeaderFound,
                     $expectedTextTermMatches,
+                    $responseMetadata['title'],
+                    $responseMetadata['description'],
                 );
             }
 

@@ -158,6 +158,8 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'expected_text_found' => $responseConditionStatusAccepted ? $normal->expectedTextFound : null,
                 'expected_text_term_matches' => $responseConditionStatusAccepted ? $normal->expectedTextTermMatches : null,
                 'expected_response_header_found' => $responseConditionStatusAccepted ? $normal->expectedResponseHeaderFound : null,
+                'response_title' => $normal->responseTitle,
+                'response_description' => $normal->responseDescription,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
 

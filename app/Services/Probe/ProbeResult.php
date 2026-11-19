@@ -24,6 +24,8 @@ readonly class ProbeResult
         public ?int $retryAfterSeconds = null,
         public ?bool $expectedResponseHeaderFound = null,
         public ?array $expectedTextTermMatches = null,
+        public ?string $responseTitle = null,
+        public ?string $responseDescription = null,
     ) {}
 
     public function succeeded(): bool
