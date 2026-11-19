@@ -12,6 +12,7 @@ use App\Models\TlsObservation;
 use App\Services\Probe\ProbeResult;
 use App\Services\Probe\TlsCertificateResult;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class IncidentManager
@@ -102,10 +103,74 @@ class IncidentManager
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));
             }
 
+            $delay = $this->earlierDelay($delay, $this->recordRule(
+                $lockedMonitor,
+                $run,
+                'monitor_stale',
+                'warning',
+                false,
+                $normal,
+                false,
+                true,
+                ['last_checked_at' => $lockedMonitor->last_checked_at?->utc()->toIso8601String()],
+            ));
+
             $this->recordTls($lockedMonitor, $run, $normal, $delay);
 
             return $delay;
         });
+    }
+
+    public function queueDueStaleIncidents(): int
+    {
+        $staleGraceSeconds = (int) config('monitoring.stale_grace_seconds');
+        $intervals = Monitor::query()
+            ->where('enabled', true)
+            ->distinct()
+            ->orderBy('interval_seconds')
+            ->pluck('interval_seconds')
+            ->map(static fn (mixed $seconds): int => (int) $seconds)
+            ->all();
+
+        if ($intervals === []) {
+            return 0;
+        }
+
+        $asOf = now();
+        $queued = 0;
+        $staleMonitors = Monitor::query()
+            ->where('enabled', true)
+            ->where(function (Builder $query) use ($intervals, $staleGraceSeconds, $asOf): void {
+                foreach ($intervals as $intervalSeconds) {
+                    $staleAt = $asOf->copy()->subSeconds($intervalSeconds + $staleGraceSeconds);
+                    $query->orWhere(function (Builder $intervalQuery) use ($intervalSeconds, $staleAt): void {
+                        $intervalQuery->where('interval_seconds', $intervalSeconds)
+                            ->where(function (Builder $timestampQuery) use ($staleAt): void {
+                                $timestampQuery->where('last_checked_at', '<', $staleAt)
+                                    ->orWhere(function (Builder $uncheckedQuery) use ($staleAt): void {
+                                        $uncheckedQuery->whereNull('last_checked_at')
+                                            ->where('created_at', '<', $staleAt);
+                                    });
+                            });
+                    });
+                }
+            })
+            ->whereDoesntHave('incidents', static function (Builder $query): void {
+                $query->whereColumn('incidents.config_version', 'monitors.config_version')
+                    ->where('rule_key', 'monitor_stale')
+                    ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN]);
+            })
+            ->orderBy('id');
+
+        $staleMonitors->chunkById(100, function (Collection $monitors) use (&$queued): void {
+            foreach ($monitors as $monitor) {
+                if ($this->openStaleIncident((int) $monitor->id)) {
+                    $queued++;
+                }
+            }
+        });
+
+        return $queued;
     }
 
     public function queueDueReminders(): int
@@ -169,7 +234,7 @@ class IncidentManager
                     ->latest('created_at')
                     ->first()?->checkRun;
 
-                if ($failureRun === null) {
+                if ($failureRun === null && $incident->rule_key !== 'monitor_stale') {
                     return false;
                 }
 
@@ -267,7 +332,7 @@ class IncidentManager
                     ->with('checkRun')
                     ->latest('created_at')
                     ->first()?->checkRun;
-                if ($failureRun === null) {
+                if ($failureRun === null && $incident->rule_key !== 'monitor_stale') {
                     return 0;
                 }
 
@@ -387,6 +452,66 @@ class IncidentManager
                     'check_run_id' => null,
                 ], ['evidence' => ['reason' => 'monitor_paused'], 'created_at' => now()]);
             }
+        });
+    }
+
+    private function openStaleIncident(int $monitorId): bool
+    {
+        return DB::transaction(function () use ($monitorId): bool {
+            $monitor = Monitor::query()->lockForUpdate()->find($monitorId);
+
+            if ($monitor === null || ! $monitor->enabled || ! $monitor->staleAt()->isPast()) {
+                return false;
+            }
+
+            $activeIncident = Incident::query()
+                ->where('monitor_id', $monitor->id)
+                ->where('config_version', $monitor->config_version)
+                ->where('rule_key', 'monitor_stale')
+                ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
+                ->lockForUpdate()
+                ->first();
+
+            if ($activeIncident !== null) {
+                return false;
+            }
+
+            $openedAt = now();
+            $incident = Incident::query()->create([
+                'monitor_id' => $monitor->id,
+                'config_version' => $monitor->config_version,
+                'rule_key' => 'monitor_stale',
+                'severity' => 'warning',
+                'state' => Incident::STATE_OPEN,
+                'active_key' => hash('sha256', implode(':', [$monitor->id, $monitor->config_version, 'monitor_stale'])),
+                'failure_count' => 1,
+                'recovery_count' => 0,
+                'opened_at' => $openedAt,
+                'last_seen_at' => $openedAt,
+            ]);
+            IncidentEvent::query()->create([
+                'incident_id' => $incident->id,
+                'check_run_id' => null,
+                'event_type' => 'opened',
+                'evidence' => [
+                    'stale_at' => $monitor->staleAt()->utc()->toIso8601String(),
+                    'last_checked_at' => $monitor->last_checked_at?->utc()->toIso8601String(),
+                ],
+                'created_at' => $openedAt,
+            ]);
+
+            if (! $this->isInMaintenance($monitor)) {
+                $latestRun = CheckRun::query()
+                    ->where('monitor_id', $monitor->id)
+                    ->where('config_version', $monitor->config_version)
+                    ->where('status', 'completed')
+                    ->latest('finished_at')
+                    ->first();
+
+                $this->notifications->queue($incident, $monitor, $latestRun, 'opened');
+            }
+
+            return true;
         });
     }
 

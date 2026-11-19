@@ -253,7 +253,7 @@ class IncidentEscalationTest extends TestCase
         $this->openIncident($monitor, now()->subHours(2));
 
         $this->artisan('monitors:dispatch-due')
-            ->expectsOutput('已將 0 個到期監測檢查加入佇列，排入 0 個持續事件提醒與 2 個升級通知。')
+            ->expectsOutput('已將 0 個到期監測檢查加入佇列，新增 0 個監測資料逾時事件，排入 0 個持續事件提醒與 2 個升級通知。')
             ->assertExitCode(0);
 
         Queue::assertPushed(SendNotificationOutbox::class, 2);

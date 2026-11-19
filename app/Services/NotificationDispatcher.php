@@ -19,7 +19,7 @@ class NotificationDispatcher
     public function queue(
         Incident $incident,
         Monitor $monitor,
-        CheckRun $run,
+        ?CheckRun $run,
         string $eventType,
         ?string $idempotencySuffix = null,
         ?array $emailRecipientsOverride = null,
@@ -53,7 +53,9 @@ class NotificationDispatcher
             $destinations[] = [NotificationOutbox::CHANNEL_DISCORD, $discordWebhookUrl];
         }
 
-        $statusSubscribersQueued = $this->statusPageSubscriptions->queue($incident, $monitor, $eventType);
+        $statusSubscribersQueued = $incident->rule_key === 'monitor_stale'
+            ? false
+            : $this->statusPageSubscriptions->queue($incident, $monitor, $eventType);
 
         if ($destinations === []) {
             return $statusSubscribersQueued;
@@ -61,32 +63,43 @@ class NotificationDispatcher
 
         $url = $this->urlMasker->mask($monitor->url);
         $reason = $this->reasonLabel($incident->rule_key, $monitor);
-        $code = $incident->rule_key === 'adsbot_difference' ? $run->adsbot_status : $run->normal_status;
-        $statusLine = $code === null ? '檢查錯誤：'.($run->error_type ?? $run->adsbot_error_type ?? 'unknown') : 'HTTP 狀態碼：'.$code;
-        $timeLine = $incident->rule_key === 'response_time' && $run->normal_elapsed_ms !== null
-            ? 'HTTP 回應耗時：'.$run->normal_elapsed_ms.' 毫秒'
-            : ($run->elapsed_ms === null ? '耗時：無資料' : '耗時：'.$run->elapsed_ms.' 毫秒');
-        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $code = $run === null
+            ? null
+            : ($incident->rule_key === 'adsbot_difference' ? $run->adsbot_status : $run->normal_status);
+        $statusLine = $incident->rule_key === 'monitor_stale'
+            ? '檢查結果已超過預期更新時間，尚未取得新結果。'
+            : ($code === null
+                ? '檢查錯誤：'.($run?->error_type ?? $run?->adsbot_error_type ?? 'unknown')
+                : 'HTTP 狀態碼：'.$code);
+        $timeLine = $incident->rule_key === 'response_time' && $run?->normal_elapsed_ms !== null
+            ? 'HTTP 回應耗時：'.$run?->normal_elapsed_ms.' 毫秒'
+            : ($incident->rule_key === 'monitor_stale'
+                ? '前次完成檢查時間（UTC）：'.($monitor->last_checked_at?->utc()->toIso8601String() ?? '尚無完成記錄')
+                : ($run?->elapsed_ms === null ? '耗時：無資料' : '耗時：'.$run->elapsed_ms.' 毫秒'));
+        $snapshot = $run === null ? [] : json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
         $thresholdLine = $incident->rule_key === 'response_time'
             ? '設定門檻：'.($snapshot['response_time_threshold_ms'] ?? $monitor->response_time_threshold_ms).' 毫秒'
             : '';
         $acceptedStatusCodes = array_map('intval', $monitor->accepted_status_codes ?? []);
         $successfulStatusCodes = [...range(200, 399), ...$acceptedStatusCodes];
-        $previousSuccess = CheckRun::query()
+        $previousSuccessQuery = CheckRun::query()
             ->where('monitor_id', $monitor->id)
-            ->where('config_version', $run->config_version)
+            ->where('config_version', $run?->config_version ?? $monitor->config_version)
             ->where('status', 'completed')
             ->whereNull('error_type')
-            ->whereIn('normal_status', $successfulStatusCodes)
-            ->where('id', '<', $run->id)
-            ->latest('finished_at')
-            ->value('finished_at');
+            ->whereIn('normal_status', $successfulStatusCodes);
+
+        if ($run !== null) {
+            $previousSuccessQuery->where('id', '<', $run->id);
+        }
+
+        $previousSuccess = $previousSuccessQuery->latest('finished_at')->value('finished_at');
         $stateText = match ($eventType) {
-            'opened' => '異常已確認',
+            'opened' => $incident->rule_key === 'monitor_stale' ? '監測資料逾時' : '異常已確認',
             'reminder' => '異常仍未恢復',
             NotificationOutbox::EVENT_TYPE_ESCALATION => '異常仍未確認，已升級告警',
             NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2 => '異常仍未確認，第二階段已升級告警',
-            default => '連續兩次檢查正常，事件已恢復',
+            default => $incident->rule_key === 'monitor_stale' ? '監測資料已恢復' : '連續兩次檢查正常，事件已恢復',
         };
         $subject = '['.config('app.name').'] '.$monitor->name.' '.$stateText;
         $bodyLines = [
@@ -143,6 +156,7 @@ class NotificationDispatcher
             'content' => $monitor->socialPlatform() === null ? '缺少預期文字' : '原始回應未包含預期貼文文字',
             'forbidden_text' => '回應包含不應出現的文字',
             'response_time' => 'HTTP 回應時間超過設定門檻',
+            'monitor_stale' => '監測檢查結果已超過預期更新時間',
             'tls_expired' => 'TLS 憑證已過期',
             'tls_handshake' => 'TLS 交握失敗',
             'tls_14d' => 'TLS 憑證將於 14 天內到期',

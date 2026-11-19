@@ -204,7 +204,7 @@
                                         <span class="secondary-text">尚未認領</span>
                                     @endif
                                 </td>
-                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'probe_incomplete' => '回應過大，驗證未完成', 'content' => '原始回應未包含預期文字', 'forbidden_text' => '回應包含不應出現的文字', 'response_time' => 'HTTP 回應時間超過設定門檻', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期', 'tls_30d' => 'TLS 憑證將於 30 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
+                                <td>{{ ['http' => 'HTTP 回應異常', 'probe_restricted' => '檢查受到限制', 'probe_incomplete' => '回應過大，驗證未完成', 'content' => '原始回應未包含預期文字', 'forbidden_text' => '回應包含不應出現的文字', 'response_time' => 'HTTP 回應時間超過設定門檻', 'monitor_stale' => '監測資料逾時', 'adsbot_difference' => 'AdsBot 模擬結果不同', 'tls_expired' => 'TLS 憑證已過期', 'tls_handshake' => 'TLS 交握失敗', 'tls_7d' => 'TLS 憑證將於 7 天內到期', 'tls_14d' => 'TLS 憑證將於 14 天內到期', 'tls_30d' => 'TLS 憑證將於 30 天內到期'][$incident->rule_key] ?? '其他異常' }}</td>
                                 <td>
                                     @if ($incident->last_seen_at)
                                         <time class="timestamp" datetime="{{ $incident->last_seen_at->toIso8601String() }}">{{ $incident->last_seen_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>

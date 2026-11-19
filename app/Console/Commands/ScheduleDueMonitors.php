@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
 #[Signature('monitors:dispatch-due')]
-#[Description('將到期檢查與通知 outbox 記錄加入佇列')]
+#[Description('排入到期檢查、監測資料逾時事件與通知')]
 class ScheduleDueMonitors extends Command
 {
     public function handle(RunScheduler $scheduler, IncidentManager $incidents): int
@@ -69,10 +69,11 @@ class ScheduleDueMonitors extends Command
                     'updated_at' => now(),
                 ]);
 
+            $staleIncidents = $incidents->queueDueStaleIncidents();
             $queuedReminders = $incidents->queueDueReminders();
             $queuedEscalations = $incidents->queueDueEscalations();
             $heartbeat->forceFill(['last_succeeded_at' => now(), 'last_error' => null])->save();
-            $this->info('已將 '.$queued.' 個到期監測檢查加入佇列，排入 '.$queuedReminders.' 個持續事件提醒與 '.$queuedEscalations.' 個升級通知。');
+            $this->info('已將 '.$queued.' 個到期監測檢查加入佇列，新增 '.$staleIncidents.' 個監測資料逾時事件，排入 '.$queuedReminders.' 個持續事件提醒與 '.$queuedEscalations.' 個升級通知。');
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
