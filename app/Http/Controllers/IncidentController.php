@@ -17,7 +17,7 @@ class IncidentController extends Controller
     public function bulkAcknowledge(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'acknowledgement_action' => ['required', 'in:acknowledge,unacknowledge,snooze_notifications'],
+            'acknowledgement_action' => ['required', 'in:acknowledge,unacknowledge,snooze_notifications,resume_notifications'],
             'duration_minutes' => ['required_if:acknowledgement_action,snooze_notifications', 'nullable', 'integer', 'in:30,60,240,1440'],
             'incident_ids' => ['required', 'array', 'min:1', 'max:25'],
             'incident_ids.*' => ['required', 'integer', 'distinct', 'exists:incidents,id'],
@@ -74,6 +74,20 @@ class IncidentController extends Controller
                     continue;
                 }
 
+                if ($action === 'resume_notifications') {
+                    if ($lockedIncident->state !== Incident::STATE_OPEN || $lockedIncident->snoozed_until === null) {
+                        $skippedCount++;
+
+                        continue;
+                    }
+
+                    $lockedIncident->forceFill(['snoozed_until' => null])->save();
+                    $this->recordActivity($lockedIncident, $actor, 'notifications_resumed', []);
+                    $changedCount++;
+
+                    continue;
+                }
+
                 if (
                     ! in_array($lockedIncident->state, [Incident::STATE_SUSPECT, Incident::STATE_OPEN], true)
                     || ($lockedIncident->acknowledged_at !== null) === $acknowledge
@@ -99,6 +113,10 @@ class IncidentController extends Controller
             $message = $result['changed'] > 0
                 ? '已暫停 '.$result['changed'].' 件事件的提醒與升級通知至 '.$snoozeTime.'；略過 '.$result['skipped'].' 件尚未成立、已有有效暫停或已恢復／結束的事件。'
                 : '所選事件均尚未成立、已有有效暫停或已恢復／結束，沒有變更通知狀態。';
+        } elseif ($action === 'resume_notifications') {
+            $message = $result['changed'] > 0
+                ? '已恢復 '.$result['changed'].' 件事件的提醒與升級通知；略過 '.$result['skipped'].' 件未暫停、尚未成立或已恢復／結束的事件。'
+                : '所選事件均未暫停、尚未成立或已恢復／結束，沒有變更通知狀態。';
         } else {
             $actionLabel = $acknowledge ? '認領' : '解除認領';
             $skipReason = $acknowledge ? '已認領、已恢復或已結束' : '尚未認領、已恢復或已結束';

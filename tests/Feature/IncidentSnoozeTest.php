@@ -319,6 +319,45 @@ class IncidentSnoozeTest extends TestCase
         $this->assertDatabaseCount('incident_events', 0);
     }
 
+    public function test_bulk_resuming_clears_only_snoozed_open_incidents_and_audits_the_change(): void
+    {
+        $operator = User::factory()->create(['name' => 'On-call operator']);
+        $monitor = $this->monitor(11);
+        $snoozedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'snoozed_until' => now()->addHour(),
+        ]);
+        $activeIncident = Incident::factory()->for($monitor)->create(['state' => Incident::STATE_OPEN]);
+        $suspectIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_SUSPECT,
+            'snoozed_until' => now()->addHour(),
+        ]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'snoozed_until' => now()->addHour(),
+            'resolved_at' => now(),
+        ]);
+
+        $this->actingAs($operator)
+            ->post(route('incidents.bulk-acknowledge', ['severity' => 'warning']), [
+                'acknowledgement_action' => 'resume_notifications',
+                'incident_ids' => [$snoozedIncident->id, $activeIncident->id, $suspectIncident->id, $resolvedIncident->id],
+            ])
+            ->assertRedirect(route('incidents.index', ['severity' => 'warning']))
+            ->assertSessionHas('status', '已恢復 1 件事件的提醒與升級通知；略過 3 件未暫停、尚未成立或已恢復／結束的事件。');
+
+        $this->assertNull($snoozedIncident->fresh()->snoozed_until);
+        $this->assertNull($activeIncident->fresh()->snoozed_until);
+        $this->assertNotNull($suspectIncident->fresh()->snoozed_until);
+        $this->assertNotNull($resolvedIncident->fresh()->snoozed_until);
+
+        $resumeEvent = IncidentEvent::query()->sole();
+        $this->assertSame($snoozedIncident->id, $resumeEvent->incident_id);
+        $this->assertSame('notifications_resumed', $resumeEvent->event_type);
+        $this->assertSame($operator->id, $resumeEvent->evidence['actor_id']);
+        $this->assertSame('On-call operator', $resumeEvent->evidence['actor_name']);
+    }
+
     public function test_incident_list_exposes_bulk_snooze_action_and_duration_options(): void
     {
         $monitor = $this->monitor(10);
@@ -328,6 +367,7 @@ class IncidentSnoozeTest extends TestCase
             ->get(route('incidents.index'))
             ->assertOk()
             ->assertSee('暫停所選事件的通知')
+            ->assertSee('恢復所選事件的通知')
             ->assertSee('通知暫停時間')
             ->assertSee('name="duration_minutes"', false)
             ->assertSee('value="30"', false)

@@ -153,6 +153,7 @@
                             <option value="acknowledge" @selected(old('acknowledgement_action', 'acknowledge') === 'acknowledge')>認領所選事件</option>
                             <option value="unacknowledge" @selected(old('acknowledgement_action') === 'unacknowledge')>解除所選事件的認領</option>
                             <option value="snooze_notifications" @selected(old('acknowledgement_action') === 'snooze_notifications')>暫停所選事件的通知</option>
+                            <option value="resume_notifications" @selected(old('acknowledgement_action') === 'resume_notifications')>恢復所選事件的通知</option>
                         </select>
                     </div>
                     <div class="field-group">
@@ -164,7 +165,7 @@
                             <option value="1440" @selected(old('duration_minutes') === '1440')>24 小時</option>
                         </select>
                     </div>
-                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；批次暫停只會套用至已成立且通知尚未暫停的事件。認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
+                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；批次暫停只會套用至已成立且通知尚未暫停的事件，恢復通知只會套用至目前已暫停的事件。認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
                 </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
                     <table class="data-table">
