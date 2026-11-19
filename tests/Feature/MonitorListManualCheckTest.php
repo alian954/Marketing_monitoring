@@ -27,6 +27,28 @@ class MonitorListManualCheckTest extends TestCase
             ->assertDontSee(route('monitors.check', $pausedMonitor), false);
     }
 
+    public function test_monitor_list_displays_next_check_time_and_schedule_state(): void
+    {
+        $nextCheckAt = now()->addDay()->startOfMinute();
+        $scheduledMonitor = $this->createMonitor('Scheduled monitor', true);
+        $scheduledMonitor->forceFill(['next_check_at' => $nextCheckAt])->save();
+        $waitingMonitor = $this->createMonitor('Waiting monitor', true);
+        $waitingMonitor->forceFill(['next_check_at' => null])->save();
+        $pausedMonitor = $this->createMonitor('Paused schedule monitor', false);
+        $pausedMonitor->forceFill(['next_check_at' => $nextCheckAt])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('<th scope="col">下次檢查</th>', false)
+            ->assertSee('datetime="'.$nextCheckAt->toIso8601String().'"', false)
+            ->assertSee($nextCheckAt->timezone('Asia/Taipei')->format('Y/n/j H:i'))
+            ->assertSee('等待排程器執行')
+            ->assertSee('已暫停');
+
+        $this->assertSame(1, substr_count($response->getContent(), $nextCheckAt->timezone('Asia/Taipei')->format('Y/n/j H:i')));
+    }
+
     public function test_manual_check_from_filtered_list_preserves_schedule_and_enforces_cooldown(): void
     {
         Queue::fake([RunMonitorCheck::class]);

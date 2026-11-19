@@ -165,7 +165,7 @@
             </div>
             <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="monitor-table-caption">
                 <table class="data-table">
-                    <caption id="monitor-table-caption" class="sr-only">符合篩選條件的監測項目與最近一次健康檢查結果</caption>
+                    <caption id="monitor-table-caption" class="sr-only">符合篩選條件的監測項目、檢查排程與最近一次健康檢查結果</caption>
                     <thead>
                         <tr>
                             <th scope="col">
@@ -178,6 +178,7 @@
                             <th scope="col">目的網址</th>
                             <th scope="col">狀態</th>
                             <th scope="col">最近檢查</th>
+                            <th scope="col">下次檢查</th>
                             <th scope="col">HTTP</th>
                             <th scope="col">監測功能</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
@@ -222,6 +223,15 @@
                                         <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                                     @else
                                         <span class="secondary-text">尚未檢查</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($monitor->enabled && $monitor->next_check_at)
+                                        <time class="timestamp" datetime="{{ $monitor->next_check_at->toIso8601String() }}">{{ $monitor->next_check_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                    @elseif (! $monitor->enabled)
+                                        <span class="secondary-text">已暫停</span>
+                                    @else
+                                        <span class="secondary-text">等待排程器執行</span>
                                     @endif
                                 </td>
                                 <td class="numeric">
