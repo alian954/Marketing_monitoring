@@ -144,6 +144,23 @@ class SocialPostMonitorTest extends TestCase
         ]);
     }
 
+    public function test_instagram_reels_route_can_be_monitored_with_expected_text(): void
+    {
+        $url = 'https://www.instagram.com/reels/ABC123/';
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost($url, 'Launch headline'));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame('Launch headline', $monitor->expected_text);
+        $this->assertSame('Instagram', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'instagram',
+        ]);
+    }
+
     public function test_social_post_stores_trimmed_and_deduplicated_lines_as_expected_text_terms(): void
     {
         $response = $this->actingAs(User::factory()->create())
@@ -256,6 +273,7 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/story.php?story_fbid=123'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://www.facebook.com/share/r/abc123/'));
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/p/123'));
+        $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/reels/ABC123/'));
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/stories/creator/123'));
         $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://threads.net/@creator/post/123'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://fb.watch/ABC123/'));
