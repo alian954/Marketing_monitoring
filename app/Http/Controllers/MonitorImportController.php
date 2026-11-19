@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Monitor;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
+use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\UrlMasker;
 use Illuminate\Http\RedirectResponse;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use Throwable;
 
 class MonitorImportController extends Controller
@@ -22,6 +24,9 @@ class MonitorImportController extends Controller
         ['name', 'url', 'label'],
         ['name', 'url', 'label', 'expected_text'],
         ['name', 'url', 'label', 'expected_text', 'expected_text_mode'],
+        ['name', 'url', 'label', 'expected_response_header'],
+        ['name', 'url', 'label', 'expected_text', 'expected_response_header'],
+        ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header'],
     ];
 
     public function __construct(
@@ -85,6 +90,19 @@ class MonitorImportController extends Controller
             $expectedTextMode = $expectedTextMode === '' ? 'present' : $expectedTextMode;
             $errors = [];
             $duplicate = false;
+            $expectedResponseHeader = null;
+            $expectedResponseHeaderName = null;
+
+            if (isset($columnIndexes['expected_response_header'])) {
+                try {
+                    $expectedResponseHeader = ResponseHeaderCondition::normalizedCondition(
+                        (string) ($cells[$columnIndexes['expected_response_header']] ?? ''),
+                    );
+                    $expectedResponseHeaderName = ResponseHeaderCondition::headerName($expectedResponseHeader);
+                } catch (InvalidArgumentException $exception) {
+                    $errors[] = $exception->getMessage();
+                }
+            }
 
             if (count($cells) > count($header)) {
                 $errors[] = '資料欄位數量與標題列不一致。';
@@ -157,6 +175,8 @@ class MonitorImportController extends Controller
                 'label' => $label,
                 'expected_text' => $expectedText,
                 'expected_text_mode' => $expectedTextMode,
+                'expected_response_header' => $expectedResponseHeader,
+                'expected_response_header_name' => $expectedResponseHeaderName,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -170,9 +190,14 @@ class MonitorImportController extends Controller
             'monitor_import_preview' => Crypt::encryptString(json_encode($rows, JSON_THROW_ON_ERROR)),
             'monitor_import_token' => $previewToken,
         ]);
+        $previewRows = array_map(static function (array $row): array {
+            unset($row['expected_response_header']);
+
+            return $row;
+        }, $rows);
 
         return view('monitors.import', [
-            'previewRows' => $rows,
+            'previewRows' => $previewRows,
             'previewToken' => $previewToken,
             'validCount' => collect($rows)->where('eligible', true)->count(),
             'invalidCount' => collect($rows)->where('eligible', false)->count(),
@@ -223,6 +248,7 @@ class MonitorImportController extends Controller
                 'accepted_status_codes' => [],
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
+                'expected_response_header' => $row['expected_response_header'] ?? null,
                 'timeout_seconds' => (int) config('monitoring.request_timeout_seconds'),
                 'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => (int) config('monitoring.interval_seconds'),

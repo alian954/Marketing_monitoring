@@ -10,6 +10,7 @@ use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -111,6 +112,73 @@ class SocialPostImportTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl('https://www.threads.com/@creator/post/ANY123'),
             'expected_text_mode' => 'present_any',
         ]);
+    }
+
+    public function test_csv_can_import_response_header_conditions_without_exposing_the_expected_value(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $condition = 'X-Robots-Tag: private-import-value';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_response_header'],
+            [['Header check', 'https://example.com/robots', 'SEO', $condition]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('HTTP 標頭條件')
+            ->assertSee('X-Robots-Tag')
+            ->assertDontSee('private-import-value');
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertSame('X-Robots-Tag', $previewRow['expected_response_header_name']);
+        $this->assertArrayNotHasKey('expected_response_header', $previewRow);
+        $this->assertStringNotContainsString('private-import-value', (string) session('monitor_import_preview'));
+        $this->assertDatabaseCount('monitors', 0);
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $rawCondition = (string) DB::table('monitors')->where('id', $monitor->id)->value('expected_response_header');
+        $this->assertSame($condition, $monitor->expected_response_header);
+        $this->assertStringNotContainsString('private-import-value', $rawCondition);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $rawSnapshot = (string) DB::table('check_runs')->where('id', $run->id)->value('config_snapshot');
+        $this->assertStringNotContainsString('private-import-value', $rawSnapshot);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($condition, $snapshot['expected_response_header']);
+        Queue::assertPushed(RunMonitorCheck::class, 1);
+    }
+
+    public function test_csv_rejects_malformed_response_header_conditions_and_skips_them_on_commit(): void
+    {
+        $condition = 'private-value-without-colon';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_response_header'],
+            [['Invalid header', 'https://example.com/invalid-header', 'SEO', $condition]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('請使用「標頭名稱: 預期值」格式；只檢查存在時可留空預期值。')
+            ->assertDontSee($condition);
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(1, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_csv_rejects_social_posts_without_expected_text(): void
