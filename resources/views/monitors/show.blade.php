@@ -150,6 +150,16 @@
                         <dd>{{ $monitor->accepted_status_codes ? implode(', ', $monitor->accepted_status_codes) : '無（預設接受 200–399）' }}</dd>
                     </div>
                     <div class="metadata-item">
+                        <dt>自訂 HTTP 請求標頭</dt>
+                        <dd>
+                            @if ($monitor->request_headers)
+                                {{ implode('、', array_keys($monitor->request_headers)) }}（值已加密保存）
+                            @else
+                                未設定
+                            @endif
+                        </dd>
+                    </div>
+                    <div class="metadata-item">
                         <dt>預期內容文字片段</dt>
                         <dd>
                             @if ($monitor->expected_text)

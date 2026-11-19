@@ -6,7 +6,7 @@ use DateTimeImmutable;
 
 class FixtureProbeClient implements ProbeClient
 {
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present'): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = []): ProbeResult
     {
         $startedAt = hrtime(true);
         $parts = parse_url($url);

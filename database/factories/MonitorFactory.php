@@ -23,6 +23,7 @@ class MonitorFactory extends Factory
             'url_hash' => Monitor::fingerprintUrl('https://example.com/landing'),
             'label' => null,
             'notification_discord_webhook' => null,
+            'request_headers' => [],
             'enabled' => true,
             'config_version' => 1,
             'allowed_redirect_hosts' => [],

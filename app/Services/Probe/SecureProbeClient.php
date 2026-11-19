@@ -5,6 +5,7 @@ namespace App\Services\Probe;
 use App\Services\UrlMasker;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
+use InvalidArgumentException;
 use Throwable;
 
 class SecureProbeClient implements ProbeClient
@@ -15,9 +16,20 @@ class SecureProbeClient implements ProbeClient
         private readonly UrlMasker $masker,
     ) {}
 
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present'): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = []): ProbeResult
     {
         $startedAt = hrtime(true);
+
+        try {
+            $requestHeaders = RequestHeaderParser::normalize($requestHeaders);
+        } catch (InvalidArgumentException) {
+            return $this->failure(new ProbeException('invalid_request_header', '自訂 HTTP 標頭設定無效。'), $startedAt, [], [], $url);
+        }
+
+        if ($requestHeaders !== [] && mb_strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+            return $this->failure(new ProbeException('request_header_requires_https', '自訂 HTTP 標頭只會透過 HTTPS 傳送。'), $startedAt, [], [], $url);
+        }
+
         $requestTimeoutSeconds = max(1, min(15, $timeoutSeconds ?? (int) config('monitoring.request_timeout_seconds')));
         $currentUrl = $url;
         $originHost = null;
@@ -71,7 +83,10 @@ class SecureProbeClient implements ProbeClient
 
                 $attemptTarget = $target;
                 $attemptTarget['ips'] = [$ip];
-                $response = $this->transport->get($attemptTarget, $userAgent, $remainingMs);
+                $headersForHop = $this->sameOrigin($url, $target['url']) ? $requestHeaders : [];
+                $response = $this->transport instanceof HeaderAwareProbeTransport && $headersForHop !== []
+                    ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop)
+                    : $this->transport->get($attemptTarget, $userAgent, $remainingMs);
                 $elapsedMs += $response->elapsedMs;
 
                 if (hrtime(true) >= $deadline) {
@@ -200,6 +215,25 @@ class SecureProbeClient implements ProbeClient
         $remainingNanoseconds = $deadline - hrtime(true);
 
         return $remainingNanoseconds <= 0 ? 0 : (int) floor($remainingNanoseconds / 1_000_000);
+    }
+
+    private function sameOrigin(string $leftUrl, string $rightUrl): bool
+    {
+        $left = parse_url($leftUrl);
+        $right = parse_url($rightUrl);
+
+        if (! is_array($left) || ! is_array($right)) {
+            return false;
+        }
+
+        $leftScheme = mb_strtolower((string) ($left['scheme'] ?? ''));
+        $rightScheme = mb_strtolower((string) ($right['scheme'] ?? ''));
+        $leftPort = (int) ($left['port'] ?? ($leftScheme === 'https' ? 443 : 80));
+        $rightPort = (int) ($right['port'] ?? ($rightScheme === 'https' ? 443 : 80));
+
+        return $leftScheme === $rightScheme
+            && mb_strtolower((string) ($left['host'] ?? '')) === mb_strtolower((string) ($right['host'] ?? ''))
+            && $leftPort === $rightPort;
     }
 
     private function timeoutException(int $timeoutSeconds): ProbeException

@@ -87,14 +87,22 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         $adsbot = null;
 
         try {
-            $normal = $probe->inspect(
+            $probeArguments = [
                 (string) $snapshot['url'],
                 (array) ($snapshot['allowed_redirect_hosts'] ?? []),
                 'MarketingMonitor/1.0 (+authorized landing page check)',
                 isset($snapshot['expected_text']) ? (string) $snapshot['expected_text'] : null,
                 $timeoutSeconds,
                 (string) ($snapshot['expected_text_mode'] ?? 'present'),
-            );
+            ];
+
+            $requestHeaders = (array) ($snapshot['request_headers'] ?? []);
+
+            if ($requestHeaders !== []) {
+                $probeArguments[] = $requestHeaders;
+            }
+
+            $normal = $probe->inspect(...$probeArguments);
 
             if ($monitor->socialPlatform() === null) {
                 $adsbot = $probe->inspect(

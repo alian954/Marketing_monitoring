@@ -13,6 +13,7 @@
     $acceptedStatusCodes = $monitor->accepted_status_codes;
     $acceptedStatusCodesDefault = is_array($acceptedStatusCodes) ? implode(', ', $acceptedStatusCodes) : '';
     $acceptedStatusCodesValue = old('accepted_status_codes', $acceptedStatusCodesDefault);
+    $configuredRequestHeaders = $monitor->request_headers ?? [];
 @endphp
 
 @section('title', $isEditing ? '編輯監測項目' : '新增監測項目')
@@ -225,6 +226,25 @@
                             @error('confirmation_delay_seconds')<p id="confirmation-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3 class="form-section-title">自訂 HTTP 請求標頭</h3>
+                    <p class="form-section-copy">可設定 Authorization、Cookie 或其他網站所需標頭；設定後監測網址必須使用 HTTPS。敏感值會加密保存，只傳送至原始主機，不會帶到跨主機重新導向。</p>
+                    <div class="field-group field-group-full">
+                        <label class="field-label" for="request_headers">標頭名稱與值</label>
+                        <textarea class="field-textarea @error('request_headers') is-invalid @enderror" id="request_headers" name="request_headers" rows="4" maxlength="8192" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('request_headers') ? 'request-headers-help request-headers-error' : 'request-headers-help' }}" @if ($errors->has('request_headers')) aria-invalid="true" @endif>{{ old('request_headers', '') }}</textarea>
+                        <p id="request-headers-help" class="field-help">每行輸入一個「名稱: 值」，最多 20 個，每個值最多 2048 字元，總長度最多 8192 位元組。User-Agent、Host、Proxy 與連線控制標頭由安全設定管理。預檢或驗證失敗後為保護憑證，標頭值不會留在表單；如要新增，請重新輸入。</p>
+                        @if ($configuredRequestHeaders !== [])
+                            <p class="field-help">目前已加密保存 {{ count($configuredRequestHeaders) }} 個標頭：{{ implode('、', array_keys($configuredRequestHeaders)) }}。留白會保留原設定；輸入新清單會取代原設定。</p>
+                            <label class="field-check spaced-top" for="clear_request_headers">
+                                <input id="clear_request_headers" name="clear_request_headers" type="checkbox" value="1" aria-describedby="{{ $errors->has('clear_request_headers') ? 'request-headers-help clear-request-headers-error' : 'request-headers-help' }}" @checked(old('clear_request_headers'))>
+                                移除目前全部自訂標頭
+                            </label>
+                        @endif
+                        @error('request_headers')<p id="request-headers-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        @error('clear_request_headers')<p id="clear-request-headers-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                 </div>
 

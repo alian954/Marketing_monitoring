@@ -5,12 +5,23 @@ namespace App\Services\Probe;
 use DateTimeImmutable;
 use DateTimeZone;
 
-class CurlProbeTransport implements ProbeTransport
+class CurlProbeTransport implements HeaderAwareProbeTransport
 {
     public function __construct(private readonly RetryAfterParser $retryAfterParser) {}
 
     public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
     {
+        return $this->getWithHeaders($target, $userAgent, $timeoutMs, []);
+    }
+
+    public function getWithHeaders(array $target, string $userAgent, int $timeoutMs, array $requestHeaders): HopResponse
+    {
+        try {
+            $headerLines = RequestHeaderParser::toCurlLines($requestHeaders);
+        } catch (\InvalidArgumentException) {
+            return new HopResponse(null, null, '', 0, 'invalid_request_header', '自訂 HTTP 標頭設定無效。', null);
+        }
+
         $handle = curl_init($target['url']);
 
         if ($handle === false) {
@@ -31,6 +42,8 @@ class CurlProbeTransport implements ProbeTransport
             $resolve = [$target['host'].':'.$target['port'].':'.$ipForCurl];
         }
 
+        $hasCustomAcceptHeader = in_array('accept', array_map(static fn (string $name): string => mb_strtolower($name), array_keys($requestHeaders)), true);
+
         $options = [
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_FOLLOWLOCATION => false,
@@ -38,7 +51,10 @@ class CurlProbeTransport implements ProbeTransport
             CURLOPT_CONNECTTIMEOUT_MS => $connectBudgetMs,
             CURLOPT_TIMEOUT_MS => $requestBudgetMs,
             CURLOPT_USERAGENT => $userAgent,
-            CURLOPT_HTTPHEADER => ['Accept: text/html,application/xhtml+xml;q=0.9,*/*;q=0.5'],
+            CURLOPT_HTTPHEADER => [
+                ...($hasCustomAcceptHeader ? [] : ['Accept: text/html,application/xhtml+xml;q=0.9,*/*;q=0.5']),
+                ...$headerLines,
+            ],
             CURLOPT_PROXY => '',
             CURLOPT_NOPROXY => '*',
             CURLOPT_SSL_VERIFYPEER => true,

@@ -36,6 +36,7 @@ class RunScheduler
                 'accepted_status_codes' => $lockedMonitor->accepted_status_codes ?? [],
                 'expected_text' => $lockedMonitor->expected_text,
                 'expected_text_mode' => $lockedMonitor->expected_text_mode ?? 'present',
+                'request_headers' => $lockedMonitor->request_headers ?? [],
                 'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,
                 'timeout_seconds' => $lockedMonitor->timeout_seconds,
                 'confirmation_delay_seconds' => $lockedMonitor->confirmation_delay_seconds,
