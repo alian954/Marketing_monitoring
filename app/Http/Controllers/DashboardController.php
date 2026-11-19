@@ -8,6 +8,7 @@ use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
 use App\Models\TlsObservation;
+use App\Services\FleetAvailabilityReport;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -17,7 +18,7 @@ class DashboardController extends Controller
 {
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
 
-    public function index(UrlMasker $urlMasker): View
+    public function index(UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
     {
         $monitors = Monitor::query()
             ->with(['latestCheckRun', 'activeIncidents'])
@@ -32,6 +33,7 @@ class DashboardController extends Controller
         }
 
         $asOf = now()->toImmutable();
+        $fleetAvailability = $availabilityReport->build($asOf);
         $monitorCount = 0;
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
         $expiringCertificateCount = 0;
@@ -116,6 +118,7 @@ class DashboardController extends Controller
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
             'queueWorkerEnabled' => config('queue.default') !== 'sync',
             'counts' => $counts,
+            'fleetAvailability' => $fleetAvailability,
         ]);
     }
 

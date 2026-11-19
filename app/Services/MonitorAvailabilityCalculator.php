@@ -14,7 +14,7 @@ class MonitorAvailabilityCalculator
     /**
      * @param  Collection<int, CheckRun>  $runs
      * @param  Collection<int, MaintenanceWindow>  $maintenanceWindows
-     * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
+     * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      */
     public function calculate(
         Collection $runs,
@@ -69,7 +69,8 @@ class MonitorAvailabilityCalculator
      * @param  EloquentCollection<int, Monitor>  $monitors
      * @param  Collection<int, MaintenanceWindow>  $maintenanceWindows
      * @param  iterable<CheckRun>  $orderedRuns  Runs must be ordered by monitor ID, then finished time.
-     * @return array<int, list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>>
+     * @param  list<array{label: string, duration_seconds: int}>|null  $periods
+     * @return array<int, list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>>
      */
     public function calculateForMonitors(
         EloquentCollection $monitors,
@@ -77,9 +78,10 @@ class MonitorAvailabilityCalculator
         iterable $orderedRuns,
         int $staleGraceSeconds,
         DateTimeImmutable $asOf,
+        ?array $periods = null,
     ): array {
         $asOfTimestamp = $asOf->getTimestamp();
-        $periods = $this->periods();
+        $periods ??= $this->periods();
         $statisticsByMonitor = [];
         $maintenanceIntervalsByMonitor = [];
         $currentIntervalsByMonitor = [];
@@ -243,7 +245,7 @@ class MonitorAvailabilityCalculator
 
     /**
      * @param  array<string, array{label: string, availability_rate: ?float, coverage_rate: ?float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $statistics
-     * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
+     * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      */
     private function formatStatistics(array $statistics): array
     {
@@ -263,6 +265,10 @@ class MonitorAvailabilityCalculator
                 'observed_minutes' => round($observedSeconds / 60, 1),
                 'eligible_minutes' => round($eligibleSeconds / 60, 1),
                 'maintenance_excluded_minutes' => round($statistic['maintenance_excluded_seconds'] / 60, 1),
+                'up_seconds' => $statistic['up_seconds'],
+                'observed_seconds' => $observedSeconds,
+                'eligible_seconds' => $eligibleSeconds,
+                'maintenance_excluded_seconds' => $statistic['maintenance_excluded_seconds'],
                 'legacy_interval_fallback' => $statistic['legacy_interval_fallback'],
             ];
         }, array_values($statistics));

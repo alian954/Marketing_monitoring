@@ -51,6 +51,7 @@ class DashboardScalabilityTest extends TestCase
             ->assertSee('目前共 501 個網站或公開貼文');
 
         $this->assertSame(501, $response->viewData('monitorCount'));
+        $this->assertSame(501, $response->viewData('fleetAvailability')['monitor_count']);
         $this->assertCount(8, $response->viewData('monitors'));
         $this->assertSame(1, $response->viewData('counts')['healthy']);
         $this->assertSame(1, $response->viewData('counts')['issue']);
