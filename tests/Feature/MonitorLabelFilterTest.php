@@ -104,6 +104,58 @@ class MonitorLabelFilterTest extends TestCase
         ], $response->viewData('filters'));
     }
 
+    public function test_monitor_csv_export_uses_the_current_search_label_and_state_filters(): void
+    {
+        $matchingMonitor = $this->createMonitor([
+            'name' => 'Spring campaign',
+            'label' => 'Campaign A',
+            'enabled' => true,
+        ]);
+        $this->createMonitor(['name' => 'Autumn campaign', 'label' => 'Campaign A', 'enabled' => true]);
+        $this->createMonitor(['name' => 'Spring campaign other label', 'label' => 'Campaign B', 'enabled' => true]);
+        $this->createMonitor(['name' => 'Spring campaign paused', 'label' => 'Campaign A', 'enabled' => false]);
+        $filters = ['search' => 'Spring', 'label' => 'Campaign A', 'state' => 'enabled'];
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', $filters))
+            ->assertOk()
+            ->assertSee(route('monitors.export', $filters))
+            ->assertSee('匯出符合條件 CSV');
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($matchingMonitor->name, $rows[0]['name']);
+    }
+
+    public function test_monitor_csv_export_without_filters_includes_every_monitor(): void
+    {
+        $firstMonitor = $this->createMonitor(['name' => 'First monitor', 'label' => 'First']);
+        $secondMonitor = $this->createMonitor(['name' => 'Second monitor', 'label' => 'Second']);
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export'))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertEqualsCanonicalizing(
+            [$firstMonitor->name, $secondMonitor->name],
+            array_column($rows, 'name'),
+        );
+    }
+
+    public function test_monitor_csv_export_rejects_invalid_filters_instead_of_exporting_every_monitor(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->get(route('monitors.export', ['state' => 'unknown']))
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors(['state' => '請選擇有效的監測狀態篩選條件。']);
+    }
+
     public function test_monitor_list_rejects_oversized_label_filter(): void
     {
         $this->actingAs(User::factory()->create())
@@ -125,5 +177,18 @@ class MonitorLabelFilterTest extends TestCase
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
         ]);
+    }
+
+    /** @return array<int, array<string, string>> */
+    private function csvRows(string $content): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', trim($content));
+        $headers = str_getcsv(array_shift($lines));
+        $rows = array_map(static fn (string $line): array => str_getcsv($line), $lines);
+
+        return array_map(
+            static fn (array $row): array => array_combine($headers, $row),
+            $rows,
+        );
     }
 }

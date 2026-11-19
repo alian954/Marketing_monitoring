@@ -5,6 +5,11 @@
 @section('content')
     @php
         $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['state'] !== 'all';
+        $monitorExportFilters = array_filter(
+            $filters,
+            static fn (string $filter, string $name): bool => $filter !== '' && ! ($name === 'state' && $filter === 'all'),
+            ARRAY_FILTER_USE_BOTH,
+        );
         $oldMonitorIds = old('monitor_ids', []);
         $selectedMonitorIds = is_array($oldMonitorIds)
             ? array_map('intval', array_filter($oldMonitorIds, 'is_scalar'))
@@ -18,7 +23,7 @@
             <p class="page-description">管理網站與 Facebook、Instagram、Threads 公開貼文，查看最近一次檢查結果。</p>
         </div>
         <div class="heading-actions">
-            <a class="button button-secondary" href="{{ route('monitors.export') }}">匯出 CSV</a>
+            <a class="button button-secondary" href="{{ route('monitors.export', $monitorExportFilters) }}">{{ $hasFilters ? '匯出符合條件 CSV' : '匯出 CSV' }}</a>
             <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
             <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
         </div>

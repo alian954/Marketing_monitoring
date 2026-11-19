@@ -64,6 +64,20 @@ class MonitorController extends Controller
         'not_checked' => '未進行比對',
     ];
 
+    /** @var array<string, array<int, string>> */
+    private const MONITOR_LIST_FILTER_RULES = [
+        'search' => ['nullable', 'string', 'max:120'],
+        'label' => ['nullable', 'string', 'max:100'],
+        'state' => ['nullable', 'in:all,enabled,paused,incidents'],
+    ];
+
+    /** @var array<string, string> */
+    private const MONITOR_LIST_FILTER_MESSAGES = [
+        'search.max' => '搜尋文字不得超過 120 個字元。',
+        'label.max' => '標籤篩選不得超過 100 個字元。',
+        'state.in' => '請選擇有效的監測狀態篩選條件。',
+    ];
+
     public function __construct(
         private readonly UrlSafetyPolicy $urlPolicy,
         private readonly UrlMasker $urlMasker,
@@ -72,15 +86,7 @@ class MonitorController extends Controller
 
     public function index(Request $request): View|RedirectResponse
     {
-        $validator = Validator::make($request->query(), [
-            'search' => ['nullable', 'string', 'max:120'],
-            'label' => ['nullable', 'string', 'max:100'],
-            'state' => ['nullable', 'in:all,enabled,paused,incidents'],
-        ], [
-            'search.max' => '搜尋文字不得超過 120 個字元。',
-            'label.max' => '標籤篩選不得超過 100 個字元。',
-            'state.in' => '請選擇有效的監測狀態篩選條件。',
-        ]);
+        $validator = Validator::make($request->query(), self::MONITOR_LIST_FILTER_RULES, self::MONITOR_LIST_FILTER_MESSAGES);
         if ($validator->fails()) {
             return redirect()->route('monitors.index')->withErrors($validator);
         }
@@ -89,24 +95,10 @@ class MonitorController extends Controller
         $search = trim((string) ($validated['search'] ?? ''));
         $label = (string) ($validated['label'] ?? '');
         $state = $validated['state'] ?? 'all';
+        $filters = ['search' => $search, 'label' => $label, 'state' => $state];
 
-        $query = Monitor::query()
+        $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents'])
-            ->when($search !== '', function (Builder $query) use ($search): void {
-                $searchTerm = '%'.$search.'%';
-                $query->where(function (Builder $query) use ($searchTerm): void {
-                    $query->where('name', 'like', $searchTerm)
-                        ->orWhere('label', 'like', $searchTerm);
-                });
-            })
-            ->when($label !== '', static fn (Builder $query) => $query->where('label', $label))
-            ->when($state === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
-            ->when($state === 'paused', static fn (Builder $query) => $query->where('enabled', false))
-            ->when($state === 'incidents', static function (Builder $query): void {
-                $query->whereHas('activeIncidents', static function (Builder $incidentQuery): void {
-                    $incidentQuery->whereColumn('incidents.config_version', 'monitors.config_version');
-                });
-            })
             ->orderBy('name');
         $monitors = $query->paginate(50)->withQueryString();
 
@@ -121,9 +113,29 @@ class MonitorController extends Controller
             ->distinct()
             ->orderBy('label')
             ->pluck('label');
-        $filters = ['search' => $search, 'label' => $label, 'state' => $state];
 
         return view('monitors.index', compact('monitors', 'filters', 'labels'));
+    }
+
+    /** @param array{search: string, label: string, state: string} $filters */
+    private function filterMonitorList(Builder $query, array $filters): Builder
+    {
+        return $query
+            ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
+                $searchTerm = '%'.$filters['search'].'%';
+                $query->where(function (Builder $query) use ($searchTerm): void {
+                    $query->where('name', 'like', $searchTerm)
+                        ->orWhere('label', 'like', $searchTerm);
+                });
+            })
+            ->when($filters['label'] !== '', static fn (Builder $query) => $query->where('label', $filters['label']))
+            ->when($filters['state'] === 'enabled', static fn (Builder $query) => $query->where('enabled', true))
+            ->when($filters['state'] === 'paused', static fn (Builder $query) => $query->where('enabled', false))
+            ->when($filters['state'] === 'incidents', static function (Builder $query): void {
+                $query->whereHas('activeIncidents', static function (Builder $incidentQuery): void {
+                    $incidentQuery->whereColumn('incidents.config_version', 'monitors.config_version');
+                });
+            });
     }
 
     public function create(): View
@@ -704,26 +716,42 @@ class MonitorController extends Controller
             });
     }
 
-    public function export(): StreamedResponse
+    public function export(Request $request): StreamedResponse|RedirectResponse
     {
-        return response()->streamDownload(function (): void {
+        $validator = Validator::make($request->query(), self::MONITOR_LIST_FILTER_RULES, self::MONITOR_LIST_FILTER_MESSAGES);
+        if ($validator->fails()) {
+            return redirect()->route('monitors.index')->withErrors($validator);
+        }
+
+        $validated = $validator->validated();
+        $filters = [
+            'search' => trim((string) ($validated['search'] ?? '')),
+            'label' => (string) ($validated['label'] ?? ''),
+            'state' => $validated['state'] ?? 'all',
+        ];
+
+        return response()->streamDownload(function () use ($filters): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, ['name', 'url', 'label', 'enabled', 'last_checked_at_utc', 'http_status', 'error_type']);
 
-            Monitor::query()->with('latestCheckRun')->orderBy('id')->lazyById()->each(function (Monitor $monitor) use ($stream): void {
-                $run = $monitor->latestCheckRun;
-                $fields = [
-                    $monitor->name,
-                    $this->urlMasker->mask($monitor->url),
-                    (string) $monitor->label,
-                    $monitor->enabled ? '1' : '0',
-                    $monitor->last_checked_at?->utc()->toIso8601String() ?? '',
-                    $run?->normal_status === null ? '' : (string) $run->normal_status,
-                    (string) $run?->error_type,
-                ];
+            $this->filterMonitorList(Monitor::query(), $filters)
+                ->with('latestCheckRun')
+                ->orderBy('id')
+                ->lazyById()
+                ->each(function (Monitor $monitor) use ($stream): void {
+                    $run = $monitor->latestCheckRun;
+                    $fields = [
+                        $monitor->name,
+                        $this->urlMasker->mask($monitor->url),
+                        (string) $monitor->label,
+                        $monitor->enabled ? '1' : '0',
+                        $monitor->last_checked_at?->utc()->toIso8601String() ?? '',
+                        $run?->normal_status === null ? '' : (string) $run->normal_status,
+                        (string) $run?->error_type,
+                    ];
 
-                fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
-            });
+                    fputcsv($stream, array_map($this->escapeCsvFormula(...), $fields), ',', '"', '');
+                });
 
             fclose($stream);
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
