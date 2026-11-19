@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Monitor;
 use App\Services\AcceptedStatusCodeList;
+use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\NotificationEmailRecipientParser;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
+use App\Services\SlackWebhookUrlPolicy;
 use App\Services\UrlMasker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,6 +43,8 @@ class MonitorImportController extends Controller
         'notification_escalation_delay_minutes',
         'notification_escalation_stage_2_email',
         'notification_escalation_stage_2_delay_minutes',
+        'notification_slack_webhook',
+        'notification_discord_webhook',
     ];
 
     public function __construct(
@@ -84,7 +88,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -133,6 +137,8 @@ class MonitorImportController extends Controller
             $notificationEscalationStageTwoEmail = null;
             $notificationEscalationStageTwoEmailCount = 0;
             $notificationEscalationStageTwoDelayMinutes = null;
+            $notificationSlackWebhook = null;
+            $notificationDiscordWebhook = null;
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -227,6 +233,30 @@ class MonitorImportController extends Controller
                     '第二階段升級',
                     $errors,
                 );
+            }
+
+            if (isset($columnIndexes['notification_slack_webhook'])) {
+                $notificationSlackWebhookInput = trim((string) ($cells[$columnIndexes['notification_slack_webhook']] ?? ''));
+
+                if (mb_strlen($notificationSlackWebhookInput) > 2048) {
+                    $errors[] = 'Slack webhook 網址不得超過 2048 個字元。';
+                } elseif ($notificationSlackWebhookInput !== '' && ! SlackWebhookUrlPolicy::isAllowed($notificationSlackWebhookInput)) {
+                    $errors[] = '請使用 hooks.slack.com 或 hooks.slack-gov.com 的 HTTPS Incoming Webhook 網址。';
+                } elseif ($notificationSlackWebhookInput !== '') {
+                    $notificationSlackWebhook = $notificationSlackWebhookInput;
+                }
+            }
+
+            if (isset($columnIndexes['notification_discord_webhook'])) {
+                $notificationDiscordWebhookInput = trim((string) ($cells[$columnIndexes['notification_discord_webhook']] ?? ''));
+
+                if (mb_strlen($notificationDiscordWebhookInput) > 2048) {
+                    $errors[] = 'Discord webhook 網址不得超過 2048 個字元。';
+                } elseif ($notificationDiscordWebhookInput !== '' && ! DiscordWebhookUrlPolicy::isAllowed($notificationDiscordWebhookInput)) {
+                    $errors[] = '請使用 discord.com 的 Discord Incoming Webhook HTTPS 網址。';
+                } elseif ($notificationDiscordWebhookInput !== '') {
+                    $notificationDiscordWebhook = $notificationDiscordWebhookInput;
+                }
             }
 
             if ($notificationEscalationEmail !== null && $notificationEscalationDelayMinutes === null) {
@@ -416,6 +446,10 @@ class MonitorImportController extends Controller
                 'notification_escalation_stage_2_email' => $notificationEscalationStageTwoEmail,
                 'notification_escalation_stage_2_email_count' => $notificationEscalationStageTwoEmailCount,
                 'notification_escalation_stage_2_delay_minutes' => $notificationEscalationStageTwoDelayMinutes,
+                'notification_slack_webhook' => $notificationSlackWebhook,
+                'notification_slack_webhook_configured' => $notificationSlackWebhook !== null,
+                'notification_discord_webhook' => $notificationDiscordWebhook,
+                'notification_discord_webhook_configured' => $notificationDiscordWebhook !== null,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -436,6 +470,8 @@ class MonitorImportController extends Controller
                 $row['notification_email'],
                 $row['notification_escalation_email'],
                 $row['notification_escalation_stage_2_email'],
+                $row['notification_slack_webhook'],
+                $row['notification_discord_webhook'],
             );
 
             return $row;
@@ -497,6 +533,8 @@ class MonitorImportController extends Controller
                 'notification_escalation_delay_minutes' => $row['notification_escalation_delay_minutes'] ?? null,
                 'notification_escalation_stage_2_email' => $row['notification_escalation_stage_2_email'] ?? null,
                 'notification_escalation_stage_2_delay_minutes' => $row['notification_escalation_stage_2_delay_minutes'] ?? null,
+                'notification_slack_webhook' => $row['notification_slack_webhook'] ?? null,
+                'notification_discord_webhook' => $row['notification_discord_webhook'] ?? null,
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,

@@ -23,8 +23,10 @@ use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use App\Services\UrlMasker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -839,6 +841,144 @@ class SocialPostImportTest extends TestCase
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertSame(count($rows), $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_import_encrypted_slack_and_discord_webhooks_and_route_alerts(): void
+    {
+        config([
+            'monitoring.notify_email' => null,
+            'monitoring.notify_slack_webhook' => 'https://hooks.slack.com/services/T123/GLOBAL/SECRET',
+            'monitoring.notify_discord_webhook' => 'https://discord.com/api/webhooks/456/GLOBALTOKEN',
+        ]);
+        Queue::fake([SendNotificationOutbox::class]);
+        $slackWebhookUrl = 'https://hooks.slack-gov.com/services/T456/MONITOR/SLACKSECRET';
+        $discordWebhookUrl = 'https://discord.com/api/webhooks/123/MONITORDISCORDSECRET';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'notification_slack_webhook', 'notification_discord_webhook'],
+            [[
+                'Campaign webhook alerts',
+                'https://www.threads.com/@creator/post/WEBHOOK123',
+                'Campaign',
+                'Launch announcement',
+                $slackWebhookUrl,
+                $discordWebhookUrl,
+            ]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('Slack、Discord 已設定（網址已遮蔽）')
+            ->assertDontSee($slackWebhookUrl)
+            ->assertDontSee($discordWebhookUrl)
+            ->assertDontSee('SLACKSECRET')
+            ->assertDontSee('MONITORDISCORDSECRET');
+
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertTrue($previewRow['notification_slack_webhook_configured']);
+        $this->assertTrue($previewRow['notification_discord_webhook_configured']);
+        $this->assertArrayNotHasKey('notification_slack_webhook', $previewRow);
+        $this->assertArrayNotHasKey('notification_discord_webhook', $previewRow);
+        $encryptedPreview = (string) session('monitor_import_preview');
+        $this->assertStringNotContainsString('SLACKSECRET', $encryptedPreview);
+        $this->assertStringNotContainsString('MONITORDISCORDSECRET', $encryptedPreview);
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $this->assertSame($slackWebhookUrl, $monitor->notification_slack_webhook);
+        $this->assertSame($discordWebhookUrl, $monitor->notification_discord_webhook);
+        $this->assertNotSame(
+            $slackWebhookUrl,
+            DB::table('monitors')->where('id', $monitor->id)->value('notification_slack_webhook'),
+        );
+        $this->assertNotSame(
+            $discordWebhookUrl,
+            DB::table('monitors')->where('id', $monitor->id)->value('notification_discord_webhook'),
+        );
+        $this->assertArrayNotHasKey('notification_slack_webhook', $monitor->toArray());
+        $this->assertArrayNotHasKey('notification_discord_webhook', $monitor->toArray());
+
+        $run = CheckRun::factory()->for($monitor)->create();
+        $incident = Incident::factory()->for($monitor)->create();
+        app(NotificationDispatcher::class)->queue($incident, $monitor, $run, 'opened');
+
+        $outboxes = NotificationOutbox::query()->get();
+        $this->assertCount(2, $outboxes);
+        $this->assertSame($slackWebhookUrl, $outboxes->where('channel', NotificationOutbox::CHANNEL_SLACK)->sole()->recipient);
+        $this->assertSame($discordWebhookUrl, $outboxes->where('channel', NotificationOutbox::CHANNEL_DISCORD)->sole()->recipient);
+        $this->assertNotSame($slackWebhookUrl, DB::table('notification_outbox')->where('channel', NotificationOutbox::CHANNEL_SLACK)->value('recipient'));
+        $this->assertNotSame($discordWebhookUrl, DB::table('notification_outbox')->where('channel', NotificationOutbox::CHANNEL_DISCORD)->value('recipient'));
+
+        Http::fake([
+            'https://hooks.slack-gov.com/*' => Http::response('', 200),
+            'https://discord.com/api/webhooks/*' => Http::response('', 204),
+        ]);
+
+        foreach ($outboxes as $outbox) {
+            (new SendNotificationOutbox((int) $outbox->id))->handle();
+        }
+
+        Http::assertSent(static fn (ClientRequest $request): bool => $request->url() === $slackWebhookUrl);
+        Http::assertSent(static fn (ClientRequest $request): bool => $request->url() === $discordWebhookUrl.'?wait=true');
+        $this->assertSame(2, NotificationOutbox::query()->where('status', 'sent')->count());
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
+    }
+
+    public function test_csv_rejects_unsafe_or_oversized_webhook_urls_without_exposing_them(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'notification_slack_webhook', 'notification_discord_webhook'],
+            [
+                [
+                    'Unsafe Slack destination',
+                    'https://www.threads.com/@creator/post/WEBHOOK001',
+                    'Campaign',
+                    'headline',
+                    'https://example.com/hooks/SLACKPRIVATE',
+                    '',
+                ],
+                [
+                    'Unsafe Discord destination',
+                    'https://www.threads.com/@creator/post/WEBHOOK002',
+                    'Campaign',
+                    'headline',
+                    '',
+                    'https://discord.com.attacker.test/api/webhooks/123/DISCORDPRIVATE',
+                ],
+                [
+                    'Oversized Slack destination',
+                    'https://www.threads.com/@creator/post/WEBHOOK003',
+                    'Campaign',
+                    'headline',
+                    str_repeat('x', 2049),
+                    '',
+                ],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('請使用 hooks.slack.com 或 hooks.slack-gov.com 的 HTTPS Incoming Webhook 網址。')
+            ->assertSee('請使用 discord.com 的 Discord Incoming Webhook HTTPS 網址。')
+            ->assertSee('Slack webhook 網址不得超過 2048 個字元。')
+            ->assertDontSee('SLACKPRIVATE')
+            ->assertDontSee('DISCORDPRIVATE');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(3, $preview->viewData('invalidCount'));
 
         $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
             ->assertRedirect(route('monitors.index'));
