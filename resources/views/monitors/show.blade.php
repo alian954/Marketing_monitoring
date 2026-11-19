@@ -243,7 +243,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="recent-run-title" class="panel-title">最近一次檢查</h2>
-                    <p class="panel-description">最近的檢查結果與回應訊號。</p>
+                    <p class="panel-description">顯示 HTTP 回應的分享標題與摘要，並與同設定版本的前次完成檢查比較。</p>
                 </div>
             </div>
             @if ($monitor->latestCheckRun)
@@ -316,6 +316,23 @@
                                 @endif
                             </dd>
                         </div>
+                        @if ($responseMetadataComparisonAvailable)
+                            <div class="metadata-item field-group-full">
+                                <dt>摘要變化</dt>
+                                <dd>
+                                    @if ($responseMetadataChanged)
+                                        <p>與上次完成檢查相比已變更。</p>
+                                        <p>
+                                            比較基準：<time datetime="{{ $previousResponseMetadataRun->scheduled_at->toIso8601String() }}">{{ $previousResponseMetadataRun->scheduled_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
+                                        </p>
+                                        <p>上次分享標題：{{ $previousResponseMetadataRun->response_title ?? '未提供' }}</p>
+                                        <p>上次分享摘要：{{ $previousResponseMetadataRun->response_description ?? '未提供' }}</p>
+                                    @else
+                                        <p>與上次完成檢查一致。</p>
+                                    @endif
+                                </dd>
+                            </div>
+                        @endif
                         @if ($monitor->latestCheckRun->error_type || $monitor->latestCheckRun->adsbot_error_type)
                             <div class="metadata-item field-group-full">
                                 <dt>檢查訊號</dt>

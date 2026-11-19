@@ -282,6 +282,18 @@ class MonitorController extends Controller
     public function show(Request $request, Monitor $monitor): View
     {
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
+        $latestResponseMetadataRun = $monitor->latestCheckRun;
+        $previousResponseMetadataRun = $this->previousResponseMetadataRun($monitor, $latestResponseMetadataRun);
+        $responseMetadataComparisonAvailable = $previousResponseMetadataRun !== null && (
+            $latestResponseMetadataRun?->response_title !== null
+            || $latestResponseMetadataRun?->response_description !== null
+            || $previousResponseMetadataRun->response_title !== null
+            || $previousResponseMetadataRun->response_description !== null
+        );
+        $responseMetadataChanged = $responseMetadataComparisonAvailable && (
+            $latestResponseMetadataRun?->response_title !== $previousResponseMetadataRun->response_title
+            || $latestResponseMetadataRun?->response_description !== $previousResponseMetadataRun->response_description
+        );
         $checkRunFilters = $this->validateCheckRunFilters($request);
         $acceptedStatusCodesByVersion = $checkRunFilters['content_match'] === ''
             ? []
@@ -438,6 +450,9 @@ class MonitorController extends Controller
 
         return view('monitors.show', compact(
             'monitor',
+            'previousResponseMetadataRun',
+            'responseMetadataComparisonAvailable',
+            'responseMetadataChanged',
             'runs',
             'dnsChanges',
             'latestTlsObservation',
@@ -456,6 +471,28 @@ class MonitorController extends Controller
             'checkRunSourceOptions' => self::CHECK_RUN_SOURCE_OPTIONS,
             'checkRunContentMatchOptions' => self::CHECK_RUN_CONTENT_MATCH_OPTIONS,
         ]);
+    }
+
+    private function previousResponseMetadataRun(Monitor $monitor, ?CheckRun $latestRun): ?CheckRun
+    {
+        if ($latestRun === null || $latestRun->status !== 'completed') {
+            return null;
+        }
+
+        return $monitor->checkRuns()
+            ->where('config_version', $latestRun->config_version)
+            ->where('status', 'completed')
+            ->whereNotIn('source', ['tls_daily', 'domain_daily'])
+            ->where(function (Builder $query) use ($latestRun): void {
+                $query->where('scheduled_at', '<', $latestRun->scheduled_at)
+                    ->orWhere(function (Builder $sameTimeQuery) use ($latestRun): void {
+                        $sameTimeQuery->where('scheduled_at', $latestRun->scheduled_at)
+                            ->where('id', '<', $latestRun->id);
+                    });
+            })
+            ->orderByDesc('scheduled_at')
+            ->orderByDesc('id')
+            ->first(['id', 'scheduled_at', 'response_title', 'response_description']);
     }
 
     public function edit(Monitor $monitor): View
