@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\User;
+use App\Services\ResponseMetadataChangeHistory;
 use DateTimeInterface;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ResponseMetadataChangeHistoryTest extends TestCase
@@ -103,6 +106,26 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $this->assertSame('Title 12', $changes[0]['current_title']);
         $this->assertSame('Title 3', $changes[9]['current_title']);
         $this->assertNotContains('Title 2', array_column($changes, 'current_title'));
+    }
+
+    public function test_metadata_history_reads_more_than_one_batch_in_one_database_query(): void
+    {
+        $monitor = $this->createMonitor();
+        CheckRun::factory()->count(501)->for($monitor)->create([
+            'response_title' => 'Stable title',
+            'response_description' => 'Stable summary.',
+        ]);
+        $checkRunQueryCount = 0;
+        DB::listen(function (QueryExecuted $query) use (&$checkRunQueryCount): void {
+            if (str_contains(mb_strtolower($query->sql), 'check_runs')) {
+                $checkRunQueryCount++;
+            }
+        });
+
+        $changes = app(ResponseMetadataChangeHistory::class)->build($monitor);
+
+        $this->assertSame([], $changes);
+        $this->assertSame(1, $checkRunQueryCount);
     }
 
     private function createMonitor(): Monitor

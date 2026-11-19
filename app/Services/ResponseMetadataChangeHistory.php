@@ -31,7 +31,7 @@ class ResponseMetadataChangeHistory
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')
             ->select(['id', 'config_version', 'scheduled_at', 'response_title', 'response_description'])
-            ->lazy(500) as $run) {
+            ->cursor() as $run) {
             if ($newerRun instanceof CheckRun && $newerRun->config_version === $run->config_version) {
                 $changedFields = [];
 
