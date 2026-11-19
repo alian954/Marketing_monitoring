@@ -256,7 +256,10 @@ class MonitorController extends Controller
     {
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
         $checkRunFilters = $this->validateCheckRunFilters($request);
-        $runs = $this->filterCheckRuns($monitor->checkRuns()->getQuery(), $checkRunFilters)
+        $acceptedStatusCodesByVersion = $checkRunFilters['content_match'] === ''
+            ? []
+            : $this->acceptedStatusCodesByVersion($monitor);
+        $runs = $this->filterCheckRuns($monitor->checkRuns()->getQuery(), $checkRunFilters, $acceptedStatusCodesByVersion)
             ->latest('scheduled_at')
             ->paginate(50)
             ->withQueryString();
@@ -271,7 +274,7 @@ class MonitorController extends Controller
             ->get(['id', 'monitor_id', 'previous_ips', 'current_ips', 'monitor_host_only', 'detected_at']);
         $latestTlsObservation = $monitor->tlsObservations()->latest('observed_on')->first();
         $latestDomainRegistrationObservation = $monitor->domainRegistrationObservations()->latest('observed_on')->first();
-        $incidents = $monitor->incidents()->with(['events', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
+        $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
         $historyStart = $asOf->copy()->subDays(30);
         $historyQueryStart = $historyStart->copy()->subSeconds(
@@ -794,11 +797,17 @@ class MonitorController extends Controller
                 'tls_expires_at_utc',
             ], ',', '"', '');
 
-            $this->filterCheckRuns($monitor->checkRuns()->getQuery(), $checkRunFilters)
+            $acceptedStatusCodesByVersion = $checkRunFilters['content_match'] === ''
+                ? []
+                : $this->acceptedStatusCodesByVersion($monitor);
+
+            $this->filterCheckRuns($monitor->checkRuns()->getQuery(), $checkRunFilters, $acceptedStatusCodesByVersion)
                 ->orderBy('scheduled_at')
                 ->orderBy('id')
                 ->lazy(500)
                 ->each(function (CheckRun $run) use ($stream): void {
+                    $expectedTextMatchResult = $run->expectedTextMatchResult();
+                    $expectedResponseHeaderMatchResult = $run->expectedResponseHeaderMatchResult();
                     $fields = [
                         (string) $run->id,
                         $run->scheduled_at->utc()->toIso8601String(),
@@ -812,8 +821,8 @@ class MonitorController extends Controller
                         $run->elapsed_ms === null ? '' : (string) $run->elapsed_ms,
                         (string) $run->error_type,
                         (string) $run->adsbot_error_type,
-                        $run->expected_text_found === null ? '' : ($run->expected_text_found ? '1' : '0'),
-                        $run->expected_response_header_found === null ? '' : ($run->expected_response_header_found ? '1' : '0'),
+                        $expectedTextMatchResult === null ? '' : ($expectedTextMatchResult ? '1' : '0'),
+                        $expectedResponseHeaderMatchResult === null ? '' : ($expectedResponseHeaderMatchResult ? '1' : '0'),
                         $run->expectedTextMode(),
                         $run->tls_expires_at?->utc()->toIso8601String() ?? '',
                     ];
@@ -884,15 +893,38 @@ class MonitorController extends Controller
         ];
     }
 
-    /** @param array{status: string, source: string, content_match: string, date_from: string, date_to: string} $filters */
-    private function filterCheckRuns(Builder $query, array $filters): Builder
+    /**
+     * @param  array{status: string, source: string, content_match: string, date_from: string, date_to: string}  $filters
+     * @param  array<int, list<int>>  $acceptedStatusCodesByVersion
+     */
+    private function filterCheckRuns(Builder $query, array $filters, array $acceptedStatusCodesByVersion = []): Builder
     {
         return $query
             ->when($filters['status'] !== '', static fn (Builder $query): Builder => $query->where('status', $filters['status']))
             ->when($filters['source'] !== '', static fn (Builder $query): Builder => $query->where('source', $filters['source']))
-            ->when($filters['content_match'] === 'found', static fn (Builder $query): Builder => $query->where('expected_text_found', true))
-            ->when($filters['content_match'] === 'missing', static fn (Builder $query): Builder => $query->where('expected_text_found', false))
-            ->when($filters['content_match'] === 'not_checked', static fn (Builder $query): Builder => $query->whereNull('expected_text_found'))
+            ->when($filters['content_match'] === 'found', function (Builder $query) use ($acceptedStatusCodesByVersion): Builder {
+                $query->where('expected_text_found', true);
+                $this->whereAcceptedHttpStatuses($query, $acceptedStatusCodesByVersion);
+
+                return $query;
+            })
+            ->when($filters['content_match'] === 'missing', function (Builder $query) use ($acceptedStatusCodesByVersion): Builder {
+                $query->where('expected_text_found', false);
+                $this->whereAcceptedHttpStatuses($query, $acceptedStatusCodesByVersion);
+
+                return $query;
+            })
+            ->when($filters['content_match'] === 'not_checked', function (Builder $query) use ($acceptedStatusCodesByVersion): Builder {
+                $query->where(function (Builder $query) use ($acceptedStatusCodesByVersion): void {
+                    $query->whereNull('expected_text_found')
+                        ->orWhere(function (Builder $query) use ($acceptedStatusCodesByVersion): void {
+                            $query->whereNotNull('expected_text_found');
+                            $this->whereUnacceptedHttpStatuses($query, $acceptedStatusCodesByVersion);
+                        });
+                });
+
+                return $query;
+            })
             ->when($filters['date_from'] !== '', static function (Builder $query) use ($filters): Builder {
                 $start = CarbonImmutable::parse($filters['date_from'], 'Asia/Taipei')->startOfDay()->utc();
 
@@ -903,6 +935,88 @@ class MonitorController extends Controller
 
                 return $query->where('scheduled_at', '<', $endExclusive);
             });
+    }
+
+    /** @return array<int, list<int>> */
+    private function acceptedStatusCodesByVersion(Monitor $monitor): array
+    {
+        $representativeRunIds = $monitor->checkRuns()
+            ->selectRaw('MIN(id) AS representative_id')
+            ->groupBy('config_version')
+            ->pluck('representative_id');
+
+        if ($representativeRunIds->isEmpty()) {
+            return [];
+        }
+
+        return CheckRun::query()
+            ->whereIn('id', $representativeRunIds)
+            ->get(['config_version', 'config_snapshot'])
+            ->mapWithKeys(static function (CheckRun $run): array {
+                $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+                $acceptedStatusCodes = $snapshot['accepted_status_codes'] ?? [];
+
+                return [(int) $run->config_version => is_array($acceptedStatusCodes)
+                    ? array_values(array_unique(array_map('intval', $acceptedStatusCodes)))
+                    : []];
+            })
+            ->all();
+    }
+
+    /** @param array<int, list<int>> $acceptedStatusCodesByVersion */
+    private function whereAcceptedHttpStatuses(Builder $query, array $acceptedStatusCodesByVersion): void
+    {
+        $query->where(function (Builder $statusQuery) use ($acceptedStatusCodesByVersion): void {
+            if ($acceptedStatusCodesByVersion === []) {
+                $statusQuery->whereRaw('1 = 0');
+
+                return;
+            }
+
+            foreach ($acceptedStatusCodesByVersion as $configVersion => $acceptedStatusCodes) {
+                $statusQuery->orWhere(function (Builder $versionQuery) use ($configVersion, $acceptedStatusCodes): void {
+                    $versionQuery->where('config_version', $configVersion)
+                        ->where(function (Builder $httpStatusQuery) use ($acceptedStatusCodes): void {
+                            $httpStatusQuery->whereBetween('normal_status', [200, 399]);
+
+                            if ($acceptedStatusCodes !== []) {
+                                $httpStatusQuery->orWhereIn('normal_status', $acceptedStatusCodes);
+                            }
+                        });
+                });
+            }
+        });
+    }
+
+    /** @param array<int, list<int>> $acceptedStatusCodesByVersion */
+    private function whereUnacceptedHttpStatuses(Builder $query, array $acceptedStatusCodesByVersion): void
+    {
+        $query->where(function (Builder $statusQuery) use ($acceptedStatusCodesByVersion): void {
+            if ($acceptedStatusCodesByVersion === []) {
+                $statusQuery->whereRaw('1 = 0');
+
+                return;
+            }
+
+            foreach ($acceptedStatusCodesByVersion as $configVersion => $acceptedStatusCodes) {
+                $statusQuery->orWhere(function (Builder $versionQuery) use ($configVersion, $acceptedStatusCodes): void {
+                    $versionQuery->where('config_version', $configVersion)
+                        ->where(function (Builder $httpStatusQuery) use ($acceptedStatusCodes): void {
+                            $httpStatusQuery->whereNull('normal_status')
+                                ->orWhere(function (Builder $unacceptedStatusQuery) use ($acceptedStatusCodes): void {
+                                    $unacceptedStatusQuery->where(function (Builder $statusRangeQuery): void {
+                                        $statusRangeQuery->where('normal_status', '<', 200)
+                                            ->orWhere('normal_status', '>=', 400);
+                                    });
+
+                                    if ($acceptedStatusCodes !== []) {
+                                        $unacceptedStatusQuery->whereNotIn('normal_status', $acceptedStatusCodes);
+                                    }
+                                });
+                        });
+                });
+            }
+        });
     }
 
     public function export(Request $request): StreamedResponse|RedirectResponse

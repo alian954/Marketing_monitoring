@@ -193,9 +193,9 @@
                                             文字比對：
                                             @if ($monitor->latestCheckRun === null)
                                                 尚未檢查
-                                            @elseif ($monitor->latestCheckRun->expected_text_found === null)
+                                            @elseif ($monitor->latestCheckRun->expectedTextMatchResult() === null)
                                                 尚未比對
-                                            @elseif ($monitor->latestCheckRun->expected_text_found)
+                                            @elseif ($monitor->latestCheckRun->expectedTextMatchResult())
                                                 {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '找到禁止文字', 'present_any' => '已找到至少一個片段', default => '已找到全部片段' } }}
                                             @else
                                                 {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '未找到禁止文字', 'present_any' => '未找到任何片段', default => '缺少至少一個片段' } }}

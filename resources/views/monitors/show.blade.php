@@ -276,9 +276,9 @@
                         <div class="metadata-item">
                                 <dt>文字比對結果</dt>
                             <dd>
-                                @if ($monitor->latestCheckRun->expected_text_found === null)
-                                    未檢查
-                                @elseif ($monitor->latestCheckRun->expected_text_found)
+                                @if ($monitor->latestCheckRun->expectedTextMatchResult() === null)
+                                    未檢查或無法判定
+                                @elseif ($monitor->latestCheckRun->expectedTextMatchResult())
                                     {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '原始回應找到禁止文字', 'present_any' => '原始回應找到至少一個指定片段', default => '原始回應找到全部指定片段' } }}
                                 @else
                                     {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '原始回應未找到禁止文字', 'present_any' => '原始回應未找到任何指定片段', default => '原始回應缺少至少一個指定片段' } }}
@@ -298,7 +298,7 @@
                         @if ($monitor->expectedResponseHeaderName() !== null)
                             <div class="metadata-item">
                                 <dt>回應標頭比對結果</dt>
-                                <dd>{{ $monitor->latestCheckRun->expected_response_header_found === null ? '未檢查或無法判定' : ($monitor->latestCheckRun->expected_response_header_found ? '符合' : '不符合') }}</dd>
+                                <dd>{{ $monitor->latestCheckRun->expectedResponseHeaderMatchResult() === null ? '未檢查或無法判定' : ($monitor->latestCheckRun->expectedResponseHeaderMatchResult() ? '符合' : '不符合') }}</dd>
                             </div>
                         @endif
                         @if ($monitor->latestCheckRun->error_type || $monitor->latestCheckRun->adsbot_error_type)
@@ -732,13 +732,23 @@
                                                     <span class="secondary-text">HTTP 回應 {{ number_format((int) $event->evidence['elapsed_ms']) }} 毫秒；門檻 {{ number_format((int) $event->evidence['threshold_ms']) }} 毫秒</span>
                                                 @endif
                                                 @if (in_array($incident->rule_key, ['content', 'forbidden_text'], true) && isset($event->evidence['expected_text_mode']) && array_key_exists('expected_text_found', $event->evidence))
+                                                    @php
+                                                        $eventExpectedTextMatchResult = $event->checkRun !== null
+                                                            ? $event->checkRun->expectedTextMatchResult()
+                                                            : $event->evidence['expected_text_found'];
+                                                    @endphp
                                                     <span class="secondary-text">
                                                         條件：{{ match ($event->evidence['expected_text_mode']) { 'absent' => '不得出現任一片段', 'present_any' => '至少包含一個片段', default => '必須包含全部片段' } }}；
-                                                        比對：{{ $event->evidence['expected_text_found'] === null ? '無法判定' : match ($event->evidence['expected_text_mode']) { 'absent' => $event->evidence['expected_text_found'] ? '原始回應找到禁止文字' : '原始回應未找到禁止文字', 'present_any' => $event->evidence['expected_text_found'] ? '原始回應找到至少一個片段' : '原始回應未找到任何片段', default => $event->evidence['expected_text_found'] ? '原始回應找到全部片段' : '原始回應缺少至少一個片段' } }}
+                                                        比對：{{ $eventExpectedTextMatchResult === null ? '無法判定' : match ($event->evidence['expected_text_mode']) { 'absent' => $eventExpectedTextMatchResult ? '原始回應找到禁止文字' : '原始回應未找到禁止文字', 'present_any' => $eventExpectedTextMatchResult ? '原始回應找到至少一個片段' : '原始回應未找到任何片段', default => $eventExpectedTextMatchResult ? '原始回應找到全部片段' : '原始回應缺少至少一個片段' } }}
                                                     </span>
                                                 @endif
                                                 @if ($incident->rule_key === 'response_header' && isset($event->evidence['expected_response_header_name']) && array_key_exists('expected_response_header_found', $event->evidence))
-                                                    <span class="secondary-text">標頭 {{ $event->evidence['expected_response_header_name'] }}；比對：{{ $event->evidence['expected_response_header_found'] === null ? '無法判定' : ($event->evidence['expected_response_header_found'] ? '符合' : '不符合') }}</span>
+                                                    @php
+                                                        $eventExpectedResponseHeaderMatchResult = $event->checkRun !== null
+                                                            ? $event->checkRun->expectedResponseHeaderMatchResult()
+                                                            : $event->evidence['expected_response_header_found'];
+                                                    @endphp
+                                                    <span class="secondary-text">標頭 {{ $event->evidence['expected_response_header_name'] }}；比對：{{ $eventExpectedResponseHeaderMatchResult === null ? '無法判定' : ($eventExpectedResponseHeaderMatchResult ? '符合' : '不符合') }}</span>
                                                 @endif
                                                 @if (in_array($event->event_type, ['acknowledged', 'unacknowledged', 'notifications_snoozed', 'notifications_resumed', 'classification_changed', 'incident_note_added', 'incident_note_cleared'], true))
                                                     <span class="secondary-text">由 {{ $event->evidence['actor_name'] ?? '使用者' }}</span>
@@ -1035,7 +1045,7 @@
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 @if ($monitor->expected_text)
                                     <td>
-                                        <p>{{ $run->expected_text_found === null ? '未進行比對或無法判定' : match ($run->expectedTextMode()) { 'absent' => $run->expected_text_found ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expected_text_found ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expected_text_found ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>
+                                        <p>{{ $run->expectedTextMatchResult() === null ? '未進行比對或無法判定' : match ($run->expectedTextMode()) { 'absent' => $run->expectedTextMatchResult() ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expectedTextMatchResult() ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expectedTextMatchResult() ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>
                                         @php
                                             $textMatchDetails = $run->expectedTextMatchDetails();
                                         @endphp
@@ -1052,7 +1062,7 @@
                                     </td>
                                 @endif
                                 @if ($monitor->expectedResponseHeaderName() !== null)
-                                    <td>{{ $run->expected_response_header_found === null ? '未檢查或無法判定' : ($run->expected_response_header_found ? '符合' : '不符合') }}</td>
+                                    <td>{{ $run->expectedResponseHeaderMatchResult() === null ? '未檢查或無法判定' : ($run->expectedResponseHeaderMatchResult() ? '符合' : '不符合') }}</td>
                                 @endif
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>{{ $run->error_type ?: ($run->adsbot_error_type ?: '—') }}</td>

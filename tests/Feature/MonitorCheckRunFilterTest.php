@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\Incident;
+use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -288,6 +290,110 @@ class MonitorCheckRunFilterTest extends TestCase
             ->assertSee(route('monitors.show', ['monitor' => $monitor, ...$filters, 'page' => 2]));
 
         $this->assertSame(51, $response->viewData('runs')->total());
+    }
+
+    public function test_historical_unaccepted_http_responses_are_indeterminate_in_views_filters_and_export(): void
+    {
+        $monitor = Monitor::factory()->create([
+            'expected_text' => 'Published announcement',
+            'expected_response_header' => 'X-Post-State: published',
+        ]);
+        $user = User::factory()->create();
+        $configurationSnapshot = static fn (array $acceptedStatusCodes): string => json_encode([
+            'expected_text' => 'Published announcement',
+            'expected_text_mode' => 'present',
+            'expected_response_header' => 'X-Post-State: published',
+            'accepted_status_codes' => $acceptedStatusCodes,
+        ], JSON_THROW_ON_ERROR);
+
+        $acceptedResponse = CheckRun::factory()->for($monitor)->create([
+            'config_version' => 1,
+            'config_snapshot' => $configurationSnapshot([]),
+            'normal_status' => 200,
+            'expected_text_found' => false,
+            'expected_text_term_matches' => [false],
+            'expected_response_header_found' => false,
+            'scheduled_at' => now()->subMinutes(2),
+        ]);
+        $customAcceptedResponse = CheckRun::factory()->for($monitor)->create([
+            'config_version' => 2,
+            'config_snapshot' => $configurationSnapshot([404]),
+            'normal_status' => 404,
+            'expected_text_found' => false,
+            'expected_text_term_matches' => [false],
+            'expected_response_header_found' => false,
+            'scheduled_at' => now()->subMinute(),
+        ]);
+        $legacyUnacceptedResponse = CheckRun::factory()->for($monitor)->create([
+            'config_version' => 1,
+            'config_snapshot' => $configurationSnapshot([]),
+            'normal_status' => 403,
+            'expected_text_found' => false,
+            'expected_text_term_matches' => [false],
+            'expected_response_header_found' => false,
+            'scheduled_at' => now(),
+        ]);
+        $incident = Incident::factory()->for($monitor)->create([
+            'config_version' => 1,
+            'rule_key' => 'content',
+        ]);
+        IncidentEvent::factory()->for($incident)->for($legacyUnacceptedResponse, 'checkRun')->create([
+            'event_type' => 'failure_seen',
+            'evidence' => [
+                'status' => 403,
+                'expected_text_mode' => 'present',
+                'expected_text_found' => false,
+            ],
+        ]);
+        $headerIncident = Incident::factory()->for($monitor)->create([
+            'config_version' => 1,
+            'rule_key' => 'response_header',
+        ]);
+        IncidentEvent::factory()->for($headerIncident)->for($legacyUnacceptedResponse, 'checkRun')->create([
+            'event_type' => 'failure_seen',
+            'evidence' => [
+                'status' => 403,
+                'expected_response_header_name' => 'X-Post-State',
+                'expected_response_header_found' => false,
+            ],
+        ]);
+
+        $notCheckedResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'content_match' => 'not_checked']))
+            ->assertOk()
+            ->assertSee('未進行比對或無法判定')
+            ->assertSee('未檢查或無法判定')
+            ->assertSee('無法判定')
+            ->assertSee('標頭 X-Post-State；比對：無法判定')
+            ->assertDontSee('查看逐項片段結果')
+            ->assertDontSee('缺少至少一個指定片段')
+            ->assertDontSee('原始回應缺少至少一個片段');
+
+        $this->assertSame([$legacyUnacceptedResponse->id], $notCheckedResponse->viewData('runs')->getCollection()->modelKeys());
+
+        $missingResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'content_match' => 'missing']))
+            ->assertOk();
+        $this->assertEqualsCanonicalizing(
+            [$acceptedResponse->id, $customAcceptedResponse->id],
+            $missingResponse->viewData('runs')->getCollection()->modelKeys(),
+        );
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('monitors.checks.export', ['monitor' => $monitor, 'content_match' => 'not_checked']))
+            ->assertOk();
+        $exportRows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $exportRows);
+        $this->assertSame((string) $legacyUnacceptedResponse->id, $exportRows[0]['check_run_id']);
+        $this->assertSame('', $exportRows[0]['expected_text_found']);
+        $this->assertSame('', $exportRows[0]['expected_response_header_found']);
+
+        $this->actingAs($user)
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('尚未比對')
+            ->assertDontSee('缺少至少一個片段');
     }
 
     /** @return array<int, array<string, string>> */

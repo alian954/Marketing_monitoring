@@ -111,7 +111,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('8', $row[$columns['total_elapsed_ms']]);
         $this->assertSame("'\u{00A0}＝HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
-        $this->assertSame('0', $row[$columns['expected_text_found']]);
+        $this->assertSame('', $row[$columns['expected_text_found']]);
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);

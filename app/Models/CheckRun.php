@@ -46,13 +46,9 @@ class CheckRun extends Model
             return false;
         }
 
-        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
-        $statusCode = $this->normal_status;
-        $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
-        $isAcceptedStatus = $statusCode !== null
-            && (($statusCode >= 200 && $statusCode < 400) || in_array($statusCode, $acceptedStatusCodes, true));
+        $snapshot = $this->configurationSnapshot();
 
-        if (! $isAcceptedStatus) {
+        if (! $this->normalStatusIsAccepted($snapshot)) {
             return false;
         }
 
@@ -60,8 +56,8 @@ class CheckRun extends Model
 
         if (is_string($expectedText) && $expectedText !== '') {
             $contentConditionPassed = ($snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT) === ExpectedTextMatcher::MODE_ABSENT
-                ? $this->expected_text_found === false
-                : $this->expected_text_found === true;
+                ? $this->expectedTextMatchResult() === false
+                : $this->expectedTextMatchResult() === true;
 
             if (! $contentConditionPassed) {
                 return false;
@@ -72,12 +68,12 @@ class CheckRun extends Model
 
         return ! is_string($expectedResponseHeader)
             || trim($expectedResponseHeader) === ''
-            || $this->expected_response_header_found === true;
+            || $this->expectedResponseHeaderMatchResult() === true;
     }
 
     public function expectedTextMode(): string
     {
-        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $snapshot = $this->configurationSnapshot();
 
         $mode = $snapshot['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT;
 
@@ -88,21 +84,30 @@ class CheckRun extends Model
 
     public function hasIndeterminateContentMatch(): bool
     {
-        if ($this->error_type !== 'body_too_large' || $this->expected_text_found !== null || $this->normal_status === null) {
+        if ($this->error_type !== 'body_too_large'
+            || $this->expectedTextMatchResult() !== null
+            || ! $this->normalStatusIsAccepted($this->configurationSnapshot())) {
             return false;
         }
 
-        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $snapshot = $this->configurationSnapshot();
         $expectedText = $snapshot['expected_text'] ?? null;
 
-        if (! is_string($expectedText) || $expectedText === '') {
-            return false;
-        }
+        return is_string($expectedText) && $expectedText !== '';
+    }
 
-        $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
+    public function expectedTextMatchResult(): ?bool
+    {
+        return $this->normalStatusIsAccepted($this->configurationSnapshot())
+            ? $this->expected_text_found
+            : null;
+    }
 
-        return ($this->normal_status >= 200 && $this->normal_status < 400)
-            || in_array($this->normal_status, $acceptedStatusCodes, true);
+    public function expectedResponseHeaderMatchResult(): ?bool
+    {
+        return $this->normalStatusIsAccepted($this->configurationSnapshot())
+            ? $this->expected_response_header_found
+            : null;
     }
 
     /**
@@ -110,13 +115,18 @@ class CheckRun extends Model
      */
     public function expectedTextMatchDetails(): ?array
     {
+        $snapshot = $this->configurationSnapshot();
+
+        if (! $this->normalStatusIsAccepted($snapshot)) {
+            return null;
+        }
+
         $matchedTerms = $this->expected_text_term_matches;
 
         if (! is_array($matchedTerms)) {
             return null;
         }
 
-        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
         $terms = ExpectedTextMatcher::terms($snapshot['expected_text'] ?? null);
 
         if ($terms === [] || count($terms) !== count($matchedTerms)) {
@@ -141,5 +151,28 @@ class CheckRun extends Model
     public function incidentEvents(): HasMany
     {
         return $this->hasMany(IncidentEvent::class);
+    }
+
+    /** @return array<string, mixed> */
+    private function configurationSnapshot(): array
+    {
+        $snapshot = json_decode($this->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+
+        return is_array($snapshot) ? $snapshot : [];
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function normalStatusIsAccepted(array $snapshot): bool
+    {
+        $statusCode = $this->normal_status;
+
+        if ($statusCode === null) {
+            return false;
+        }
+
+        $acceptedStatusCodes = array_map('intval', $snapshot['accepted_status_codes'] ?? []);
+
+        return ($statusCode >= 200 && $statusCode < 400)
+            || in_array($statusCode, $acceptedStatusCodes, true);
     }
 }
