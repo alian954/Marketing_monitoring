@@ -6,6 +6,7 @@ use App\Models\Monitor;
 use App\Services\AcceptedStatusCodeList;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeException;
+use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\UrlMasker;
@@ -32,6 +33,7 @@ class MonitorImportController extends Controller
         'timeout_seconds',
         'response_time_threshold_ms',
         'accepted_status_codes',
+        'request_headers',
     ];
 
     public function __construct(
@@ -75,7 +77,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -113,12 +115,25 @@ class MonitorImportController extends Controller
             $timeoutIsValid = true;
             $responseTimeThresholdMs = null;
             $acceptedStatusCodes = [];
+            $requestHeaders = [];
+            $requestHeaderNames = [];
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
                     $acceptedStatusCodes = AcceptedStatusCodeList::normalize(
                         (string) ($cells[$columnIndexes['accepted_status_codes']] ?? ''),
                     );
+                } catch (InvalidArgumentException $exception) {
+                    $errors[] = $exception->getMessage();
+                }
+            }
+
+            if (isset($columnIndexes['request_headers'])) {
+                try {
+                    $requestHeaders = RequestHeaderParser::parse(
+                        (string) ($cells[$columnIndexes['request_headers']] ?? ''),
+                    );
+                    $requestHeaderNames = array_keys($requestHeaders);
                 } catch (InvalidArgumentException $exception) {
                     $errors[] = $exception->getMessage();
                 }
@@ -243,6 +258,10 @@ class MonitorImportController extends Controller
                 $errors[] = '社群貼文的 expected_text_mode 必須是 present 或 present_any。';
             }
 
+            if ($requestHeaders !== [] && mb_strtolower((string) parse_url($normalizedUrl, PHP_URL_SCHEME)) !== 'https') {
+                $errors[] = '自訂 HTTP 標頭可能含敏感值，監測網址必須使用 HTTPS。';
+            }
+
             if ($hash !== null && isset($existingHashes[$hash])) {
                 $duplicate = true;
                 $errors[] = '此網址已在監測中。';
@@ -267,6 +286,8 @@ class MonitorImportController extends Controller
                 'timeout_seconds' => $timeoutSeconds,
                 'response_time_threshold_ms' => $responseTimeThresholdMs,
                 'accepted_status_codes' => $acceptedStatusCodes,
+                'request_headers' => $requestHeaders,
+                'request_header_names' => $requestHeaderNames,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -281,7 +302,7 @@ class MonitorImportController extends Controller
             'monitor_import_token' => $previewToken,
         ]);
         $previewRows = array_map(static function (array $row): array {
-            unset($row['expected_response_header']);
+            unset($row['expected_response_header'], $row['request_headers']);
 
             return $row;
         }, $rows);
@@ -336,6 +357,7 @@ class MonitorImportController extends Controller
                 'config_version' => 1,
                 'allowed_redirect_hosts' => [],
                 'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
+                'request_headers' => $row['request_headers'] ?? [],
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,

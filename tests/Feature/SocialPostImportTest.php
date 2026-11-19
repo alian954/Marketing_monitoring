@@ -457,6 +457,91 @@ class SocialPostImportTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_csv_can_import_encrypted_request_headers_without_exposing_the_values(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/HEADER123/';
+        $headers = "Authorization: Bearer import-secret\nX-Region: ap-southeast-1";
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'accepted_status_codes', 'request_headers'],
+            [['Private campaign post', $url, 'Campaign', 'Campaign headline', '', $headers]],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('自訂請求標頭')
+            ->assertSee('Authorization')
+            ->assertSee('X-Region')
+            ->assertSee('值已遮蔽')
+            ->assertDontSee('Bearer import-secret')
+            ->assertDontSee('ap-southeast-1');
+
+        $previewRow = $preview->viewData('previewRows')[0];
+        $this->assertSame(['Authorization', 'X-Region'], $previewRow['request_header_names']);
+        $this->assertArrayNotHasKey('request_headers', $previewRow);
+        $this->assertSame(1, $preview->viewData('validCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $expectedHeaders = [
+            'Authorization' => 'Bearer import-secret',
+            'X-Region' => 'ap-southeast-1',
+        ];
+        $this->assertSame($expectedHeaders, $monitor->request_headers);
+        $rawHeaders = (string) DB::table('monitors')->where('id', $monitor->id)->value('request_headers');
+        $this->assertStringNotContainsString('import-secret', $rawHeaders);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($expectedHeaders, $snapshot['request_headers']);
+
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', $expectedHeaders)
+            ->andReturn(new ProbeResult(200, 200, $url, [], ['93.184.216.34'], null, null, true, null));
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertTrue($run->fresh()->passesMonitorChecks());
+        $this->assertDatabaseCount('incidents', 0);
+    }
+
+    public function test_csv_rejects_reserved_request_headers_and_http_urls_with_custom_headers(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'request_headers'],
+            [
+                ['Reserved header', 'https://example.com/reserved-header', 'Ops', 'Host: unsafe.example'],
+                ['Insecure URL', 'http://example.com/insecure-header', 'Ops', 'Authorization: Bearer do-not-show'],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('此標頭由安全連線設定保留，不能自訂。')
+            ->assertSee('自訂 HTTP 標頭可能含敏感值，監測網址必須使用 HTTPS。')
+            ->assertDontSee('unsafe.example')
+            ->assertDontSee('do-not-show');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(2, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_csv_rejects_optional_columns_in_a_noncanonical_order(): void
     {
         $csv = $this->csvContent(
