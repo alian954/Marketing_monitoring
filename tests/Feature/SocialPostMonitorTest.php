@@ -417,6 +417,110 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('不額外模擬 AdsBot');
     }
 
+    public function test_unaccepted_http_status_does_not_report_social_post_text_as_missing(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+            'expected_response_header' => 'X-Post-State: published',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(403, null, '<main>Log in to continue</main>', 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'normal_status' => 403,
+            'expected_text_found' => null,
+            'expected_text_term_matches' => null,
+            'expected_response_header_found' => null,
+        ]);
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+            'severity' => 'critical',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'content',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('未進行比對或無法判定')
+            ->assertSee('未檢查或無法判定')
+            ->assertDontSee('缺少至少一個指定片段');
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', ['monitor' => $monitor, 'content_match' => 'missing']))
+            ->assertOk()
+            ->assertSee('沒有符合篩選條件的檢查紀錄');
+
+        $content = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.checks.export', $monitor))
+            ->assertOk()
+            ->streamedContent();
+        $lines = preg_split('/\r\n|\n|\r/', trim($content));
+        $headers = str_getcsv(array_shift($lines));
+        $row = str_getcsv(array_shift($lines));
+
+        $this->assertSame('', $row[array_flip($headers)['expected_text_found']]);
+        $this->assertSame('', $row[array_flip($headers)['expected_response_header_found']]);
+    }
+
+    public function test_configured_http_status_can_still_confirm_social_post_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.threads.com/@creator/post/ABC123';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'accepted_status_codes' => [403],
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(403, null, '<article>Campaign headline</article>', 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'normal_status' => 403,
+            'expected_text_found' => true,
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'content',
+        ]);
+    }
+
     public function test_large_social_post_response_with_split_markup_confirms_expected_text_from_its_bounded_prefix(): void
     {
         Queue::fake([RunMonitorCheck::class]);

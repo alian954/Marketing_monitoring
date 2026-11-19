@@ -140,6 +140,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 
             $resolvedIps = array_values(array_unique($resolvedIps));
             $finishedAt = now();
+            $responseConditionStatusAccepted = $monitor->acceptsHttpStatus($normal->statusCode);
             $lockedRun->forceFill([
                 'status' => $currentVersionMatches ? 'completed' : 'stale_config',
                 'finished_at' => $finishedAt,
@@ -154,9 +155,9 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'redirects' => $normal->redirects,
                 'resolved_public_ips' => $resolvedIps,
                 'monitor_host_ips' => $normal->monitorHostIps,
-                'expected_text_found' => $normal->expectedTextFound,
-                'expected_text_term_matches' => $normal->expectedTextTermMatches,
-                'expected_response_header_found' => $normal->expectedResponseHeaderFound,
+                'expected_text_found' => $responseConditionStatusAccepted ? $normal->expectedTextFound : null,
+                'expected_text_term_matches' => $responseConditionStatusAccepted ? $normal->expectedTextTermMatches : null,
+                'expected_response_header_found' => $responseConditionStatusAccepted ? $normal->expectedResponseHeaderFound : null,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
 

@@ -1346,11 +1346,13 @@ class MonitorController extends Controller
         $statusAccepted = $result->statusCode !== null
             && (($result->statusCode >= 200 && $result->statusCode < 400)
                 || in_array($result->statusCode, $validated['accepted_status_codes'], true));
-        $contentConditionPassed = $expectedText === null
+        $expectedTextChecked = $expectedText !== null && $statusAccepted;
+        $contentConditionPassed = ! $expectedTextChecked
             || ($validated['expected_text_mode'] === ExpectedTextMatcher::MODE_ABSENT
                 ? $result->expectedTextFound === false
                 : $result->expectedTextFound === true);
-        $responseHeaderConditionPassed = $validated['expected_response_header'] === null
+        $expectedResponseHeaderChecked = $validated['expected_response_header'] !== null && $statusAccepted;
+        $responseHeaderConditionPassed = ! $expectedResponseHeaderChecked
             || $result->expectedResponseHeaderFound === true;
         $isIncomplete = $result->errorType === 'body_too_large'
             && $statusAccepted
@@ -1363,7 +1365,7 @@ class MonitorController extends Controller
         $expectedTextMatches = [];
         $expectedTextTerms = ExpectedTextMatcher::terms($expectedText);
 
-        if ($result->expectedTextTermMatches !== null && count($expectedTextTerms) === count($result->expectedTextTermMatches)) {
+        if ($expectedTextChecked && $result->expectedTextTermMatches !== null && count($expectedTextTerms) === count($result->expectedTextTermMatches)) {
             foreach ($expectedTextTerms as $index => $term) {
                 $expectedTextMatches[] = [
                     'term' => $term,
@@ -1385,14 +1387,14 @@ class MonitorController extends Controller
                 'status_code' => $result->statusCode,
                 'elapsed_ms' => $result->elapsedMs,
                 'final_url' => $result->finalUrl,
-                'expected_text_checked' => $expectedText !== null,
+                'expected_text_checked' => $expectedTextChecked,
                 'expected_text_mode' => $validated['expected_text_mode'],
-                'expected_text_state' => $result->expectedTextFound === null
+                'expected_text_state' => ! $expectedTextChecked || $result->expectedTextFound === null
                     ? null
                     : ($result->expectedTextFound ? 'found' : 'missing'),
                 'expected_text_matches' => $expectedTextMatches,
-                'expected_response_header_checked' => $validated['expected_response_header'] !== null,
-                'expected_response_header_found' => $result->expectedResponseHeaderFound,
+                'expected_response_header_checked' => $expectedResponseHeaderChecked,
+                'expected_response_header_found' => $expectedResponseHeaderChecked ? $result->expectedResponseHeaderFound : null,
             ]);
     }
 

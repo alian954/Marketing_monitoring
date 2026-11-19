@@ -162,6 +162,83 @@ class MonitorProbePreviewTest extends TestCase
         $this->assertDatabaseCount('incidents', 0);
     }
 
+    public function test_probe_preview_skips_text_comparison_for_an_unaccepted_http_status(): void
+    {
+        $url = 'https://www.facebook.com/page/posts/403/';
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->andReturn(new ProbeResult(
+                403,
+                80,
+                $url,
+                [],
+                ['93.184.216.34'],
+                null,
+                null,
+                false,
+                null,
+                [],
+                null,
+                null,
+                [false],
+            ));
+
+        $response = $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->post(route('monitors.probe-preview'), [
+                ...$this->socialPost($url),
+                'expected_response_header' => 'X-Post-State: published',
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHas('probe_preview.expected_text_checked', false)
+            ->assertSessionHas('probe_preview.expected_text_matches', [])
+            ->assertSessionHas('probe_preview.expected_response_header_checked', false)
+            ->assertSessionHas('probe_preview.message', 'HTTP 403 不在此監測設定接受的狀態碼範圍內。');
+
+        $preview = $response->getSession()->get('probe_preview');
+        $this->assertNull($preview['expected_text_state']);
+        $this->assertNull($preview['expected_response_header_found']);
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_probe_preview_checks_content_when_a_nonstandard_status_is_accepted(): void
+    {
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->andReturn(new ProbeResult(
+                403,
+                80,
+                $url,
+                [],
+                ['93.184.216.34'],
+                null,
+                null,
+                true,
+                null,
+                [],
+                null,
+                null,
+                [true],
+            ));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->followingRedirects()
+            ->post(route('monitors.probe-preview'), [
+                ...$this->socialPost($url),
+                'accepted_status_codes' => '403',
+            ])
+            ->assertOk()
+            ->assertSee('預檢通過')
+            ->assertSee('已找到全部指定片段')
+            ->assertSee('HTTP 狀態與文字條件均符合目前設定。');
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_preview_applies_the_absent_condition_to_any_forbidden_line(): void
     {
         $url = 'https://example.test/landing';
