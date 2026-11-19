@@ -1312,7 +1312,15 @@
                                 </td>
                                 <td>{{ ['manual' => '手動檢查', 'confirmation' => '確認延遲檢查', 'tls_daily' => '每日 TLS 檢查', 'domain_daily' => '每日網域期限檢查'][$run->source] ?? '排程檢查' }}</td>
                                 <td><x-state-badge :state="$run->status" /></td>
-                                <td class="numeric">{{ $run->normal_status ?? '—' }}</td>
+                                <td class="numeric">
+                                    {{ $run->normal_status ?? '—' }}
+                                    @if ($run->response_content_type)
+                                        <span class="secondary-text">{{ $run->response_content_type }}</span>
+                                    @endif
+                                    @if ($run->response_body_bytes !== null)
+                                        <span class="secondary-text">{{ number_format($run->response_body_bytes) }} bytes</span>
+                                    @endif
+                                </td>
                                 <td class="numeric">{{ $run->adsbot_status ?? ($socialPlatform ? '略過' : '—') }}</td>
                                 <td>
                                     @if ($run->response_title || $run->response_description || $run->response_image_reference_hash || $run->response_open_graph_type || $run->response_canonical_reference_hash || $run->response_published_at || $run->response_modified_at)

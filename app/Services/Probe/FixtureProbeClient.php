@@ -89,6 +89,8 @@ class FixtureProbeClient implements ProbeClient
             $matchesExpectedResponseHeader,
             $expectedTextTermMatches,
             responseVisibleTextHash: ResponseMetadataExtractor::inspect($body)['visible_text_hash'],
+            responseContentType: 'text/html; charset=UTF-8',
+            responseBodyBytes: strlen($body),
         );
     }
 }

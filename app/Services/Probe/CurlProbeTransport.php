@@ -34,6 +34,13 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
         $responseHeaders = [];
         $responseHeaderValueBytes = 0;
         $retryAfterParser = $this->retryAfterParser;
+        $responseHeaderNamesToCapture = ['content-type'];
+
+        if ($responseHeaderName !== null) {
+            $responseHeaderNamesToCapture[] = mb_strtolower($responseHeaderName);
+        }
+
+        $responseHeaderNamesToCapture = array_values(array_unique($responseHeaderNamesToCapture));
         $resolve = null;
         $requestBudgetMs = max(1, $timeoutMs);
         $connectBudgetMs = max(1, min($requestBudgetMs, (int) config('monitoring.connect_timeout_seconds') * 1000));
@@ -71,7 +78,7 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
 
                 return strlen($chunk);
             },
-            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location, &$retryAfterHeader, &$responseHeaders, &$responseHeaderValueBytes, $responseHeaderName, $retryAfterParser): int {
+            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$location, &$retryAfterHeader, &$responseHeaders, &$responseHeaderValueBytes, $responseHeaderNamesToCapture, $retryAfterParser): int {
                 if (preg_match('/\AHTTP\/\S+\s+\d{3}(?:\s|\z)/i', $line) === 1) {
                     $location = null;
                     $retryAfterHeader = null;
@@ -91,13 +98,13 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
 
                 $separator = strpos($line, ':');
 
-                if ($responseHeaderName !== null && $separator !== false) {
+                if ($separator !== false) {
                     $name = mb_strtolower(trim(substr($line, 0, $separator)));
                     $value = trim(substr($line, $separator + 1));
                     $valueBytes = strlen($value);
 
                     if (
-                        $name === mb_strtolower($responseHeaderName)
+                        in_array($name, $responseHeaderNamesToCapture, true)
                         && count($responseHeaders[$name] ?? []) < 16
                         && $responseHeaderValueBytes + $valueBytes <= 32_768
                     ) {

@@ -32,6 +32,8 @@ readonly class ProbeResult
         public ?\DateTimeImmutable $responsePublishedAt = null,
         public ?\DateTimeImmutable $responseModifiedAt = null,
         public ?string $responseVisibleTextHash = null,
+        public ?string $responseContentType = null,
+        public ?int $responseBodyBytes = null,
     ) {}
 
     public function succeeded(): bool

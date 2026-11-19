@@ -387,7 +387,19 @@ class SocialPostMonitorTest extends TestCase
         ]);
         $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
         $this->assertNotNull($run);
-        $normal = new ProbeResult(200, 42, $url, [], ['93.184.216.34'], null, null, true, null);
+        $normal = new ProbeResult(
+            200,
+            42,
+            $url,
+            [],
+            ['93.184.216.34'],
+            null,
+            null,
+            true,
+            null,
+            responseContentType: 'text/html; charset=UTF-8',
+            responseBodyBytes: 384,
+        );
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
@@ -403,6 +415,8 @@ class SocialPostMonitorTest extends TestCase
             'adsbot_status' => null,
             'adsbot_error_type' => null,
             'elapsed_ms' => 42,
+            'response_content_type' => 'text/html; charset=UTF-8',
+            'response_body_bytes' => 384,
         ]);
         $this->assertDatabaseMissing('incidents', [
             'monitor_id' => $monitor->id,
@@ -414,6 +428,8 @@ class SocialPostMonitorTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('略過（社群監測）')
+            ->assertSee('text/html; charset=UTF-8')
+            ->assertSee('384 bytes')
             ->assertSee('不額外模擬 AdsBot');
     }
 

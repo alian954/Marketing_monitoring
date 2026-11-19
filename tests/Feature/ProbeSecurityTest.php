@@ -185,6 +185,64 @@ class ProbeSecurityTest extends TestCase
         $this->assertNull($result->responseVisibleTextHash);
     }
 
+    public function test_secure_probe_returns_diagnostics_from_the_final_response(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            private int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                if ($this->calls === 1) {
+                    return new HopResponse(302, '/post', '', 1, null, null, null, responseHeaders: ['content-type' => ['application/x-redirect']]);
+                }
+
+                return new HopResponse(200, null, '<article>post text</article>', 1, null, null, null, responseHeaders: ['content-type' => ["text/html;\r\n charset=UTF-8"]]);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/short', [], 'MonitorTest/1.0');
+
+        $this->assertSame('text/html; charset=UTF-8', $result->responseContentType);
+        $this->assertSame(28, $result->responseBodyBytes);
+        $this->assertCount(1, $result->redirects);
+    }
+
+    public function test_secure_probe_leaves_response_body_size_unknown_when_the_body_was_truncated(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>partial</article>', 1, 'body_too_large', '回應超過讀取上限。', null, responseHeaders: ['content-type' => ['text/html']]);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0', 'Expected post text');
+
+        $this->assertSame('body_too_large', $result->errorType);
+        $this->assertSame('text/html', $result->responseContentType);
+        $this->assertNull($result->responseBodyBytes);
+    }
+
     public function test_social_platform_first_party_redirects_are_followed_without_a_user_allowlist(): void
     {
         $redirectCases = [

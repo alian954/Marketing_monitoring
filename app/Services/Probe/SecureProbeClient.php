@@ -123,6 +123,8 @@ class SecureProbeClient implements ProbeClient
             $responseVisibleTextHash = $response->errorType === null
                 ? ($responseInspection['visible_text_hash'] ?? null)
                 : null;
+            $responseContentType = $this->responseContentType($response->responseHeaders);
+            $responseBodyBytes = $response->errorType === null ? strlen($response->body) : null;
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -158,6 +160,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['canonical_reference_hash'],
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
+                    responseContentType: $responseContentType,
                 );
             }
 
@@ -187,6 +190,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['canonical_reference_hash'],
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
+                    responseContentType: $responseContentType,
                 );
             }
 
@@ -212,6 +216,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['canonical_reference_hash'],
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
+                    responseContentType: $responseContentType,
                 );
             }
 
@@ -246,6 +251,8 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
                     $responseVisibleTextHash,
+                    $responseContentType,
+                    $responseBodyBytes,
                 );
             }
 
@@ -300,6 +307,20 @@ class SecureProbeClient implements ProbeClient
     private function timeoutException(int $timeoutSeconds): ProbeException
     {
         return new ProbeException('timeout', '整體檢查已超過 '.$timeoutSeconds.' 秒時間上限。');
+    }
+
+    /** @param array<string, list<string>> $responseHeaders */
+    private function responseContentType(array $responseHeaders): ?string
+    {
+        $contentType = $responseHeaders['content-type'][0] ?? null;
+
+        if (! is_string($contentType)) {
+            return null;
+        }
+
+        $contentType = preg_replace('/[\x00-\x1F\x7F]/', '', trim($contentType));
+
+        return $contentType === null || $contentType === '' ? null : mb_substr($contentType, 0, 255);
     }
 
     /** @param list<string> $redirects @param list<string> $resolvedIps */

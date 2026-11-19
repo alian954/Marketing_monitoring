@@ -60,6 +60,8 @@ class MonitorCheckRunExportTest extends TestCase
             'response_canonical_reference_hash' => str_repeat('d', 64),
             'response_published_at' => '2026-11-19 01:02:03',
             'response_modified_at' => '2026-11-19 05:02:03',
+            'response_content_type' => '=HYPERLINK("https://evil.example")',
+            'response_body_bytes' => 768,
             'tls_expires_at' => '2027-01-01 00:00:00',
         ]);
         CheckRun::factory()->for($otherMonitor)->create([
@@ -95,6 +97,8 @@ class MonitorCheckRunExportTest extends TestCase
             'source',
             'status',
             'http_status',
+            'response_content_type',
+            'response_body_bytes',
             'adsbot_status',
             'http_elapsed_ms',
             'total_elapsed_ms',
@@ -122,6 +126,8 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('scheduled', $row[$columns['source']]);
         $this->assertSame('failed', $row[$columns['status']]);
         $this->assertSame('503', $row[$columns['http_status']]);
+        $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_content_type']]);
+        $this->assertSame('768', $row[$columns['response_body_bytes']]);
         $this->assertSame('', $row[$columns['adsbot_status']]);
         $this->assertSame('4', $row[$columns['http_elapsed_ms']]);
         $this->assertSame('8', $row[$columns['total_elapsed_ms']]);
@@ -161,6 +167,8 @@ class MonitorCheckRunExportTest extends TestCase
                 'https://www.facebook.com/login/?access_token=private-access-value',
                 'https://www.facebook.com/login/?next=%2Fposts%2F123&access_token=private-access-value',
             ],
+            'response_content_type' => '<script>alert("x")</script>',
+            'response_body_bytes' => 144,
         ]);
 
         $this->actingAs($user)
@@ -170,6 +178,9 @@ class MonitorCheckRunExportTest extends TestCase
             ->assertSee('查看 2 次重新導向')
             ->assertSee('https://www.facebook.com/login/?next=%2Fposts%2F123&amp;access_token=REDACTED', false)
             ->assertSee('https://www.facebook.com/login/?access_token=REDACTED')
+            ->assertSee('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;', false)
+            ->assertSee('144 bytes')
+            ->assertDontSee('<script>alert("x")</script>', false)
             ->assertDontSee('private-access-value');
     }
 

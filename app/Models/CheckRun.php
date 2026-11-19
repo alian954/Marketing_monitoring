@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'expected_text_term_matches', 'expected_response_header_found', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at', 'response_visible_text_hash', 'tls_expires_at'])]
+#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'expected_text_found', 'expected_text_term_matches', 'expected_response_header_found', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at', 'response_visible_text_hash', 'response_content_type', 'response_body_bytes', 'tls_expires_at'])]
 #[Hidden(['config_snapshot', 'expected_text_term_matches', 'response_image_reference_hash', 'response_canonical_reference_hash', 'response_visible_text_hash'])]
 class CheckRun extends Model
 {
@@ -27,6 +27,7 @@ class CheckRun extends Model
             'adsbot_status' => 'integer',
             'elapsed_ms' => 'integer',
             'normal_elapsed_ms' => 'integer',
+            'response_body_bytes' => 'integer',
             'scheduled_at' => 'immutable_datetime',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
