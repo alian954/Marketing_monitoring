@@ -175,7 +175,7 @@ class Monitor extends Model
             return true;
         }
 
-        if (preg_match('/(?:\A|\/)(?:post|posts|videos|reel)\/[^\/]+\z|\Ashare\/[prv]\/[^\/]+\z/i', $path) === 1) {
+        if (preg_match('/(?:\A|\/)(?:post|posts|permalink|videos|reel)\/[^\/]+\z|\Ashare\/[prv]\/[^\/]+\z/i', $path) === 1) {
             return true;
         }
 
