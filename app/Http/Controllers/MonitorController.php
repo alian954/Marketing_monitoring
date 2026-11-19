@@ -17,6 +17,7 @@ use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RunScheduler;
 use App\Services\SlackWebhookUrlPolicy;
 use App\Services\UrlMasker;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -655,27 +656,34 @@ class MonitorController extends Controller
         }, 'check-history-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{status: string, source: string, content_match: string} */
+    /** @return array{status: string, source: string, content_match: string, date_from: string, date_to: string} */
     private function validateCheckRunFilters(Request $request): array
     {
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_STATUS_OPTIONS))],
             'source' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_SOURCE_OPTIONS))],
             'content_match' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::CHECK_RUN_CONTENT_MATCH_OPTIONS))],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ], [
             'status.in' => '請選擇有效的檢查執行狀態。',
             'source.in' => '請選擇有效的檢查來源。',
             'content_match.in' => '請選擇有效的文字比對篩選條件。',
+            'date_from.date_format' => '開始日期格式無效。',
+            'date_to.date_format' => '結束日期格式無效。',
+            'date_to.after_or_equal' => '結束日期不可早於開始日期。',
         ]);
 
         return [
             'status' => (string) ($validated['status'] ?? ''),
             'source' => (string) ($validated['source'] ?? ''),
             'content_match' => (string) ($validated['content_match'] ?? ''),
+            'date_from' => (string) ($validated['date_from'] ?? ''),
+            'date_to' => (string) ($validated['date_to'] ?? ''),
         ];
     }
 
-    /** @param array{status: string, source: string, content_match: string} $filters */
+    /** @param array{status: string, source: string, content_match: string, date_from: string, date_to: string} $filters */
     private function filterCheckRuns(Builder $query, array $filters): Builder
     {
         return $query
@@ -683,7 +691,17 @@ class MonitorController extends Controller
             ->when($filters['source'] !== '', static fn (Builder $query): Builder => $query->where('source', $filters['source']))
             ->when($filters['content_match'] === 'found', static fn (Builder $query): Builder => $query->where('expected_text_found', true))
             ->when($filters['content_match'] === 'missing', static fn (Builder $query): Builder => $query->where('expected_text_found', false))
-            ->when($filters['content_match'] === 'not_checked', static fn (Builder $query): Builder => $query->whereNull('expected_text_found'));
+            ->when($filters['content_match'] === 'not_checked', static fn (Builder $query): Builder => $query->whereNull('expected_text_found'))
+            ->when($filters['date_from'] !== '', static function (Builder $query) use ($filters): Builder {
+                $start = CarbonImmutable::parse($filters['date_from'], 'Asia/Taipei')->startOfDay()->utc();
+
+                return $query->where('scheduled_at', '>=', $start);
+            })
+            ->when($filters['date_to'] !== '', static function (Builder $query) use ($filters): Builder {
+                $endExclusive = CarbonImmutable::parse($filters['date_to'], 'Asia/Taipei')->addDay()->startOfDay()->utc();
+
+                return $query->where('scheduled_at', '<', $endExclusive);
+            });
     }
 
     public function export(): StreamedResponse

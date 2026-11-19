@@ -4,6 +4,7 @@
     $healthState = $monitor->getAttribute('health_state') ?? $monitor->healthState();
     $socialPlatform = $monitor->socialPlatform();
     $allowedRedirectHosts = is_array($monitor->allowed_redirect_hosts) ? $monitor->allowed_redirect_hosts : [];
+    $hasCheckRunFilters = count(array_filter($checkRunFilters, static fn (string $filter): bool => $filter !== '')) > 0;
     $intervalLabel = $monitor->interval_seconds >= 3600 && $monitor->interval_seconds % 3600 === 0
         ? intdiv($monitor->interval_seconds, 3600).' 小時'
         : ($monitor->interval_seconds >= 60
@@ -743,7 +744,7 @@
             <div class="row-actions">
                 <a class="button button-secondary button-small" href="{{ $checkRunExportUrl }}">匯出檢查 CSV</a>
                 <span class="secondary-text">
-                    @if ($checkRunFilters['status'] !== '' || $checkRunFilters['source'] !== '' || $checkRunFilters['content_match'] !== '')
+                    @if ($hasCheckRunFilters)
                         符合條件 {{ $runs->total() }} 次
                     @else
                         共 {{ $runs->total() }} 次
@@ -791,6 +792,36 @@
                     @enderror
                 </div>
 
+                <div class="field-group">
+                    <label class="field-label" for="check-run-date-from">開始日期</label>
+                    <input
+                        class="field-input @error('date_from') is-invalid @enderror"
+                        id="check-run-date-from"
+                        name="date_from"
+                        type="date"
+                        value="{{ $checkRunFilters['date_from'] }}"
+                        @if ($errors->has('date_from')) aria-invalid="true" aria-describedby="check-run-date-from-error" @endif
+                    >
+                    @error('date_from')
+                        <p id="check-run-date-from-error" class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label" for="check-run-date-to">結束日期</label>
+                    <input
+                        class="field-input @error('date_to') is-invalid @enderror"
+                        id="check-run-date-to"
+                        name="date_to"
+                        type="date"
+                        value="{{ $checkRunFilters['date_to'] }}"
+                        @if ($errors->has('date_to')) aria-invalid="true" aria-describedby="check-run-date-to-error" @endif
+                    >
+                    @error('date_to')
+                        <p id="check-run-date-to-error" class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
                 @if ($monitor->expected_text)
                     <div class="field-group">
                         <label class="field-label" for="check-run-content-match">文字比對結果</label>
@@ -811,9 +842,11 @@
                     </div>
                 @endif
 
+                <p class="field-help">日期採台灣時間，開始與結束日期均包含當日。</p>
+
                 <div class="check-history-filter-actions">
                     <button class="button button-primary button-small" type="submit">套用篩選</button>
-                    @if ($checkRunFilters['status'] !== '' || $checkRunFilters['source'] !== '' || $checkRunFilters['content_match'] !== '')
+                    @if ($hasCheckRunFilters)
                         <a class="button button-quiet button-small" href="{{ route('monitors.show', $monitor) }}">清除篩選</a>
                     @endif
                 </div>
@@ -822,9 +855,9 @@
 
         @if ($runs->isEmpty())
             <div class="empty-state">
-                @if ($checkRunFilters['status'] !== '' || $checkRunFilters['source'] !== '' || $checkRunFilters['content_match'] !== '')
+                @if ($hasCheckRunFilters)
                     <h3 class="empty-title">沒有符合篩選條件的檢查紀錄</h3>
-                    <p class="empty-copy">請調整狀態、來源或文字比對條件，或清除篩選查看所有檢查紀錄。</p>
+                    <p class="empty-copy">請調整篩選條件，或清除篩選查看所有檢查紀錄。</p>
                 @else
                     <h3 class="empty-title">尚無檢查紀錄</h3>
                     <p class="empty-copy">排程或手動檢查執行後，紀錄會顯示於此處。</p>

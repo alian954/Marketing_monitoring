@@ -101,6 +101,41 @@ class MonitorCheckRunFilterTest extends TestCase
             ->assertDontSee('<th scope="col">文字比對</th>', false);
     }
 
+    public function test_monitor_detail_filters_and_exports_by_inclusive_taiwan_calendar_dates(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $user = User::factory()->create();
+        $runs = [
+            'before' => CheckRun::factory()->for($monitor)->create(['scheduled_at' => '2026-11-18 15:59:59']),
+            'start' => CheckRun::factory()->for($monitor)->create(['scheduled_at' => '2026-11-18 16:00:00']),
+            'end' => CheckRun::factory()->for($monitor)->create(['scheduled_at' => '2026-11-19 15:59:59']),
+            'after' => CheckRun::factory()->for($monitor)->create(['scheduled_at' => '2026-11-19 16:00:00']),
+        ];
+        $filters = ['date_from' => '2026-11-19', 'date_to' => '2026-11-19'];
+
+        $detailResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, ...$filters]))
+            ->assertOk()
+            ->assertSee('日期採台灣時間，開始與結束日期均包含當日。')
+            ->assertSee('type="date"', false)
+            ->assertSee(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]));
+
+        $this->assertEqualsCanonicalizing(
+            [$runs['start']->id, $runs['end']->id],
+            $detailResponse->viewData('runs')->getCollection()->modelKeys(),
+        );
+
+        $exportResponse = $this->actingAs($user)
+            ->get(route('monitors.checks.export', ['monitor' => $monitor, ...$filters]))
+            ->assertOk();
+        $exportRows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertEqualsCanonicalizing(
+            [(string) $runs['start']->id, (string) $runs['end']->id],
+            array_column($exportRows, 'check_run_id'),
+        );
+    }
+
     public function test_monitor_detail_displays_confirmation_checks_with_their_actual_source(): void
     {
         $monitor = Monitor::factory()->create();
@@ -153,6 +188,25 @@ class MonitorCheckRunFilterTest extends TestCase
             ]);
     }
 
+    public function test_monitor_detail_rejects_invalid_or_reversed_date_filters(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $user = User::factory()->create();
+        $monitorUrl = route('monitors.show', $monitor);
+
+        $this->actingAs($user)
+            ->from($monitorUrl)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'date_from' => '2026-02-30']))
+            ->assertRedirect($monitorUrl)
+            ->assertSessionHasErrors(['date_from' => '開始日期格式無效。']);
+
+        $this->actingAs($user)
+            ->from($monitorUrl)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'date_from' => '2026-11-20', 'date_to' => '2026-11-19']))
+            ->assertRedirect($monitorUrl)
+            ->assertSessionHasErrors(['date_to' => '結束日期不可早於開始日期。']);
+    }
+
     public function test_monitor_detail_keeps_filters_in_check_history_pagination_links(): void
     {
         $monitor = Monitor::factory()->create(['expected_text' => 'Campaign headline']);
@@ -162,7 +216,13 @@ class MonitorCheckRunFilterTest extends TestCase
             'status' => 'failed',
             'expected_text_found' => true,
         ]);
-        $filters = ['status' => 'failed', 'source' => 'scheduled', 'content_match' => 'found'];
+        $filters = [
+            'status' => 'failed',
+            'source' => 'scheduled',
+            'content_match' => 'found',
+            'date_from' => '2026-11-01',
+            'date_to' => '2026-11-30',
+        ];
 
         $response = $this->actingAs($user)
             ->get(route('monitors.show', ['monitor' => $monitor, ...$filters]))

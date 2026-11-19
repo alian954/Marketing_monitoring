@@ -1320,9 +1320,18 @@ textarea {
     gap: 8px;
 }
 
+.check-history-filter > .field-help {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
 @media (pointer: coarse) {
     .check-history-filter .field-select,
     .check-history-filter-actions .button {
+        min-height: 48px;
+    }
+
+    .check-history-filter .field-input {
         min-height: 48px;
     }
 }
