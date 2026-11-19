@@ -101,6 +101,95 @@ class SocialPostImportTest extends TestCase
         Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
+    public function test_csv_can_set_an_imported_confirmation_delay_and_uses_the_global_default_when_blank(): void
+    {
+        config(['monitoring.confirmation_delay_seconds' => 75]);
+        Queue::fake([RunMonitorCheck::class]);
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'confirmation_delay_seconds'],
+            [
+                ['Custom delay', 'https://www.threads.com/@creator/post/CONFIRM135', 'Campaign', 'Launch announcement', '135'],
+                ['Default delay', 'https://www.threads.com/@creator/post/CONFIRMDEFAULT', 'Campaign', 'Launch announcement', ''],
+                ['Minimum delay', 'https://www.threads.com/@creator/post/CONFIRM030', 'Campaign', 'Launch announcement', '30'],
+                ['Maximum delay', 'https://www.threads.com/@creator/post/CONFIRM300', 'Campaign', 'Launch announcement', '300'],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('異常確認延遲')
+            ->assertSee('135 秒')
+            ->assertSee('75 秒')
+            ->assertSee('30 秒')
+            ->assertSee('300 秒');
+
+        $this->assertSame(4, $preview->viewData('validCount'));
+        $this->assertSame([135, 75, 30, 300], array_column($preview->viewData('previewRows'), 'confirmation_delay_seconds'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()
+            ->where('url_hash', Monitor::fingerprintUrl('https://www.threads.com/@creator/post/CONFIRM135'))
+            ->sole();
+        $defaultMonitor = Monitor::query()
+            ->where('url_hash', Monitor::fingerprintUrl('https://www.threads.com/@creator/post/CONFIRMDEFAULT'))
+            ->sole();
+        $this->assertSame(135, $monitor->confirmation_delay_seconds);
+        $this->assertSame(75, $defaultMonitor->confirmation_delay_seconds);
+
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(135, $snapshot['confirmation_delay_seconds']);
+
+        $failure = new ProbeResult(503, 40, $monitor->url, [], ['93.184.216.34'], null, null, null, null);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')->once()->andReturn($failure);
+
+        (new RunMonitorCheck($run->id))->handle(
+            $probe,
+            app(IncidentManager::class),
+            app(RunScheduler::class),
+        );
+
+        $confirmationRun = CheckRun::query()->where('source', 'confirmation')->sole();
+        $this->assertSame(135, $confirmationRun->scheduled_at->getTimestamp() - now()->getTimestamp());
+        Queue::assertPushed(RunMonitorCheck::class, 2);
+    }
+
+    public function test_csv_rejects_confirmation_delays_that_are_not_integers_or_supported_range(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text', 'confirmation_delay_seconds'],
+            [
+                ['Non-integer delay', 'https://www.threads.com/@creator/post/CONFIRM001', 'Campaign', 'headline', 'soon'],
+                ['Too-short delay', 'https://www.threads.com/@creator/post/CONFIRM002', 'Campaign', 'headline', '29'],
+                ['Too-long delay', 'https://www.threads.com/@creator/post/CONFIRM003', 'Campaign', 'headline', '301'],
+            ],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('異常確認延遲必須是整數秒。')
+            ->assertSee('異常確認延遲不得低於 30 秒。')
+            ->assertSee('異常確認延遲不得高於 300 秒。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertSame(3, $preview->viewData('invalidCount'));
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_csv_can_preview_and_import_any_match_social_post_conditions(): void
     {
         $csv = $this->csvContent(

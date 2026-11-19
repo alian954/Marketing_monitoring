@@ -45,6 +45,7 @@ class MonitorImportController extends Controller
         'notification_escalation_stage_2_delay_minutes',
         'notification_slack_webhook',
         'notification_discord_webhook',
+        'confirmation_delay_seconds',
     ];
 
     public function __construct(
@@ -88,7 +89,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、confirmation_delay_seconds；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -139,6 +140,7 @@ class MonitorImportController extends Controller
             $notificationEscalationStageTwoDelayMinutes = null;
             $notificationSlackWebhook = null;
             $notificationDiscordWebhook = null;
+            $confirmationDelaySeconds = (int) config('monitoring.confirmation_delay_seconds');
 
             if (isset($columnIndexes['accepted_status_codes'])) {
                 try {
@@ -256,6 +258,26 @@ class MonitorImportController extends Controller
                     $errors[] = '請使用 discord.com 的 Discord Incoming Webhook HTTPS 網址。';
                 } elseif ($notificationDiscordWebhookInput !== '') {
                     $notificationDiscordWebhook = $notificationDiscordWebhookInput;
+                }
+            }
+
+            if (isset($columnIndexes['confirmation_delay_seconds'])) {
+                $confirmationDelayInput = trim((string) ($cells[$columnIndexes['confirmation_delay_seconds']] ?? ''));
+
+                if ($confirmationDelayInput !== '') {
+                    if (! ctype_digit($confirmationDelayInput)) {
+                        $errors[] = '異常確認延遲必須是整數秒。';
+                    } else {
+                        $parsedConfirmationDelay = (int) $confirmationDelayInput;
+
+                        if ($parsedConfirmationDelay < 30) {
+                            $errors[] = '異常確認延遲不得低於 30 秒。';
+                        } elseif ($parsedConfirmationDelay > 300) {
+                            $errors[] = '異常確認延遲不得高於 300 秒。';
+                        } else {
+                            $confirmationDelaySeconds = $parsedConfirmationDelay;
+                        }
+                    }
                 }
             }
 
@@ -450,6 +472,7 @@ class MonitorImportController extends Controller
                 'notification_slack_webhook_configured' => $notificationSlackWebhook !== null,
                 'notification_discord_webhook' => $notificationDiscordWebhook,
                 'notification_discord_webhook_configured' => $notificationDiscordWebhook !== null,
+                'confirmation_delay_seconds' => $confirmationDelaySeconds,
                 'url_hash' => $hash,
                 'eligible' => $errors === [],
                 'duplicate' => $duplicate,
@@ -539,7 +562,7 @@ class MonitorImportController extends Controller
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
                 'expected_response_header' => $row['expected_response_header'] ?? null,
                 'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
-                'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
+                'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
                 'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
                 'next_check_at' => now(),
