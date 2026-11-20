@@ -758,6 +758,47 @@
                 </article>
             @endforeach
         </div>
+        <div class="panel-body public-status-history">
+            <ol class="public-status-history-bars" role="list" aria-label="{{ $monitor->name }}近 30 個台灣日期每日檢查狀態">
+                @foreach ($dailyCheckHistory as $day)
+                    <li>
+                        <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
+                    </li>
+                @endforeach
+            </ol>
+            <div class="public-status-history-axis" aria-hidden="true">
+                <span>{{ $dailyCheckHistory[0]['display_date'] }}</span>
+                <span>今天</span>
+            </div>
+            <details class="public-status-history-details">
+                <summary>查看每日檢查明細</summary>
+                <div class="data-table-wrap" role="region" aria-label="{{ $monitor->name }}每日檢查明細" tabindex="0">
+                    <table class="data-table">
+                        <caption class="sr-only">{{ $monitor->name }}近 30 個台灣日期每日檢查成功率</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">日期（台灣時間）</th>
+                                <th scope="col">狀態</th>
+                                <th scope="col">成功率</th>
+                                <th scope="col">成功次數</th>
+                                <th scope="col">已結束檢查</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($dailyCheckHistory as $day)
+                                <tr>
+                                    <th scope="row"><time datetime="{{ $day['date'] }}">{{ $day['date'] }}</time></th>
+                                    <td>{{ ['healthy' => '正常', 'warning' => '部分失敗', 'issue' => '全部失敗', 'unknown' => '無檢查資料'][$day['state']] }}</td>
+                                    <td class="numeric">{{ $day['success_rate'] === null ? '—' : number_format($day['success_rate'], 2).'%' }}</td>
+                                    <td class="numeric">{{ $day['successful_checks'] }}</td>
+                                    <td class="numeric">{{ $day['total_checks'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </div>
     </section>
 
     <section class="panel spaced-top" aria-labelledby="availability-title">

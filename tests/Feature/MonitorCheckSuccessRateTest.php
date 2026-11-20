@@ -6,6 +6,7 @@ use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class MonitorCheckSuccessRateTest extends TestCase
@@ -83,6 +84,44 @@ class MonitorCheckSuccessRateTest extends TestCase
             $this->assertSame(0, $period['ended_checks']);
         }
 
+    }
+
+    public function test_monitor_detail_shows_daily_success_history_for_thirty_taiwan_calendar_dates(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 00:30:00', 'UTC'));
+        $monitor = Monitor::factory()->create();
+        $today = Carbon::parse('2026-11-21 00:10:00', 'UTC');
+        $this->createScheduledRun($monitor, $today, 200);
+        $this->createScheduledRun($monitor, $today->copy()->addMinutes(10), 503);
+        $this->createScheduledRun($monitor, Carbon::parse('2026-11-20 15:59:00', 'UTC'), 503);
+        $this->createScheduledRun($monitor, Carbon::parse('2026-10-22 15:00:00', 'UTC'), 503);
+        CheckRun::factory()->for($monitor)->create([
+            'source' => 'manual',
+            'status' => 'completed',
+            'finished_at' => $today,
+            'normal_status' => 200,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('查看每日檢查明細')
+            ->assertSee('近 30 個台灣日期每日檢查成功率');
+
+        $dailyHistory = collect($response->viewData('dailyCheckHistory'))->keyBy('date');
+
+        $this->assertCount(30, $dailyHistory);
+        $this->assertSame('2026-10-23', $dailyHistory->keys()->first());
+        $this->assertSame('2026-11-21', $dailyHistory->keys()->last());
+        $this->assertSame(50.0, $dailyHistory['2026-11-21']['success_rate']);
+        $this->assertSame('warning', $dailyHistory['2026-11-21']['state']);
+        $this->assertSame(2, $dailyHistory['2026-11-21']['total_checks']);
+        $this->assertSame(1, $dailyHistory['2026-11-21']['successful_checks']);
+        $this->assertSame(0.0, $dailyHistory['2026-11-20']['success_rate']);
+        $this->assertSame('issue', $dailyHistory['2026-11-20']['state']);
+        $this->assertNull($dailyHistory['2026-11-19']['success_rate']);
+        $this->assertSame('unknown', $dailyHistory['2026-11-19']['state']);
+        $this->assertStringContainsString('成功 1／2 次', $dailyHistory['2026-11-21']['accessible_label']);
     }
 
     public function test_missing_required_text_lowers_the_scheduled_check_success_rate(): void
@@ -201,5 +240,17 @@ class MonitorCheckSuccessRateTest extends TestCase
             'response_time_threshold_ms' => null,
             'allowed_redirect_hosts' => [],
         ], JSON_THROW_ON_ERROR);
+    }
+
+    private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $normalStatus): CheckRun
+    {
+        return CheckRun::factory()->for($monitor)->create([
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => $finishedAt,
+            'finished_at' => $finishedAt,
+            'normal_status' => $normalStatus,
+            'error_type' => null,
+        ]);
     }
 }

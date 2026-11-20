@@ -40,6 +40,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitorController extends Controller
 {
+    private const HISTORY_TIMEZONE = 'Asia/Taipei';
+
+    private const DAILY_HISTORY_DAYS = 30;
+
     /** @var array<int, string> */
     private const INTERVAL_OPTIONS = [
         60 => '每 1 分鐘',
@@ -374,6 +378,50 @@ class MonitorController extends Controller
             ];
         })->all();
 
+        $dailyHistoryToday = $asOf->copy()->timezone(self::HISTORY_TIMEZONE)->startOfDay();
+        $dailyHistoryFirstDay = $dailyHistoryToday->copy()->subDays(self::DAILY_HISTORY_DAYS - 1);
+        $dailyHistoryStartsAt = $dailyHistoryFirstDay->copy()->utc();
+        $dailyHistoryCounts = [];
+
+        foreach ($historyRuns as $run) {
+            if ($run->finished_at->lessThan($dailyHistoryStartsAt) || $run->finished_at->greaterThan($asOf)) {
+                continue;
+            }
+
+            $finishedDate = $run->finished_at->timezone(self::HISTORY_TIMEZONE)->toDateString();
+            $dailyHistoryCounts[$finishedDate] ??= ['total_checks' => 0, 'successful_checks' => 0];
+            $dailyHistoryCounts[$finishedDate]['total_checks']++;
+
+            if ($run->passesMonitorChecks()) {
+                $dailyHistoryCounts[$finishedDate]['successful_checks']++;
+            }
+        }
+
+        $dailyCheckHistory = [];
+
+        for ($dayOffset = 0; $dayOffset < self::DAILY_HISTORY_DAYS; $dayOffset++) {
+            $day = $dailyHistoryFirstDay->copy()->addDays($dayOffset);
+            $counts = $dailyHistoryCounts[$day->toDateString()] ?? ['total_checks' => 0, 'successful_checks' => 0];
+            $successRate = $counts['total_checks'] === 0
+                ? null
+                : round(($counts['successful_checks'] / $counts['total_checks']) * 100, 2);
+            $state = $successRate === null
+                ? 'unknown'
+                : ($successRate >= 100 ? 'healthy' : ($counts['successful_checks'] === 0 ? 'issue' : 'warning'));
+            $accessibleLabel = $successRate === null
+                ? $day->toDateString().' 台灣時間：沒有已結束的排程檢查。'
+                : $day->toDateString().' 台灣時間：成功 '.$counts['successful_checks'].'／'.$counts['total_checks'].' 次，成功率 '.number_format($successRate, 2).'%。';
+
+            $dailyCheckHistory[] = [
+                'date' => $day->toDateString(),
+                'display_date' => $day->format('n/j'),
+                ...$counts,
+                'success_rate' => $successRate,
+                'state' => $state,
+                'accessible_label' => $accessibleLabel,
+            ];
+        }
+
         $httpRecoveryIncidents = $monitor->incidents()
             ->where('rule_key', 'http')
             ->where('state', Incident::STATE_RESOLVED)
@@ -527,6 +575,7 @@ class MonitorController extends Controller
             'latestDomainRegistrationObservation',
             'incidents',
             'checkSuccessStats',
+            'dailyCheckHistory',
             'availabilityStats',
             'httpRecoveryStats',
             'responseTime',
