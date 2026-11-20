@@ -232,6 +232,50 @@
         </section>
     </div>
 
+    <section class="panel spaced-top" aria-labelledby="dashboard-maintenance-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="dashboard-maintenance-title" class="panel-title">近期預定維護</h2>
+                <p class="panel-description">顯示進行中的維護，以及未來 30 天內即將開始的維護時段。</p>
+            </div>
+            @if ($maintenanceSummary['count'] > count($maintenanceSummary['items']))
+                <span class="secondary-text">近 30 天共有 {{ number_format($maintenanceSummary['count']) }} 段（顯示最近 {{ count($maintenanceSummary['items']) }} 段）</span>
+            @endif
+        </div>
+        @if ($maintenanceSummary['items'] === [])
+            <div class="empty-state">
+                <h3 class="empty-title">近期沒有預定維護時段</h3>
+                <p class="empty-copy">未來 30 天沒有預定維護時段。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="dashboard-maintenance-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">目前進行中與未來 30 天的維護時段</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">監測項目</th>
+                            <th scope="col">狀態</th>
+                            <th scope="col">維護原因</th>
+                            <th scope="col">開始時間（台灣時間）</th>
+                            <th scope="col">結束時間（台灣時間）</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($maintenanceSummary['items'] as $maintenance)
+                            <tr>
+                                <td><a class="monitor-name-link" href="{{ route('monitors.show', ['monitor' => $maintenance['monitor_id']]) }}">{{ $maintenance['monitor_name'] }}</a></td>
+                                <td>{{ $maintenance['state'] === 'active' ? '維護中' : '即將維護' }}</td>
+                                <td>{{ $maintenance['reason'] }}</td>
+                                <td><time datetime="{{ $maintenance['starts_at']->toIso8601String() }}">{{ $maintenance['starts_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
+                                <td><time datetime="{{ $maintenance['ends_at']->toIso8601String() }}">{{ $maintenance['ends_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="incidents-title">
         <div class="panel-header">
             <div>

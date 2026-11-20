@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DnsChangeEvent;
 use App\Models\DomainRegistrationObservation;
 use App\Models\Incident;
+use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
 use App\Models\TlsObservation;
@@ -20,6 +21,12 @@ use Throwable;
 
 class DashboardController extends Controller
 {
+    private const MAINTENANCE_LOOKAHEAD_DAYS = 30;
+
+    private const MAX_DASHBOARD_MAINTENANCE_OCCURRENCES = 10;
+
+    private const HISTORY_TIMEZONE = 'Asia/Taipei';
+
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
 
     public function index(UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
@@ -49,6 +56,7 @@ class DashboardController extends Controller
 
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
+        $maintenanceSummary = $this->maintenanceSummary($asOf);
         $monitorCount = 0;
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
         $expiringCertificateCount = 0;
@@ -159,7 +167,67 @@ class DashboardController extends Controller
             'failedQueueJobCount' => $failedQueueJobCount,
             'counts' => $counts,
             'fleetAvailability' => $fleetAvailability,
+            'maintenanceSummary' => $maintenanceSummary,
         ]);
+    }
+
+    /**
+     * @return array{count: int, items: list<array{maintenance_window_id: int, monitor_id: int, monitor_name: string, reason: string, state: 'active'|'upcoming', starts_at: CarbonImmutable, ends_at: CarbonImmutable}>}
+     */
+    private function maintenanceSummary(CarbonImmutable $asOf): array
+    {
+        $repeatLookupDate = $asOf->timezone(self::HISTORY_TIMEZONE)->subDays(7)->toDateString();
+        $lookaheadEndsAt = $asOf->addDays(self::MAINTENANCE_LOOKAHEAD_DAYS);
+        $occurrenceCount = 0;
+        $items = [];
+
+        MaintenanceWindow::query()
+            ->select(['id', 'monitor_id', 'starts_at', 'ends_at', 'reason', 'repeat_weekly', 'repeat_until'])
+            ->with('monitor:id,name')
+            ->where('starts_at', '<=', $lookaheadEndsAt->utc())
+            ->where(function (Builder $query) use ($asOf, $repeatLookupDate): void {
+                $query->where(function (Builder $query) use ($asOf): void {
+                    $query->where(function (Builder $query): void {
+                        $query->where('repeat_weekly', false)->orWhereNull('repeat_until');
+                    })->where('ends_at', '>', $asOf->utc());
+                })->orWhere(function (Builder $query) use ($repeatLookupDate): void {
+                    $query->where('repeat_weekly', true)
+                        ->whereNotNull('repeat_until')
+                        ->whereDate('repeat_until', '>=', $repeatLookupDate);
+                });
+            })
+            ->chunkById(500, function (EloquentCollection $windows) use (&$items, &$occurrenceCount, $asOf, $lookaheadEndsAt): void {
+                foreach ($windows as $window) {
+                    foreach ($window->occurrenceIntervals() as $occurrence) {
+                        if ($occurrence['ends_at']->lessThanOrEqualTo($asOf)
+                            || $occurrence['starts_at']->greaterThan($lookaheadEndsAt)) {
+                            continue;
+                        }
+
+                        $occurrenceCount++;
+                        $items[] = [
+                            'maintenance_window_id' => (int) $window->id,
+                            'monitor_id' => (int) $window->monitor_id,
+                            'monitor_name' => $window->monitor?->name ?? '已刪除的監測項目',
+                            'reason' => $window->reason,
+                            'state' => $occurrence['starts_at']->lessThanOrEqualTo($asOf) ? 'active' : 'upcoming',
+                            'starts_at' => $occurrence['starts_at'],
+                            'ends_at' => $occurrence['ends_at'],
+                        ];
+
+                        usort($items, static fn (array $first, array $second): int => ($first['starts_at']->getTimestamp() <=> $second['starts_at']->getTimestamp())
+                            ?: ($first['monitor_id'] <=> $second['monitor_id'])
+                            ?: ($first['maintenance_window_id'] <=> $second['maintenance_window_id'])
+                        );
+
+                        if (count($items) > self::MAX_DASHBOARD_MAINTENANCE_OCCURRENCES) {
+                            array_pop($items);
+                        }
+                    }
+                }
+            });
+
+        return ['count' => $occurrenceCount, 'items' => $items];
     }
 
     /** @return array{monitor: Monitor, expires_at: CarbonImmutable, observed_at: \DateTimeInterface|null, is_stale: bool, is_expired: bool, days_until_expiry: int|null} */
