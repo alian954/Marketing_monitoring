@@ -51,6 +51,52 @@ class StatusPageWorkflowTest extends TestCase
         $this->assertDatabaseHas('monitors', ['id' => $monitor->id, 'public_status' => true]);
     }
 
+    public function test_public_history_uses_response_body_size_thresholds_from_each_check(): void
+    {
+        $monitor = Monitor::factory()->create([
+            'public_status' => true,
+            'min_response_body_bytes' => 100,
+            'max_response_body_bytes' => 500,
+        ]);
+        $snapshot = json_encode([
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+            'min_response_body_bytes' => 100,
+            'max_response_body_bytes' => 500,
+        ], JSON_THROW_ON_ERROR);
+
+        foreach ([300, 600, null] as $index => $bodyBytes) {
+            $finishedAt = now()->subDays($index + 1);
+            CheckRun::factory()->for($monitor)->create([
+                'config_snapshot' => $snapshot,
+                'source' => 'scheduled',
+                'status' => 'completed',
+                'scheduled_at' => $finishedAt,
+                'finished_at' => $finishedAt,
+                'normal_status' => 200,
+                'error_type' => null,
+                'response_body_bytes' => $bodyBytes,
+            ]);
+        }
+
+        $token = Str::random(64);
+        StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'title' => 'Campaign availability',
+            'public_token' => $token,
+            'public_token_hash' => hash('sha256', $token),
+            'is_published' => true,
+        ]);
+
+        $response = $this->get(route('status-pages.public', ['token' => $token]))->assertOk();
+        $publicHistory = $response->viewData('monitors')->sole()->getAttribute('public_history');
+
+        $this->assertSame(33.33, $publicHistory['success_rate']);
+        $this->assertSame(1, $publicHistory['successful_checks']);
+        $this->assertSame(3, $publicHistory['total_checks']);
+    }
+
     public function test_public_page_shows_active_and_upcoming_public_maintenance_occurrences_without_private_reasons(): void
     {
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));

@@ -196,7 +196,7 @@ class MonitorAvailabilityCalculator
             return;
         }
 
-        if ($run->hasIndeterminateContentMatch()) {
+        if ($run->hasIndeterminateContentMatch() || $run->hasIndeterminateResponseSizeCheck()) {
             return;
         }
 

@@ -39,6 +39,8 @@ class RunScheduler
                 'request_headers' => $lockedMonitor->request_headers ?? [],
                 'expected_response_header' => $lockedMonitor->expected_response_header,
                 'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,
+                'min_response_body_bytes' => $lockedMonitor->min_response_body_bytes,
+                'max_response_body_bytes' => $lockedMonitor->max_response_body_bytes,
                 'timeout_seconds' => $lockedMonitor->timeout_seconds,
                 'confirmation_delay_seconds' => $lockedMonitor->confirmation_delay_seconds,
                 'allowed_redirect_hosts' => $lockedMonitor->allowed_redirect_hosts ?? [],

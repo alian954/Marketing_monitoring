@@ -104,6 +104,44 @@ class MonitorAvailabilityTest extends TestCase
         $this->assertSame(5.0, $dailyStat['observed_minutes']);
     }
 
+    public function test_incomplete_response_size_check_is_excluded_from_availability_observations(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create([
+            'interval_seconds' => 300,
+            'min_response_body_bytes' => 100,
+            'max_response_body_bytes' => 500,
+        ]);
+        $snapshot = json_encode([
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+            'min_response_body_bytes' => 100,
+            'max_response_body_bytes' => 500,
+            'interval_seconds' => 300,
+        ], JSON_THROW_ON_ERROR);
+        $this->createScheduledRun($monitor, now()->subMinutes(10), 200)->forceFill([
+            'config_snapshot' => $snapshot,
+            'response_body_bytes' => 200,
+        ])->save();
+        $incompleteRun = $this->createScheduledRun($monitor, now()->subMinutes(5), 200)->forceFill([
+            'config_snapshot' => $snapshot,
+            'response_body_bytes' => null,
+        ]);
+        $incompleteRun->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+        $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');
+
+        $this->assertTrue($incompleteRun->fresh()->hasIndeterminateResponseSizeCheck());
+        $this->assertSame(100.0, $dailyStat['availability_rate']);
+        $this->assertSame(0.35, $dailyStat['coverage_rate']);
+        $this->assertSame(5.0, $dailyStat['observed_minutes']);
+    }
+
     public function test_detail_reports_unknown_availability_when_no_scheduled_check_has_finished(): void
     {
         $monitor = Monitor::factory()->create();

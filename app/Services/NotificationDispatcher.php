@@ -89,6 +89,19 @@ class NotificationDispatcher
         $thresholdLine = $incident->rule_key === 'response_time'
             ? '設定門檻：'.($snapshot['response_time_threshold_ms'] ?? $monitor->response_time_threshold_ms).' 毫秒'
             : '';
+        $responseSizeThresholdLine = '';
+
+        if ($incident->rule_key === 'response_size') {
+            $minimumBytes = $snapshot['min_response_body_bytes'] ?? $monitor->min_response_body_bytes;
+            $maximumBytes = $snapshot['max_response_body_bytes'] ?? $monitor->max_response_body_bytes;
+            $actualBytes = $run?->response_body_bytes;
+            $range = $minimumBytes !== null && $maximumBytes !== null
+                ? number_format((int) $minimumBytes).'–'.number_format((int) $maximumBytes).' bytes'
+                : ($minimumBytes !== null
+                    ? '至少 '.number_format((int) $minimumBytes).' bytes'
+                    : '至多 '.number_format((int) $maximumBytes).' bytes');
+            $responseSizeThresholdLine = '設定本文大小：'.$range.'；實際：'.($actualBytes === null ? '無法判定' : number_format($actualBytes).' bytes');
+        }
         $acceptedStatusCodes = array_map('intval', $monitor->accepted_status_codes ?? []);
         $successfulStatusCodes = [...range(200, 399), ...$acceptedStatusCodes];
         $previousSuccessQuery = CheckRun::query()
@@ -119,6 +132,7 @@ class NotificationDispatcher
             $statusLine,
             $timeLine,
             $thresholdLine,
+            $responseSizeThresholdLine,
             '前次成功檢查時間（UTC）：'.($previousSuccess ?: '未記錄'),
             $incident->rule_key === 'adsbot_difference' ? 'AdsBot 結果僅為 User-Agent 字串模擬，不代表 Google 官方擷取。' : '',
         ];
@@ -166,6 +180,7 @@ class NotificationDispatcher
             'forbidden_text' => '回應包含不應出現的文字',
             'response_header' => 'HTTP 回應標頭不符合設定',
             'response_time' => 'HTTP 回應時間超過設定門檻',
+            'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
             'monitor_stale' => '監測檢查結果已超過預期更新時間',
             'tls_expired' => 'TLS 憑證已過期',
             'tls_handshake' => 'TLS 交握失敗',

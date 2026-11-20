@@ -37,6 +37,8 @@ class MonitorCheckRunExportTest extends TestCase
                 'url' => $privateUrl,
                 'expected_text' => 'private expected phrase',
                 'expected_text_mode' => 'present_any',
+                'min_response_body_bytes' => 512,
+                'max_response_body_bytes' => 2048,
             ], JSON_THROW_ON_ERROR),
             'source' => 'scheduled',
             'status' => 'failed',
@@ -99,6 +101,8 @@ class MonitorCheckRunExportTest extends TestCase
             'http_status',
             'response_content_type',
             'response_body_bytes',
+            'min_response_body_bytes',
+            'max_response_body_bytes',
             'adsbot_status',
             'http_elapsed_ms',
             'total_elapsed_ms',
@@ -128,6 +132,8 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('503', $row[$columns['http_status']]);
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_content_type']]);
         $this->assertSame('768', $row[$columns['response_body_bytes']]);
+        $this->assertSame('512', $row[$columns['min_response_body_bytes']]);
+        $this->assertSame('2048', $row[$columns['max_response_body_bytes']]);
         $this->assertSame('', $row[$columns['adsbot_status']]);
         $this->assertSame('4', $row[$columns['http_elapsed_ms']]);
         $this->assertSame('8', $row[$columns['total_elapsed_ms']]);

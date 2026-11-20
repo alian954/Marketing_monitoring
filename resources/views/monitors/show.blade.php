@@ -18,6 +18,7 @@
         'forbidden_text' => '回應包含不應出現的文字',
         'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
+        'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
         'tls_expired' => 'TLS 憑證已過期',
@@ -205,6 +206,20 @@
                     <div class="metadata-item">
                         <dt>回應時間警示門檻</dt>
                         <dd>{{ $monitor->response_time_threshold_ms !== null ? number_format($monitor->response_time_threshold_ms).' 毫秒' : '未設定' }}</dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>回應本文大小範圍</dt>
+                        <dd>
+                            @if ($monitor->min_response_body_bytes !== null && $monitor->max_response_body_bytes !== null)
+                                {{ number_format($monitor->min_response_body_bytes) }}–{{ number_format($monitor->max_response_body_bytes) }} bytes
+                            @elseif ($monitor->min_response_body_bytes !== null)
+                                至少 {{ number_format($monitor->min_response_body_bytes) }} bytes
+                            @elseif ($monitor->max_response_body_bytes !== null)
+                                至多 {{ number_format($monitor->max_response_body_bytes) }} bytes
+                            @else
+                                未設定
+                            @endif
+                        </dd>
                     </div>
                     <div class="metadata-item">
                         <dt>請求逾時上限</dt>
@@ -1034,6 +1049,12 @@
                                                 @endif
                                                 @if ($incident->rule_key === 'response_time' && isset($event->evidence['threshold_ms'], $event->evidence['elapsed_ms']))
                                                     <span class="secondary-text">HTTP 回應 {{ number_format((int) $event->evidence['elapsed_ms']) }} 毫秒；門檻 {{ number_format((int) $event->evidence['threshold_ms']) }} 毫秒</span>
+                                                @endif
+                                                @if ($incident->rule_key === 'response_size' && array_key_exists('response_body_bytes', $event->evidence))
+                                                    <span class="secondary-text">
+                                                        本文大小：{{ $event->evidence['response_body_bytes'] === null ? '無法判定（超過讀取上限或本文不完整）' : number_format((int) $event->evidence['response_body_bytes']).' bytes' }}；
+                                                        範圍：{{ $event->evidence['min_response_body_bytes'] !== null ? '至少 '.number_format((int) $event->evidence['min_response_body_bytes']).' bytes' : '' }}{{ $event->evidence['min_response_body_bytes'] !== null && $event->evidence['max_response_body_bytes'] !== null ? '，' : '' }}{{ $event->evidence['max_response_body_bytes'] !== null ? '至多 '.number_format((int) $event->evidence['max_response_body_bytes']).' bytes' : '' }}
+                                                    </span>
                                                 @endif
                                                 @if (in_array($incident->rule_key, ['content', 'forbidden_text'], true) && isset($event->evidence['expected_text_mode']) && array_key_exists('expected_text_found', $event->evidence))
                                                     @php

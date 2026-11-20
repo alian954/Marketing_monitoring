@@ -69,9 +69,14 @@ class CheckRun extends Model
 
         $expectedResponseHeader = $snapshot['expected_response_header'] ?? null;
 
-        return ! is_string($expectedResponseHeader)
-            || trim($expectedResponseHeader) === ''
-            || $this->expectedResponseHeaderMatchResult() === true;
+        if (is_string($expectedResponseHeader)
+            && trim($expectedResponseHeader) !== ''
+            && $this->expectedResponseHeaderMatchResult() !== true) {
+            return false;
+        }
+
+        return ! $this->hasIndeterminateResponseSizeCheck()
+            && $this->responseBodySizeCheckPasses() !== false;
     }
 
     public function expectedTextMode(): string
@@ -97,6 +102,42 @@ class CheckRun extends Model
         $expectedText = $snapshot['expected_text'] ?? null;
 
         return is_string($expectedText) && $expectedText !== '';
+    }
+
+    public function hasIndeterminateResponseSizeCheck(): bool
+    {
+        $snapshot = $this->configurationSnapshot();
+        $hasThreshold = isset($snapshot['min_response_body_bytes']) || isset($snapshot['max_response_body_bytes']);
+
+        return $hasThreshold
+            && $this->response_body_bytes === null
+            && $this->normalStatusIsAccepted($snapshot)
+            && in_array($this->error_type, [null, 'body_too_large'], true);
+    }
+
+    public function responseBodySizeCheckPasses(): ?bool
+    {
+        $snapshot = $this->configurationSnapshot();
+        $minimumBytes = $snapshot['min_response_body_bytes'] ?? null;
+        $maximumBytes = $snapshot['max_response_body_bytes'] ?? null;
+
+        if ($minimumBytes === null && $maximumBytes === null) {
+            return null;
+        }
+
+        if ($this->response_body_bytes === null) {
+            return null;
+        }
+
+        return ($minimumBytes === null || $this->response_body_bytes >= (int) $minimumBytes)
+            && ($maximumBytes === null || $this->response_body_bytes <= (int) $maximumBytes);
+    }
+
+    public function failsResponseBodySizeCheck(): bool
+    {
+        return $this->error_type === null
+            && $this->normalStatusIsAccepted($this->configurationSnapshot())
+            && $this->responseBodySizeCheckPasses() === false;
     }
 
     public function expectedTextMatchResult(): ?bool

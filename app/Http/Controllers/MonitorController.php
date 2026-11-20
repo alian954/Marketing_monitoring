@@ -273,6 +273,8 @@ class MonitorController extends Controller
             'expected_text' => $validated['expected_text'] ?: null,
             'expected_text_mode' => $validated['expected_text_mode'],
             'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
+            'min_response_body_bytes' => $validated['min_response_body_bytes'],
+            'max_response_body_bytes' => $validated['max_response_body_bytes'],
             'timeout_seconds' => $validated['timeout_seconds'],
             'confirmation_delay_seconds' => $validated['confirmation_delay_seconds'],
             'interval_seconds' => $validated['interval_seconds'],
@@ -606,6 +608,8 @@ class MonitorController extends Controller
                 'expected_text' => $validated['expected_text'] ?: null,
                 'expected_text_mode' => $validated['expected_text_mode'],
                 'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
+                'min_response_body_bytes' => $validated['min_response_body_bytes'],
+                'max_response_body_bytes' => $validated['max_response_body_bytes'],
                 'timeout_seconds' => $validated['timeout_seconds'],
                 'confirmation_delay_seconds' => $validated['confirmation_delay_seconds'],
                 'interval_seconds' => $validated['interval_seconds'],
@@ -923,6 +927,8 @@ class MonitorController extends Controller
                 'http_status',
                 'response_content_type',
                 'response_body_bytes',
+                'min_response_body_bytes',
+                'max_response_body_bytes',
                 'adsbot_status',
                 'http_elapsed_ms',
                 'total_elapsed_ms',
@@ -952,6 +958,7 @@ class MonitorController extends Controller
                 ->orderBy('id')
                 ->lazy(500)
                 ->each(function (CheckRun $run) use ($stream): void {
+                    $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
                     $expectedTextMatchResult = $run->expectedTextMatchResult();
                     $expectedResponseHeaderMatchResult = $run->expectedResponseHeaderMatchResult();
                     $redirectUrls = $this->maskedRedirectUrls($run->redirects);
@@ -965,6 +972,8 @@ class MonitorController extends Controller
                         $run->normal_status === null ? '' : (string) $run->normal_status,
                         (string) $run->response_content_type,
                         $run->response_body_bytes === null ? '' : (string) $run->response_body_bytes,
+                        isset($snapshot['min_response_body_bytes']) ? (string) $snapshot['min_response_body_bytes'] : '',
+                        isset($snapshot['max_response_body_bytes']) ? (string) $snapshot['max_response_body_bytes'] : '',
                         $run->adsbot_status === null ? '' : (string) $run->adsbot_status,
                         $run->normal_elapsed_ms === null ? '' : (string) $run->normal_elapsed_ms,
                         $run->elapsed_ms === null ? '' : (string) $run->elapsed_ms,
@@ -1320,7 +1329,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -1405,6 +1414,8 @@ class MonitorController extends Controller
                 ExpectedTextMatcher::MODE_ABSENT,
             ])],
             'response_time_threshold_ms' => ['nullable', 'integer', 'min:100', 'max:14000'],
+            'min_response_body_bytes' => ['nullable', 'integer', 'min:1', 'max:'.(int) config('monitoring.max_body_bytes', 1_048_576)],
+            'max_response_body_bytes' => ['nullable', 'integer', 'min:1', 'max:'.(int) config('monitoring.max_body_bytes', 1_048_576)],
             'timeout_seconds' => ['sometimes', 'integer', 'min:1', 'max:15'],
             'confirmation_delay_seconds' => ['sometimes', 'integer', 'min:30', 'max:300'],
             'interval_seconds' => ['sometimes', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
@@ -1413,6 +1424,12 @@ class MonitorController extends Controller
             'response_time_threshold_ms.integer' => '回應時間門檻必須是整數。',
             'response_time_threshold_ms.min' => '回應時間門檻不得低於 100 毫秒。',
             'response_time_threshold_ms.max' => '回應時間門檻不得高於 14000 毫秒。',
+            'min_response_body_bytes.integer' => '最小回應本文大小必須是整數 bytes。',
+            'min_response_body_bytes.min' => '最小回應本文大小不得低於 1 byte。',
+            'min_response_body_bytes.max' => '回應本文大小門檻不得高於讀取上限（'.number_format((int) config('monitoring.max_body_bytes', 1_048_576)).' bytes）。',
+            'max_response_body_bytes.integer' => '最大回應本文大小必須是整數 bytes。',
+            'max_response_body_bytes.min' => '最大回應本文大小不得低於 1 byte。',
+            'max_response_body_bytes.max' => '回應本文大小門檻不得高於讀取上限（'.number_format((int) config('monitoring.max_body_bytes', 1_048_576)).' bytes）。',
             'timeout_seconds.integer' => '請求逾時秒數必須是整數。',
             'timeout_seconds.min' => '請求逾時秒數不得低於 1 秒。',
             'timeout_seconds.max' => '請求逾時秒數不得高於 15 秒。',
@@ -1496,6 +1513,20 @@ class MonitorController extends Controller
         $responseTimeThresholdMs = array_key_exists('response_time_threshold_ms', $validated)
             ? $validated['response_time_threshold_ms']
             : $monitor?->response_time_threshold_ms;
+        $minimumResponseBodyBytes = array_key_exists('min_response_body_bytes', $validated)
+            ? ($validated['min_response_body_bytes'] === null ? null : (int) $validated['min_response_body_bytes'])
+            : $monitor?->min_response_body_bytes;
+        $maximumResponseBodyBytes = array_key_exists('max_response_body_bytes', $validated)
+            ? ($validated['max_response_body_bytes'] === null ? null : (int) $validated['max_response_body_bytes'])
+            : $monitor?->max_response_body_bytes;
+
+        if ($minimumResponseBodyBytes !== null
+            && $maximumResponseBodyBytes !== null
+            && $minimumResponseBodyBytes > $maximumResponseBodyBytes) {
+            throw ValidationException::withMessages([
+                'max_response_body_bytes' => '最大回應本文大小必須大於或等於最小回應本文大小。',
+            ]);
+        }
 
         if ($responseTimeThresholdMs !== null && (int) $responseTimeThresholdMs >= $timeoutSeconds * 1000) {
             throw ValidationException::withMessages([
@@ -1627,6 +1658,8 @@ class MonitorController extends Controller
             'response_time_threshold_ms' => array_key_exists('response_time_threshold_ms', $validated)
                 ? ($validated['response_time_threshold_ms'] === null ? null : (int) $validated['response_time_threshold_ms'])
                 : ($monitor?->response_time_threshold_ms),
+            'min_response_body_bytes' => $minimumResponseBodyBytes,
+            'max_response_body_bytes' => $maximumResponseBodyBytes,
             'timeout_seconds' => array_key_exists('timeout_seconds', $validated)
                 ? (int) $validated['timeout_seconds']
                 : ($monitor?->timeout_seconds ?? (int) config('monitoring.request_timeout_seconds')),

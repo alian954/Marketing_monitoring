@@ -120,6 +120,34 @@ class IncidentManager
                 ));
             }
 
+            $minimumResponseBodyBytes = $lockedMonitor->min_response_body_bytes;
+            $maximumResponseBodyBytes = $lockedMonitor->max_response_body_bytes;
+
+            if (($minimumResponseBodyBytes !== null || $maximumResponseBodyBytes !== null) && $normalProbeSucceeded) {
+                $responseBodyBytes = $normal->responseBodyBytes;
+                $responseSizeIndeterminate = $responseBodyBytes === null;
+                $responseSizeFailure = $responseSizeIndeterminate
+                    || ($minimumResponseBodyBytes !== null && $responseBodyBytes < $minimumResponseBodyBytes)
+                    || ($maximumResponseBodyBytes !== null && $responseBodyBytes > $maximumResponseBodyBytes);
+
+                $delay = $this->earlierDelay($delay, $this->recordRule(
+                    $lockedMonitor,
+                    $run,
+                    'response_size',
+                    'warning',
+                    $responseSizeFailure,
+                    $normal,
+                    true,
+                    null,
+                    [
+                        'min_response_body_bytes' => $minimumResponseBodyBytes,
+                        'max_response_body_bytes' => $maximumResponseBodyBytes,
+                        'response_body_bytes' => $responseBodyBytes,
+                        'indeterminate' => $responseSizeIndeterminate,
+                    ],
+                ));
+            }
+
             if ($adsbot !== null) {
                 $uaDiffers = $normalProbeSucceeded && ! $this->probeSucceededForMonitor($lockedMonitor, $adsbot);
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));

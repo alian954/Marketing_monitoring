@@ -257,6 +257,19 @@
                         </div>
 
                         <div class="field-group">
+                            <label class="field-label" for="min_response_body_bytes">最小回應本文大小（bytes）</label>
+                            <input class="field-input @error('min_response_body_bytes') is-invalid @enderror" id="min_response_body_bytes" name="min_response_body_bytes" type="number" inputmode="numeric" min="1" max="{{ (int) config('monitoring.max_body_bytes', 1048576) }}" step="1" value="{{ old('min_response_body_bytes', $monitor->min_response_body_bytes) }}" aria-invalid="{{ $errors->has('min_response_body_bytes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('min_response_body_bytes') ? 'response-body-size-help min-response-body-bytes-error' : 'response-body-size-help' }}">
+                            @error('min_response_body_bytes')<p id="min-response-body-bytes-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group">
+                            <label class="field-label" for="max_response_body_bytes">最大回應本文大小（bytes）</label>
+                            <input class="field-input @error('max_response_body_bytes') is-invalid @enderror" id="max_response_body_bytes" name="max_response_body_bytes" type="number" inputmode="numeric" min="1" max="{{ (int) config('monitoring.max_body_bytes', 1048576) }}" step="1" value="{{ old('max_response_body_bytes', $monitor->max_response_body_bytes) }}" aria-invalid="{{ $errors->has('max_response_body_bytes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('max_response_body_bytes') ? 'response-body-size-help max-response-body-bytes-error' : 'response-body-size-help' }}">
+                            <p id="response-body-size-help" class="field-help">可設定下限、上限或兩者；留空代表不檢查該方向。門檻最高為 {{ number_format((int) config('monitoring.max_body_bytes', 1048576)) }} bytes。超過讀取上限時大小無法判定，系統會建立警告並略過可用率計算。</p>
+                            @error('max_response_body_bytes')<p id="max-response-body-bytes-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group">
                             <label class="field-label" for="timeout_seconds">請求逾時上限（秒）</label>
                             <input class="field-input @error('timeout_seconds') is-invalid @enderror" id="timeout_seconds" name="timeout_seconds" type="number" inputmode="numeric" min="1" max="15" step="1" value="{{ old('timeout_seconds', $monitor->timeout_seconds ?? config('monitoring.request_timeout_seconds')) }}" required aria-invalid="{{ $errors->has('timeout_seconds') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('timeout_seconds') ? 'timeout-seconds-help timeout-seconds-error' : 'timeout-seconds-help' }}">
                             <p id="timeout-seconds-help" class="field-help">每次 HTTP 檢查可設定 1–15 秒；一般檢查與 AdsBot 比對各自使用此上限，整個佇列工作仍有 45 秒總期限。</p>

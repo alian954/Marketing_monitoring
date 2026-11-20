@@ -33,6 +33,8 @@ class MonitorFactory extends Factory
             'expected_text' => null,
             'expected_text_mode' => 'present',
             'response_time_threshold_ms' => null,
+            'min_response_body_bytes' => null,
+            'max_response_body_bytes' => null,
             'timeout_seconds' => 10,
             'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
             'public_status' => false,

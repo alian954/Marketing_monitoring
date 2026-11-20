@@ -34,7 +34,7 @@
                 <div class="field-group">
                     <label class="field-label" for="csv_file">選擇 CSV 檔案<span class="required-mark" aria-hidden="true">*</span></label>
                     <input class="field-input @error('csv_file') is-invalid @enderror" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required aria-describedby="{{ $errors->has('csv_file') ? 'csv-help csv-file-error' : 'csv-help' }}">
-                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。延伸欄位依序為 <code>expected_text</code>、<code>expected_text_mode</code>、<code>expected_response_header</code>、<code>interval_seconds</code>、<code>timeout_seconds</code>、<code>response_time_threshold_ms</code>、<code>accepted_status_codes</code>、<code>request_headers</code>、<code>allowed_redirect_hosts</code>、<code>notification_email</code>、<code>notification_escalation_email</code>、<code>notification_escalation_delay_minutes</code>、<code>notification_escalation_stage_2_email</code>、<code>notification_escalation_stage_2_delay_minutes</code>、<code>notification_slack_webhook</code>、<code>notification_discord_webhook</code>、<code>notification_teams_webhook</code>、<code>confirmation_delay_seconds</code>、<code>enabled</code>、<code>public_status</code>；可省略不用欄位，但需保持順序。可用 <code>expected_text_mode=present</code> 要求全部片段都出現，或用 <code>present_any</code> 只要求任一片段出現；<code>absent</code> 會在任一片段出現時告警。社群貼文需加入 <code>expected_text</code>，並使用 <code>present</code> 或 <code>present_any</code>。省略比對方式時預設為 <code>present</code>。<code>expected_response_header</code> 格式為 <code>X-Robots-Tag: noindex</code>；空白預期值只檢查標頭是否存在。<code>interval_seconds</code> 支援 60、300、900、1800 或 3600 秒；留空或省略時使用全域預設。<code>timeout_seconds</code> 可設 1–15 秒；<code>response_time_threshold_ms</code> 可設 100–14,000 毫秒，且必須低於逾時上限；留空時不啟用回應時間警示。<code>accepted_status_codes</code> 可用逗號或空白分隔 400–599 狀態碼；未設定時接受 200–399。<code>request_headers</code> 每行使用 <code>名稱: 值</code>，最多 20 個且網址必須是 HTTPS；預覽只顯示名稱，不顯示值。<code>allowed_redirect_hosts</code> 每行或以逗號分隔主機名稱；留空時不允許一般跨主機重新導向。<code>notification_email</code> 最多 10 個信箱，可用換行、逗號或分號分隔；預覽只顯示數量，留空時使用全域收件信箱。升級收件信箱欄位同樣最多 10 個信箱；設定收件人時必須提供 5–1440 分鐘等待時間，第二階段需先設定第一階段，且等待時間要更晚。預覽只顯示各階段收件人數量與等待時間。<code>notification_slack_webhook</code>、<code>notification_discord_webhook</code> 與 <code>notification_teams_webhook</code> 僅接受對應平台 HTTPS webhook；預覽只顯示已設定的通道，不會顯示網址，留空時使用全域設定。<code>confirmation_delay_seconds</code> 可設定 30–300 秒以確認異常與恢復；留空或省略時使用全域預設。<code>enabled</code> 支援 1/0、true/false、yes/no 或 on/off；留白或省略時啟用，設為 false 可先匯入並暫停檢查。所有資料列先預覽，確認後才匯入；網址、標頭條件值、收件信箱與 webhook 網址不會在預覽顯示。</p>
+                    <p id="csv-help" class="field-help">必要欄位：<code>name</code>、<code>url</code>、<code>label</code>。延伸欄位依序為 <code>expected_text</code>、<code>expected_text_mode</code>、<code>expected_response_header</code>、<code>interval_seconds</code>、<code>timeout_seconds</code>、<code>response_time_threshold_ms</code>、<code>min_response_body_bytes</code>、<code>max_response_body_bytes</code>、<code>accepted_status_codes</code>、<code>request_headers</code>、<code>allowed_redirect_hosts</code>、<code>notification_email</code>、<code>notification_escalation_email</code>、<code>notification_escalation_delay_minutes</code>、<code>notification_escalation_stage_2_email</code>、<code>notification_escalation_stage_2_delay_minutes</code>、<code>notification_slack_webhook</code>、<code>notification_discord_webhook</code>、<code>notification_teams_webhook</code>、<code>confirmation_delay_seconds</code>、<code>enabled</code>、<code>public_status</code>；可省略不用欄位，但需保持順序。可用 <code>expected_text_mode=present</code> 要求全部片段都出現，或用 <code>present_any</code> 只要求任一片段出現；<code>absent</code> 會在任一片段出現時告警。社群貼文需加入 <code>expected_text</code>，並使用 <code>present</code> 或 <code>present_any</code>。省略比對方式時預設為 <code>present</code>。<code>expected_response_header</code> 格式為 <code>X-Robots-Tag: noindex</code>；空白預期值只檢查標頭是否存在。<code>interval_seconds</code> 支援 60、300、900、1800 或 3600 秒；留空或省略時使用全域預設。<code>timeout_seconds</code> 可設 1–15 秒；<code>response_time_threshold_ms</code> 可設 100–14,000 毫秒，且必須低於逾時上限；留空時不啟用回應時間警示。<code>min_response_body_bytes</code> 與 <code>max_response_body_bytes</code> 可設定 1 至 {{ (int) config('monitoring.max_body_bytes', 1048576) }} bytes；可只設定一側，兩側同時設定時最小值不可大於最大值。超過本文讀取上限時大小會標示為無法判定。<code>accepted_status_codes</code> 可用逗號或空白分隔 400–599 狀態碼；未設定時接受 200–399。<code>request_headers</code> 每行使用 <code>名稱: 值</code>，最多 20 個且網址必須是 HTTPS；預覽只顯示名稱，不顯示值。<code>allowed_redirect_hosts</code> 每行或以逗號分隔主機名稱；留空時不允許一般跨主機重新導向。<code>notification_email</code> 最多 10 個信箱，可用換行、逗號或分號分隔；預覽只顯示數量，留空時使用全域收件信箱。升級收件信箱欄位同樣最多 10 個信箱；設定收件人時必須提供 5–1440 分鐘等待時間，第二階段需先設定第一階段，且等待時間要更晚。預覽只顯示各階段收件人數量與等待時間。<code>notification_slack_webhook</code>、<code>notification_discord_webhook</code> 與 <code>notification_teams_webhook</code> 僅接受對應平台 HTTPS webhook；預覽只顯示已設定的通道，不會顯示網址，留空時使用全域設定。<code>confirmation_delay_seconds</code> 可設定 30–300 秒以確認異常與恢復；留空或省略時使用全域預設。<code>enabled</code> 支援 1/0、true/false、yes/no 或 on/off；留白或省略時啟用，設為 false 可先匯入並暫停檢查。所有資料列先預覽，確認後才匯入；網址、標頭條件值、收件信箱與 webhook 網址不會在預覽顯示。</p>
                     <p class="field-help"><code>public_status</code> 可用 1/0、true/false、yes/no 或 on/off；留白或省略時不公開。開啟後，監測結果會納入已發布的公開狀態頁。</p>
                     @error('csv_file')<p id="csv-file-error" class="field-error">{{ $message }}</p>@enderror
                 </div>
@@ -73,7 +73,7 @@
                 @else
                     <div class="data-table-wrap preview-table-frame" role="region" aria-labelledby="preview-title" tabindex="0">
                         <table class="data-table">
-                            <caption class="sr-only">CSV 資料列、遮罩目的網址、檢查頻率、異常確認延遲、匯入後監測狀態、公開狀態頁設定、請求逾時、回應時間門檻、額外接受狀態碼、自訂請求標頭、允許的重新導向主機、告警信箱數量、升級通知階段、Webhook 通道、預期文字與 HTTP 標頭條件及匯入資格</caption>
+                            <caption class="sr-only">CSV 資料列、遮罩目的網址、檢查頻率、異常確認延遲、匯入後監測狀態、公開狀態頁設定、請求逾時、回應時間與本文大小門檻、額外接受狀態碼、自訂請求標頭、允許的重新導向主機、告警信箱數量、升級通知階段、Webhook 通道、預期文字與 HTTP 標頭條件及匯入資格</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">列號</th>
@@ -85,7 +85,7 @@
                                     <th scope="col">匯入後監測狀態</th>
                                     <th scope="col">公開狀態頁</th>
                                     <th scope="col">請求逾時</th>
-                                    <th scope="col">回應時間門檻</th>
+                                    <th scope="col">回應時間／本文大小門檻</th>
                                     <th scope="col">額外接受狀態碼</th>
                                     <th scope="col">自訂請求標頭</th>
                                     <th scope="col">允許的重新導向主機</th>
@@ -112,6 +112,8 @@
                                         $monitorPublicStatus = (bool) data_get($previewRow, 'public_status', false);
                                         $timeoutSeconds = (int) data_get($previewRow, 'timeout_seconds', config('monitoring.request_timeout_seconds'));
                                         $responseTimeThresholdMs = data_get($previewRow, 'response_time_threshold_ms');
+                                        $minimumResponseBodyBytes = data_get($previewRow, 'min_response_body_bytes');
+                                        $maximumResponseBodyBytes = data_get($previewRow, 'max_response_body_bytes');
                                         $acceptedStatusCodes = data_get($previewRow, 'accepted_status_codes', []);
                                         $requestHeaderNames = data_get($previewRow, 'request_header_names', []);
                                         $allowedRedirectHosts = data_get($previewRow, 'allowed_redirect_hosts', []);
@@ -141,7 +143,19 @@
                                         <td>{{ $monitorEnabled ? '啟用，排程檢查' : '已暫停，不排程檢查' }}</td>
                                         <td>{{ $monitorPublicStatus ? '加入公開狀態頁' : '僅內部監測' }}</td>
                                         <td>{{ $timeoutSeconds }} 秒</td>
-                                        <td>{{ $responseTimeThresholdMs === null ? '—' : number_format((int) $responseTimeThresholdMs).' 毫秒' }}</td>
+                                        <td>
+                                            回應時間：{{ $responseTimeThresholdMs === null ? '—' : number_format((int) $responseTimeThresholdMs).' 毫秒' }}
+                                            <br>本文大小：
+                                            @if ($minimumResponseBodyBytes !== null && $maximumResponseBodyBytes !== null)
+                                                {{ number_format((int) $minimumResponseBodyBytes) }}–{{ number_format((int) $maximumResponseBodyBytes) }} bytes
+                                            @elseif ($minimumResponseBodyBytes !== null)
+                                                至少 {{ number_format((int) $minimumResponseBodyBytes) }} bytes
+                                            @elseif ($maximumResponseBodyBytes !== null)
+                                                至多 {{ number_format((int) $maximumResponseBodyBytes) }} bytes
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
                                         <td>{{ $acceptedStatusCodes === [] ? '預設 200–399' : implode(', ', $acceptedStatusCodes) }}</td>
                                         <td>{{ $requestHeaderNames === [] ? '—' : '已設定 '.implode('、', $requestHeaderNames).'（值已遮蔽）' }}</td>
                                         <td>{{ $allowedRedirectHosts === [] ? '未設定' : implode('、', $allowedRedirectHosts) }}</td>

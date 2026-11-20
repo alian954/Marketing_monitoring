@@ -37,6 +37,8 @@ class MonitorImportController extends Controller
         'interval_seconds',
         'timeout_seconds',
         'response_time_threshold_ms',
+        'min_response_body_bytes',
+        'max_response_body_bytes',
         'accepted_status_codes',
         'request_headers',
         'allowed_redirect_hosts',
@@ -104,7 +106,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、min_response_body_bytes、max_response_body_bytes、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -141,6 +143,8 @@ class MonitorImportController extends Controller
             $timeoutSeconds = (int) config('monitoring.request_timeout_seconds');
             $timeoutIsValid = true;
             $responseTimeThresholdMs = null;
+            $minimumResponseBodyBytes = null;
+            $maximumResponseBodyBytes = null;
             $acceptedStatusCodes = [];
             $requestHeaders = [];
             $requestHeaderNames = [];
@@ -434,6 +438,42 @@ class MonitorImportController extends Controller
                 }
             }
 
+            $responseBodySizeLimit = (int) config('monitoring.max_body_bytes', 1_048_576);
+            $responseBodySizes = [];
+
+            foreach (['min_response_body_bytes', 'max_response_body_bytes'] as $column) {
+                if (! isset($columnIndexes[$column])) {
+                    continue;
+                }
+
+                $sizeInput = trim((string) ($cells[$columnIndexes[$column]] ?? ''));
+
+                if ($sizeInput === '') {
+                    continue;
+                }
+
+                $parsedSize = ctype_digit($sizeInput) ? (int) $sizeInput : null;
+
+                if ($parsedSize === null) {
+                    $errors[] = '回應本文大小門檻必須是整數 bytes。';
+                } elseif ($parsedSize < 1) {
+                    $errors[] = '回應本文大小門檻不得低於 1 byte。';
+                } elseif ($parsedSize > $responseBodySizeLimit) {
+                    $errors[] = '回應本文大小門檻不得高於讀取上限（'.number_format($responseBodySizeLimit).' bytes）。';
+                } else {
+                    $responseBodySizes[$column] = $parsedSize;
+                }
+            }
+
+            $minimumResponseBodyBytes = $responseBodySizes['min_response_body_bytes'] ?? null;
+            $maximumResponseBodyBytes = $responseBodySizes['max_response_body_bytes'] ?? null;
+
+            if ($minimumResponseBodyBytes !== null
+                && $maximumResponseBodyBytes !== null
+                && $minimumResponseBodyBytes > $maximumResponseBodyBytes) {
+                $errors[] = '最大回應本文大小必須大於或等於最小回應本文大小。';
+            }
+
             if (count($cells) > count($header)) {
                 $errors[] = '資料欄位數量與標題列不一致。';
             }
@@ -514,6 +554,8 @@ class MonitorImportController extends Controller
                 'interval_seconds' => $intervalSeconds,
                 'timeout_seconds' => $timeoutSeconds,
                 'response_time_threshold_ms' => $responseTimeThresholdMs,
+                'min_response_body_bytes' => $minimumResponseBodyBytes,
+                'max_response_body_bytes' => $maximumResponseBodyBytes,
                 'accepted_status_codes' => $acceptedStatusCodes,
                 'request_headers' => $requestHeaders,
                 'request_header_names' => $requestHeaderNames,
@@ -630,6 +672,8 @@ class MonitorImportController extends Controller
                 'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
                 'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
+                'min_response_body_bytes' => $row['min_response_body_bytes'] ?? null,
+                'max_response_body_bytes' => $row['max_response_body_bytes'] ?? null,
                 'next_check_at' => ($row['enabled'] ?? true) ? now() : null,
             ]);
 

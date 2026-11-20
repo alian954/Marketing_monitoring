@@ -90,6 +90,8 @@ class SocialPostImportTest extends TestCase
             'interval_seconds',
             'timeout_seconds',
             'response_time_threshold_ms',
+            'min_response_body_bytes',
+            'max_response_body_bytes',
             'accepted_status_codes',
             'request_headers',
             'allowed_redirect_hosts',
@@ -513,7 +515,7 @@ class SocialPostImportTest extends TestCase
         config(['monitoring.request_timeout_seconds' => 10]);
         $condition = 'X-Robots-Tag: campaign-index';
         $csv = $this->csvContent(
-            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds', 'timeout_seconds', 'response_time_threshold_ms'],
+            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'expected_response_header', 'interval_seconds', 'timeout_seconds', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes'],
             [[
                 'Spring campaign',
                 'https://www.instagram.com/reel/ABC123/',
@@ -524,12 +526,16 @@ class SocialPostImportTest extends TestCase
                 '300',
                 '15',
                 '14000',
+                '512',
+                '2048',
             ], [
                 'Default frequency',
                 'https://example.com/default-frequency',
                 'Ops',
                 '',
                 'present',
+                '',
+                '',
                 '',
                 '',
                 '',
@@ -547,6 +553,7 @@ class SocialPostImportTest extends TestCase
             ->assertSee('5 分鐘')
             ->assertSee('15 分鐘')
             ->assertSee('14,000 毫秒')
+            ->assertSee('512–2,048 bytes')
             ->assertDontSee('campaign-index');
 
         $this->assertSame(2, $preview->viewData('validCount'));
@@ -556,6 +563,8 @@ class SocialPostImportTest extends TestCase
         $this->assertSame('X-Robots-Tag', $previewRow['expected_response_header_name']);
         $this->assertSame(15, $previewRow['timeout_seconds']);
         $this->assertSame(14000, $previewRow['response_time_threshold_ms']);
+        $this->assertSame(512, $previewRow['min_response_body_bytes']);
+        $this->assertSame(2048, $previewRow['max_response_body_bytes']);
         $this->assertSame((int) config('monitoring.interval_seconds'), $previewRows[1]['interval_seconds']);
         $this->assertSame((int) config('monitoring.request_timeout_seconds'), $previewRows[1]['timeout_seconds']);
         $this->assertNull($previewRows[1]['response_time_threshold_ms']);
@@ -571,6 +580,8 @@ class SocialPostImportTest extends TestCase
         $this->assertSame($condition, $monitor->expected_response_header);
         $this->assertSame(15, $monitor->timeout_seconds);
         $this->assertSame(14000, $monitor->response_time_threshold_ms);
+        $this->assertSame(512, $monitor->min_response_body_bytes);
+        $this->assertSame(2048, $monitor->max_response_body_bytes);
         $defaultFrequencyMonitor = Monitor::query()->where('name', 'Default frequency')->sole();
         $this->assertSame((int) config('monitoring.interval_seconds'), $defaultFrequencyMonitor->interval_seconds);
         $this->assertSame((int) config('monitoring.request_timeout_seconds'), $defaultFrequencyMonitor->timeout_seconds);
@@ -583,6 +594,8 @@ class SocialPostImportTest extends TestCase
         $this->assertSame($condition, $snapshot['expected_response_header']);
         $this->assertSame(15, $snapshot['timeout_seconds']);
         $this->assertSame(14000, $snapshot['response_time_threshold_ms']);
+        $this->assertSame(512, $snapshot['min_response_body_bytes']);
+        $this->assertSame(2048, $snapshot['max_response_body_bytes']);
         $this->assertSame(
             now()->addSeconds(300)->utc()->toIso8601String(),
             $monitor->fresh()->next_check_at->utc()->toIso8601String(),
