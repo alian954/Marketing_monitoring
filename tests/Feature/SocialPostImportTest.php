@@ -87,6 +87,7 @@ class SocialPostImportTest extends TestCase
             'expected_text',
             'expected_text_mode',
             'alert_on_visible_text_change',
+            'alert_on_response_metadata_change',
             'expected_response_header',
             'interval_seconds',
             'timeout_seconds',
@@ -275,7 +276,7 @@ class SocialPostImportTest extends TestCase
         Queue::fake([RunMonitorCheck::class]);
         $user = User::factory()->create();
         $csv = $this->csvContent(
-            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'alert_on_visible_text_change'],
+            ['name', 'url', 'label', 'expected_text', 'expected_text_mode', 'alert_on_visible_text_change', 'alert_on_response_metadata_change'],
             [[
                 'Spring campaign',
                 'https://www.instagram.com/p/ABC123/',
@@ -283,6 +284,7 @@ class SocialPostImportTest extends TestCase
                 'Campaign, launch headline',
                 '',
                 'true',
+                'yes',
             ]],
         );
 
@@ -294,6 +296,7 @@ class SocialPostImportTest extends TestCase
             ->assertSee('預期文字條件')
             ->assertSee('Campaign, launch headline')
             ->assertSee('可見文字變更警示：已啟用')
+            ->assertSee('分享預覽變更警示：已啟用')
             ->assertSee('可匯入');
 
         $this->assertSame(1, $preview->viewData('validCount'));
@@ -301,6 +304,7 @@ class SocialPostImportTest extends TestCase
         $this->assertTrue($previewRow['eligible']);
         $this->assertSame('present', $previewRow['expected_text_mode']);
         $this->assertTrue($previewRow['alert_on_visible_text_change']);
+        $this->assertTrue($previewRow['alert_on_response_metadata_change']);
         $this->assertSame([], $previewRow['accepted_status_codes']);
         $this->assertDatabaseCount('monitors', 0);
 
@@ -311,6 +315,7 @@ class SocialPostImportTest extends TestCase
         $this->assertSame('Campaign, launch headline', $monitor->expected_text);
         $this->assertSame('present', $monitor->expected_text_mode);
         $this->assertTrue($monitor->alert_on_visible_text_change);
+        $this->assertTrue($monitor->alert_on_response_metadata_change);
         $this->assertSame([], $monitor->accepted_status_codes);
         $this->assertSame('Instagram', $monitor->socialPlatform());
         $this->assertDatabaseHas('monitors', [
@@ -324,6 +329,7 @@ class SocialPostImportTest extends TestCase
         $this->assertSame('Campaign, launch headline', $snapshot['expected_text']);
         $this->assertSame('present', $snapshot['expected_text_mode']);
         $this->assertTrue($snapshot['alert_on_visible_text_change']);
+        $this->assertTrue($snapshot['alert_on_response_metadata_change']);
         Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
@@ -340,6 +346,24 @@ class SocialPostImportTest extends TestCase
             ])
             ->assertOk()
             ->assertSee('可見文字變更警示只接受 1、0、true、false、yes、no、on 或 off。');
+
+        $this->assertSame(0, $preview->viewData('validCount'));
+        $this->assertFalse($preview->viewData('previewRows')[0]['eligible']);
+    }
+
+    public function test_csv_rejects_an_invalid_response_metadata_alert_value(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'alert_on_response_metadata_change'],
+            [['Invalid metadata alert flag', 'https://www.threads.com/@creator/post/INVALIDMETAALERT', 'Campaign', 'sometimes']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('分享預覽變更警示只接受 1、0、true、false、yes、no、on 或 off。');
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertFalse($preview->viewData('previewRows')[0]['eligible']);

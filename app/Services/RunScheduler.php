@@ -37,6 +37,7 @@ class RunScheduler
                 'expected_text' => $lockedMonitor->expected_text,
                 'expected_text_mode' => $lockedMonitor->expected_text_mode ?? 'present',
                 'alert_on_visible_text_change' => $lockedMonitor->alert_on_visible_text_change,
+                'alert_on_response_metadata_change' => $lockedMonitor->alert_on_response_metadata_change,
                 'request_headers' => $lockedMonitor->request_headers ?? [],
                 'expected_response_header' => $lockedMonitor->expected_response_header,
                 'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,

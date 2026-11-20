@@ -43,35 +43,7 @@ class ResponseMetadataChangeHistory
             ->select(['id', 'config_version', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at'])
             ->cursor() as $run) {
             if ($newerRun instanceof CheckRun && $newerRun->config_version === $run->config_version) {
-                $changedFields = [];
-
-                if ($newerRun->response_title !== $run->response_title) {
-                    $changedFields[] = 'title';
-                }
-
-                if ($newerRun->response_description !== $run->response_description) {
-                    $changedFields[] = 'description';
-                }
-
-                if ($newerRun->response_image_reference_hash !== $run->response_image_reference_hash) {
-                    $changedFields[] = 'image_reference';
-                }
-
-                if ($newerRun->response_open_graph_type !== $run->response_open_graph_type) {
-                    $changedFields[] = 'open_graph_type';
-                }
-
-                if ($newerRun->response_canonical_reference_hash !== $run->response_canonical_reference_hash) {
-                    $changedFields[] = 'canonical_reference';
-                }
-
-                if ($newerRun->response_published_at?->utc()->format('U.u') !== $run->response_published_at?->utc()->format('U.u')) {
-                    $changedFields[] = 'published_at';
-                }
-
-                if ($newerRun->response_modified_at?->utc()->format('U.u') !== $run->response_modified_at?->utc()->format('U.u')) {
-                    $changedFields[] = 'modified_at';
-                }
+                $changedFields = self::changedFields($run, $newerRun);
 
                 if ($changedFields !== []) {
                     $changes[] = [
@@ -103,5 +75,43 @@ class ResponseMetadataChangeHistory
         }
 
         return $changes;
+    }
+
+    /**
+     * @return list<'title'|'description'|'image_reference'|'open_graph_type'|'canonical_reference'|'published_at'|'modified_at'>
+     */
+    public static function changedFields(CheckRun $previousRun, CheckRun $currentRun): array
+    {
+        $changedFields = [];
+
+        if ($previousRun->response_title !== $currentRun->response_title) {
+            $changedFields[] = 'title';
+        }
+
+        if ($previousRun->response_description !== $currentRun->response_description) {
+            $changedFields[] = 'description';
+        }
+
+        if ($previousRun->response_image_reference_hash !== $currentRun->response_image_reference_hash) {
+            $changedFields[] = 'image_reference';
+        }
+
+        if ($previousRun->response_open_graph_type !== $currentRun->response_open_graph_type) {
+            $changedFields[] = 'open_graph_type';
+        }
+
+        if ($previousRun->response_canonical_reference_hash !== $currentRun->response_canonical_reference_hash) {
+            $changedFields[] = 'canonical_reference';
+        }
+
+        if ($previousRun->response_published_at?->utc()->format('U.u') !== $currentRun->response_published_at?->utc()->format('U.u')) {
+            $changedFields[] = 'published_at';
+        }
+
+        if ($previousRun->response_modified_at?->utc()->format('U.u') !== $currentRun->response_modified_at?->utc()->format('U.u')) {
+            $changedFields[] = 'modified_at';
+        }
+
+        return $changedFields;
     }
 }

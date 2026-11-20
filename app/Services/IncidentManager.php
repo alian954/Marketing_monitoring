@@ -148,25 +148,61 @@ class IncidentManager
                 ));
             }
 
-            $currentVisibleTextHash = $run->response_visible_text_hash;
+            $visibleTextChangeAlertEnabled = $lockedMonitor->alert_on_visible_text_change;
+            $responseMetadataChangeAlertEnabled = $lockedMonitor->alert_on_response_metadata_change;
 
-            if ($lockedMonitor->alert_on_visible_text_change && $normalProbeSucceeded && is_string($currentVisibleTextHash)) {
-                $previousVisibleTextHash = $this->previousResponseVisibleTextHash($lockedMonitor, $run);
+            if (($visibleTextChangeAlertEnabled || $responseMetadataChangeAlertEnabled) && $normalProbeSucceeded) {
+                $previousResponseRun = $this->previousSuccessfulResponseRun($lockedMonitor, $run);
 
-                if ($previousVisibleTextHash !== null) {
-                    $visibleTextChanged = ! hash_equals($previousVisibleTextHash, $currentVisibleTextHash);
-                    $delay = $this->earlierDelay($delay, $this->recordRule(
-                        $lockedMonitor,
-                        $run,
-                        'response_content_change',
-                        'warning',
-                        $visibleTextChanged,
-                        $normal,
-                        true,
-                        false,
-                        ['comparison' => 'visible_text_hash'],
-                        true,
-                    ));
+                if ($previousResponseRun !== null) {
+                    $changedComparisons = [];
+                    $monitoredComparisons = [];
+                    $metadataChangedFields = [];
+                    $comparisonAvailable = false;
+
+                    if ($visibleTextChangeAlertEnabled) {
+                        $monitoredComparisons[] = 'visible_text_hash';
+                        $previousVisibleTextHash = $previousResponseRun->response_visible_text_hash;
+                        $currentVisibleTextHash = $run->response_visible_text_hash;
+
+                        if (is_string($previousVisibleTextHash) && is_string($currentVisibleTextHash)) {
+                            $comparisonAvailable = true;
+
+                            if (! hash_equals($previousVisibleTextHash, $currentVisibleTextHash)) {
+                                $changedComparisons[] = 'visible_text_hash';
+                            }
+                        }
+                    }
+
+                    if ($responseMetadataChangeAlertEnabled) {
+                        $monitoredComparisons[] = 'response_metadata';
+                        $comparisonAvailable = true;
+                        $metadataChangedFields = ResponseMetadataChangeHistory::changedFields($previousResponseRun, $run);
+
+                        if ($metadataChangedFields !== []) {
+                            $changedComparisons[] = 'response_metadata';
+                        }
+                    }
+
+                    if ($comparisonAvailable || $changedComparisons !== []) {
+                        $delay = $this->earlierDelay($delay, $this->recordRule(
+                            $lockedMonitor,
+                            $run,
+                            'response_content_change',
+                            'warning',
+                            $changedComparisons !== [],
+                            $normal,
+                            true,
+                            false,
+                            [
+                                'comparison' => $changedComparisons[0] ?? ($monitoredComparisons[0] ?? null),
+                                'comparisons' => $changedComparisons,
+                                'monitored_comparisons' => $monitoredComparisons,
+                                'response_metadata_fields' => $metadataChangedFields,
+                            ],
+                            true,
+                        ));
+                    }
                 }
             }
 
@@ -797,7 +833,7 @@ class IncidentManager
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_handshake', 'critical', false, $result, true, false));
     }
 
-    private function previousResponseVisibleTextHash(Monitor $monitor, CheckRun $run): ?string
+    private function previousSuccessfulResponseRun(Monitor $monitor, CheckRun $run): ?CheckRun
     {
         $previousRun = $monitor->checkRuns()
             ->where('config_version', $run->config_version)
@@ -812,18 +848,28 @@ class IncidentManager
             })
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')
-            ->first(['error_type', 'normal_status', 'response_visible_text_hash']);
+            ->first([
+                'error_type',
+                'normal_status',
+                'response_visible_text_hash',
+                'response_title',
+                'response_description',
+                'response_image_reference_hash',
+                'response_open_graph_type',
+                'response_canonical_reference_hash',
+                'response_published_at',
+                'response_modified_at',
+            ]);
 
         if (
             $previousRun === null
             || $previousRun->error_type !== null
             || ! $monitor->acceptsHttpStatus($previousRun->normal_status)
-            || ! is_string($previousRun->response_visible_text_hash)
         ) {
             return null;
         }
 
-        return $previousRun->response_visible_text_hash;
+        return $previousRun;
     }
 
     private function recordDomainExpiry(

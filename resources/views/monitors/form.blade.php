@@ -259,6 +259,16 @@
                             @error('alert_on_visible_text_change')<p id="visible-text-change-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
+                        <div class="field-group field-group-full">
+                            <input type="hidden" name="alert_on_response_metadata_change" value="0">
+                            <label class="field-check spaced-top" for="alert_on_response_metadata_change">
+                                <input id="alert_on_response_metadata_change" name="alert_on_response_metadata_change" type="checkbox" value="1" aria-describedby="response-metadata-change-help{{ $errors->has('alert_on_response_metadata_change') ? ' response-metadata-change-error' : '' }}" @checked(old('alert_on_response_metadata_change', $monitor->alert_on_response_metadata_change))>
+                                分享預覽資訊改變時建立警告
+                            </label>
+                            <p id="response-metadata-change-help" class="field-help">比對標題、摘要、圖片參照、Open Graph 類型、標準網址參照與發佈／修改時間。首次完整回應建立基準；變更時建立警告，連續兩次回應穩定後自動恢復。若同時啟用可見文字警示，同一檢查只建立一個事件；事件只記錄變更欄位名稱。</p>
+                            @error('alert_on_response_metadata_change')<p id="response-metadata-change-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
                         <div class="field-group">
                             <label class="field-label" for="response_time_threshold_ms">回應時間警示門檻（毫秒）</label>
                             <input class="field-input @error('response_time_threshold_ms') is-invalid @enderror" id="response_time_threshold_ms" name="response_time_threshold_ms" type="number" inputmode="numeric" min="100" max="14000" step="1" value="{{ old('response_time_threshold_ms', $monitor->response_time_threshold_ms) }}" aria-invalid="{{ $errors->has('response_time_threshold_ms') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('response_time_threshold_ms') ? 'response-time-threshold-help response-time-threshold-error' : 'response-time-threshold-help' }}">

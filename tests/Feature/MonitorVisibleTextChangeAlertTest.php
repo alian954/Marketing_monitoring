@@ -34,6 +34,7 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
             ->get(route('monitors.edit', $monitor))
             ->assertOk()
             ->assertSee('原始回應可見文字改變時建立警告')
+            ->assertSee('分享預覽資訊改變時建立警告')
             ->assertSee('首次完整回應會建立基準');
 
         $this->put(route('monitors.update', $monitor), [
@@ -42,16 +43,19 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
             'label' => $monitor->label,
             'redirect_hosts' => '',
             'alert_on_visible_text_change' => '1',
+            'alert_on_response_metadata_change' => '1',
         ])->assertRedirect(route('monitors.show', $monitor));
 
         $monitor->refresh();
         $this->assertTrue($monitor->alert_on_visible_text_change);
+        $this->assertTrue($monitor->alert_on_response_metadata_change);
         $this->assertSame(2, $monitor->config_version);
 
         $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
         $this->assertNotNull($run);
         $snapshot = json_decode($run->config_snapshot, true, flags: JSON_THROW_ON_ERROR);
         $this->assertTrue($snapshot['alert_on_visible_text_change']);
+        $this->assertTrue($snapshot['alert_on_response_metadata_change']);
 
         $this->put(route('monitors.update', $monitor), [
             'name' => $monitor->name,
@@ -59,9 +63,11 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
             'label' => $monitor->label,
             'redirect_hosts' => '',
             'alert_on_visible_text_change' => '0',
+            'alert_on_response_metadata_change' => '0',
         ])->assertRedirect(route('monitors.show', $monitor));
 
         $this->assertFalse($monitor->fresh()->alert_on_visible_text_change);
+        $this->assertFalse($monitor->fresh()->alert_on_response_metadata_change);
         $this->assertSame(3, $monitor->fresh()->config_version);
     }
 
@@ -129,12 +135,12 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
         $outbox = NotificationOutbox::query()->where('incident_id', $incident->id)->sole();
         $this->assertSame('opened', $outbox->event_type);
         $this->assertSame('owner@example.test', $outbox->recipient);
-        $this->assertStringContainsString('原始回應可見文字已變更', $outbox->body);
+        $this->assertStringContainsString('原始回應文字或分享預覽資訊已變更', $outbox->body);
 
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('原始回應可見文字已變更')
+            ->assertSee('原始回應文字或分享預覽資訊已變更')
             ->assertSee('原始內容不會寫入事件')
             ->assertDontSee($previousHash)
             ->assertDontSee($currentHash);

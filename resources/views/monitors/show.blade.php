@@ -18,7 +18,7 @@
         'forbidden_text' => '回應包含不應出現的文字',
         'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
-        'response_content_change' => '原始回應可見文字已變更',
+        'response_content_change' => '原始回應文字或分享預覽資訊已變更',
         'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
@@ -207,6 +207,10 @@
                     <div class="metadata-item">
                         <dt>可見文字變更警示</dt>
                         <dd>{{ $monitor->alert_on_visible_text_change ? '已啟用' : '未啟用' }}</dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>分享預覽資訊變更警示</dt>
+                        <dd>{{ $monitor->alert_on_response_metadata_change ? '已啟用' : '未啟用' }}</dd>
                     </div>
                     <div class="metadata-item">
                         <dt>回應時間警示門檻</dt>
@@ -1055,8 +1059,32 @@
                                                 @if ($incident->rule_key === 'response_time' && isset($event->evidence['threshold_ms'], $event->evidence['elapsed_ms']))
                                                     <span class="secondary-text">HTTP 回應 {{ number_format((int) $event->evidence['elapsed_ms']) }} 毫秒；門檻 {{ number_format((int) $event->evidence['threshold_ms']) }} 毫秒</span>
                                                 @endif
-                                                @if ($incident->rule_key === 'response_content_change' && ($event->evidence['comparison'] ?? null) === 'visible_text_hash')
-                                                    <span class="secondary-text">前後兩次完整 HTTP 回應的可見文字摘要不同；原始內容不會寫入事件。</span>
+                                                @if ($incident->rule_key === 'response_content_change' && (array_key_exists('comparison', $event->evidence) || array_key_exists('comparisons', $event->evidence)))
+                                                    @php
+                                                        $eventComparisons = $event->evidence['monitored_comparisons'] ?? array_filter([$event->evidence['comparison'] ?? null]);
+                                                        $eventChangedComparisons = $event->evidence['comparisons'] ?? array_filter([$event->evidence['comparison'] ?? null]);
+                                                        $eventMetadataFieldLabels = collect($event->evidence['response_metadata_fields'] ?? [])->map(static fn (string $field): ?string => match ($field) {
+                                                            'title' => '分享標題',
+                                                            'description' => '分享摘要',
+                                                            'image_reference' => '分享圖片參照',
+                                                            'open_graph_type' => 'Open Graph 類型',
+                                                            'canonical_reference' => '標準網址參照',
+                                                            'published_at' => '發佈時間',
+                                                            'modified_at' => '修改時間',
+                                                            default => null,
+                                                        })->filter()->implode('、');
+                                                    @endphp
+                                                    <span class="secondary-text">
+                                                        @if (in_array($event->event_type, ['failure_seen', 'opened'], true))
+                                                            偵測到{{ collect($eventChangedComparisons)->map(static fn (string $comparison): string => match ($comparison) { 'visible_text_hash' => '可見文字', 'response_metadata' => '分享預覽資訊', default => '回應內容' })->implode('與') }}變更。
+                                                        @else
+                                                            比對項目：{{ collect($eventComparisons)->map(static fn (string $comparison): string => match ($comparison) { 'visible_text_hash' => '可見文字', 'response_metadata' => '分享預覽資訊', default => '回應內容' })->implode('、') }}；本次回應穩定，正在確認恢復。
+                                                        @endif
+                                                        @if ($eventMetadataFieldLabels !== '')
+                                                            變更欄位：{{ $eventMetadataFieldLabels }}；
+                                                        @endif
+                                                        原始內容不會寫入事件；事件只記錄變更欄位名稱，不保存圖片網址。
+                                                    </span>
                                                 @endif
                                                 @if ($incident->rule_key === 'response_size' && array_key_exists('response_body_bytes', $event->evidence))
                                                     <span class="secondary-text">
