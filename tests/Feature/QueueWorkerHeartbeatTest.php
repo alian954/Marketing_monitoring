@@ -9,6 +9,7 @@ use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
@@ -98,6 +99,59 @@ class QueueWorkerHeartbeatTest extends TestCase
             ->assertSee('目前佇列工作總數：1 筆');
 
         $this->assertSame(1, $response->viewData('queueSize'));
+    }
+
+    public function test_dashboard_counts_failed_jobs_when_database_storage_is_configured(): void
+    {
+        DB::table('failed_jobs')->insert([
+            'uuid' => 'failed-job-uuid',
+            'connection' => 'database',
+            'queue' => 'default',
+            'payload' => '{}',
+            'exception' => 'RuntimeException',
+            'failed_at' => now(),
+        ]);
+
+        $user = User::factory()->create();
+
+        foreach (['database', 'database-uuids'] as $driver) {
+            Config::set('queue.failed.driver', $driver);
+
+            $response = $this->actingAs($user)
+                ->get(route('dashboard'))
+                ->assertOk()
+                ->assertSee('目前記錄 1 件失敗工作。');
+
+            $this->assertTrue($response->viewData('failedQueueJobStorageSupported'));
+            $this->assertSame(1, $response->viewData('failedQueueJobCount'));
+        }
+    }
+
+    public function test_dashboard_hides_failed_job_count_when_storage_is_not_database(): void
+    {
+        Config::set('queue.failed.driver', 'null');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('失敗佇列工作');
+
+        $this->assertFalse($response->viewData('failedQueueJobStorageSupported'));
+        $this->assertNull($response->viewData('failedQueueJobCount'));
+    }
+
+    public function test_dashboard_stays_available_when_failed_jobs_cannot_be_read(): void
+    {
+        Config::set('queue.failed.driver', 'database-uuids');
+        Config::set('queue.failed.table', 'missing_failed_jobs');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('目前無法取得失敗佇列工作數。');
+
+        $this->assertTrue($response->viewData('failedQueueJobStorageSupported'));
+        $this->assertNull($response->viewData('failedQueueJobCount'));
     }
 
     public function test_dashboard_remains_available_when_queue_size_cannot_be_read(): void

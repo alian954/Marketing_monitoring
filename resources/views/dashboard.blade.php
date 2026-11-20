@@ -217,6 +217,18 @@
                     @endif
                 @endif
             </div>
+            @if ($failedQueueJobStorageSupported)
+                <div class="heartbeat-item">
+                    <div class="heartbeat-heading heartbeat-subheading">
+                        <h3 class="heartbeat-title">失敗佇列工作</h3>
+                    </div>
+                    @if ($failedQueueJobCount === null)
+                        <p class="heartbeat-copy">目前無法取得失敗佇列工作數。</p>
+                    @else
+                        <p class="heartbeat-copy">目前記錄 {{ number_format($failedQueueJobCount) }} 件失敗工作。</p>
+                    @endif
+                </div>
+            @endif
         </section>
     </div>
 
