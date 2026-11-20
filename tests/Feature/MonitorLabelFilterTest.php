@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,6 +105,56 @@ class MonitorLabelFilterTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame($monitor->name, $rows[0]['name']);
+    }
+
+    public function test_monitor_list_and_csv_export_search_only_the_latest_response_title(): void
+    {
+        $targetUrl = 'https://www.threads.com/@creator/post/SPRING123';
+        $targetMonitor = Monitor::factory()->create([
+            'name' => 'Threads launch tracker',
+            'url' => $targetUrl,
+            'url_hash' => Monitor::fingerprintUrl($targetUrl),
+        ]);
+        CheckRun::factory()->for($targetMonitor)->create([
+            'response_title' => 'Archived Spring announcement',
+            'scheduled_at' => now()->subHour(),
+        ]);
+        CheckRun::factory()->for($targetMonitor)->create([
+            'response_title' => 'Spring launch announcement',
+            'scheduled_at' => now(),
+        ]);
+
+        $outdatedTitleMonitor = Monitor::factory()->create([
+            'name' => 'Other campaign tracker',
+            'url' => 'https://www.instagram.com/p/AUTUMN123/',
+            'url_hash' => Monitor::fingerprintUrl('https://www.instagram.com/p/AUTUMN123/'),
+        ]);
+        CheckRun::factory()->for($outdatedTitleMonitor)->create([
+            'response_title' => 'Spring promotion',
+            'scheduled_at' => now()->subHour(),
+        ]);
+        CheckRun::factory()->for($outdatedTitleMonitor)->create([
+            'response_title' => 'Autumn promotion',
+            'scheduled_at' => now(),
+        ]);
+        $filters = ['search' => 'Spring launch'];
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', $filters))
+            ->assertOk()
+            ->assertSee('最近一次回應的頁面標題')
+            ->assertSee($targetMonitor->name)
+            ->assertDontSee($outdatedTitleMonitor->name);
+
+        $this->assertSame([$targetMonitor->id], $response->viewData('monitors')->getCollection()->modelKeys());
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($targetMonitor->name, $rows[0]['name']);
     }
 
     public function test_monitor_list_sorts_by_check_time_and_places_unchecked_items_first_when_oldest_is_selected(): void

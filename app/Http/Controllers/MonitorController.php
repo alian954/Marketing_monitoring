@@ -163,7 +163,10 @@ class MonitorController extends Controller
                 $query->where(function (Builder $query) use ($searchTerm, $urlFingerprint): void {
                     $query->where('name', 'like', $searchTerm)
                         ->orWhere('label', 'like', $searchTerm)
-                        ->orWhere('url_hash', $urlFingerprint);
+                        ->orWhere('url_hash', $urlFingerprint)
+                        ->orWhereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($searchTerm): void {
+                            $checkRunQuery->where('response_title', 'like', $searchTerm);
+                        });
                 });
             })
             ->when($filters['label'] !== '', static fn (Builder $query) => $query->where('label', $filters['label']))
