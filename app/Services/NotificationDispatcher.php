@@ -181,6 +181,7 @@ class NotificationDispatcher
             'response_header' => 'HTTP 回應標頭不符合設定',
             'response_time' => 'HTTP 回應時間超過設定門檻',
             'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
+            'response_content_change' => '原始回應可見文字已變更',
             'monitor_stale' => '監測檢查結果已超過預期更新時間',
             'tls_expired' => 'TLS 憑證已過期',
             'tls_handshake' => 'TLS 交握失敗',

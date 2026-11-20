@@ -32,6 +32,7 @@ class MonitorFactory extends Factory
             'accepted_status_codes' => [],
             'expected_text' => null,
             'expected_text_mode' => 'present',
+            'alert_on_visible_text_change' => false,
             'response_time_threshold_ms' => null,
             'min_response_body_bytes' => null,
             'max_response_body_bytes' => null,

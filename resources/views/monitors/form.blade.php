@@ -249,6 +249,16 @@
                             @error('expected_text_mode')<p id="expected-text-mode-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
+                        <div class="field-group field-group-full">
+                            <input type="hidden" name="alert_on_visible_text_change" value="0">
+                            <label class="field-check spaced-top" for="alert_on_visible_text_change">
+                                <input id="alert_on_visible_text_change" name="alert_on_visible_text_change" type="checkbox" value="1" aria-describedby="visible-text-change-help{{ $errors->has('alert_on_visible_text_change') ? ' visible-text-change-error' : '' }}" @checked(old('alert_on_visible_text_change', $monitor->alert_on_visible_text_change))>
+                                原始回應可見文字改變時建立警告
+                            </label>
+                            <p id="visible-text-change-help" class="field-help">首次完整回應會建立基準；之後文字摘要改變會建立警告，並依既有通知設定發送；連續兩次檢查維持相同內容後自動恢復。只比對可見文字摘要，不保存回應本文；頁面上的動態時間或輪播文字也可能觸發警告。</p>
+                            @error('alert_on_visible_text_change')<p id="visible-text-change-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
                         <div class="field-group">
                             <label class="field-label" for="response_time_threshold_ms">回應時間警示門檻（毫秒）</label>
                             <input class="field-input @error('response_time_threshold_ms') is-invalid @enderror" id="response_time_threshold_ms" name="response_time_threshold_ms" type="number" inputmode="numeric" min="100" max="14000" step="1" value="{{ old('response_time_threshold_ms', $monitor->response_time_threshold_ms) }}" aria-invalid="{{ $errors->has('response_time_threshold_ms') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('response_time_threshold_ms') ? 'response-time-threshold-help response-time-threshold-error' : 'response-time-threshold-help' }}">

@@ -22,6 +22,7 @@ class IncidentHistoryController extends Controller
         'forbidden_text' => '回應包含不應出現的文字',
         'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
+        'response_content_change' => '原始回應可見文字已變更',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
         'tls_expired' => 'TLS 憑證已過期',

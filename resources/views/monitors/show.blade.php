@@ -18,6 +18,7 @@
         'forbidden_text' => '回應包含不應出現的文字',
         'response_header' => 'HTTP 回應標頭不符合設定',
         'response_time' => 'HTTP 回應時間超過設定門檻',
+        'response_content_change' => '原始回應可見文字已變更',
         'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
@@ -202,6 +203,10 @@
                                 未設定文字條件
                             @endif
                         </dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>可見文字變更警示</dt>
+                        <dd>{{ $monitor->alert_on_visible_text_change ? '已啟用' : '未啟用' }}</dd>
                     </div>
                     <div class="metadata-item">
                         <dt>回應時間警示門檻</dt>
@@ -1049,6 +1054,9 @@
                                                 @endif
                                                 @if ($incident->rule_key === 'response_time' && isset($event->evidence['threshold_ms'], $event->evidence['elapsed_ms']))
                                                     <span class="secondary-text">HTTP 回應 {{ number_format((int) $event->evidence['elapsed_ms']) }} 毫秒；門檻 {{ number_format((int) $event->evidence['threshold_ms']) }} 毫秒</span>
+                                                @endif
+                                                @if ($incident->rule_key === 'response_content_change' && ($event->evidence['comparison'] ?? null) === 'visible_text_hash')
+                                                    <span class="secondary-text">前後兩次完整 HTTP 回應的可見文字摘要不同；原始內容不會寫入事件。</span>
                                                 @endif
                                                 @if ($incident->rule_key === 'response_size' && array_key_exists('response_body_bytes', $event->evidence))
                                                     <span class="secondary-text">

@@ -272,6 +272,7 @@ class MonitorController extends Controller
             'accepted_status_codes' => $validated['accepted_status_codes'],
             'expected_text' => $validated['expected_text'] ?: null,
             'expected_text_mode' => $validated['expected_text_mode'],
+            'alert_on_visible_text_change' => $validated['alert_on_visible_text_change'],
             'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
             'min_response_body_bytes' => $validated['min_response_body_bytes'],
             'max_response_body_bytes' => $validated['max_response_body_bytes'],
@@ -607,6 +608,7 @@ class MonitorController extends Controller
                 'accepted_status_codes' => $validated['accepted_status_codes'],
                 'expected_text' => $validated['expected_text'] ?: null,
                 'expected_text_mode' => $validated['expected_text_mode'],
+                'alert_on_visible_text_change' => $validated['alert_on_visible_text_change'],
                 'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
                 'min_response_body_bytes' => $validated['min_response_body_bytes'],
                 'max_response_body_bytes' => $validated['max_response_body_bytes'],
@@ -1329,7 +1331,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -1408,6 +1410,7 @@ class MonitorController extends Controller
             'clear_expected_response_header' => ['sometimes', 'boolean'],
             'accepted_status_codes' => ['nullable', 'string', 'max:1000'],
             'expected_text' => ['nullable', 'string', 'max:500'],
+            'alert_on_visible_text_change' => ['sometimes', 'boolean'],
             'expected_text_mode' => ['sometimes', 'in:'.implode(',', [
                 ExpectedTextMatcher::MODE_PRESENT,
                 ExpectedTextMatcher::MODE_PRESENT_ANY,
@@ -1655,6 +1658,9 @@ class MonitorController extends Controller
             'accepted_status_codes' => $acceptedStatusCodes,
             'expected_text' => isset($validated['expected_text']) ? trim($validated['expected_text']) : null,
             'expected_text_mode' => $validated['expected_text_mode'] ?? $monitor?->expected_text_mode ?? 'present',
+            'alert_on_visible_text_change' => array_key_exists('alert_on_visible_text_change', $validated)
+                ? (bool) $validated['alert_on_visible_text_change']
+                : ($monitor?->alert_on_visible_text_change ?? false),
             'response_time_threshold_ms' => array_key_exists('response_time_threshold_ms', $validated)
                 ? ($validated['response_time_threshold_ms'] === null ? null : (int) $validated['response_time_threshold_ms'])
                 : ($monitor?->response_time_threshold_ms),

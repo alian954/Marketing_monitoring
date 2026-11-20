@@ -148,6 +148,28 @@ class IncidentManager
                 ));
             }
 
+            $currentVisibleTextHash = $run->response_visible_text_hash;
+
+            if ($lockedMonitor->alert_on_visible_text_change && $normalProbeSucceeded && is_string($currentVisibleTextHash)) {
+                $previousVisibleTextHash = $this->previousResponseVisibleTextHash($lockedMonitor, $run);
+
+                if ($previousVisibleTextHash !== null) {
+                    $visibleTextChanged = ! hash_equals($previousVisibleTextHash, $currentVisibleTextHash);
+                    $delay = $this->earlierDelay($delay, $this->recordRule(
+                        $lockedMonitor,
+                        $run,
+                        'response_content_change',
+                        'warning',
+                        $visibleTextChanged,
+                        $normal,
+                        true,
+                        false,
+                        ['comparison' => 'visible_text_hash'],
+                        true,
+                    ));
+                }
+            }
+
             if ($adsbot !== null) {
                 $uaDiffers = $normalProbeSucceeded && ! $this->probeSucceededForMonitor($lockedMonitor, $adsbot);
                 $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'adsbot_difference', 'warning', $uaDiffers, $adsbot, false));
@@ -595,6 +617,7 @@ class IncidentManager
         bool $notifyOnOpen,
         ?bool $notifyOnRecovery = null,
         array $additionalEvidence = [],
+        bool $openImmediately = false,
     ): ?int {
         $incident = Incident::query()
             ->where('monitor_id', $monitor->id)
@@ -612,19 +635,31 @@ class IncidentManager
         $confirmationDelaySeconds = $this->confirmationDelaySeconds($monitor);
 
         if ($failed && $incident === null) {
+            $openedAt = $openImmediately ? now() : null;
             $incident = Incident::query()->create([
                 'monitor_id' => $monitor->id,
                 'config_version' => $run->config_version,
                 'rule_key' => $ruleKey,
                 'severity' => $severity,
-                'state' => Incident::STATE_SUSPECT,
+                'state' => $openImmediately ? Incident::STATE_OPEN : Incident::STATE_SUSPECT,
                 'active_key' => hash('sha256', implode(':', [$monitor->id, $run->config_version, $ruleKey])),
                 'failure_count' => 1,
                 'recovery_count' => 0,
-                'confirm_after' => now()->addSeconds($confirmationDelaySeconds),
+                'confirm_after' => $openImmediately ? null : now()->addSeconds($confirmationDelaySeconds),
+                'opened_at' => $openedAt,
                 'last_seen_at' => now(),
             ]);
             $this->addEvent($incident, $run, 'failure_seen', $evidence);
+
+            if ($openImmediately) {
+                $this->addEvent($incident, $run, 'opened', $evidence);
+
+                if ($notifyOnOpen && ! $this->isInMaintenance($monitor)) {
+                    $this->notifications->queue($incident, $monitor, $run, 'opened');
+                }
+
+                return null;
+            }
 
             return $confirmationDelaySeconds;
         }
@@ -760,6 +795,35 @@ class IncidentManager
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_14d', 'warning', $withinFourteenDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_30d', 'warning', $withinThirtyDays, $result, true, false));
         $delay = $this->earlierDelay($delay, $this->recordRule($monitor, $run, 'tls_handshake', 'critical', false, $result, true, false));
+    }
+
+    private function previousResponseVisibleTextHash(Monitor $monitor, CheckRun $run): ?string
+    {
+        $previousRun = $monitor->checkRuns()
+            ->where('config_version', $run->config_version)
+            ->where('status', 'completed')
+            ->whereNotIn('source', ['tls_daily', 'domain_daily'])
+            ->where(function (Builder $query) use ($run): void {
+                $query->where('scheduled_at', '<', $run->scheduled_at)
+                    ->orWhere(function (Builder $sameTimeQuery) use ($run): void {
+                        $sameTimeQuery->where('scheduled_at', $run->scheduled_at)
+                            ->where('id', '<', $run->id);
+                    });
+            })
+            ->orderByDesc('scheduled_at')
+            ->orderByDesc('id')
+            ->first(['error_type', 'normal_status', 'response_visible_text_hash']);
+
+        if (
+            $previousRun === null
+            || $previousRun->error_type !== null
+            || ! $monitor->acceptsHttpStatus($previousRun->normal_status)
+            || ! is_string($previousRun->response_visible_text_hash)
+        ) {
+            return null;
+        }
+
+        return $previousRun->response_visible_text_hash;
     }
 
     private function recordDomainExpiry(

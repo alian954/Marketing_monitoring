@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
+#[Fillable(['name', 'url', 'url_hash', 'label', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'alert_on_visible_text_change', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'next_check_at', 'last_checked_at'])]
 #[Hidden(['notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header'])]
 class Monitor extends Model
 {
@@ -59,6 +59,7 @@ class Monitor extends Model
             'allowed_redirect_hosts' => 'array',
             'accepted_status_codes' => 'array',
             'enabled' => 'boolean',
+            'alert_on_visible_text_change' => 'boolean',
             'config_version' => 'integer',
             'response_time_threshold_ms' => 'integer',
             'min_response_body_bytes' => 'integer',

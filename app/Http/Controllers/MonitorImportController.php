@@ -33,6 +33,7 @@ class MonitorImportController extends Controller
     private const OPTIONAL_HEADERS = [
         'expected_text',
         'expected_text_mode',
+        'alert_on_visible_text_change',
         'expected_response_header',
         'interval_seconds',
         'timeout_seconds',
@@ -106,7 +107,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、min_response_body_bytes、max_response_body_bytes、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、alert_on_visible_text_change、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、min_response_body_bytes、max_response_body_bytes、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -135,6 +136,7 @@ class MonitorImportController extends Controller
                 ? mb_strtolower(trim((string) ($cells[$columnIndexes['expected_text_mode']] ?? '')))
                 : 'present';
             $expectedTextMode = $expectedTextMode === '' ? 'present' : $expectedTextMode;
+            $alertOnVisibleTextChange = false;
             $errors = [];
             $duplicate = false;
             $expectedResponseHeader = null;
@@ -339,6 +341,20 @@ class MonitorImportController extends Controller
                         $errors[] = '公開狀態頁設定只接受 1、0、true、false、yes、no、on 或 off。';
                     } else {
                         $publicStatus = $parsedPublicStatus;
+                    }
+                }
+            }
+
+            if (isset($columnIndexes['alert_on_visible_text_change'])) {
+                $alertInput = trim((string) ($cells[$columnIndexes['alert_on_visible_text_change']] ?? ''));
+
+                if ($alertInput !== '') {
+                    $parsedAlert = filter_var($alertInput, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+                    if ($parsedAlert === null) {
+                        $errors[] = '可見文字變更警示只接受 1、0、true、false、yes、no、on 或 off。';
+                    } else {
+                        $alertOnVisibleTextChange = $parsedAlert;
                     }
                 }
             }
@@ -549,6 +565,7 @@ class MonitorImportController extends Controller
                 'label' => $label,
                 'expected_text' => $expectedText,
                 'expected_text_mode' => $expectedTextMode,
+                'alert_on_visible_text_change' => $alertOnVisibleTextChange,
                 'expected_response_header' => $expectedResponseHeader,
                 'expected_response_header_name' => $expectedResponseHeaderName,
                 'interval_seconds' => $intervalSeconds,
@@ -667,6 +684,7 @@ class MonitorImportController extends Controller
                 'notification_teams_webhook' => $row['notification_teams_webhook'] ?? null,
                 'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
                 'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
+                'alert_on_visible_text_change' => $row['alert_on_visible_text_change'] ?? false,
                 'expected_response_header' => $row['expected_response_header'] ?? null,
                 'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
                 'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
