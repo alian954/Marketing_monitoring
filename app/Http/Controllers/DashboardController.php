@@ -11,6 +11,7 @@ use App\Models\TlsObservation;
 use App\Services\FleetAvailabilityReport;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\View\View;
 
@@ -22,6 +23,17 @@ class DashboardController extends Controller
     {
         $monitors = Monitor::query()
             ->with(['latestCheckRun', 'activeIncidents'])
+            ->withCount([
+                'activeIncidents as current_critical_incidents_count' => static fn (Builder $query): Builder => $query
+                    ->whereColumn('incidents.config_version', 'monitors.config_version')
+                    ->where('severity', 'critical'),
+                'activeIncidents as current_warning_incidents_count' => static fn (Builder $query): Builder => $query
+                    ->whereColumn('incidents.config_version', 'monitors.config_version')
+                    ->where('severity', 'warning'),
+            ])
+            ->orderByDesc('enabled')
+            ->orderByDesc('current_critical_incidents_count')
+            ->orderByDesc('current_warning_incidents_count')
             ->orderBy('name')
             ->orderBy('id')
             ->limit(8)
