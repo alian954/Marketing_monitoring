@@ -64,7 +64,8 @@ class MonitorAvailabilityExportTest extends TestCase
         $this->assertSame(number_format($detailStat['availability_rate'], 2, '.', ''), $firstPeriod['availability_percent']);
         $this->assertSame(number_format($detailStat['coverage_rate'], 2, '.', ''), $firstPeriod['coverage_percent']);
         $this->assertSame(number_format($detailStat['up_minutes'], 2, '.', ''), $firstPeriod['estimated_up_minutes']);
-        $this->assertSame(number_format($detailStat['observed_minutes'] - $detailStat['up_minutes'], 2, '.', ''), $firstPeriod['estimated_down_minutes']);
+        $estimatedUnavailableMinutes = ($detailStat['observed_seconds'] - $detailStat['up_seconds']) / 60;
+        $this->assertSame(number_format($estimatedUnavailableMinutes, 2, '.', ''), $firstPeriod['estimated_down_minutes']);
         $this->assertSame(number_format($detailStat['observed_minutes'], 2, '.', ''), $firstPeriod['observed_minutes']);
         $this->assertSame(number_format($detailStat['eligible_minutes'], 2, '.', ''), $firstPeriod['eligible_minutes']);
         $this->assertSame(number_format($detailStat['maintenance_excluded_minutes'], 2, '.', ''), $firstPeriod['maintenance_excluded_minutes']);
@@ -90,14 +91,32 @@ class MonitorAvailabilityExportTest extends TestCase
         $this->assertSame('0.00', $rows[0]['observed_minutes']);
     }
 
-    private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $statusCode): CheckRun
+    public function test_csv_rounds_estimated_unavailable_minutes_from_seconds_before_display_rounding(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create(['interval_seconds' => 60]);
+        $this->createScheduledRun($monitor, now()->subSeconds(68), 200, 34);
+        $this->createScheduledRun($monitor, now()->subSeconds(34), 503, 34);
+
+        $user = User::factory()->create();
+        $detailResponse = $this->actingAs($user)->get(route('monitors.show', $monitor))->assertOk();
+        $dailyStat = collect($detailResponse->viewData('availabilityStats'))->firstWhere('label', '24 小時');
+        $rows = $this->csvRows($this->get(route('monitors.availability.export', $monitor))->streamedContent());
+        $firstPeriod = collect($rows)->firstWhere('period', '24 小時');
+
+        $this->assertSame(0.6, $dailyStat['unavailable_minutes']);
+        $this->assertSame('0.57', $firstPeriod['estimated_down_minutes']);
+    }
+
+    private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $statusCode, int $intervalSeconds = 300): CheckRun
     {
         return CheckRun::factory()->for($monitor)->create([
             'config_snapshot' => json_encode([
                 'accepted_status_codes' => [],
                 'expected_text' => null,
                 'expected_text_mode' => 'present',
-                'interval_seconds' => 300,
+                'interval_seconds' => $intervalSeconds,
             ], JSON_THROW_ON_ERROR),
             'source' => 'scheduled',
             'status' => 'completed',

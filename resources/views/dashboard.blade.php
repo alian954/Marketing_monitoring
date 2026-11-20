@@ -52,7 +52,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="fleet-availability-title" class="panel-title">整體監測品質</h2>
-                <p class="panel-description">比較最近 24 小時、7 天與 30 天；依啟用中項目的實際觀測時間加權，維護時段不計入。</p>
+                <p class="panel-description">比較最近 24 小時、7 天與 30 天；依啟用中項目的實際觀測時間加權，維護時段與資料空窗不計入。</p>
             </div>
             <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
         </div>
@@ -69,6 +69,7 @@
                         <tr>
                             <th scope="col">期間</th>
                             <th scope="col">估算可用率</th>
+                            <th scope="col">估算不可用分鐘</th>
                             <th scope="col">檢查覆蓋率</th>
                             <th scope="col">觀測／應監測分鐘</th>
                             <th scope="col">維護排除分鐘</th>
@@ -79,6 +80,7 @@
                             <tr>
                                 <th scope="row">{{ $statistic['label'] }}</th>
                                 <td class="numeric">{{ $statistic['availability_rate'] === null ? '—' : number_format($statistic['availability_rate'], 2).'%' }}</td>
+                                <td class="numeric">{{ number_format($statistic['unavailable_minutes'], 1) }}</td>
                                 <td class="numeric">{{ $statistic['coverage_rate'] === null ? '—' : number_format($statistic['coverage_rate'], 2).'%' }}</td>
                                 <td class="numeric">{{ number_format($statistic['observed_minutes'], 1) }} / {{ number_format($statistic['eligible_minutes'], 1) }}</td>
                                 <td class="numeric">{{ number_format($statistic['maintenance_excluded_minutes'], 1) }}</td>

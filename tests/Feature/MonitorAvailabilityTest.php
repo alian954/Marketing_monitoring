@@ -40,12 +40,14 @@ class MonitorAvailabilityTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('估算時間可用率')
+            ->assertSee('估算不可用')
             ->assertSee('維護時段不計入觀測')
             ->assertSee('62.50%')
             ->assertSee('0.56%');
         $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');
 
         $this->assertSame(62.5, $dailyStat['availability_rate']);
+        $this->assertSame(3.0, $dailyStat['unavailable_minutes']);
         $this->assertSame(0.56, $dailyStat['coverage_rate']);
         $this->assertSame(8.0, $dailyStat['observed_minutes']);
         $this->assertSame(5.0, $dailyStat['up_minutes']);

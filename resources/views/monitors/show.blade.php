@@ -774,6 +774,7 @@
                     <div class="stat-topline"><span class="stat-label">最近 {{ $stat['label'] }}</span></div>
                     <strong class="stat-value">{{ $stat['availability_rate'] === null ? '—' : number_format($stat['availability_rate'], 2).'%' }}</strong>
                     <p class="stat-hint">可用 {{ number_format($stat['up_minutes'], 1) }} / 已觀測 {{ number_format($stat['observed_minutes'], 1) }} 分鐘</p>
+                    <p class="stat-hint">估算不可用 {{ number_format($stat['unavailable_minutes'], 1) }} 分鐘</p>
                     <p class="stat-hint">資料覆蓋 {{ $stat['coverage_rate'] === null ? '—' : number_format($stat['coverage_rate'], 2).'%' }}；非維護時間 {{ number_format($stat['eligible_minutes'], 1) }} 分鐘</p>
                     @if ($stat['legacy_interval_fallback'])
                         <p class="stat-hint">部分舊檢查紀錄未保存當時頻率，使用目前設定估算。</p>

@@ -44,6 +44,7 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(80.0, $dailyStatistic['availability_rate']);
         $this->assertSame(0.17, $dailyStatistic['coverage_rate']);
         $this->assertSame(4.0, $dailyStatistic['up_minutes']);
+        $this->assertSame(1.0, $dailyStatistic['unavailable_minutes']);
         $this->assertSame(5.0, $dailyStatistic['observed_minutes']);
         $this->assertSame(2879.0, $dailyStatistic['eligible_minutes']);
         $this->assertSame(1.0, $dailyStatistic['maintenance_excluded_minutes']);
@@ -106,6 +107,7 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertNull($dailyStatistic['availability_rate']);
         $this->assertNull($dailyStatistic['coverage_rate']);
         $this->assertSame(0.0, $dailyStatistic['eligible_minutes']);
+        $this->assertSame(0.0, $dailyStatistic['unavailable_minutes']);
         $this->assertSame(1440.0, $dailyStatistic['maintenance_excluded_minutes']);
     }
 
@@ -124,14 +126,18 @@ class DashboardAvailabilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('最近 24 小時、7 天與 30 天')
+            ->assertSee('估算不可用分鐘')
             ->assertSee('觀測／應監測分鐘');
 
         $statistics = collect($response->viewData('fleetAvailability')['statistics'])->keyBy('label');
 
         $this->assertSame(['24 小時', '7 天', '30 天'], $statistics->keys()->all());
         $this->assertSame(0.0, $statistics['24 小時']['availability_rate']);
+        $this->assertSame(5.0, $statistics['24 小時']['unavailable_minutes']);
         $this->assertSame(50.0, $statistics['7 天']['availability_rate']);
+        $this->assertSame(5.0, $statistics['7 天']['unavailable_minutes']);
         $this->assertSame(20.0, $statistics['30 天']['availability_rate']);
+        $this->assertSame(20.0, $statistics['30 天']['unavailable_minutes']);
     }
 
     private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $normalStatus, int $intervalSeconds): CheckRun

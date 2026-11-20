@@ -17,7 +17,7 @@ class MonitorAvailabilityReport
      * @return array{
      *     history_runs: Collection<int, CheckRun>,
      *     maintenance_windows: Collection<int, MaintenanceWindow>,
-     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
+     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      * }
      */
     public function build(Monitor $monitor, CarbonImmutable $asOf): array

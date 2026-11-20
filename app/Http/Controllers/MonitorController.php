@@ -1027,7 +1027,7 @@ class MonitorController extends Controller
             ], ',', '"', '');
 
             foreach ($availabilityStats as $statistic) {
-                $estimatedDownMinutes = max(0, $statistic['observed_minutes'] - $statistic['up_minutes']);
+                $unavailableSeconds = max(0, $statistic['observed_seconds'] - $statistic['up_seconds']);
                 $fields = [
                     $monitor->name,
                     $statistic['label'],
@@ -1035,7 +1035,7 @@ class MonitorController extends Controller
                     $statistic['availability_rate'] === null ? '' : number_format($statistic['availability_rate'], 2, '.', ''),
                     $statistic['coverage_rate'] === null ? '' : number_format($statistic['coverage_rate'], 2, '.', ''),
                     number_format($statistic['up_minutes'], 2, '.', ''),
-                    number_format($estimatedDownMinutes, 2, '.', ''),
+                    number_format($unavailableSeconds / 60, 2, '.', ''),
                     number_format($statistic['observed_minutes'], 2, '.', ''),
                     number_format($statistic['eligible_minutes'], 2, '.', ''),
                     number_format($statistic['maintenance_excluded_minutes'], 2, '.', ''),

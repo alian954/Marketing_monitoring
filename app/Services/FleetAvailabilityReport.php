@@ -24,7 +24,7 @@ class FleetAvailabilityReport
     /**
      * @return array{
      *     monitor_count: int,
-     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
+     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
      * }
      */
     public function build(CarbonImmutable $asOf): array
@@ -127,7 +127,7 @@ class FleetAvailabilityReport
 
     /**
      * @param  array{up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}  $totals
-     * @return array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}
+     * @return array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}
      */
     private function formatStatistic(string $label, array $totals): array
     {
@@ -140,6 +140,7 @@ class FleetAvailabilityReport
                 ? null
                 : round(($totals['observed_seconds'] / $totals['eligible_seconds']) * 100, 2),
             'up_minutes' => round($totals['up_seconds'] / 60, 1),
+            'unavailable_minutes' => round(max(0, $totals['observed_seconds'] - $totals['up_seconds']) / 60, 1),
             'observed_minutes' => round($totals['observed_seconds'] / 60, 1),
             'eligible_minutes' => round($totals['eligible_seconds'] / 60, 1),
             'maintenance_excluded_minutes' => round($totals['maintenance_excluded_seconds'] / 60, 1),
