@@ -200,14 +200,21 @@
                 </div>
                 @if (! $queueWorkerEnabled)
                     <p class="heartbeat-copy">目前使用 sync 同步佇列，工作由目前程序直接執行，沒有獨立 worker 心跳。</p>
-                @elseif ($workerHeartbeat?->last_succeeded_at)
-                    <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
-                    <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
-                    @unless ($workerHeartbeatFresh)
-                        <p class="heartbeat-copy">超過 2 分鐘沒有心跳，請檢查 queue worker 是否停止或佇列是否塞住。</p>
-                    @endunless
                 @else
-                    <p class="heartbeat-copy">尚未收到 worker 心跳；請確認 queue worker 已啟動且佇列能正常處理工作。</p>
+                    @if ($queueSize === null)
+                        <p class="heartbeat-copy">目前無法取得佇列工作數。</p>
+                    @else
+                        <p class="heartbeat-copy">目前佇列工作總數：{{ number_format($queueSize) }} 筆（包含延遲與處理中的工作）</p>
+                    @endif
+                    @if ($workerHeartbeat?->last_succeeded_at)
+                        <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
+                        <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
+                        @unless ($workerHeartbeatFresh)
+                            <p class="heartbeat-copy">超過 2 分鐘沒有心跳，請檢查 queue worker 是否停止或佇列是否塞住。</p>
+                        @endunless
+                    @else
+                        <p class="heartbeat-copy">尚未收到 worker 心跳；請確認 queue worker 已啟動且佇列能正常處理工作。</p>
+                    @endif
                 @endif
             </div>
         </section>

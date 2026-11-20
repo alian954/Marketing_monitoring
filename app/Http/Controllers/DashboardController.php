@@ -13,7 +13,9 @@ use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\View\View;
+use Throwable;
 
 class DashboardController extends Controller
 {
@@ -114,6 +116,16 @@ class DashboardController extends Controller
         $heartbeatFresh = $heartbeat?->last_succeeded_at !== null && $heartbeat->last_succeeded_at->gte(now()->subMinutes(2));
         $workerHeartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-worker')->first();
         $workerHeartbeatFresh = $workerHeartbeat?->last_succeeded_at !== null && $workerHeartbeat->last_succeeded_at->gte(now()->subMinutes(2));
+        $queueWorkerEnabled = config('queue.default') !== 'sync';
+        $queueSize = null;
+
+        if ($queueWorkerEnabled) {
+            try {
+                $queueSize = Queue::size();
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
 
         return view('dashboard', [
             'monitors' => $monitors,
@@ -128,7 +140,8 @@ class DashboardController extends Controller
             'heartbeatFresh' => $heartbeatFresh,
             'workerHeartbeat' => $workerHeartbeat,
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
-            'queueWorkerEnabled' => config('queue.default') !== 'sync',
+            'queueWorkerEnabled' => $queueWorkerEnabled,
+            'queueSize' => $queueSize,
             'counts' => $counts,
             'fleetAvailability' => $fleetAvailability,
         ]);
