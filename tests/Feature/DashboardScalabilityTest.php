@@ -83,6 +83,46 @@ class DashboardScalabilityTest extends TestCase
         $this->assertSame(['ZZZ issue monitor'], $response->viewData('expiringDomains')->pluck('monitor.name')->all());
     }
 
+    public function test_dashboard_prioritizes_stale_monitors_above_healthy_monitors(): void
+    {
+        for ($monitorNumber = 1; $monitorNumber <= 7; $monitorNumber++) {
+            $monitor = $this->createMonitor(
+                sprintf('Healthy monitor %03d', $monitorNumber),
+                sprintf('https://healthy-%03d.example.test/', $monitorNumber),
+            );
+            $monitor->forceFill(['last_checked_at' => now()])->save();
+            CheckRun::factory()->for($monitor)->create([
+                'normal_status' => 200,
+                'scheduled_at' => now(),
+            ]);
+        }
+
+        $warningMonitor = $this->createMonitor('Warning monitor', 'https://warning.example.test/');
+        $warningMonitor->forceFill(['last_checked_at' => now()])->save();
+        CheckRun::factory()->for($warningMonitor)->create([
+            'normal_status' => 200,
+            'adsbot_status' => 503,
+            'scheduled_at' => now(),
+        ]);
+
+        $staleMonitor = $this->createMonitor('Z stale monitor', 'https://stale.example.test/');
+        $staleMonitor->forceFill(['last_checked_at' => now()->subHour()])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Warning monitor')
+            ->assertSee('Z stale monitor')
+            ->assertDontSee('Healthy monitor 007');
+
+        $dashboardMonitors = $response->viewData('monitors');
+
+        $this->assertSame(['Warning monitor', 'Z stale monitor'], $dashboardMonitors->take(2)->pluck('name')->all());
+        $this->assertSame('warning', $dashboardMonitors->first()->getAttribute('health_state'));
+        $this->assertSame('stale', $dashboardMonitors->get(1)->getAttribute('health_state'));
+        $this->assertCount(8, $dashboardMonitors);
+    }
+
     private function createMonitor(string $name, string $url): Monitor
     {
         return Monitor::factory()->create([

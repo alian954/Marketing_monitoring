@@ -25,39 +25,19 @@ class DashboardController extends Controller
 
     private const MAX_DASHBOARD_MAINTENANCE_OCCURRENCES = 10;
 
+    private const MAX_DASHBOARD_MONITORS = 8;
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
 
     public function index(UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
     {
-        $monitors = Monitor::query()
-            ->with(['latestCheckRun', 'activeIncidents'])
-            ->withCount([
-                'activeIncidents as current_critical_incidents_count' => static fn (Builder $query): Builder => $query
-                    ->whereColumn('incidents.config_version', 'monitors.config_version')
-                    ->where('severity', 'critical'),
-                'activeIncidents as current_warning_incidents_count' => static fn (Builder $query): Builder => $query
-                    ->whereColumn('incidents.config_version', 'monitors.config_version')
-                    ->where('severity', 'warning'),
-            ])
-            ->orderByDesc('enabled')
-            ->orderByDesc('current_critical_incidents_count')
-            ->orderByDesc('current_warning_incidents_count')
-            ->orderBy('name')
-            ->orderBy('id')
-            ->limit(8)
-            ->get();
-
-        foreach ($monitors as $monitor) {
-            $monitor->setAttribute('health_state', $monitor->healthState());
-            $monitor->setAttribute('masked_url', $urlMasker->mask($monitor->url));
-        }
-
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
         $maintenanceSummary = $this->maintenanceSummary($asOf);
         $monitorCount = 0;
+        $dashboardMonitorCandidates = [];
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
         $expiringCertificateCount = 0;
         $expiringCertificates = [];
@@ -69,6 +49,7 @@ class DashboardController extends Controller
             ->chunkById(500, function (EloquentCollection $monitorBatch) use (
                 $asOf,
                 &$monitorCount,
+                &$dashboardMonitorCandidates,
                 &$counts,
                 &$expiringCertificates,
                 &$expiringCertificateCount,
@@ -78,6 +59,25 @@ class DashboardController extends Controller
                 foreach ($monitorBatch as $monitor) {
                     $monitorCount++;
                     $healthState = $monitor->healthState();
+                    $monitor->setAttribute('health_state', $healthState);
+
+                    $dashboardMonitorCandidates[] = [
+                        'monitor' => $monitor,
+                        ...$this->dashboardMonitorPriority($monitor, $healthState),
+                    ];
+
+                    usort($dashboardMonitorCandidates, static function (array $first, array $second): int {
+                        return ($second['enabled_priority'] <=> $first['enabled_priority'])
+                            ?: ($second['critical_incident_count'] <=> $first['critical_incident_count'])
+                            ?: ($second['warning_incident_count'] <=> $first['warning_incident_count'])
+                            ?: ($first['health_state_priority'] <=> $second['health_state_priority'])
+                            ?: strcasecmp($first['monitor']->name, $second['monitor']->name)
+                            ?: ($first['monitor']->id <=> $second['monitor']->id);
+                    });
+
+                    if (count($dashboardMonitorCandidates) > self::MAX_DASHBOARD_MONITORS) {
+                        array_pop($dashboardMonitorCandidates);
+                    }
 
                     if (in_array($healthState, ['issue', 'suspect'], true)) {
                         $counts['issue']++;
@@ -109,6 +109,14 @@ class DashboardController extends Controller
                     }
                 }
             });
+
+        $monitors = collect(array_map(
+            static fn (array $candidate): Monitor => $candidate['monitor'],
+            $dashboardMonitorCandidates,
+        ));
+        $monitors->each(function (Monitor $monitor) use ($urlMasker): void {
+            $monitor->setAttribute('masked_url', $urlMasker->mask($monitor->url));
+        });
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -187,6 +195,30 @@ class DashboardController extends Controller
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
+    }
+
+    /**
+     * @return array{enabled_priority: int, critical_incident_count: int, warning_incident_count: int, health_state_priority: int}
+     */
+    private function dashboardMonitorPriority(Monitor $monitor, string $healthState): array
+    {
+        $currentIncidents = $monitor->activeIncidents->where('config_version', $monitor->config_version);
+
+        return [
+            'enabled_priority' => $monitor->enabled ? 1 : 0,
+            'critical_incident_count' => $currentIncidents->where('severity', 'critical')->count(),
+            'warning_incident_count' => $currentIncidents->where('severity', 'warning')->count(),
+            'health_state_priority' => match ($healthState) {
+                'issue' => 0,
+                'suspect' => 1,
+                'warning' => 2,
+                'stale' => 3,
+                'healthy' => 4,
+                'pending' => 5,
+                'paused' => 6,
+                default => 7,
+            },
+        ];
     }
 
     /**
