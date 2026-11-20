@@ -15,6 +15,8 @@ class FleetAvailabilityReport
 
     private const PERIODS = [
         ['label' => '24 小時', 'duration_seconds' => 86_400],
+        ['label' => '7 天', 'duration_seconds' => 604_800],
+        ['label' => '30 天', 'duration_seconds' => 2_592_000],
     ];
 
     public function __construct(private readonly MonitorAvailabilityCalculator $calculator) {}
@@ -27,17 +29,21 @@ class FleetAvailabilityReport
      */
     public function build(CarbonImmutable $asOf): array
     {
-        $periodStart = $asOf->subSeconds(self::PERIODS[0]['duration_seconds']);
+        $periodStart = $asOf->subSeconds(max(array_column(self::PERIODS, 'duration_seconds')));
         $staleGraceSeconds = max(0, (int) config('monitoring.stale_grace_seconds'));
         $historyQueryStart = $periodStart->subSeconds(Monitor::MAX_INTERVAL_SECONDS + $staleGraceSeconds);
         $maintenanceLookupDate = $periodStart->timezone(self::HISTORY_TIMEZONE)->subDays(7)->toDateString();
-        $totalsByPeriod = [self::PERIODS[0]['label'] => [
-            'up_seconds' => 0,
-            'observed_seconds' => 0,
-            'eligible_seconds' => 0,
-            'maintenance_excluded_seconds' => 0,
-            'legacy_interval_fallback' => false,
-        ]];
+        $totalsByPeriod = [];
+
+        foreach (self::PERIODS as $period) {
+            $totalsByPeriod[$period['label']] = [
+                'up_seconds' => 0,
+                'observed_seconds' => 0,
+                'eligible_seconds' => 0,
+                'maintenance_excluded_seconds' => 0,
+                'legacy_interval_fallback' => false,
+            ];
+        }
         $monitorCount = 0;
 
         Monitor::query()

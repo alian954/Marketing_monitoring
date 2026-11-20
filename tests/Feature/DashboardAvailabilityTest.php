@@ -58,7 +58,8 @@ class DashboardAvailabilityTest extends TestCase
             ->assertOk()
             ->assertSee('整體監測品質')
             ->assertSee('0.00%')
-            ->assertSee('應監測 1,440.0 分鐘');
+            ->assertSee('觀測／應監測分鐘')
+            ->assertSee('1,440.0');
 
         $dailyStatistic = collect($response->viewData('fleetAvailability')['statistics'])->firstWhere('label', '24 小時');
 
@@ -97,7 +98,8 @@ class DashboardAvailabilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('整體監測品質')
-            ->assertSee('維護排除 1,440.0 分鐘');
+            ->assertSee('維護排除分鐘')
+            ->assertSee('1,440.0');
 
         $dailyStatistic = collect($response->viewData('fleetAvailability')['statistics'])->firstWhere('label', '24 小時');
 
@@ -105,6 +107,31 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertNull($dailyStatistic['coverage_rate']);
         $this->assertSame(0.0, $dailyStatistic['eligible_minutes']);
         $this->assertSame(1440.0, $dailyStatistic['maintenance_excluded_minutes']);
+    }
+
+    public function test_dashboard_compares_fleet_availability_across_24_hours_7_days_and_30_days(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = $this->createMonitor('availability-windows', 300);
+        $this->createScheduledRun($monitor, now()->subDays(20), 503, 300);
+        $this->createScheduledRun($monitor, now()->subDays(15), 503, 300);
+        $this->createScheduledRun($monitor, now()->subDays(10), 503, 300);
+        $this->createScheduledRun($monitor, now()->subDays(2), 200, 300);
+        $this->createScheduledRun($monitor, now()->subMinutes(30), 503, 300);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('最近 24 小時、7 天與 30 天')
+            ->assertSee('觀測／應監測分鐘');
+
+        $statistics = collect($response->viewData('fleetAvailability')['statistics'])->keyBy('label');
+
+        $this->assertSame(['24 小時', '7 天', '30 天'], $statistics->keys()->all());
+        $this->assertSame(0.0, $statistics['24 小時']['availability_rate']);
+        $this->assertSame(50.0, $statistics['7 天']['availability_rate']);
+        $this->assertSame(20.0, $statistics['30 天']['availability_rate']);
     }
 
     private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $normalStatus, int $intervalSeconds): CheckRun

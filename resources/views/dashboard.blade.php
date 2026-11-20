@@ -48,14 +48,11 @@
         </article>
     </section>
 
-    @php
-        $fleetDailyAvailability = collect($fleetAvailability['statistics'])->firstWhere('label', '24 小時');
-    @endphp
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
         <div class="panel-header">
             <div>
                 <h2 id="fleet-availability-title" class="panel-title">整體監測品質</h2>
-                <p class="panel-description">最近 24 小時，依啟用中項目的實際觀測時間加權；維護時段不計入。</p>
+                <p class="panel-description">比較最近 24 小時、7 天與 30 天；依啟用中項目的實際觀測時間加權，維護時段不計入。</p>
             </div>
             <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
         </div>
@@ -65,22 +62,30 @@
                 <p class="empty-copy">恢復監測後，這裡會顯示整體可用率與檢查覆蓋度。</p>
             </div>
         @else
-            <div class="stat-grid monitor-availability-grid">
-                <article class="stat-card">
-                    <div class="stat-topline"><span class="stat-label">估算可用率</span></div>
-                    <strong class="stat-value">{{ $fleetDailyAvailability['availability_rate'] === null ? '—' : number_format($fleetDailyAvailability['availability_rate'], 2).'%' }}</strong>
-                    <p class="stat-hint">已觀測時間內，各項目通過檢查的加權比例</p>
-                </article>
-                <article class="stat-card">
-                    <div class="stat-topline"><span class="stat-label">檢查覆蓋率</span></div>
-                    <strong class="stat-value">{{ $fleetDailyAvailability['coverage_rate'] === null ? '—' : number_format($fleetDailyAvailability['coverage_rate'], 2).'%' }}</strong>
-                    <p class="stat-hint">實際觀測時間 ÷ 應監測時間</p>
-                </article>
-                <article class="stat-card">
-                    <div class="stat-topline"><span class="stat-label">觀測資料</span></div>
-                    <strong class="stat-value">{{ number_format($fleetDailyAvailability['observed_minutes'], 1) }} 分鐘</strong>
-                    <p class="stat-hint">應監測 {{ number_format($fleetDailyAvailability['eligible_minutes'], 1) }} 分鐘；維護排除 {{ number_format($fleetDailyAvailability['maintenance_excluded_minutes'], 1) }} 分鐘</p>
-                </article>
+            <div class="data-table-wrap" role="region" aria-labelledby="fleet-availability-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">整體監測品質最近 24 小時、7 天與 30 天統計</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">期間</th>
+                            <th scope="col">估算可用率</th>
+                            <th scope="col">檢查覆蓋率</th>
+                            <th scope="col">觀測／應監測分鐘</th>
+                            <th scope="col">維護排除分鐘</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($fleetAvailability['statistics'] as $statistic)
+                            <tr>
+                                <th scope="row">{{ $statistic['label'] }}</th>
+                                <td class="numeric">{{ $statistic['availability_rate'] === null ? '—' : number_format($statistic['availability_rate'], 2).'%' }}</td>
+                                <td class="numeric">{{ $statistic['coverage_rate'] === null ? '—' : number_format($statistic['coverage_rate'], 2).'%' }}</td>
+                                <td class="numeric">{{ number_format($statistic['observed_minutes'], 1) }} / {{ number_format($statistic['eligible_minutes'], 1) }}</td>
+                                <td class="numeric">{{ number_format($statistic['maintenance_excluded_minutes'], 1) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
         @endif
     </section>
