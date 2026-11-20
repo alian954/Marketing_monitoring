@@ -86,6 +86,7 @@ class MonitorController extends Controller
         'label' => ['nullable', 'string', 'max:100'],
         'platform' => ['nullable', 'in:all,website,facebook,instagram,threads'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
+        'content_match' => ['nullable', 'in:all,found,missing,not_checked'],
         'http_status' => ['nullable', 'integer', 'between:100,599'],
         'signal' => ['nullable', 'string', 'max:40', 'regex:/\A[a-z0-9_]+\z/'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
@@ -97,6 +98,7 @@ class MonitorController extends Controller
         'label.max' => '標籤篩選不得超過 100 個字元。',
         'platform.in' => '請選擇有效的平台篩選條件。',
         'state.in' => '請選擇有效的監測狀態篩選條件。',
+        'content_match.in' => '請選擇有效的文字比對篩選條件。',
         'http_status.integer' => 'HTTP 回應碼必須是整數。',
         'http_status.between' => 'HTTP 回應碼必須介於 100–599。',
         'signal.max' => '訊號代碼不得超過 40 個字元。',
@@ -122,10 +124,11 @@ class MonitorController extends Controller
         $label = (string) ($validated['label'] ?? '');
         $platform = $validated['platform'] ?? 'all';
         $state = $validated['state'] ?? 'all';
+        $contentMatch = $validated['content_match'] ?? 'all';
         $httpStatus = (string) ($validated['http_status'] ?? '');
         $signal = (string) ($validated['signal'] ?? '');
         $sort = $validated['sort'] ?? 'name';
-        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'http_status' => $httpStatus, 'signal' => $signal, 'sort' => $sort];
+        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'content_match' => $contentMatch, 'http_status' => $httpStatus, 'signal' => $signal, 'sort' => $sort];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents']);
@@ -153,7 +156,7 @@ class MonitorController extends Controller
         ]);
     }
 
-    /** @param array{search: string, label: string, platform: string, state: string, http_status?: string, signal?: string, sort?: string} $filters */
+    /** @param array{search: string, label: string, platform: string, state: string, content_match: string, http_status?: string, signal?: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
@@ -178,6 +181,29 @@ class MonitorController extends Controller
                 }
 
                 $query->where('social_platform', $filters['platform']);
+            })
+            ->when($filters['content_match'] !== 'all', static function (Builder $query) use ($filters): void {
+                $query->whereNotNull('social_platform');
+
+                if ($filters['content_match'] === 'not_checked') {
+                    $query->where(function (Builder $matchQuery): void {
+                        $matchQuery->whereDoesntHave('latestCheckRun')
+                            ->orWhereHas('latestCheckRun', static function (Builder $checkRunQuery): void {
+                                $checkRunQuery->where(function (Builder $uncheckedQuery): void {
+                                    $uncheckedQuery->whereNull('expected_text_found')
+                                        ->orWhereColumn('check_runs.config_version', '!=', 'monitors.config_version');
+                                });
+                            });
+                    });
+
+                    return;
+                }
+
+                $expectedTextFound = $filters['content_match'] === 'found';
+                $query->whereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($expectedTextFound): void {
+                    $checkRunQuery->where('expected_text_found', $expectedTextFound)
+                        ->whereColumn('check_runs.config_version', 'monitors.config_version');
+                });
             })
             ->when(
                 ($filters['http_status'] ?? '') !== '' || ($filters['signal'] ?? '') !== '',
@@ -1401,6 +1427,7 @@ class MonitorController extends Controller
             'label' => (string) ($validated['label'] ?? ''),
             'platform' => $validated['platform'] ?? 'all',
             'state' => $validated['state'] ?? 'all',
+            'content_match' => $validated['content_match'] ?? 'all',
             'http_status' => (string) ($validated['http_status'] ?? ''),
             'signal' => (string) ($validated['signal'] ?? ''),
         ];

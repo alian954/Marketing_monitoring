@@ -53,6 +53,7 @@ class MonitorLabelFilterTest extends TestCase
             'label' => 'Campaign A',
             'platform' => 'all',
             'state' => 'enabled',
+            'content_match' => 'all',
             'http_status' => '',
             'signal' => '',
             'sort' => 'name',
@@ -155,6 +156,87 @@ class MonitorLabelFilterTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame($targetMonitor->name, $rows[0]['name']);
+    }
+
+    public function test_monitor_list_and_csv_export_filter_social_posts_by_current_text_match_state(): void
+    {
+        $foundMonitor = $this->createSocialMonitor('Found text post', 'FOUND123', 1);
+        CheckRun::factory()->for($foundMonitor)->create([
+            'config_version' => 1,
+            'expected_text_found' => true,
+            'normal_status' => 200,
+        ]);
+
+        $missingMonitor = $this->createSocialMonitor('Missing text post', 'MISSING123', 1);
+        CheckRun::factory()->for($missingMonitor)->create([
+            'config_version' => 1,
+            'expected_text_found' => false,
+            'normal_status' => 200,
+        ]);
+
+        $uncheckedMonitor = $this->createSocialMonitor('Unchecked post', 'UNCHECKED123', 1);
+
+        $oldConfigurationMonitor = $this->createSocialMonitor('Old configuration post', 'OLD123', 2);
+        CheckRun::factory()->for($oldConfigurationMonitor)->create([
+            'config_version' => 1,
+            'expected_text_found' => true,
+            'normal_status' => 200,
+        ]);
+
+        $websiteMonitor = Monitor::factory()->create([
+            'name' => 'Website with matching text',
+            'url' => 'https://example.test/website-text',
+            'url_hash' => Monitor::fingerprintUrl('https://example.test/website-text'),
+            'expected_text' => 'Campaign phrase',
+        ]);
+        CheckRun::factory()->for($websiteMonitor)->create([
+            'expected_text_found' => true,
+            'normal_status' => 200,
+        ]);
+
+        $expectedIdsByMatchState = [
+            'found' => [$foundMonitor->id],
+            'missing' => [$missingMonitor->id],
+            'not_checked' => [$uncheckedMonitor->id, $oldConfigurationMonitor->id],
+        ];
+        $expectedNamesByMatchState = [
+            'found' => [$foundMonitor->name],
+            'missing' => [$missingMonitor->name],
+            'not_checked' => [$uncheckedMonitor->name, $oldConfigurationMonitor->name],
+        ];
+        $user = User::factory()->create();
+
+        foreach ($expectedIdsByMatchState as $matchState => $expectedIds) {
+            $response = $this->actingAs($user)
+                ->get(route('monitors.index', ['content_match' => $matchState]))
+                ->assertOk()
+                ->assertSee('name="content_match"', false)
+                ->assertSee('只篩選 Facebook、Instagram、Threads 公開貼文');
+
+            $this->assertEqualsCanonicalizing(
+                $expectedIds,
+                $response->viewData('monitors')->getCollection()->modelKeys(),
+            );
+            $this->assertSame($matchState, $response->viewData('filters')['content_match']);
+
+            $exportResponse = $this->actingAs($user)
+                ->get(route('monitors.export', ['content_match' => $matchState]))
+                ->assertOk();
+            $rows = $this->csvRows($exportResponse->streamedContent());
+
+            $this->assertEqualsCanonicalizing($expectedNamesByMatchState[$matchState], array_column($rows, 'name'));
+        }
+    }
+
+    public function test_monitor_list_rejects_unknown_social_text_match_filter(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.index'))
+            ->get(route('monitors.index', ['content_match' => 'unknown']))
+            ->assertRedirect(route('monitors.index'))
+            ->assertSessionHasErrors([
+                'content_match' => '請選擇有效的文字比對篩選條件。',
+            ]);
     }
 
     public function test_monitor_list_sorts_by_check_time_and_places_unchecked_items_first_when_oldest_is_selected(): void
@@ -288,6 +370,7 @@ class MonitorLabelFilterTest extends TestCase
             'label' => 'Campaign',
             'platform' => 'all',
             'state' => 'enabled',
+            'content_match' => 'all',
             'http_status' => '',
             'signal' => '',
             'sort' => 'last_checked_desc',
@@ -375,6 +458,19 @@ class MonitorLabelFilterTest extends TestCase
             ...$attributes,
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
+        ]);
+    }
+
+    private function createSocialMonitor(string $name, string $postId, int $configVersion): Monitor
+    {
+        $url = 'https://www.threads.com/@creator/post/'.$postId;
+
+        return Monitor::factory()->create([
+            'name' => $name,
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign phrase',
+            'config_version' => $configVersion,
         ]);
     }
 

@@ -4,11 +4,11 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['http_status'] !== '' || $filters['signal'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['content_match'] !== 'all' || $filters['http_status'] !== '' || $filters['signal'] !== '';
         $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
-            static fn (string $filter, string $name): bool => $name !== 'sort' && $filter !== '' && ! (in_array($name, ['platform', 'state'], true) && $filter === 'all'),
+            static fn (string $filter, string $name): bool => $name !== 'sort' && $filter !== '' && ! (in_array($name, ['platform', 'state', 'content_match'], true) && $filter === 'all'),
             ARRAY_FILTER_USE_BOTH,
         );
         $oldMonitorIds = old('monitor_ids', []);
@@ -76,6 +76,25 @@
                                 <option value="incidents" @selected(old('state', $filters['state']) === 'incidents')>有未結束事件</option>
                                 <option value="stale" @selected(old('state', $filters['state']) === 'stale')>檢查已逾時</option>
                             </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="monitor-content-match">社群貼文文字比對</label>
+                            <select
+                                class="field-select @error('content_match') is-invalid @enderror"
+                                id="monitor-content-match"
+                                name="content_match"
+                                aria-describedby="{{ $errors->has('content_match') ? 'monitor-content-match-help monitor-content-match-error' : 'monitor-content-match-help' }}"
+                                @if ($errors->has('content_match')) aria-invalid="true" @endif
+                            >
+                                <option value="all" @selected(old('content_match', $filters['content_match']) === 'all')>全部</option>
+                                <option value="found" @selected(old('content_match', $filters['content_match']) === 'found')>已找到設定文字片段</option>
+                                <option value="missing" @selected(old('content_match', $filters['content_match']) === 'missing')>未找到設定文字片段</option>
+                                <option value="not_checked" @selected(old('content_match', $filters['content_match']) === 'not_checked')>尚未比對</option>
+                            </select>
+                            <p id="monitor-content-match-help" class="field-help">只篩選 Facebook、Instagram、Threads 公開貼文；尚未比對也包含設定變更後等待新檢查的項目。</p>
+                            @error('content_match')
+                                <p id="monitor-content-match-error" class="field-error">{{ $message }}</p>
+                            @enderror
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-http-status">HTTP 回應碼</label>
