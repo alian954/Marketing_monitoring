@@ -11,6 +11,7 @@ use App\Models\StatusPage;
 use App\Services\AcceptedStatusCodeList;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DiscordWebhookUrlPolicy;
+use App\Services\FleetAvailabilityReport;
 use App\Services\IncidentManager;
 use App\Services\MonitorAvailabilityReport;
 use App\Services\NotificationEmailRecipientParser;
@@ -1096,6 +1097,53 @@ class MonitorController extends Controller
 
             fclose($stream);
         }, 'availability-report-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function exportFleetAvailability(FleetAvailabilityReport $fleetAvailabilityReport): StreamedResponse
+    {
+        $asOf = now()->toImmutable();
+
+        return response()->streamDownload(function () use ($asOf, $fleetAvailabilityReport): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'monitor_id',
+                'monitor_name',
+                'period',
+                'as_of_utc',
+                'availability_percent',
+                'coverage_percent',
+                'estimated_up_minutes',
+                'estimated_down_minutes',
+                'observed_minutes',
+                'eligible_minutes',
+                'maintenance_excluded_minutes',
+                'legacy_interval_fallback',
+            ], ',', '"', '');
+
+            foreach ($fleetAvailabilityReport->monitorStatistics($asOf) as $monitorStatistics) {
+                foreach ($monitorStatistics['statistics'] as $statistic) {
+                    $unavailableSeconds = max(0, $statistic['observed_seconds'] - $statistic['up_seconds']);
+                    $fields = [
+                        (string) $monitorStatistics['monitor']->id,
+                        $monitorStatistics['monitor']->name,
+                        $statistic['label'],
+                        $asOf->utc()->toIso8601String(),
+                        $statistic['availability_rate'] === null ? '' : number_format($statistic['availability_rate'], 2, '.', ''),
+                        $statistic['coverage_rate'] === null ? '' : number_format($statistic['coverage_rate'], 2, '.', ''),
+                        number_format($statistic['up_seconds'] / 60, 2, '.', ''),
+                        number_format($unavailableSeconds / 60, 2, '.', ''),
+                        number_format($statistic['observed_seconds'] / 60, 2, '.', ''),
+                        number_format($statistic['eligible_seconds'] / 60, 2, '.', ''),
+                        number_format($statistic['maintenance_excluded_seconds'] / 60, 2, '.', ''),
+                        $statistic['legacy_interval_fallback'] ? '1' : '0',
+                    ];
+
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+                }
+            }
+
+            fclose($stream);
+        }, 'fleet-availability-report.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function exportDnsChanges(Monitor $monitor): StreamedResponse

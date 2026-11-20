@@ -54,7 +54,10 @@
                 <h2 id="fleet-availability-title" class="panel-title">整體監測品質</h2>
                 <p class="panel-description">比較最近 24 小時、7 天與 30 天；依啟用中項目的實際觀測時間加權，維護時段與資料空窗不計入。</p>
             </div>
-            <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
+            <div class="heading-actions">
+                <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
+                <a class="button button-secondary button-small" href="{{ route('monitors.availability.export.fleet') }}">匯出全部啟用項目可用率 CSV</a>
+            </div>
         </div>
         @if ($fleetAvailability['monitor_count'] === 0)
             <div class="empty-state">
