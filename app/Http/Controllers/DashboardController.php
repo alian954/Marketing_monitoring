@@ -127,12 +127,29 @@ class DashboardController extends Controller
         $workerHeartbeatFresh = $workerHeartbeat?->last_succeeded_at !== null && $workerHeartbeat->last_succeeded_at->gte(now()->subMinutes(2));
         $queueWorkerEnabled = config('queue.default') !== 'sync';
         $queueSize = null;
+        $queueStateCounts = null;
         $failedQueueJobStorageSupported = in_array(config('queue.failed.driver'), ['database', 'database-uuids'], true);
         $failedQueueJobCount = null;
 
         if ($queueWorkerEnabled) {
             try {
                 $queueSize = Queue::size();
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+
+            try {
+                $queueConnection = Queue::connection();
+
+                if (method_exists($queueConnection, 'pendingSize')
+                    && method_exists($queueConnection, 'delayedSize')
+                    && method_exists($queueConnection, 'reservedSize')) {
+                    $queueStateCounts = [
+                        'pending' => $queueConnection->pendingSize(),
+                        'delayed' => $queueConnection->delayedSize(),
+                        'reserved' => $queueConnection->reservedSize(),
+                    ];
+                }
             } catch (Throwable $exception) {
                 report($exception);
             }
@@ -163,6 +180,7 @@ class DashboardController extends Controller
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
             'queueWorkerEnabled' => $queueWorkerEnabled,
             'queueSize' => $queueSize,
+            'queueStateCounts' => $queueStateCounts,
             'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
             'failedQueueJobCount' => $failedQueueJobCount,
             'counts' => $counts,

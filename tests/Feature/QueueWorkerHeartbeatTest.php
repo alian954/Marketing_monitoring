@@ -101,6 +101,27 @@ class QueueWorkerHeartbeatTest extends TestCase
         $this->assertSame(1, $response->viewData('queueSize'));
     }
 
+    public function test_dashboard_breaks_default_queue_jobs_down_by_state(): void
+    {
+        Config::set('queue.default', 'database');
+        Queue::push(new RecordQueueWorkerHeartbeat);
+        Queue::later(3600, new RecordQueueWorkerHeartbeat);
+        $reservedJobId = Queue::push(new RecordQueueWorkerHeartbeat);
+        DB::table('jobs')->where('id', $reservedJobId)->update(['reserved_at' => now()->timestamp]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('目前佇列工作總數：3 筆')
+            ->assertSee('可立即處理 1 筆、延遲等待 1 筆、保留中 1 筆。');
+
+        $this->assertSame([
+            'pending' => 1,
+            'delayed' => 1,
+            'reserved' => 1,
+        ], $response->viewData('queueStateCounts'));
+    }
+
     public function test_dashboard_counts_failed_jobs_when_database_storage_is_configured(): void
     {
         DB::table('failed_jobs')->insert([

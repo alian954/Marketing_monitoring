@@ -206,6 +206,9 @@
                     @else
                         <p class="heartbeat-copy">目前佇列工作總數：{{ number_format($queueSize) }} 筆（包含延遲與處理中的工作）</p>
                     @endif
+                    @if ($queueStateCounts !== null)
+                        <p class="heartbeat-copy">可立即處理 {{ number_format($queueStateCounts['pending']) }} 筆、延遲等待 {{ number_format($queueStateCounts['delayed']) }} 筆、保留中 {{ number_format($queueStateCounts['reserved']) }} 筆。</p>
+                    @endif
                     @if ($workerHeartbeat?->last_succeeded_at)
                         <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
                         <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
