@@ -281,6 +281,12 @@ class CheckRun extends Model
             : null;
     }
 
+    public function hasRejectedNormalHttpStatus(): bool
+    {
+        return $this->normal_status !== null
+            && ! $this->normalStatusIsAccepted($this->configurationSnapshot());
+    }
+
     public function expectedResponseHeaderMatchResult(): ?bool
     {
         return $this->normalStatusIsAccepted($this->configurationSnapshot())

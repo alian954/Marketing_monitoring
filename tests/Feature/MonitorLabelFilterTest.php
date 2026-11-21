@@ -347,7 +347,7 @@ class MonitorLabelFilterTest extends TestCase
         $filterCases = [
             'visible_text_changed' => [[$changedMonitor->id], [$changedMonitor->name], '與前次相比有變更'],
             'visible_text_stable' => [[$stableMonitor->id], [$stableMonitor->name], '與前次相比未變更'],
-            'visible_text_pending' => [[$pendingMonitor->id, $newMonitor->id], [$pendingMonitor->name, $newMonitor->name], '等待可比較回應'],
+            'visible_text_pending' => [[$pendingMonitor->id, $newMonitor->id], [$pendingMonitor->name, $newMonitor->name], '文字比對尚未完成'],
         ];
         $user = User::factory()->create();
 

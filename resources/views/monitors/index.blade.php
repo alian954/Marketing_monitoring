@@ -93,9 +93,9 @@
                                 <option value="not_checked" @selected(old('content_match', $filters['content_match']) === 'not_checked')>尚未比對</option>
                                 <option value="visible_text_changed" @selected(old('content_match', $filters['content_match']) === 'visible_text_changed')>可見文字已變更</option>
                                 <option value="visible_text_stable" @selected(old('content_match', $filters['content_match']) === 'visible_text_stable')>可見文字維持不變</option>
-                                <option value="visible_text_pending" @selected(old('content_match', $filters['content_match']) === 'visible_text_pending')>等待可比較回應</option>
+                                <option value="visible_text_pending" @selected(old('content_match', $filters['content_match']) === 'visible_text_pending')>文字比對尚未完成</option>
                             </select>
-                            <p id="monitor-content-match-help" class="field-help">文字片段比對只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；可見文字狀態適用已啟用文字變更警示的監測項目。</p>
+                            <p id="monitor-content-match-help" class="field-help">文字片段比對只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；可見文字狀態適用已啟用文字變更警示的監測項目。「文字比對尚未完成」包含尚未建立基準或回應無法比對的項目。</p>
                             @error('content_match')
                                 <p id="monitor-content-match-error" class="field-error">{{ $message }}</p>
                             @enderror
@@ -291,10 +291,16 @@
                                                 與前次相比有變更
                                             @elseif ($monitor->latestCheckRun->response_visible_text_changed === false)
                                                 與前次相比未變更
+                                            @elseif ($monitor->latestCheckRun->hasRejectedNormalHttpStatus())
+                                                HTTP {{ $monitor->latestCheckRun->normal_status }} 未接受，內容未比對
+                                            @elseif ($monitor->latestCheckRun->hasIndeterminateContentMatch())
+                                                內容驗證未完成
+                                            @elseif ($monitor->latestCheckRun->error_type !== null)
+                                                檢查失敗，尚未取得可比較內容
                                             @elseif ($monitor->latestCheckRun->error_type === null && $monitor->latestCheckRun->response_visible_text_hash !== null)
                                                 已建立首次基準，等待比較
                                             @else
-                                                等待可比較回應
+                                                文字比對尚未完成
                                             @endif
                                         </span>
                                     @endif

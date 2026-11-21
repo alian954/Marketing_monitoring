@@ -802,6 +802,12 @@ class SocialPostMonitorTest extends TestCase
             'monitor_id' => $monitor->id,
             'rule_key' => 'probe_incomplete',
         ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('HTTP 403 未接受，內容未比對')
+            ->assertSee('文字比對尚未完成');
     }
 
     public function test_large_social_post_baseline_response_opens_an_incomplete_check_warning(): void
@@ -849,6 +855,11 @@ class SocialPostMonitorTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('文字驗證未完成');
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('內容驗證未完成');
     }
 
     public function test_social_security_challenge_page_is_indeterminate_and_does_not_report_missing_post_text(): void
