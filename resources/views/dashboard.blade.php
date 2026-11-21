@@ -203,7 +203,7 @@
             @if ($socialEngagementMonitors->hasPages())
                 <div class="panel-body pagination-wrap">{{ $socialEngagementMonitors->links('vendor.pagination.monitor') }}</div>
             @endif
-            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。互動合計依平台可讀項目計算，Dcard 以讚＋留言計；讀不到的數值不當成 0。觀看為 0 時不計比例。</p>
+            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。Instagram 與 Dcard 以讚＋留言計算互動合計；讀不到的數值不當成 0。觀看為 0 時不計比例。</p>
         @endif
     </section>
 
@@ -211,7 +211,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示數字是本次讀取或前次資料。Dcard 以讚＋留言計；未限定平台時，排行只納入讚、留言、分享都有數字的貼文。</p>
+                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示數字是本次讀取或前次資料。Instagram 與 Dcard 以讚＋留言計；未限定平台時，排行只納入讚、留言、分享都有數字的貼文。</p>
             </div>
             @if ($socialEngagementTopPosts !== [])
                 <nav class="heading-actions" aria-label="互動量排行排序">
@@ -228,12 +228,12 @@
         @if ($socialEngagementTopPosts === [])
             <div class="empty-state">
                 <h3 class="empty-title">尚無符合條件的貼文可排名</h3>
-                <p class="empty-copy">Dcard 需讀到讚與留言；其他平台需讀到讚、留言與分享。</p>
+                <p class="empty-copy">Instagram 與 Dcard 需讀到讚與留言；Facebook 與 Threads 需讀到讚、留言與分享。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="top-engagement-posts-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $socialEngagementTopPostSort === 'engagement_rate' ? '依觀看互動率' : ($socialEngagementSelectedPlatform === 'dcard' ? '依 Dcard 讚與留言合計' : '依讚、留言與分享總數') }}排序的前五篇社群貼文</caption>
+                    <caption class="sr-only">{{ $socialEngagementTopPostSort === 'engagement_rate' ? '依觀看互動率' : '依'.$socialEngagementInteractionScopeLabel.'合計' }}排序的前五篇社群貼文</caption>
                     <thead>
                         <tr>
                             <th scope="col">排名</th>
@@ -244,7 +244,7 @@
                             <th scope="col">讚</th>
                             <th scope="col">留言</th>
                             <th scope="col">分享</th>
-                            <th scope="col">{{ $socialEngagementSelectedPlatform === 'dcard' ? '互動合計（讚＋留言）' : '互動合計' }}</th>
+                            <th scope="col">互動合計（{{ $socialEngagementInteractionScopeLabel }}）</th>
                             <th scope="col">觀看互動率</th>
                             <th scope="col">數據新鮮度</th>
                             <th scope="col">資料時間</th>
@@ -286,7 +286,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">本次／前次擷取篇數另列。篩選 Dcard 時，平均互動以讚＋留言計；未篩選平台時只計讚、留言、分享完整的貼文。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
+                <p class="panel-description">本次／前次擷取篇數另列。篩選 Instagram 或 Dcard 時，平均互動以讚＋留言計；未篩選平台時只計讚、留言、分享完整的貼文。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
             @if ($socialEngagementSummaries !== [])
                 <nav class="heading-actions" aria-label="標籤成效排序">

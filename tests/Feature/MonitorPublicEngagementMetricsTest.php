@@ -243,12 +243,12 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('184')
             ->assertSee('19')
             ->assertSee('7')
-            ->assertSee('210')
-            ->assertSee('3.95%');
+            ->assertSee('203')
+            ->assertSee('3.82%');
 
         $monitorRow = $response->viewData('socialEngagementMonitors')->firstWhere('id', $monitor->id);
-        $this->assertSame(210, $monitorRow?->getAttribute('social_engagement_interaction_total'));
-        $this->assertSame(3.95, $monitorRow?->getAttribute('social_engagement_rate_percent'));
+        $this->assertSame(203, $monitorRow?->getAttribute('social_engagement_interaction_total'));
+        $this->assertSame(3.82, $monitorRow?->getAttribute('social_engagement_rate_percent'));
     }
 
     public function test_dashboard_hides_post_interaction_rates_when_counts_are_incomplete_or_views_are_zero(): void
@@ -646,7 +646,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee('活動標籤跨平台比較')
-            ->assertSee('4.50%')
+            ->assertSee('4.00%')
             ->assertSee('2.50%');
 
         $comparisonSummaries = $response->viewData('socialEngagementComparisonSummaries');
@@ -655,8 +655,8 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('summer', $comparisonSummaries[0]['tag']);
         $this->assertSame(25, $comparisonSummaries[0]['platforms']['facebook']['interaction_total']);
         $this->assertSame(25.0, $comparisonSummaries[0]['platforms']['facebook']['average_interactions_per_post']);
-        $this->assertSame(['interactions' => 45, 'views' => 1000, 'available' => 1], $comparisonSummaries[0]['platforms']['instagram']['engagement_rate']);
-        $this->assertSame(45.0, $comparisonSummaries[0]['platforms']['instagram']['average_interactions_per_post']);
+        $this->assertSame(['interactions' => 40, 'views' => 1000, 'available' => 1], $comparisonSummaries[0]['platforms']['instagram']['engagement_rate']);
+        $this->assertSame(40.0, $comparisonSummaries[0]['platforms']['instagram']['average_interactions_per_post']);
         $this->assertSame(10, $comparisonSummaries[0]['platforms']['threads']['interaction_total']);
         $this->assertSame(10.0, $comparisonSummaries[0]['platforms']['threads']['average_interactions_per_post']);
         $this->assertSame(0, $comparisonSummaries[0]['platforms']['threads']['engagement_rate']['available']);
@@ -1012,7 +1012,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('', $rows[1]['collected_at_utc']);
         $this->assertSame('unavailable', $rows[1]['metrics_capture_status']);
         $this->assertSame($monitorWithRate->name, $rows[2]['monitor_name']);
-        $this->assertSame('60.00', $rows[2]['public_engagement_rate_percent']);
+        $this->assertSame('30.00', $rows[2]['public_engagement_rate_percent']);
     }
 
     public function test_social_engagement_csv_marks_previous_metrics_when_the_latest_check_is_blocked(): void
@@ -1119,8 +1119,8 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame((string) $latestRun->id, $rows[1]['check_run_id']);
         $this->assertSame($monitor->name, $rows[0]['monitor_name']);
         $this->assertSame('campaign', $rows[1]['tags']);
-        $this->assertSame('6.50', $rows[0]['public_engagement_rate_percent']);
-        $this->assertSame('8.00', $rows[1]['public_engagement_rate_percent']);
+        $this->assertSame('5.50', $rows[0]['public_engagement_rate_percent']);
+        $this->assertSame('6.80', $rows[1]['public_engagement_rate_percent']);
 
         $shortPeriodRows = $this->actingAs(User::factory()->create())
             ->get(route('monitors.social-engagement.export.history', ['engagement_period' => 7]))

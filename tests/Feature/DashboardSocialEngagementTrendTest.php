@@ -278,6 +278,85 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertSame('32.00', $historyRows[0]['public_engagement_rate_percent']);
     }
 
+    public function test_instagram_totals_use_public_likes_and_comments_without_shares(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $url = 'https://www.instagram.com/reel/Df87nyTTf7g/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'label' => 'campaign',
+        ]);
+        $metricRun = $this->createMetricRun($monitor, '2026-11-20 09:00:00', [
+            'likes' => 22,
+            'comments' => 2,
+            'shares' => null,
+        ]);
+        $metricRun->forceFill([
+            'response_public_engagement_metrics' => [
+                ...$metricRun->response_public_engagement_metrics,
+                'views' => 100,
+            ],
+        ])->save();
+        $user = User::factory()->create();
+
+        $instagramResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_platform' => 'instagram']))
+            ->assertOk()
+            ->assertSee('讚＋留言合計由高到低')
+            ->assertSee('互動合計（讚＋留言）')
+            ->assertSee('依 讚＋留言 計');
+        $instagramTopPosts = $instagramResponse->viewData('socialEngagementTopPosts');
+        $instagramTagSummary = collect($instagramResponse->viewData('socialEngagementSummaries'))
+            ->keyBy('tag')['campaign'];
+        $instagramComparison = collect($instagramResponse->viewData('socialEngagementComparisonSummaries'))
+            ->keyBy('tag')['campaign']['platforms']['instagram'];
+        $instagramMonitor = $instagramResponse->viewData('socialEngagementMonitors')->first();
+
+        $this->assertCount(1, $instagramTopPosts);
+        $this->assertSame($monitor->id, $instagramTopPosts[0]['id']);
+        $this->assertSame(24, $instagramTopPosts[0]['interaction_total']);
+        $this->assertNull($instagramTopPosts[0]['shares']);
+        $this->assertSame(['likes', 'comments'], $instagramTopPosts[0]['interaction_metric_keys']);
+        $this->assertSame(24.0, $instagramTopPosts[0]['engagement_rate_percent']);
+        $this->assertSame(24, $instagramTagSummary['interaction_total']);
+        $this->assertSame(1, $instagramTagSummary['interaction_count']);
+        $this->assertSame(24.0, $instagramTagSummary['average_interactions_per_post']);
+        $this->assertSame('讚＋留言', $instagramComparison['interaction_scope_label']);
+        $this->assertSame(24, $instagramComparison['interaction_total']);
+        $this->assertSame(1, $instagramComparison['engagement_rate']['available']);
+        $this->assertSame(24, $instagramMonitor->getAttribute('social_engagement_interaction_total'));
+        $this->assertSame(24.0, $instagramMonitor->getAttribute('social_engagement_rate_percent'));
+
+        $allPlatformsResponse = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk();
+        $allPlatformsTagSummary = collect($allPlatformsResponse->viewData('socialEngagementSummaries'))
+            ->keyBy('tag')['campaign'];
+
+        $this->assertSame([], $allPlatformsResponse->viewData('socialEngagementTopPosts'));
+        $this->assertSame(0, $allPlatformsTagSummary['interaction_count']);
+        $this->assertNull($allPlatformsTagSummary['average_interactions_per_post']);
+
+        $latestExport = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export', ['engagement_platform' => 'instagram']))
+            ->assertOk();
+        $latestRows = $this->csvRows($latestExport->streamedContent());
+
+        $this->assertSame('24', $latestRows[0]['public_interaction_total']);
+        $this->assertSame('likes+comments', $latestRows[0]['interaction_metric_scope']);
+        $this->assertSame('24.00', $latestRows[0]['public_engagement_rate_percent']);
+
+        $historyExport = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.history', ['engagement_platform' => 'instagram', 'engagement_period' => 7]))
+            ->assertOk();
+        $historyRows = $this->csvRows($historyExport->streamedContent());
+
+        $this->assertSame('24', $historyRows[0]['public_interaction_total']);
+        $this->assertSame('likes+comments', $historyRows[0]['interaction_metric_scope']);
+        $this->assertSame('24.00', $historyRows[0]['public_engagement_rate_percent']);
+    }
+
     public function test_growth_rate_is_unavailable_for_zero_baselines_and_negative_for_declining_interactions(): void
     {
         $this->travelTo('2026-11-22 12:00:00');

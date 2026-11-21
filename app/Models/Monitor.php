@@ -174,9 +174,16 @@ class Monitor extends Model
     /** @return list<string> */
     public static function publicEngagementInteractionMetricKeys(?string $platform): array
     {
-        return $platform === 'dcard'
+        return in_array($platform, ['instagram', 'dcard'], true)
             ? ['likes', 'comments']
             : ['likes', 'comments', 'shares'];
+    }
+
+    public static function publicEngagementInteractionScopeLabel(?string $platform): string
+    {
+        return in_array($platform, ['instagram', 'dcard'], true)
+            ? '讚＋留言'
+            : '讚＋留言＋分享';
     }
 
     /** @param array<string, mixed> $metrics */

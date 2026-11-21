@@ -210,9 +210,10 @@ class DashboardController extends Controller
             : $socialEngagementSelectedPlatform;
         $socialEngagementTopPostSortOptions = self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS;
 
-        if ($socialEngagementPlatform === 'dcard') {
+        if (in_array($socialEngagementPlatform, ['instagram', 'dcard'], true)) {
             $socialEngagementTopPostSortOptions['interactions'] = '讚＋留言合計由高到低';
         }
+        $socialEngagementInteractionScopeLabel = Monitor::publicEngagementInteractionScopeLabel($socialEngagementPlatform);
 
         $requestedSocialEngagementTagSort = $request->query('engagement_tag_sort');
         $socialEngagementTagSort = is_string($requestedSocialEngagementTagSort)
@@ -449,6 +450,7 @@ class DashboardController extends Controller
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
             'socialEngagementTopPostSortOptions' => $socialEngagementTopPostSortOptions,
             'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
+            'socialEngagementInteractionScopeLabel' => $socialEngagementInteractionScopeLabel,
             'socialEngagementComparisonPlatformOptions' => [
                 'facebook' => 'Facebook',
                 'instagram' => 'Instagram',
@@ -666,7 +668,7 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
-                                'interaction_scope_label' => $platform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
+                                'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
                                 'capture_counts' => ['current' => 0, 'previous' => 0],
                                 'latest_at' => null,
                             ];
@@ -915,7 +917,7 @@ class DashboardController extends Controller
                             'shares' => is_numeric($metrics['shares'] ?? null) ? (int) $metrics['shares'] : null,
                             'interaction_total' => $interactionTotal,
                             'interaction_metric_keys' => Monitor::publicEngagementInteractionMetricKeys($interactionScopePlatform),
-                            'interaction_scope_label' => $interactionScopePlatform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
+                            'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($interactionScopePlatform),
                             'metrics_freshness' => $captureIsCurrent ? '最新檢查讀取' : '沿用前次數據',
                             'engagement_rate_percent' => $views !== null && $views > 0
                                 ? round($interactionTotal / $views * 100, 2)
@@ -949,7 +951,7 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
-                                'interaction_scope_label' => $platform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
+                                'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
                                 'capture_counts' => ['current' => 0, 'previous' => 0],
                             ];
                         }
