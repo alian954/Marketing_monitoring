@@ -1342,6 +1342,10 @@ class MonitorController extends Controller
                 'public_engagement_rate_percent',
                 'metrics_source',
                 'collected_at_utc',
+                'metrics_capture_status',
+                'latest_check_http_status',
+                'latest_check_error_type',
+                'latest_check_finished_at_utc',
             ], ',', '"', '');
 
             $monitorsQuery = Monitor::query()->whereNotNull('social_platform');
@@ -1353,7 +1357,7 @@ class MonitorController extends Controller
             $this->applySocialEngagementTagFilter($monitorsQuery, $tagFilter);
 
             $monitorsQuery
-                ->with('latestPublicEngagementCheckRun')
+                ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
                 ->orderBy('id')
                 ->lazyById(250)
                 ->each(function (Monitor $monitor) use ($stream): void {
@@ -1363,7 +1367,13 @@ class MonitorController extends Controller
                         $engagementRun = null;
                     }
 
+                    $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $metricsCaptureStatus = match (true) {
+                        $engagementRun === null => 'unavailable',
+                        $latestCheckRun?->id === $engagementRun->id => 'current',
+                        default => 'previous',
+                    };
                     $engagementRate = null;
 
                     if (is_numeric($metrics['views'] ?? null)
@@ -1387,6 +1397,10 @@ class MonitorController extends Controller
                         $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
                         (string) ($metrics['source'] ?? ''),
                         $engagementRun?->finished_at?->utc()->toIso8601String() ?? '',
+                        $metricsCaptureStatus,
+                        $latestCheckRun?->normal_status === null ? '' : (string) $latestCheckRun->normal_status,
+                        (string) ($latestCheckRun?->error_type ?? ''),
+                        $latestCheckRun?->finished_at?->utc()->toIso8601String() ?? '',
                     ];
 
                     fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');

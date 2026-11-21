@@ -965,12 +965,55 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('', $rows[0]['public_engagement_rate_percent']);
         $this->assertSame('json_ld', $rows[0]['metrics_source']);
         $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
+        $this->assertSame('current', $rows[0]['metrics_capture_status']);
+        $this->assertSame('200', $rows[0]['latest_check_http_status']);
+        $this->assertSame('', $rows[0]['latest_check_error_type']);
+        $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['latest_check_finished_at_utc']);
         $this->assertSame($monitorWithoutMetrics->name, $rows[1]['monitor_name']);
         $this->assertSame('', $rows[1]['public_views']);
         $this->assertSame('', $rows[1]['public_engagement_rate_percent']);
         $this->assertSame('', $rows[1]['collected_at_utc']);
+        $this->assertSame('unavailable', $rows[1]['metrics_capture_status']);
         $this->assertSame($monitorWithRate->name, $rows[2]['monitor_name']);
         $this->assertSame('60.00', $rows[2]['public_engagement_rate_percent']);
+    }
+
+    public function test_social_engagement_csv_marks_previous_metrics_when_the_latest_check_is_blocked(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $monitor = $this->createSocialMonitorForPlatform('dcard', '262477009', 'campaign');
+        $this->createMetricRun($monitor, now()->subHours(6), [
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
+            'finished_at' => now()->subHour(),
+            'normal_status' => 403,
+            'error_type' => 'social_access_required',
+            'response_public_engagement_metrics' => null,
+        ]);
+
+        $rows = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.social-engagement.export', ['engagement_platform' => 'dcard']))
+            ->assertOk()
+            ->streamedContent();
+        $rows = $this->csvRows($rows);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('20', $rows[0]['public_likes']);
+        $this->assertSame(now()->subHours(6)->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
+        $this->assertSame('previous', $rows[0]['metrics_capture_status']);
+        $this->assertSame('403', $rows[0]['latest_check_http_status']);
+        $this->assertSame('social_access_required', $rows[0]['latest_check_error_type']);
+        $this->assertSame(now()->subHour()->utc()->toIso8601String(), $rows[0]['latest_check_finished_at_utc']);
     }
 
     public function test_social_engagement_csv_exports_can_be_scoped_to_the_selected_platform(): void
