@@ -192,7 +192,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 
             $confirmationDelay = $incidents->record($currentMonitor, $lockedRun, $normal, $adsbot);
             $retryAfterSeconds = in_array($normal->statusCode, [429, 503], true)
-                ? min(max(0, $normal->retryAfterSeconds ?? 0), RetryAfterParser::MAX_DELAY_SECONDS)
+                ? min(max(0, $normal->retryAfterSeconds ?? (int) config('monitoring.retry_after_fallback_seconds')), RetryAfterParser::MAX_DELAY_SECONDS)
                 : 0;
             $followUpDelaySeconds = $confirmationDelay === null
                 ? null

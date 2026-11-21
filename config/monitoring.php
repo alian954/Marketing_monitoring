@@ -9,6 +9,7 @@ return [
     'max_redirects' => 5,
     'max_body_bytes' => 1_048_576,
     'stale_grace_seconds' => 900,
+    'retry_after_fallback_seconds' => max(0, (int) env('MONITOR_RETRY_AFTER_FALLBACK_SECONDS', 300)),
     'retention_days' => max(1, (int) env('MONITOR_CHECK_RUN_RETENTION_DAYS', 30)),
     'schedule_jitter_max_seconds' => 60,
     'incident_reminder_interval_minutes' => (int) env('MONITOR_INCIDENT_REMINDER_INTERVAL_MINUTES', 360),

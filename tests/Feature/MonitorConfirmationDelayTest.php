@@ -96,6 +96,7 @@ class MonitorConfirmationDelayTest extends TestCase
 
     public function test_run_monitor_check_schedules_confirmation_after_the_selected_delay(): void
     {
+        Config::set('monitoring.retry_after_fallback_seconds', 0);
         Queue::fake([RunMonitorCheck::class]);
         $url = 'https://www.facebook.com/story.php?story_fbid=123';
         $monitor = Monitor::factory()->create([

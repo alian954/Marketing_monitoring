@@ -373,6 +373,7 @@ class SocialPostImportTest extends TestCase
     {
         $this->freezeTime();
         config(['monitoring.confirmation_delay_seconds' => 75]);
+        config(['monitoring.retry_after_fallback_seconds' => 0]);
         Queue::fake([RunMonitorCheck::class]);
         $csv = $this->csvContent(
             ['name', 'url', 'label', 'expected_text', 'confirmation_delay_seconds'],

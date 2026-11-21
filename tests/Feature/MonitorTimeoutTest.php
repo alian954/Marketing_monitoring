@@ -211,6 +211,51 @@ class MonitorTimeoutTest extends TestCase
         Queue::assertPushed(RunMonitorCheck::class, 4);
     }
 
+    public function test_rate_limited_check_uses_fallback_when_retry_after_is_missing(): void
+    {
+        Config::set('monitoring.retry_after_fallback_seconds', 300);
+        Queue::fake([RunMonitorCheck::class]);
+        $attemptedAt = now()->toImmutable();
+        $monitor = $this->createMonitor([
+            'interval_seconds' => 300,
+            'confirmation_delay_seconds' => 30,
+            'next_check_at' => $attemptedAt->addMinutes(5),
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $normal = new ProbeResult(
+            statusCode: 429,
+            elapsedMs: 45,
+            finalUrl: $monitor->url,
+            redirects: [],
+            resolvedPublicIps: ['93.184.216.34'],
+            errorType: null,
+            errorDetail: null,
+            expectedTextFound: null,
+            tlsExpiresAt: null,
+            monitorHostIps: ['93.184.216.34'],
+        );
+        $adsbot = new ProbeResult(200, 35, $monitor->url, [], ['93.184.216.34'], null, null, null, null);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', null, 10, 'present')
+            ->andReturn($normal);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->with($monitor->url, [], 'AdsBot-Google (+http://www.google.com/adsbot.html)', null, 10)
+            ->andReturn($adsbot);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $confirmationRun = CheckRun::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('source', 'confirmation')
+            ->sole();
+        $this->assertSame($attemptedAt->addSeconds(300)->timestamp, $confirmationRun->scheduled_at->timestamp);
+        $this->assertSame($attemptedAt->addSeconds(600)->timestamp, $monitor->fresh()->next_check_at->timestamp);
+    }
+
     public function test_secure_probe_uses_the_monitor_timeout_for_every_redirect_hop(): void
     {
         Config::set('monitoring.request_timeout_seconds', 2);
