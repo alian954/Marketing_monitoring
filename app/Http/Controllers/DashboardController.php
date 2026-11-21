@@ -601,6 +601,7 @@ class DashboardController extends Controller
      *     interaction_count: int,
      *     average_interactions_per_post: float|null,
      *     engagement_rate: array{interactions: int, views: int, available: int},
+     *     capture_counts: array{current: int, previous: int},
      *     latest_at: CarbonImmutable|null
      * }>
      */
@@ -616,6 +617,7 @@ class DashboardController extends Controller
          *     interaction_count: int,
          *     average_interactions_per_post: float|null,
          *     engagement_rate: array{interactions: int, views: int, available: int},
+         *     capture_counts: array{current: int, previous: int},
          *     latest_at: CarbonImmutable|null
          * }> $summaries
          */
@@ -629,7 +631,7 @@ class DashboardController extends Controller
 
         $monitorsQuery
             ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
-            ->with('latestPublicEngagementCheckRun')
+            ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
             ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries): void {
                 foreach ($monitorBatch as $monitor) {
                     $engagementRun = $monitor->latestPublicEngagementCheckRun;
@@ -638,7 +640,10 @@ class DashboardController extends Controller
                         $engagementRun = null;
                     }
 
+                    $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $hasEngagementMetrics = $this->hasPublicEngagementMetrics($metrics);
+                    $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
                     $tags = $monitor->tagNames();
                     $tagEntries = $tags === [] ? [null] : array_unique($tags);
 
@@ -655,11 +660,17 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
+                                'capture_counts' => ['current' => 0, 'previous' => 0],
                                 'latest_at' => null,
                             ];
                         }
 
                         $summaries[$tagKey]['monitor_count']++;
+
+                        if ($hasEngagementMetrics) {
+                            $captureKey = $captureIsCurrent ? 'current' : 'previous';
+                            $summaries[$tagKey]['capture_counts'][$captureKey]++;
+                        }
 
                         foreach (array_keys($summaries[$tagKey]['metrics']) as $metric) {
                             if (is_numeric($metrics[$metric] ?? null)) {
@@ -767,7 +778,8 @@ class DashboardController extends Controller
      *             interaction_total: int,
      *             interaction_count: int,
      *             average_interactions_per_post: float|null,
-     *             engagement_rate: array{interactions: int, views: int, available: int}
+     *             engagement_rate: array{interactions: int, views: int, available: int},
+     *             capture_counts: array{current: int, previous: int}
      *         }>
      *     }>,
      *     top_posts: list<array{
@@ -780,6 +792,7 @@ class DashboardController extends Controller
      *         comments: int,
      *         shares: int,
      *         interaction_total: int,
+     *         metrics_freshness: string,
      *         engagement_rate_percent: float|null,
      *         finished_at: CarbonImmutable|null
      *     }>
@@ -787,7 +800,7 @@ class DashboardController extends Controller
      */
     private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue, string $topPostSort): array
     {
-        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
+        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, capture_counts: array{current: int, previous: int}}>}> $summaries */
         $summaries = [];
         $topPosts = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
@@ -852,7 +865,7 @@ class DashboardController extends Controller
         Monitor::query()
             ->whereNotNull('social_platform')
             ->select(['id', 'name', 'social_platform', 'config_version', 'tags', 'label'])
-            ->with('latestPublicEngagementCheckRun')
+            ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
             ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts): void {
                 foreach ($monitorBatch as $monitor) {
                     $platform = $monitor->social_platform;
@@ -867,7 +880,10 @@ class DashboardController extends Controller
                         $engagementRun = null;
                     }
 
+                    $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $hasEngagementMetrics = $this->hasPublicEngagementMetrics($metrics);
+                    $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
                     $tags = $monitor->tagNames();
                     $tagEntries = $tags === [] ? [null] : array_unique($tags);
                     $matchesSelectedPlatform = $selectedPlatform === null || $platform === $selectedPlatform;
@@ -895,6 +911,7 @@ class DashboardController extends Controller
                             'comments' => (int) $metrics['comments'],
                             'shares' => (int) $metrics['shares'],
                             'interaction_total' => $interactionTotal,
+                            'metrics_freshness' => $captureIsCurrent ? '最新檢查讀取' : '沿用前次數據',
                             'engagement_rate_percent' => $views !== null && $views > 0
                                 ? round($interactionTotal / $views * 100, 2)
                                 : null,
@@ -927,11 +944,17 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
+                                'capture_counts' => ['current' => 0, 'previous' => 0],
                             ];
                         }
 
                         $platformSummary = $summaries[$tagKey]['platforms'][$platform];
                         $platformSummary['monitor_count']++;
+
+                        if ($hasEngagementMetrics) {
+                            $captureKey = $captureIsCurrent ? 'current' : 'previous';
+                            $platformSummary['capture_counts'][$captureKey]++;
+                        }
 
                         foreach (array_keys($platformSummary['metrics']) as $metric) {
                             if (is_numeric($metrics[$metric] ?? null)) {
@@ -1576,6 +1599,18 @@ class DashboardController extends Controller
         }
 
         return '已擷取';
+    }
+
+    /** @param array<string, mixed> $metrics */
+    private function hasPublicEngagementMetrics(array $metrics): bool
+    {
+        foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+            if (is_numeric($metrics[$metric] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param list<array{monitor: Monitor, expires_at: CarbonImmutable}> $summaries */

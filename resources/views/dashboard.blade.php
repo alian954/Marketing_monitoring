@@ -211,7 +211,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">可依總互動或觀看互動率排序前五篇；只計讚、留言與分享完整的貼文，沒有觀看數的貼文在互動率排序中排最後。</p>
+                <p class="panel-description">可依總互動或觀看互動率排序前五篇；排行會標示數字是本次讀取或前次資料。</p>
             </div>
             @if ($socialEngagementTopPosts !== [])
                 <nav class="heading-actions" aria-label="互動量排行排序">
@@ -246,6 +246,7 @@
                             <th scope="col">分享</th>
                             <th scope="col">總互動</th>
                             <th scope="col">觀看互動率</th>
+                            <th scope="col">數據新鮮度</th>
                             <th scope="col">資料時間</th>
                         </tr>
                     </thead>
@@ -262,6 +263,7 @@
                                 <td class="numeric">{{ number_format($topPost['shares']) }}</td>
                                 <td class="numeric">{{ number_format($topPost['interaction_total']) }}</td>
                                 <td class="numeric">{{ $topPost['engagement_rate_percent'] !== null ? number_format($topPost['engagement_rate_percent'], 2).'%' : '—' }}</td>
+                                <td>{{ $topPost['metrics_freshness'] }}</td>
                                 <td>
                                     @if ($topPost['finished_at'] !== null)
                                         <time class="timestamp" datetime="{{ $topPost['finished_at']->toIso8601String() }}">{{ $topPost['finished_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
@@ -281,7 +283,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">平均互動／篇只計讚、留言及分享數完整的貼文，不要求觀看數。觀看互動率＝（讚＋留言＋分享）總和÷觀看總和，只計完整數據且觀看大於 0 的貼文；跨標籤可能重複計入。</p>
+                <p class="panel-description">本次／前次擷取篇數另列。平均互動／篇需有完整互動數；觀看互動率＝完整互動數÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
             @if ($socialEngagementSummaries !== [])
                 <nav class="heading-actions" aria-label="標籤成效排序">
@@ -309,6 +311,7 @@
                             <th scope="col">標籤</th>
                             <th scope="col">貼文數</th>
                             <th scope="col">平均互動／篇</th>
+                            <th scope="col">擷取篇數</th>
                             @foreach (['views' => '觀看', 'likes' => '讚', 'comments' => '留言', 'shares' => '分享'] as $metricLabel)
                                 <th scope="col">{{ $metricLabel }}</th>
                             @endforeach
@@ -330,6 +333,10 @@
                                 <td class="numeric">
                                     {{ $socialEngagementSummary['average_interactions_per_post'] !== null ? number_format($socialEngagementSummary['average_interactions_per_post'], 1) : '—' }}
                                     <span class="secondary-text">({{ number_format($socialEngagementSummary['interaction_count']) }} 篇完整數據)</span>
+                                </td>
+                                <td class="numeric">
+                                    {{ number_format($socialEngagementSummary['capture_counts']['current']) }} 本次
+                                    <span class="secondary-text">／{{ number_format($socialEngagementSummary['capture_counts']['previous']) }} 前次</span>
                                 </td>
                                 @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
                                     @php
@@ -370,7 +377,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="cross-platform-engagement-title" class="panel-title">活動標籤跨平台比較</h2>
-                <p class="panel-description">依標籤並列各平台最新公開數字。平均互動／篇只計讚、留言及分享數完整的貼文；觀看互動率另需觀看數大於 0。</p>
+                <p class="panel-description">依標籤並列各平台最近可讀數字，並標示本次讀取與沿用前次資料的篇數。</p>
             </div>
         </div>
         @if ($socialEngagementComparisonSummaries === [])
@@ -403,6 +410,7 @@
                                     <td>
                                         @if ($platformSummary !== null)
                                             <strong>{{ number_format($platformSummary['monitor_count']) }} 篇</strong><br>
+                                            <span class="secondary-text">本次讀取 {{ number_format($platformSummary['capture_counts']['current']) }} 篇；前次資料 {{ number_format($platformSummary['capture_counts']['previous']) }} 篇</span><br>
                                             <span class="secondary-text">觀看 {{ $platformSummary['metrics']['views']['available'] > 0 ? number_format($platformSummary['metrics']['views']['total']) : '—' }}（{{ number_format($platformSummary['metrics']['views']['available']) }} 篇）</span><br>
                                             <span class="secondary-text">總互動 {{ $platformSummary['interaction_count'] > 0 ? number_format($platformSummary['interaction_total']) : '—' }}（{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>
                                             <span class="secondary-text">平均互動／篇 {{ $platformSummary['average_interactions_per_post'] !== null ? number_format($platformSummary['average_interactions_per_post'], 1) : '—' }}（{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>

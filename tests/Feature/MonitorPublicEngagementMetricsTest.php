@@ -350,6 +350,42 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('4,800');
     }
 
+    public function test_dashboard_marks_previous_metrics_in_rankings_and_campaign_comparisons(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $currentPost = $this->createSocialMonitorForPlatform('facebook', 'CURRENTCMP001', 'campaign');
+        $this->createMetricRun($currentPost, now(), ['views' => 1000, 'likes' => 30, 'comments' => 5, 'shares' => 1, 'source' => 'json_ld']);
+
+        $previousPost = $this->createSocialMonitorForPlatform('dcard', '262477010', 'campaign');
+        $this->createMetricRun($previousPost, now()->subHour(), ['views' => null, 'likes' => 20, 'comments' => 3, 'shares' => 2, 'source' => 'rendered_dom']);
+        CheckRun::factory()->for($previousPost)->create([
+            'config_version' => $previousPost->config_version,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'finished_at' => now(),
+            'normal_status' => 403,
+            'error_type' => 'social_access_required',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('數據新鮮度')
+            ->assertSee('擷取篇數')
+            ->assertSee('本次讀取 0 篇；前次資料 1 篇')
+            ->assertSee('沿用前次數據');
+
+        $tagSummary = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag')['campaign'];
+        $platformSummary = collect($response->viewData('socialEngagementComparisonSummaries'))->keyBy('tag')['campaign']['platforms'];
+        $topPosts = collect($response->viewData('socialEngagementTopPosts'))->keyBy('id');
+
+        $this->assertSame(['current' => 1, 'previous' => 1], $tagSummary['capture_counts']);
+        $this->assertSame(['current' => 0, 'previous' => 1], $platformSummary['dcard']['capture_counts']);
+        $this->assertSame(['current' => 1, 'previous' => 0], $platformSummary['facebook']['capture_counts']);
+        $this->assertSame('沿用前次數據', $topPosts[$previousPost->id]['metrics_freshness']);
+        $this->assertSame('最新檢查讀取', $topPosts[$currentPost->id]['metrics_freshness']);
+    }
+
     public function test_dashboard_summarizes_latest_public_engagement_by_tag_with_metric_coverage(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
@@ -372,8 +408,9 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('標籤成效比較')
+            ->assertSee('本次／前次擷取篇數另列')
             ->assertSee('跨標籤可能重複計入')
-            ->assertSee('觀看互動率＝（讚＋留言＋分享）總和÷觀看總和')
+            ->assertSee('觀看互動率＝完整互動數÷觀看數')
             ->assertSee('engagement_tag=tag%3Asummer', false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')
