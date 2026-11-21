@@ -14,6 +14,13 @@ class FleetAvailabilityReport
 {
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
+    /** @var array<string, string> */
+    private const SOCIAL_PLATFORM_LABELS = [
+        'facebook' => 'Facebook',
+        'instagram' => 'Instagram',
+        'threads' => 'Threads',
+    ];
+
     private const PERIODS = [
         ['label' => '24 小時', 'duration_seconds' => 86_400],
         ['label' => '7 天', 'duration_seconds' => 604_800],
@@ -25,47 +32,53 @@ class FleetAvailabilityReport
     /**
      * @return array{
      *     monitor_count: int,
-     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
+     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>,
+     *     social_platform_statistics: array<string, array{label: string, monitor_count: int, statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>}>
      * }
      */
     public function build(CarbonImmutable $asOf): array
     {
-        $totalsByPeriod = [];
+        $totalsByPeriod = $this->emptyTotalsByPeriod();
+        $socialPlatformTotals = [];
 
-        foreach (self::PERIODS as $period) {
-            $totalsByPeriod[$period['label']] = [
-                'up_seconds' => 0,
-                'observed_seconds' => 0,
-                'eligible_seconds' => 0,
-                'maintenance_excluded_seconds' => 0,
-                'legacy_interval_fallback' => false,
+        foreach (self::SOCIAL_PLATFORM_LABELS as $platform => $label) {
+            $socialPlatformTotals[$platform] = [
+                'label' => $label,
+                'monitor_count' => 0,
+                'totals_by_period' => $this->emptyTotalsByPeriod(),
             ];
         }
         $monitorCount = 0;
 
         foreach ($this->monitorStatistics($asOf) as $monitorStatistics) {
             $monitorCount++;
+            $this->accumulateStatistics($totalsByPeriod, $monitorStatistics['statistics']);
 
-            foreach ($monitorStatistics['statistics'] as $statistic) {
-                $label = $statistic['label'];
-                $totalsByPeriod[$label]['up_seconds'] += $statistic['up_seconds'];
-                $totalsByPeriod[$label]['observed_seconds'] += $statistic['observed_seconds'];
-                $totalsByPeriod[$label]['eligible_seconds'] += $statistic['eligible_seconds'];
-                $totalsByPeriod[$label]['maintenance_excluded_seconds'] += $statistic['maintenance_excluded_seconds'];
-                $totalsByPeriod[$label]['legacy_interval_fallback'] = $totalsByPeriod[$label]['legacy_interval_fallback']
-                    || $statistic['legacy_interval_fallback'];
+            $platform = $monitorStatistics['monitor']->social_platform;
+
+            if (is_string($platform) && isset($socialPlatformTotals[$platform])) {
+                $socialPlatformTotals[$platform]['monitor_count']++;
+                $this->accumulateStatistics(
+                    $socialPlatformTotals[$platform]['totals_by_period'],
+                    $monitorStatistics['statistics'],
+                );
             }
         }
 
-        $statistics = [];
+        $socialPlatformStatistics = [];
 
-        foreach ($totalsByPeriod as $label => $totals) {
-            $statistics[] = $this->formatStatistic($label, $totals);
+        foreach ($socialPlatformTotals as $platform => $summary) {
+            $socialPlatformStatistics[$platform] = [
+                'label' => $summary['label'],
+                'monitor_count' => $summary['monitor_count'],
+                'statistics' => $this->formatTotalsByPeriod($summary['totals_by_period']),
+            ];
         }
 
         return [
             'monitor_count' => $monitorCount,
-            'statistics' => $statistics,
+            'statistics' => $this->formatTotalsByPeriod($totalsByPeriod),
+            'social_platform_statistics' => $socialPlatformStatistics,
         ];
     }
 
@@ -78,7 +91,7 @@ class FleetAvailabilityReport
 
         foreach (Monitor::query()
             ->where('enabled', true)
-            ->select(['id', 'name', 'interval_seconds'])
+            ->select(['id', 'name', 'interval_seconds', 'social_platform'])
             ->lazyById(500) as $monitor) {
             $monitorBatch[] = $monitor;
 
@@ -179,5 +192,57 @@ class FleetAvailabilityReport
             'maintenance_excluded_minutes' => round($totals['maintenance_excluded_seconds'] / 60, 1),
             'legacy_interval_fallback' => $totals['legacy_interval_fallback'],
         ];
+    }
+
+    /**
+     * @return array<string, array{up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
+     */
+    private function emptyTotalsByPeriod(): array
+    {
+        $totalsByPeriod = [];
+
+        foreach (self::PERIODS as $period) {
+            $totalsByPeriod[$period['label']] = [
+                'up_seconds' => 0,
+                'observed_seconds' => 0,
+                'eligible_seconds' => 0,
+                'maintenance_excluded_seconds' => 0,
+                'legacy_interval_fallback' => false,
+            ];
+        }
+
+        return $totalsByPeriod;
+    }
+
+    /**
+     * @param  array<string, array{up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $totalsByPeriod
+     * @param  list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $statistics
+     */
+    private function accumulateStatistics(array &$totalsByPeriod, array $statistics): void
+    {
+        foreach ($statistics as $statistic) {
+            $label = $statistic['label'];
+            $totalsByPeriod[$label]['up_seconds'] += $statistic['up_seconds'];
+            $totalsByPeriod[$label]['observed_seconds'] += $statistic['observed_seconds'];
+            $totalsByPeriod[$label]['eligible_seconds'] += $statistic['eligible_seconds'];
+            $totalsByPeriod[$label]['maintenance_excluded_seconds'] += $statistic['maintenance_excluded_seconds'];
+            $totalsByPeriod[$label]['legacy_interval_fallback'] = $totalsByPeriod[$label]['legacy_interval_fallback']
+                || $statistic['legacy_interval_fallback'];
+        }
+    }
+
+    /**
+     * @param  array<string, array{up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $totalsByPeriod
+     * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>
+     */
+    private function formatTotalsByPeriod(array $totalsByPeriod): array
+    {
+        $statistics = [];
+
+        foreach ($totalsByPeriod as $label => $totals) {
+            $statistics[] = $this->formatStatistic($label, $totals);
+        }
+
+        return $statistics;
     }
 }

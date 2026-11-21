@@ -95,6 +95,56 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="social-platform-availability-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="social-platform-availability-title" class="panel-title">受監測貼文歷史品質</h2>
+                <p class="panel-description">依已啟用貼文的排程檢查觀測時間加權；資料空窗與維護時段不計入。這是受監測貼文樣本的結果，不代表 Facebook、Instagram 或 Threads 的整體 SLA。</p>
+            </div>
+        </div>
+        @if (collect($fleetAvailability['social_platform_statistics'])->sum('monitor_count') === 0)
+            <div class="empty-state">
+                <h3 class="empty-title">尚無啟用中的社群貼文監測</h3>
+                <p class="empty-copy">啟用 Facebook、Instagram 或 Threads 貼文監測後，這裡會比較各平台樣本的可用率與資料覆蓋度。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="social-platform-availability-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">Facebook、Instagram 與 Threads 受監測貼文的估算可用率與資料覆蓋率</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">平台</th>
+                            <th scope="col">啟用貼文</th>
+                            <th scope="col">24 小時可用率</th>
+                            <th scope="col">24 小時覆蓋率</th>
+                            <th scope="col">7 天可用率</th>
+                            <th scope="col">7 天覆蓋率</th>
+                            <th scope="col">30 天可用率</th>
+                            <th scope="col">30 天覆蓋率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($fleetAvailability['social_platform_statistics'] as $platformStatistics)
+                            @if ($platformStatistics['monitor_count'] > 0)
+                                @php
+                                    $platformPeriods = collect($platformStatistics['statistics'])->keyBy('label');
+                                @endphp
+                                <tr>
+                                    <th scope="row">{{ $platformStatistics['label'] }}</th>
+                                    <td class="numeric">{{ $platformStatistics['monitor_count'] }}</td>
+                                    @foreach (['24 小時', '7 天', '30 天'] as $period)
+                                        <td class="numeric">{{ $platformPeriods[$period]['availability_rate'] === null ? '—' : number_format($platformPeriods[$period]['availability_rate'], 2).'%' }}</td>
+                                        <td class="numeric">{{ $platformPeriods[$period]['coverage_rate'] === null ? '—' : number_format($platformPeriods[$period]['coverage_rate'], 2).'%' }}</td>
+                                    @endforeach
+                                </tr>
+                            @endif
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
         <div class="panel-header">
             <div>

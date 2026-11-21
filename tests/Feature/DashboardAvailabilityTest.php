@@ -140,6 +140,48 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(20.0, $statistics['30 天']['unavailable_minutes']);
     }
 
+    public function test_dashboard_compares_social_post_availability_and_coverage_by_platform(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+
+        $facebookMonitor = $this->createSocialMonitor('facebook', 'FBAVAIL001');
+        $facebookUnavailableMonitor = $this->createSocialMonitor('facebook', 'FBAVAIL002');
+        $instagramMonitor = $this->createSocialMonitor('instagram', 'IGAVAIL001');
+        $threadsMonitor = $this->createSocialMonitor('threads', 'THREADAVAIL001');
+        $pausedFacebookMonitor = $this->createSocialMonitor('facebook', 'FBPAUSED01', false);
+
+        $this->createScheduledRun($facebookMonitor, now()->subMinute(), 200, 300);
+        $this->createScheduledRun($facebookUnavailableMonitor, now()->subMinutes(2), 503, 300);
+        $this->createScheduledRun($instagramMonitor, now()->subMinutes(2), 503, 300);
+        $this->createScheduledRun($pausedFacebookMonitor, now()->subMinute(), 200, 300);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('受監測貼文歷史品質')
+            ->assertSee('不代表 Facebook、Instagram 或 Threads 的整體 SLA')
+            ->assertSee('24 小時可用率')
+            ->assertSee('24 小時覆蓋率')
+            ->assertSee('7 天覆蓋率')
+            ->assertSee('30 天可用率')
+            ->assertSee('33.33%');
+
+        $platformStatistics = $response->viewData('fleetAvailability')['social_platform_statistics'];
+        $facebookDaily = collect($platformStatistics['facebook']['statistics'])->firstWhere('label', '24 小時');
+        $instagramDaily = collect($platformStatistics['instagram']['statistics'])->firstWhere('label', '24 小時');
+        $threadsDaily = collect($platformStatistics['threads']['statistics'])->firstWhere('label', '24 小時');
+
+        $this->assertSame(['facebook', 'instagram', 'threads'], array_keys($platformStatistics));
+        $this->assertSame(2, $platformStatistics['facebook']['monitor_count']);
+        $this->assertSame(33.33, $facebookDaily['availability_rate']);
+        $this->assertSame(1, $platformStatistics['instagram']['monitor_count']);
+        $this->assertSame(0.0, $instagramDaily['availability_rate']);
+        $this->assertSame(1, $platformStatistics['threads']['monitor_count']);
+        $this->assertNull($threadsDaily['availability_rate']);
+        $this->assertSame(0.0, $threadsDaily['coverage_rate']);
+    }
+
     private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $normalStatus, int $intervalSeconds): CheckRun
     {
         return CheckRun::factory()->for($monitor)->create([
@@ -165,6 +207,22 @@ class DashboardAvailabilityTest extends TestCase
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
             'interval_seconds' => $intervalSeconds,
+            'enabled' => $enabled,
+        ]);
+    }
+
+    private function createSocialMonitor(string $platform, string $postId, bool $enabled = true): Monitor
+    {
+        $url = match ($platform) {
+            'facebook' => 'https://www.facebook.com/brand/posts/'.$postId,
+            'instagram' => 'https://www.instagram.com/p/'.$postId.'/',
+            'threads' => 'https://www.threads.net/@brand/post/'.$postId,
+        };
+
+        return Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'interval_seconds' => 300,
             'enabled' => $enabled,
         ]);
     }
