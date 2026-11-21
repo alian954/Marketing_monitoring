@@ -37,6 +37,7 @@ class ResponseMetadataChangeHistory
 
         foreach ($monitor->checkRuns()
             ->where('status', 'completed')
+            ->whereNull('error_type')
             ->whereNotIn('source', ['tls_daily', 'domain_daily'])
             ->orderByDesc('scheduled_at')
             ->orderByDesc('id')

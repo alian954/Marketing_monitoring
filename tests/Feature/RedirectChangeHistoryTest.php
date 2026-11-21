@@ -81,6 +81,20 @@ class RedirectChangeHistoryTest extends TestCase
         $this->assertSame(['https://example.test/new'], $changes[0]['current_redirects']);
     }
 
+    public function test_history_ignores_incomplete_http_responses(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $redirects = ['https://example.test/campaign'];
+        $this->createRun($monitor, now()->subMinutes(3), $redirects);
+        $incompleteRun = $this->createRun($monitor, now()->subMinutes(2), []);
+        $incompleteRun->forceFill(['error_type' => 'timeout'])->save();
+        $this->createRun($monitor, now()->subMinute(), $redirects);
+
+        $changes = app(RedirectChangeHistory::class)->build($monitor);
+
+        $this->assertSame([], $changes);
+    }
+
     public function test_history_is_limited_to_the_ten_most_recent_redirect_changes(): void
     {
         $monitor = Monitor::factory()->create();

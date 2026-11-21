@@ -64,6 +64,19 @@ class ResponseMetadataChangeHistoryTest extends TestCase
         $this->assertSame([], $response->viewData('responseMetadataChanges'));
     }
 
+    public function test_metadata_history_ignores_incomplete_http_responses(): void
+    {
+        $monitor = $this->createMonitor();
+        $this->createRun($monitor, now()->subMinutes(3), 'Campaign', 'The post is live.');
+        $incompleteRun = $this->createRun($monitor, now()->subMinutes(2), 'Login wall', 'Log in to see this post.');
+        $incompleteRun->forceFill(['error_type' => 'social_access_required'])->save();
+        $this->createRun($monitor, now()->subMinute(), 'Campaign', 'The post is live.');
+
+        $changes = app(ResponseMetadataChangeHistory::class)->build($monitor);
+
+        $this->assertSame([], $changes);
+    }
+
     public function test_monitor_detail_uses_run_id_to_order_metadata_changes_with_equal_scheduled_times(): void
     {
         $monitor = $this->createMonitor();
