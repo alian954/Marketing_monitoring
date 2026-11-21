@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Probe\DetailedHostResolver;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HopResponse;
@@ -15,6 +16,48 @@ use Tests\TestCase;
 
 class ProbeSecurityTest extends TestCase
 {
+    public function test_detailed_dns_resolution_keeps_cnames_for_history_without_sending_them_to_transport(): void
+    {
+        $resolver = new class implements DetailedHostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+
+            public function resolveWithCnames(string $hostname): array
+            {
+                return [
+                    'ips' => ['93.184.216.34'],
+                    'cnames' => ['edge.example.net'],
+                ];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            /** @var array{url: string, host: string, port: int, ips: list<string>}|null */
+            public ?array $target = null;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->target = $target;
+
+                return new HopResponse(200, null, '<p>healthy</p>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+        $this->assertSame(['edge.example.net'], $result->monitorHostCnames);
+        $this->assertSame([
+            'url' => 'https://landing.example/',
+            'host' => 'landing.example',
+            'port' => 443,
+            'ips' => ['93.184.216.34'],
+        ], $transport->target);
+    }
+
     public function test_mixed_public_and_private_dns_answers_are_blocked_before_any_dial(): void
     {
         $resolver = new class implements HostResolver

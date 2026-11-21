@@ -578,25 +578,25 @@
     <section class="panel spaced-top" aria-labelledby="dns-changes-title">
         <div class="panel-header">
             <div>
-                <h2 id="dns-changes-title" class="panel-title">DNS 位址變更</h2>
-                <p class="panel-description">新紀錄只追蹤監測網址主機的公開 A/AAAA IP 回答，並記錄解析中斷；舊版紀錄可能包含重新導向目的主機。</p>
+                <h2 id="dns-changes-title" class="panel-title">DNS 記錄變更</h2>
+                <p class="panel-description">追蹤監測網址主機的公開 A/AAAA IP 與 CNAME 回答；舊版紀錄可能包含重新導向目的主機。</p>
             </div>
         </div>
         @if ($dnsChanges->isEmpty())
             <div class="empty-state">
-                <h3 class="empty-title">尚未偵測到 DNS 位址變更</h3>
-                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 回答改變或變成無公開回答，變更紀錄會顯示於此處。</p>
+                <h3 class="empty-title">尚未偵測到 DNS 記錄變更</h3>
+                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 或 CNAME 回答改變，變更紀錄會顯示於此處。</p>
             </div>
         @else
-            <div class="data-table-wrap">
+            <div class="data-table-wrap" role="region" aria-labelledby="dns-changes-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">最近偵測到的 DNS 公開 IP 位址變更</caption>
+                    <caption class="sr-only">最近偵測到的監測主機公開 A/AAAA IP 與 CNAME 回答變更</caption>
                     <thead>
                         <tr>
                             <th scope="col">監測項目</th>
                             <th scope="col">偵測時間</th>
-                            <th scope="col">監測主機先前 IP</th>
-                            <th scope="col">監測主機目前 IP</th>
+                            <th scope="col">監測主機先前 DNS 回答</th>
+                            <th scope="col">監測主機目前 DNS 回答</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -611,11 +611,13 @@
                                 </td>
                                 <td><time class="timestamp" datetime="{{ $dnsChange->detected_at->toIso8601String() }}">{{ $dnsChange->detected_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
                                 <td class="masked-url">
-                                    {{ $dnsChange->previousIpsLabel() }}
+                                    <div>IP：{{ $dnsChange->previousIpsLabel() }}</div>
+                                    <div class="secondary-text">CNAME：{{ $dnsChange->previousCnamesLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                                 <td class="masked-url">
-                                    {{ $dnsChange->currentIpsLabel() }}
+                                    <div>IP：{{ $dnsChange->currentIpsLabel() }}</div>
+                                    <div class="secondary-text">CNAME：{{ $dnsChange->currentCnamesLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                             </tr>

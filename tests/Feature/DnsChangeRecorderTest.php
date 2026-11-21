@@ -41,6 +41,45 @@ class DnsChangeRecorderTest extends TestCase
         $this->assertSame('無公開 IP 回答', $event->previousIpsLabel());
     }
 
+    public function test_recorder_tracks_a_cname_change_when_public_ip_addresses_are_unchanged(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinutes(2), ['EDGE-OLD.example.net.']);
+        $currentRun = $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinute(), ['edge-new.example.net.']);
+
+        app(DnsChangeRecorder::class)->recordFor($currentRun);
+
+        $event = DnsChangeEvent::query()->sole();
+        $this->assertSame(['93.184.216.34'], $event->previous_ips);
+        $this->assertSame(['93.184.216.34'], $event->current_ips);
+        $this->assertSame(['edge-old.example.net'], $event->previous_cnames);
+        $this->assertSame(['edge-new.example.net'], $event->current_cnames);
+        $this->assertSame('edge-old.example.net', $event->previousCnamesLabel());
+        $this->assertSame('edge-new.example.net', $event->currentCnamesLabel());
+    }
+
+    public function test_recorder_ignores_dns_answer_order_and_case_changes_when_cname_sets_are_unchanged(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinutes(2), ['edge-a.example.net', 'edge-b.example.net']);
+        $currentRun = $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinute(), ['EDGE-B.example.net.', 'EDGE-A.example.net.']);
+
+        app(DnsChangeRecorder::class)->recordFor($currentRun);
+
+        $this->assertDatabaseCount('dns_change_events', 0);
+    }
+
+    public function test_recorder_does_not_infer_a_cname_change_from_an_unknown_previous_snapshot(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinutes(2));
+        $currentRun = $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinute(), ['edge.example.net']);
+
+        app(DnsChangeRecorder::class)->recordFor($currentRun);
+
+        $this->assertDatabaseCount('dns_change_events', 0);
+    }
+
     public function test_recorder_does_not_treat_a_dns_timeout_as_an_empty_answer(): void
     {
         $monitor = Monitor::factory()->create();
@@ -76,13 +115,14 @@ class DnsChangeRecorderTest extends TestCase
     }
 
     /** @param list<string> $ips */
-    private function createScheduledRun(Monitor $monitor, array $ips, ?string $errorType, \DateTimeInterface $finishedAt): CheckRun
+    private function createScheduledRun(Monitor $monitor, array $ips, ?string $errorType, \DateTimeInterface $finishedAt, ?array $cnames = null): CheckRun
     {
         return CheckRun::factory()->for($monitor)->create([
             'source' => 'scheduled',
             'status' => 'completed',
             'finished_at' => $finishedAt,
             'monitor_host_ips' => $ips,
+            'monitor_host_cnames' => $cnames,
             'error_type' => $errorType,
         ]);
     }

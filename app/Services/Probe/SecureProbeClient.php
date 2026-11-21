@@ -43,6 +43,7 @@ class SecureProbeClient implements ProbeClient
         $redirects = [];
         $resolvedIps = [];
         $monitorHostIps = [];
+        $monitorHostCnames = null;
         $elapsedMs = 0;
         $maxRedirects = (int) config('monitoring.max_redirects');
         $expectedResponseHeaderName = ResponseHeaderCondition::headerName($expectedResponseHeader);
@@ -52,7 +53,16 @@ class SecureProbeClient implements ProbeClient
             $remainingMs = $this->remainingMilliseconds($deadline);
 
             if ($remainingMs === 0) {
-                return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs);
+                return $this->failure(
+                    $this->timeoutException($requestTimeoutSeconds),
+                    $startedAt,
+                    $redirects,
+                    $resolvedIps,
+                    $currentUrl,
+                    $elapsedMs,
+                    monitorHostIps: $monitorHostIps,
+                    monitorHostCnames: $monitorHostCnames,
+                );
             }
 
             try {
@@ -61,19 +71,20 @@ class SecureProbeClient implements ProbeClient
 
                 if ($hop === 0) {
                     $monitorHostIps = $target['ips'];
+                    $monitorHostCnames = $target['cnames'];
                 }
             } catch (ProbeException $exception) {
-                return $this->failure($exception, $startedAt, $redirects, $resolvedIps, $currentUrl, monitorHostIps: $monitorHostIps);
+                return $this->failure($exception, $startedAt, $redirects, $resolvedIps, $currentUrl, monitorHostIps: $monitorHostIps, monitorHostCnames: $monitorHostCnames);
             }
 
             $remainingMs = $this->remainingMilliseconds($deadline);
 
             if ($remainingMs === 0) {
-                return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, monitorHostIps: $monitorHostIps);
+                return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, monitorHostIps: $monitorHostIps, monitorHostCnames: $monitorHostCnames);
             }
 
             if (isset($visited[$target['url']])) {
-                return $this->failure(new ProbeException('redirect_loop', '偵測到重新導向迴圈。'), $startedAt, $redirects, $resolvedIps, $target['url'], monitorHostIps: $monitorHostIps);
+                return $this->failure(new ProbeException('redirect_loop', '偵測到重新導向迴圈。'), $startedAt, $redirects, $resolvedIps, $target['url'], monitorHostIps: $monitorHostIps, monitorHostCnames: $monitorHostCnames);
             }
 
             $visited[$target['url']] = true;
@@ -85,10 +96,11 @@ class SecureProbeClient implements ProbeClient
                 $remainingMs = $this->remainingMilliseconds($deadline);
 
                 if ($remainingMs === 0) {
-                    return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response?->tlsExpiresAt, $monitorHostIps);
+                    return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response?->tlsExpiresAt, $monitorHostIps, $monitorHostCnames);
                 }
 
                 $attemptTarget = $target;
+                unset($attemptTarget['cnames']);
                 $attemptTarget['ips'] = [$ip];
                 $headersForHop = $this->sameOrigin($url, $target['url']) ? $requestHeaders : [];
                 $response = $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
@@ -97,7 +109,7 @@ class SecureProbeClient implements ProbeClient
                 $elapsedMs += $response->elapsedMs;
 
                 if (hrtime(true) >= $deadline) {
-                    return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
+                    return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps, $monitorHostCnames);
                 }
 
                 $hasAnotherIp = $index < count($target['ips']) - 1;
@@ -161,6 +173,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
                     responseContentType: $responseContentType,
+                    monitorHostCnames: $monitorHostCnames,
                 );
             }
 
@@ -191,6 +204,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
                     responseContentType: $responseContentType,
+                    monitorHostCnames: $monitorHostCnames,
                 );
             }
 
@@ -217,6 +231,7 @@ class SecureProbeClient implements ProbeClient
                     $responseMetadata['published_at'],
                     $responseMetadata['modified_at'],
                     responseContentType: $responseContentType,
+                    monitorHostCnames: $monitorHostCnames,
                 );
             }
 
@@ -268,29 +283,30 @@ class SecureProbeClient implements ProbeClient
                     $responseVisibleTextHash,
                     $responseContentType,
                     $responseBodyBytes,
+                    $monitorHostCnames,
                 );
             }
 
             if ($response->location === null || trim($response->location) === '') {
-                return $this->failure(new ProbeException('redirect_invalid', '重新導向回應缺少 Location 標頭。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
+                return $this->failure(new ProbeException('redirect_invalid', '重新導向回應缺少 Location 標頭。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps, $monitorHostCnames);
             }
 
             try {
                 $nextUrl = (string) UriResolver::resolve(new Uri($target['url']), new Uri($response->location));
             } catch (Throwable) {
-                return $this->failure(new ProbeException('redirect_invalid', '重新導向目標網址無效。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
+                return $this->failure(new ProbeException('redirect_invalid', '重新導向目標網址無效。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps, $monitorHostCnames);
             }
 
             $redirects[] = $this->masker->mask($nextUrl);
 
             if ($hop === $maxRedirects) {
-                return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps);
+                return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps, $monitorHostCnames);
             }
 
             $currentUrl = $nextUrl;
         }
 
-        return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs, monitorHostIps: $monitorHostIps);
+        return $this->failure(new ProbeException('redirect_limit', '已超過重新導向次數上限。'), $startedAt, $redirects, $resolvedIps, $currentUrl, $elapsedMs, monitorHostIps: $monitorHostIps, monitorHostCnames: $monitorHostCnames);
     }
 
     private function remainingMilliseconds(int $deadline): int
@@ -348,6 +364,7 @@ class SecureProbeClient implements ProbeClient
         ?int $elapsedMs = null,
         ?\DateTimeImmutable $tlsExpiresAt = null,
         array $monitorHostIps = [],
+        ?array $monitorHostCnames = null,
     ): ProbeResult {
         return new ProbeResult(
             null,
@@ -360,6 +377,7 @@ class SecureProbeClient implements ProbeClient
             null,
             $tlsExpiresAt,
             $monitorHostIps,
+            monitorHostCnames: $monitorHostCnames,
         );
     }
 }

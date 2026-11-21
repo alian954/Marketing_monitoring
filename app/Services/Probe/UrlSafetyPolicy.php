@@ -15,7 +15,7 @@ class UrlSafetyPolicy
 
     /**
      * @param  list<string>  $allowedRedirectHosts
-     * @return array{url: string, host: string, port: int, ips: list<string>}
+     * @return array{url: string, host: string, port: int, ips: list<string>, cnames: list<string>|null}
      */
     public function validateAndResolve(string $url, array $allowedRedirectHosts = [], ?string $originHost = null): array
     {
@@ -47,7 +47,17 @@ class UrlSafetyPolicy
             }
         }
 
-        $ips = $isLiteralIp ? [$host] : $this->resolver->resolve($host);
+        $cnames = null;
+
+        if ($isLiteralIp) {
+            $ips = [$host];
+        } elseif ($this->resolver instanceof DetailedHostResolver) {
+            $resolution = $this->resolver->resolveWithCnames($host);
+            $ips = $resolution['ips'];
+            $cnames = $resolution['cnames'];
+        } else {
+            $ips = $this->resolver->resolve($host);
+        }
 
         if ($ips === []) {
             throw new ProbeException('dns_nxdomain', '主機名稱未解析到任何 IP 位址。');
@@ -68,7 +78,7 @@ class UrlSafetyPolicy
             $normalizedUrl .= '?'.$parts['query'];
         }
 
-        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'ips' => $ips];
+        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'ips' => $ips, 'cnames' => $cnames];
     }
 
     public function normalizeHost(string $host): string

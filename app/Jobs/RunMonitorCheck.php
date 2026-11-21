@@ -163,6 +163,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'redirects' => $normal->redirects,
                 'resolved_public_ips' => $resolvedIps,
                 'monitor_host_ips' => $normal->monitorHostIps,
+                'monitor_host_cnames' => $normal->monitorHostCnames,
                 'expected_text_found' => $responseConditionStatusAccepted ? $normal->expectedTextFound : null,
                 'expected_text_term_matches' => $responseConditionStatusAccepted ? $normal->expectedTextTermMatches : null,
                 'expected_response_header_found' => $responseConditionStatusAccepted ? $normal->expectedResponseHeaderFound : null,

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\DnsChangeEvent;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\User;
@@ -109,6 +110,28 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(0.0, $dailyStatistic['eligible_minutes']);
         $this->assertSame(0.0, $dailyStatistic['unavailable_minutes']);
         $this->assertSame(1440.0, $dailyStatistic['maintenance_excluded_minutes']);
+    }
+
+    public function test_dashboard_displays_dns_ip_and_cname_changes_in_a_keyboard_scrollable_table(): void
+    {
+        $monitor = $this->createMonitor('dns-alias-change');
+        DnsChangeEvent::factory()->for($monitor)->create([
+            'previous_ips' => ['93.184.216.34'],
+            'current_ips' => ['93.184.216.34'],
+            'previous_cnames' => ['old-edge.example.net'],
+            'current_cnames' => ['new-edge.example.net'],
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('DNS 記錄變更')
+            ->assertSee('old-edge.example.net')
+            ->assertSee('new-edge.example.net')
+            ->assertSee('aria-labelledby="dns-changes-title"', false)
+            ->assertSee('tabindex="0"', false);
+
+        $this->assertCount(1, $response->viewData('dnsChanges'));
     }
 
     public function test_dashboard_compares_fleet_availability_across_24_hours_7_days_and_30_days(): void

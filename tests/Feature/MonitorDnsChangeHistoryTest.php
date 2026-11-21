@@ -29,6 +29,8 @@ class MonitorDnsChangeHistoryTest extends TestCase
             $change = DnsChangeEvent::factory()->for($monitor)->create([
                 'previous_ips' => ['203.0.113.'.$index],
                 'current_ips' => $index === 1 ? [] : ['198.51.100.'.$index],
+                'previous_cnames' => ['old-'.$index.'.example.net'],
+                'current_cnames' => ['new-'.$index.'.example.net'],
                 'detected_at' => now()->subMinutes($index),
             ]);
 
@@ -49,10 +51,11 @@ class MonitorDnsChangeHistoryTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('DNS 位址變更')
-            ->assertSee('主機先前 IP')
-            ->assertSee('主機目前 IP')
+            ->assertSee('DNS 記錄變更')
+            ->assertSee('主機先前 DNS 回答')
+            ->assertSee('主機目前 DNS 回答')
             ->assertSee('198.51.100.0')
+            ->assertSee('new-0.example.net')
             ->assertSee('無公開 IP 回答')
             ->assertDontSee('198.51.100.50')
             ->assertDontSee('192.0.2.99')
@@ -82,7 +85,7 @@ class MonitorDnsChangeHistoryTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('尚無 DNS 位址變更記錄')
+            ->assertSee('尚無 DNS 記錄變更')
             ->assertSee('累積至少兩次排程檢查後')
             ->assertDontSee('192.0.2.77');
 

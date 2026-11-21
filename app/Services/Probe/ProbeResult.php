@@ -8,6 +8,7 @@ readonly class ProbeResult
      * @param  list<string>  $redirects
      * @param  list<string>  $resolvedPublicIps
      * @param  list<string>  $monitorHostIps
+     * @param  list<string>|null  $monitorHostCnames
      * @param  list<?bool>|null  $expectedTextTermMatches
      */
     public function __construct(
@@ -34,6 +35,7 @@ readonly class ProbeResult
         public ?string $responseVisibleTextHash = null,
         public ?string $responseContentType = null,
         public ?int $responseBodyBytes = null,
+        public ?array $monitorHostCnames = null,
     ) {}
 
     public function succeeded(): bool
