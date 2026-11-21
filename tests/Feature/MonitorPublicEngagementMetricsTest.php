@@ -193,6 +193,45 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertNull($monitorRows[$postWithZeroViews->id]->getAttribute('social_engagement_rate_percent'));
     }
 
+    public function test_dashboard_paginates_all_social_posts_and_preserves_analytics_filters(): void
+    {
+        Config::set('monitoring.retention_days', 90);
+
+        for ($postNumber = 1; $postNumber <= 51; $postNumber++) {
+            $this->createSocialMonitor('PAGE'.str_pad((string) $postNumber, 3, '0', STR_PAD_LEFT));
+        }
+
+        $user = User::factory()->create();
+        $firstPageResponse = $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_period' => 30,
+            ]))
+            ->assertOk()
+            ->assertSee('顯示第 1–50 筆，共 51 筆')
+            ->assertSee('engagement_page=2', false)
+            ->assertSee('engagement_platform=instagram', false)
+            ->assertSee('engagement_period=30', false);
+        $firstPage = $firstPageResponse->viewData('socialEngagementMonitors');
+
+        $this->assertSame(51, $firstPage->total());
+        $this->assertCount(50, $firstPage->getCollection());
+
+        $secondPageResponse = $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_period' => 30,
+                'engagement_page' => 2,
+            ]))
+            ->assertOk()
+            ->assertSee('顯示第 51–51 筆，共 51 筆');
+        $secondPage = $secondPageResponse->viewData('socialEngagementMonitors');
+
+        $this->assertCount(1, $secondPage->getCollection());
+        $this->assertSame(2, $secondPage->currentPage());
+        $this->assertSame(51, $secondPage->total());
+    }
+
     public function test_dashboard_distinguishes_public_engagement_capture_statuses(): void
     {
         $this->travelTo('2026-11-22 12:00:00');

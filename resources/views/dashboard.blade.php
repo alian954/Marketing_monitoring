@@ -104,7 +104,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="public-engagement-title" class="panel-title">公開互動數</h2>
-                <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；數字依平台原始回應提供情形顯示。</p>
+                <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；依最近檢查時間排序，每頁 50 篇。</p>
             </div>
             <div class="row-actions">
                 <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
@@ -130,7 +130,7 @@
                 </form>
             </search>
         </div>
-        @if ($socialEngagementMonitors->isEmpty())
+        @if ($socialEngagementMonitors->total() === 0)
             <div class="empty-state">
                 <h3 class="empty-title">尚無社群貼文監測</h3>
                 <p class="empty-copy">新增 Facebook、Instagram、Threads 或 Dcard 公開貼文網址後，這裡會記錄可讀取的互動數。</p>
@@ -187,6 +187,9 @@
                     </tbody>
                 </table>
             </div>
+            @if ($socialEngagementMonitors->hasPages())
+                <div class="panel-body pagination-wrap">{{ $socialEngagementMonitors->links('vendor.pagination.monitor') }}</div>
+            @endif
             <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。總互動與觀看互動率只在三項互動數完整時計算，觀看為 0 時不計比例。</p>
         @endif
     </section>

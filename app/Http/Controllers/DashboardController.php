@@ -172,39 +172,45 @@ class DashboardController extends Controller
             ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
             ->orderByDesc('last_checked_at')
             ->orderBy('name')
-            ->limit(self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS)
-            ->get(['id', 'name', 'url', 'config_version', 'social_platform']);
-        $socialEngagementMonitors->each(function (Monitor $monitor): void {
-            $latestCheckRun = $monitor->latestCheckRun;
-            $engagementRun = $monitor->latestPublicEngagementCheckRun;
+            ->paginate(
+                self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS,
+                ['id', 'name', 'url', 'config_version', 'social_platform'],
+                'engagement_page',
+            )
+            ->withQueryString()
+            ->through(function (Monitor $monitor): Monitor {
+                $latestCheckRun = $monitor->latestCheckRun;
+                $engagementRun = $monitor->latestPublicEngagementCheckRun;
 
-            if ($latestCheckRun?->config_version !== $monitor->config_version) {
-                $latestCheckRun = null;
-            }
+                if ($latestCheckRun?->config_version !== $monitor->config_version) {
+                    $latestCheckRun = null;
+                }
 
-            if ($engagementRun?->config_version !== $monitor->config_version) {
-                $engagementRun = null;
-            }
+                if ($engagementRun?->config_version !== $monitor->config_version) {
+                    $engagementRun = null;
+                }
 
-            $engagementMetrics = $engagementRun?->response_public_engagement_metrics ?? [];
-            $hasCompleteInteractionCounts = is_numeric($engagementMetrics['likes'] ?? null)
-                && is_numeric($engagementMetrics['comments'] ?? null)
-                && is_numeric($engagementMetrics['shares'] ?? null);
-            $interactionTotal = $hasCompleteInteractionCounts
-                ? (int) $engagementMetrics['likes'] + (int) $engagementMetrics['comments'] + (int) $engagementMetrics['shares']
-                : null;
-            $views = $engagementMetrics['views'] ?? null;
-            $engagementRate = $interactionTotal !== null && is_numeric($views) && (int) $views > 0
-                ? round($interactionTotal / (int) $views * 100, 2)
-                : null;
+                $engagementMetrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                $hasCompleteInteractionCounts = is_numeric($engagementMetrics['likes'] ?? null)
+                    && is_numeric($engagementMetrics['comments'] ?? null)
+                    && is_numeric($engagementMetrics['shares'] ?? null);
+                $interactionTotal = $hasCompleteInteractionCounts
+                    ? (int) $engagementMetrics['likes'] + (int) $engagementMetrics['comments'] + (int) $engagementMetrics['shares']
+                    : null;
+                $views = $engagementMetrics['views'] ?? null;
+                $engagementRate = $interactionTotal !== null && is_numeric($views) && (int) $views > 0
+                    ? round($interactionTotal / (int) $views * 100, 2)
+                    : null;
 
-            $monitor->setAttribute(
-                'social_engagement_capture_status',
-                $this->socialEngagementCaptureStatus($latestCheckRun, $engagementRun),
-            );
-            $monitor->setAttribute('social_engagement_interaction_total', $interactionTotal);
-            $monitor->setAttribute('social_engagement_rate_percent', $engagementRate);
-        });
+                $monitor->setAttribute(
+                    'social_engagement_capture_status',
+                    $this->socialEngagementCaptureStatus($latestCheckRun, $engagementRun),
+                );
+                $monitor->setAttribute('social_engagement_interaction_total', $interactionTotal);
+                $monitor->setAttribute('social_engagement_rate_percent', $engagementRate);
+
+                return $monitor;
+            });
         $socialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform);
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
