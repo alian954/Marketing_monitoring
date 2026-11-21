@@ -314,6 +314,9 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(['total' => 12, 'available' => 2], $summaries['summer']['metrics']['comments']);
         $this->assertSame(['total' => 3, 'available' => 2], $summaries['summer']['metrics']['shares']);
         $this->assertSame(['interactions' => 41, 'views' => 1500, 'available' => 1], $summaries['summer']['engagement_rate']);
+        $this->assertSame(41, $summaries['summer']['interaction_total']);
+        $this->assertSame(1, $summaries['summer']['interaction_count']);
+        $this->assertSame(41.0, $summaries['summer']['average_interactions_per_post']);
         $this->assertSame(1, $summaries['brand']['monitor_count']);
         $this->assertSame(1, $summaries['未標籤']['monitor_count']);
         $this->assertSame(['total' => 0, 'available' => 0], $summaries['未標籤']['metrics']['views']);
@@ -360,6 +363,35 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ['high rate', 'low rate', 'middle rate', 'unavailable rate'],
             array_column($invalidSortResponse->viewData('socialEngagementSummaries'), 'tag'),
         );
+    }
+
+    public function test_dashboard_sorts_tag_summaries_by_average_interactions_per_complete_post(): void
+    {
+        $summerFirstPost = $this->createSocialMonitor('AVERAGESUM001', 'summer');
+        $summerSecondPost = $this->createSocialMonitor('AVERAGESUM002', 'summer');
+        $winterPost = $this->createSocialMonitor('AVERAGEWIN001', 'winter');
+        $incompletePost = $this->createSocialMonitor('AVERAGEINC001', 'unavailable');
+
+        $this->createMetricRun($summerFirstPost, now(), ['views' => 500, 'likes' => 40, 'comments' => 10, 'shares' => 10, 'source' => 'json_ld']);
+        $this->createMetricRun($summerSecondPost, now(), ['views' => null, 'likes' => 20, 'comments' => 5, 'shares' => 5, 'source' => 'json_ld']);
+        $this->createMetricRun($winterPost, now(), ['views' => null, 'likes' => 20, 'comments' => 5, 'shares' => 5, 'source' => 'json_ld']);
+        $this->createMetricRun($incompletePost, now(), ['views' => 500, 'likes' => 1000, 'comments' => null, 'shares' => 10, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_tag_sort' => 'average_interactions']))
+            ->assertOk()
+            ->assertSee('平均互動／篇')
+            ->assertSee('平均互動／篇由高到低')
+            ->assertSee('engagement_tag_sort=average_interactions', false);
+
+        $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
+
+        $this->assertSame(['summer', 'winter', 'unavailable'], array_column($response->viewData('socialEngagementSummaries'), 'tag'));
+        $this->assertSame(45.0, $summaries['summer']['average_interactions_per_post']);
+        $this->assertSame(2, $summaries['summer']['interaction_count']);
+        $this->assertSame(30.0, $summaries['winter']['average_interactions_per_post']);
+        $this->assertNull($summaries['unavailable']['average_interactions_per_post']);
+        $this->assertSame(0, $summaries['unavailable']['interaction_count']);
     }
 
     public function test_dashboard_ranks_complete_interactions_using_selected_platform_and_tag(): void
@@ -450,8 +482,11 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertCount(1, $comparisonSummaries);
         $this->assertSame('summer', $comparisonSummaries[0]['tag']);
         $this->assertSame(25, $comparisonSummaries[0]['platforms']['facebook']['interaction_total']);
+        $this->assertSame(25.0, $comparisonSummaries[0]['platforms']['facebook']['average_interactions_per_post']);
         $this->assertSame(['interactions' => 45, 'views' => 1000, 'available' => 1], $comparisonSummaries[0]['platforms']['instagram']['engagement_rate']);
+        $this->assertSame(45.0, $comparisonSummaries[0]['platforms']['instagram']['average_interactions_per_post']);
         $this->assertSame(10, $comparisonSummaries[0]['platforms']['threads']['interaction_total']);
+        $this->assertSame(10.0, $comparisonSummaries[0]['platforms']['threads']['average_interactions_per_post']);
         $this->assertSame(0, $comparisonSummaries[0]['platforms']['threads']['engagement_rate']['available']);
         $this->assertArrayNotHasKey('dcard', $comparisonSummaries[0]['platforms']);
     }

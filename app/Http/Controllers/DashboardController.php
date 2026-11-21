@@ -40,6 +40,7 @@ class DashboardController extends Controller
     /** @var array<string, string> */
     private const SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS = [
         'tag' => '依標籤名稱',
+        'average_interactions' => '平均互動／篇由高到低',
         'engagement_rate' => '觀看互動率由高到低',
     ];
 
@@ -418,6 +419,9 @@ class DashboardController extends Controller
      *     filter_label: string|null,
      *     monitor_count: int,
      *     metrics: array<string, array{total: int, available: int}>,
+     *     interaction_total: int,
+     *     interaction_count: int,
+     *     average_interactions_per_post: float|null,
      *     engagement_rate: array{interactions: int, views: int, available: int},
      *     latest_at: CarbonImmutable|null
      * }>
@@ -430,6 +434,9 @@ class DashboardController extends Controller
          *     filter_label: string|null,
          *     monitor_count: int,
          *     metrics: array<string, array{total: int, available: int}>,
+         *     interaction_total: int,
+         *     interaction_count: int,
+         *     average_interactions_per_post: float|null,
          *     engagement_rate: array{interactions: int, views: int, available: int},
          *     latest_at: CarbonImmutable|null
          * }> $summaries
@@ -466,6 +473,9 @@ class DashboardController extends Controller
                                 'filter_label' => $tag,
                                 'monitor_count' => 0,
                                 'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['total' => 0, 'available' => 0]),
+                                'interaction_total' => 0,
+                                'interaction_count' => 0,
+                                'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
                                 'latest_at' => null,
                             ];
@@ -478,6 +488,20 @@ class DashboardController extends Controller
                                 $summaries[$tagKey]['metrics'][$metric]['total'] += (int) $metrics[$metric];
                                 $summaries[$tagKey]['metrics'][$metric]['available']++;
                             }
+                        }
+
+                        $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
+                            && is_numeric($metrics['comments'] ?? null)
+                            && is_numeric($metrics['shares'] ?? null);
+
+                        if ($hasCompleteInteractionCounts) {
+                            $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                            $summaries[$tagKey]['interaction_total'] += $interactionTotal;
+                            $summaries[$tagKey]['interaction_count']++;
+                            $summaries[$tagKey]['average_interactions_per_post'] = round(
+                                $summaries[$tagKey]['interaction_total'] / $summaries[$tagKey]['interaction_count'],
+                                1,
+                            );
                         }
 
                         if (is_numeric($metrics['views'] ?? null)
@@ -502,6 +526,27 @@ class DashboardController extends Controller
 
         $results = array_values($summaries);
         usort($results, static function (array $first, array $second) use ($sort): int {
+            if ($sort === 'average_interactions') {
+                $firstAverage = $first['average_interactions_per_post'];
+                $secondAverage = $second['average_interactions_per_post'];
+
+                if ($firstAverage === null && $secondAverage !== null) {
+                    return 1;
+                }
+
+                if ($firstAverage !== null && $secondAverage === null) {
+                    return -1;
+                }
+
+                if ($firstAverage !== null && $secondAverage !== null) {
+                    $averageComparison = $secondAverage <=> $firstAverage;
+
+                    if ($averageComparison !== 0) {
+                        return $averageComparison;
+                    }
+                }
+            }
+
             if ($sort === 'engagement_rate') {
                 $firstEngagementRate = $first['engagement_rate']['views'] > 0
                     ? $first['engagement_rate']['interactions'] / $first['engagement_rate']['views']
@@ -543,6 +588,7 @@ class DashboardController extends Controller
      *             metrics: array<string, array{total: int, available: int}>,
      *             interaction_total: int,
      *             interaction_count: int,
+     *             average_interactions_per_post: float|null,
      *             engagement_rate: array{interactions: int, views: int, available: int}
      *         }>
      *     }>,
@@ -563,7 +609,7 @@ class DashboardController extends Controller
      */
     private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue): array
     {
-        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
+        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
         $summaries = [];
         $topPosts = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
@@ -678,6 +724,7 @@ class DashboardController extends Controller
                                 'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['total' => 0, 'available' => 0]),
                                 'interaction_total' => 0,
                                 'interaction_count' => 0,
+                                'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
                             ];
                         }
@@ -700,6 +747,10 @@ class DashboardController extends Controller
                             $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
                             $platformSummary['interaction_total'] += $interactionTotal;
                             $platformSummary['interaction_count']++;
+                            $platformSummary['average_interactions_per_post'] = round(
+                                $platformSummary['interaction_total'] / $platformSummary['interaction_count'],
+                                1,
+                            );
 
                             if (is_numeric($metrics['views'] ?? null) && (int) $metrics['views'] > 0) {
                                 $platformSummary['engagement_rate']['interactions'] += $interactionTotal;
