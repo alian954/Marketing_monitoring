@@ -11,7 +11,7 @@
         <div class="heading-copy">
             <p class="eyebrow">監測總覽</p>
             <h1 class="page-title">{{ now()->timezone('Asia/Taipei')->format('A') === 'AM' ? '早安' : '您好' }}</h1>
-            <p class="page-description">查看監測狀態、進行中的事件，以及排程器與佇列工作者運作情形。</p>
+            <p class="page-description">監測狀態、事件與執行服務。</p>
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
@@ -52,7 +52,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
-                <p class="panel-description">依最近一次檢查列出 Facebook、Instagram、Threads 與 Dcard 貼文狀態；「需留意」包含待確認或已成立的異常。</p>
+                <p class="panel-description">顯示各平台貼文的最近檢查狀態。</p>
             </div>
         </div>
         @if (collect($platformCounts)->sum('total') === 0)
@@ -104,7 +104,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-availability-title" class="panel-title">受監測貼文歷史品質</h2>
-                <p class="panel-description">依已啟用貼文的排程檢查觀測時間加權；資料空窗與維護時段不計入。這是受監測貼文樣本的結果，不代表 Facebook、Instagram、Threads 或 Dcard 的整體 SLA。</p>
+                <p class="panel-description">依實際觀測估算；空窗與維護時段不計，覆蓋率另列。結果只代表受監測樣本。</p>
             </div>
         </div>
         @if (collect($fleetAvailability['social_platform_statistics'])->sum('monitor_count') === 0)
@@ -154,7 +154,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="fleet-availability-title" class="panel-title">整體監測品質</h2>
-                <p class="panel-description">比較最近 24 小時、7 天與 30 天；依啟用中項目的實際觀測時間加權，維護時段與資料空窗不計入。</p>
+                <p class="panel-description">比較近 24 小時、7 天與 30 天的實際觀測。</p>
             </div>
             <div class="heading-actions">
                 <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
@@ -201,7 +201,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="fleet-slo-title" class="panel-title">SLO 錯誤預算狀態</h2>
-                <p class="panel-description">依最近 30 天啟用中的監測項目整理；使用率達 80% 會列為高用量，覆蓋率低於 90% 或尚無觀測時會提示資料不足。提醒可能重疊，完整資料可匯出查看。</p>
+                <p class="panel-description">查看近 30 天錯誤預算與資料覆蓋率；資料不足時會提示。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.availability.export.fleet') }}">匯出完整 SLO CSV</a>
         </div>
@@ -557,7 +557,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tls-expiry-title" class="panel-title">TLS 憑證期限</h2>
-                <p class="panel-description">依最近一次每日獨立檢查結果，列出已過期或 30 天內到期的 HTTPS 憑證；超過 48 小時未取得新觀測時會標示資料逾時。</p>
+                <p class="panel-description">列出已過期或 30 天內到期的 HTTPS 憑證；觀測逾 48 小時標示逾時。</p>
             </div>
             @if ($expiringCertificateCount > 0)
                 <span class="secondary-text">{{ $expiringCertificateCount }} 張</span>
@@ -616,7 +616,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="domain-expiry-title" class="panel-title">網域註冊期限</h2>
-                <p class="panel-description">每日透過 IANA RDAP 清單查詢網站網域的註冊到期日；部分註冊機構不公開期限資料。超過 48 小時未更新的觀測會標示逾時。</p>
+                <p class="panel-description">每日查詢網域到期日；部分註冊機構不提供資料，觀測逾 48 小時標示逾時。</p>
             </div>
             @if ($expiringDomainCount > 0)
                 <span class="secondary-text">{{ $expiringDomainCount }} 個</span>
@@ -679,7 +679,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-changes-title" class="panel-title">DNS 記錄變更</h2>
-                <p class="panel-description">追蹤監測網址主機的 A/AAAA、CNAME、MX、NS、TXT 與 CAA 回答；舊版紀錄可能包含重新導向目的主機。</p>
+                <p class="panel-description">追蹤監測主機的 DNS 記錄與變更。</p>
             </div>
         </div>
         @if ($dnsChanges->isEmpty())

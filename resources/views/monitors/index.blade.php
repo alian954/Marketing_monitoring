@@ -21,7 +21,7 @@
         <div class="heading-copy">
             <p class="eyebrow">工作區</p>
             <h1 class="page-title">監測項目</h1>
-            <p class="page-description">管理網站與 Facebook、Instagram、Threads、Dcard 公開貼文，查看最近一次檢查結果。</p>
+            <p class="page-description">查看網站與公開貼文的檢查狀態。</p>
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('monitors.export', $monitorExportFilters) }}">{{ $hasFilters ? '匯出符合條件 CSV' : '匯出 CSV' }}</a>
@@ -45,7 +45,7 @@
                         <div class="field-group">
                             <label class="field-label" for="monitor-search">名稱、標籤、頁面標題、摘要或完整網址</label>
                             <input class="field-input" id="monitor-search" name="search" type="search" value="{{ old('search', $filters['search']) }}" maxlength="2048" autocomplete="off" aria-describedby="monitor-search-help">
-                            <p id="monitor-search-help" class="field-help">名稱、標籤與最近一次回應的頁面標題或摘要支援部分搜尋；網址請貼上完整連結。</p>
+                            <p id="monitor-search-help" class="field-help">依名稱、標籤、頁面標題或摘要搜尋；網址需輸入完整連結。</p>
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-label">標籤篩選</label>
@@ -95,7 +95,7 @@
                                 <option value="visible_text_stable" @selected(old('content_match', $filters['content_match']) === 'visible_text_stable')>可見文字維持不變</option>
                                 <option value="visible_text_pending" @selected(old('content_match', $filters['content_match']) === 'visible_text_pending')>文字比對尚未完成</option>
                             </select>
-                            <p id="monitor-content-match-help" class="field-help">文字片段比對只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；可見文字狀態適用已啟用文字變更警示的監測項目。「文字比對尚未完成」包含尚未建立基準或回應無法比對的項目。</p>
+                            <p id="monitor-content-match-help" class="field-help">比對範圍與狀態判讀見<a href="{{ route('features.index') }}#content-checks">功能說明</a>。</p>
                             @error('content_match')
                                 <p id="monitor-content-match-error" class="field-error">{{ $message }}</p>
                             @enderror
@@ -116,7 +116,7 @@
                                 aria-describedby="{{ $errors->has('http_status') ? 'monitor-http-status-help monitor-http-status-error' : 'monitor-http-status-help' }}"
                                 @if ($errors->has('http_status')) aria-invalid="true" @endif
                             >
-                            <p id="monitor-http-status-help" class="field-help">依最新一次 HTTP 檢查的回應碼精確篩選；沒有回應碼的項目不會列入。</p>
+                            <p id="monitor-http-status-help" class="field-help">依最近一次 HTTP 狀態碼篩選；無回應碼不列入。</p>
                             @error('http_status')
                                 <p id="monitor-http-status-error" class="field-error">{{ $message }}</p>
                             @enderror
@@ -137,7 +137,7 @@
                                 aria-describedby="{{ $errors->has('signal') ? 'monitor-signal-help monitor-signal-error' : 'monitor-signal-help' }}"
                                 @if ($errors->has('signal')) aria-invalid="true" @endif
                             >
-                            <p id="monitor-signal-help" class="field-help">輸入最新一般探測或 AdsBot 模擬的精確代碼，例如 timeout、dns_no_address 或 tls_verify。</p>
+                            <p id="monitor-signal-help" class="field-help">輸入精確代碼，例如 timeout、dns_no_address 或 tls_verify。</p>
                             @error('signal')
                                 <p id="monitor-signal-error" class="field-error">{{ $message }}</p>
                             @enderror
@@ -193,13 +193,13 @@
                                 <option value="export" @selected(old('action') === 'export')>匯出所選項目 CSV</option>
                                 <option value="delete" @selected(old('action') === 'delete')>刪除所選監測項目</option>
                             </select>
-                            <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。匯出會下載所選項目 CSV；立即檢查會略過已暫停、冷卻中或已有檢查執行的項目。</p>
+                            <p id="bulk-monitor-action-help" class="field-help">每次最多 50 個；立即檢查會略過暫停、冷卻中或執行中的項目。</p>
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="bulk-monitor-label">新標籤（最多 10 個）</label>
                             <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="1200" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
-                            <p id="bulk-monitor-label-help" class="field-help">以逗號、分號或換行分隔；每個標籤最多 100 字。只有選擇更新標籤時才會使用；留空會清除所選項目的標籤。</p>
+                            <p id="bulk-monitor-label-help" class="field-help">以逗號、分號或換行分隔；留空會清除所選標籤。</p>
                             @error('label')<p id="bulk-monitor-label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
@@ -210,7 +210,7 @@
                                     <option value="{{ $seconds }}" @selected((string) old('interval_seconds', '') === (string) $seconds)>{{ $intervalLabel }}</option>
                                 @endforeach
                             </select>
-                            <p id="bulk-monitor-interval-help" class="field-help">只有選擇「調整所選項目的檢查頻率」時才會使用。調整後會建立新設定版本，啟用中的項目會立即排入下一次檢查。</p>
+                            <p id="bulk-monitor-interval-help" class="field-help">只在調整頻率時使用；啟用中的項目會排入檢查。</p>
                             @error('interval_seconds')<p id="bulk-monitor-interval-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
@@ -218,7 +218,7 @@
                                 <input id="bulk-monitor-delete-confirmation" name="confirm_delete" type="checkbox" value="1" aria-describedby="bulk-monitor-delete-help{{ $errors->has('confirm_delete') ? ' bulk-monitor-delete-error' : '' }}" @checked(old('confirm_delete')) @if ($errors->has('confirm_delete')) aria-invalid="true" @endif>
                                 <span>我了解刪除會永久移除所選監測項目與歷史紀錄</span>
                             </label>
-                            <p id="bulk-monitor-delete-help" class="field-help">只有選擇刪除時才需要勾選；未勾選時系統不會刪除資料。</p>
+                            <p id="bulk-monitor-delete-help" class="field-help">只會刪除已勾選的項目。</p>
                             @error('confirm_delete')<p id="bulk-monitor-delete-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                     </div>

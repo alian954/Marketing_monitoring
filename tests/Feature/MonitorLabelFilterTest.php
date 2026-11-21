@@ -134,7 +134,7 @@ class MonitorLabelFilterTest extends TestCase
             ->get(route('monitors.index', $filters))
             ->assertOk()
             ->assertSee('完整網址')
-            ->assertSee('網址請貼上完整連結。')
+            ->assertSee('網址需輸入完整連結。')
             ->assertSee(route('monitors.export', $filters));
 
         $this->assertSame([$monitor->id], $response->viewData('monitors')->getCollection()->modelKeys());
@@ -184,7 +184,7 @@ class MonitorLabelFilterTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.index', $filters))
             ->assertOk()
-            ->assertSee('最近一次回應的頁面標題')
+            ->assertSee('依名稱、標籤、頁面標題或摘要搜尋')
             ->assertSee($targetMonitor->name)
             ->assertDontSee($outdatedTitleMonitor->name);
 
@@ -234,7 +234,7 @@ class MonitorLabelFilterTest extends TestCase
             ->get(route('monitors.index', $filters))
             ->assertOk()
             ->assertSee('頁面標題、摘要')
-            ->assertSee('最近一次回應的頁面標題或摘要')
+            ->assertSee('依名稱、標籤、頁面標題或摘要搜尋')
             ->assertSee($targetMonitor->name)
             ->assertDontSee($outdatedDescriptionMonitor->name);
 
@@ -302,7 +302,7 @@ class MonitorLabelFilterTest extends TestCase
                 ->get(route('monitors.index', ['content_match' => $matchState]))
                 ->assertOk()
                 ->assertSee('name="content_match"', false)
-                ->assertSee('只篩選 Facebook、Instagram、Threads、Dcard 公開貼文');
+                ->assertSee(route('features.index').'#content-checks');
 
             $this->assertEqualsCanonicalizing(
                 $expectedIds,

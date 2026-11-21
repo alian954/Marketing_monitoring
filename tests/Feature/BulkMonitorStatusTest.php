@@ -601,7 +601,7 @@ class BulkMonitorStatusTest extends TestCase
             ->assertSee('name="interval_seconds"', false)
             ->assertSee('bulk-monitor-interval', false)
             ->assertSee('name="label"', false)
-            ->assertSee('留空會清除所選項目的標籤');
+            ->assertSee('留空會清除所選標籤');
     }
 
     public function test_bulk_export_downloads_only_selected_monitors_and_keeps_csv_safety(): void

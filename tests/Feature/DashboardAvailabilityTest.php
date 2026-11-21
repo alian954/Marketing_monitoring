@@ -189,7 +189,7 @@ class DashboardAvailabilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('受監測貼文歷史品質')
-            ->assertSee('不代表 Facebook、Instagram、Threads 或 Dcard 的整體 SLA')
+            ->assertSee('結果只代表受監測樣本')
             ->assertSee('24 小時可用率')
             ->assertSee('24 小時覆蓋率')
             ->assertSee('7 天覆蓋率')

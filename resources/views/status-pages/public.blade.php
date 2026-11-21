@@ -40,7 +40,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="public-status-services-title" class="panel-title">監測服務</h2>
-                <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 90 天檢查成功率與估算時間可用率，以及目前事件與近 30 天已恢復事件；不會公開網址、比對文字或事件備註。社群貼文未設定預期文字且未啟用可見文字基準時不計入統計；啟用基準後，首次可比較回應只建立基準，之後依文字變更結果計算。</p>
+                <p class="panel-description">顯示所選服務的狀態、檢查時間、成功率、可用率與近期事件。網址、比對文字和事件備註不公開；貼文需設定預期文字或可見文字基準才計入可用率。</p>
             </div>
         </div>
         @foreach ($monitorGroups as $groupKey => $group)

@@ -31,7 +31,7 @@ class IncidentEscalationTest extends TestCase
             ->assertSee('升級告警收件信箱')
             ->assertSee('升級等待時間（分鐘）')
             ->assertSee('第二階段升級收件信箱')
-            ->assertSee('事件持續未恢復且未被認領');
+            ->assertSee('事件未恢復且未認領時');
     }
 
     public function test_monitor_creation_encrypts_escalation_recipients_and_saves_delay(): void

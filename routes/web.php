@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\MaintenanceWindowController;
@@ -46,6 +47,7 @@ Route::post('/status-subscriptions/{subscription}/unsubscribe', [StatusPageSubsc
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

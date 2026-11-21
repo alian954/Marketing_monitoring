@@ -341,7 +341,7 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('id="expected_text"', false)
             ->assertSee('maxlength="500"', false)
             ->assertSee('aria-describedby="expected-text-help"', false)
-            ->assertSee('每行輸入一個文字片段')
+            ->assertSee('每行一個片語，最多 500 字')
             ->assertSee('全部片段都需包含')
             ->assertSee('至少包含一個片段')
             ->assertSee('option value="present_any"', false);
@@ -540,7 +540,7 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('略過（社群監測）')
             ->assertSee('text/html; charset=UTF-8')
             ->assertSee('384 bytes')
-            ->assertSee('不額外模擬 AdsBot');
+            ->assertSee(route('features.index').'#social-monitoring');
     }
 
     public function test_unaccepted_http_status_does_not_report_social_post_text_as_missing(): void

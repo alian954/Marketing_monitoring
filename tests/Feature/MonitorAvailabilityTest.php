@@ -41,7 +41,7 @@ class MonitorAvailabilityTest extends TestCase
             ->assertOk()
             ->assertSee('估算時間可用率')
             ->assertSee('估算不可用')
-            ->assertSee('維護時段不計入觀測')
+            ->assertSee(route('features.index').'#availability')
             ->assertSee('62.50%')
             ->assertSee('0.56%');
         $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');

@@ -35,7 +35,7 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
             ->assertOk()
             ->assertSee('原始回應可見文字改變時建立警告')
             ->assertSee('分享預覽資訊改變時建立警告')
-            ->assertSee('首次完整回應會建立基準');
+            ->assertSee('首次完整回應建立基準');
 
         $this->put(route('monitors.update', $monitor), [
             'name' => $monitor->name,
@@ -111,7 +111,7 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('已保存首次基準，等待下次檢查比較')
-            ->assertSee('首次可比較回應只建立基準');
+            ->assertSee(route('features.index').'#availability');
 
         $stableRun = $this->createRun($monitor, $firstHash, now()->subMinutes(2));
         $manager->record($monitor, $stableRun, $this->probe($monitor, $firstHash), null);

@@ -38,8 +38,7 @@ class MonitorProbePreviewTest extends TestCase
             ->assertOk()
             ->assertSee('預檢網址')
             ->assertSee('formaction="'.route('monitors.probe-preview').'"', false)
-            ->assertSee('完整原始回應不會保存')
-            ->assertSee('仍可先建立監測、記錄後續檢查結果');
+            ->assertSee(route('features.index').'#website-checks');
     }
 
     public function test_probe_preview_requires_authentication(): void

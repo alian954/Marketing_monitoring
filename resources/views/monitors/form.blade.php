@@ -31,7 +31,7 @@
         <div class="heading-copy">
             <p class="eyebrow">監測設定</p>
             <h1 class="page-title">{{ $isEditing ? '編輯監測項目' : '新增監測項目' }}</h1>
-            <p class="page-description">可監測網站或 Facebook、Instagram、Threads、Dcard 公開貼文，定期確認連結回應與指定內容。</p>
+            <p class="page-description">監測網站或公開社群貼文。</p>
         </div>
     </div>
 
@@ -39,7 +39,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="monitor-form-title" class="panel-title">監測目標</h2>
-                <p class="panel-description">檢查會使用具備重新導向與目的地保護的安全 HTTP 請求，不會登入社群平台或呼叫平台 API。可先預檢一次網址；完整原始回應不會保存，回應提供的分享標題、摘要與圖片參照狀態只會暫時顯示，且不會建立監測紀錄或事件。</p>
+                <p class="panel-description">設定網址與檢查條件；預檢方式見<a href="{{ route('features.index') }}#website-checks">功能說明</a>。</p>
             </div>
         </div>
         <div class="panel-body">
@@ -92,7 +92,7 @@
                         <div class="field-group field-group-full">
                             <label class="field-label" for="name">監測名稱<span class="required-mark" aria-hidden="true">*</span></label>
                             <input class="field-input @error('name') is-invalid @enderror" id="name" name="name" type="text" value="{{ old('name', $monitor->name) }}" maxlength="120" autocomplete="off" required aria-describedby="{{ $errors->has('name') ? 'name-help name-error' : 'name-help' }}">
-                            <p id="name-help" class="field-help">請使用容易在總覽中辨識的簡短名稱。</p>
+                            <p id="name-help" class="field-help">使用容易辨識的名稱。</p>
                             @error('name')<p id="name-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 
@@ -102,49 +102,49 @@
                                 <p class="field-help">目前目的網址：<span class="masked-url">{{ $maskedUrl }}</span></p>
                             @endif
                             <input class="field-input @error('url') is-invalid @enderror" id="url" name="url" type="url" value="{{ old('url') }}" inputmode="url" autocomplete="url" maxlength="2048" placeholder="{{ $isEditing ? '留空即可保留目前網址' : 'https://example.com/health' }}" @unless ($isEditing) required @endunless aria-describedby="{{ $errors->has('url') ? 'url-help url-error' : 'url-help' }}">
-                            <p id="url-help" class="field-help">可貼上 Facebook、Instagram、Threads 或 Dcard 的公開貼文網址。社群貼文需設定下方文字片段；系統會比對伺服器回傳的原始 HTTP 內容，不執行 JavaScript。若平台回傳登入頁或動態載入外殼，文字可能無法確認，這不代表貼文未發布。若主機暫時無法取得可用 DNS 位址，仍可先建立監測、記錄後續檢查結果；每次連線都會重新驗證目的位址，私有、保留或特殊用途 IP 仍會封鎖。網址會加密儲存，畫面只顯示遮罩網址；編輯時留空可保留原網址。</p>
+                            <p id="url-help" class="field-help">支援一般網站與公開貼文網址。社群貼文依原始 HTTP 回應比對；限制見<a href="{{ route('features.index') }}#social-monitoring">功能說明</a>。</p>
                             @error('url')<p id="url-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="label">標籤（最多 10 個）</label>
                             <input class="field-input @error('label') is-invalid @enderror" id="label" name="label" type="text" value="{{ old('label', $monitor->tagInputValue()) }}" maxlength="1200" autocomplete="off" placeholder="正式環境, API, 商店" aria-describedby="label-help{{ $errors->has('label') ? ' label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
-                            <p id="label-help" class="field-help">以逗號、分號或換行分隔；每個標籤最多 100 字，重複標籤會自動合併。</p>
+                            <p id="label-help" class="field-help">以逗號、分號或換行分隔；每個標籤最多 100 字。</p>
                             @error('label')<p id="label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">
                             <label class="field-label" for="notification_email">告警收件信箱</label>
                             <textarea class="field-textarea @error('notification_email') is-invalid @enderror" id="notification_email" name="notification_email" rows="3" maxlength="2549" autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('notification_email') ? 'notification-email-help notification-email-error' : 'notification-email-help' }}" @if ($errors->has('notification_email')) aria-invalid="true" @endif>{{ old('notification_email', $monitor->notification_email) }}</textarea>
-                            <p id="notification-email-help" class="field-help">選填，最多 10 個信箱；每行一個，也可用逗號或分號分隔。填寫後，此監測的異常與恢復通知會寄給清單中的收件人；留空時使用全域 MONITOR_NOTIFY_EMAIL。重複信箱會自動合併。</p>
+                            <p id="notification-email-help" class="field-help">最多 10 個信箱；以換行、逗號或分號分隔。留空時使用全域設定。</p>
                             @error('notification_email')<p id="notification-email-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">
                             <label class="field-label" for="notification_escalation_email">升級告警收件信箱</label>
                             <textarea class="field-textarea @error('notification_escalation_email') is-invalid @enderror" id="notification_escalation_email" name="notification_escalation_email" rows="2" maxlength="2549" autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('notification_escalation_email') ? 'notification-escalation-email-help notification-escalation-email-error' : 'notification-escalation-email-help' }}" @if ($errors->has('notification_escalation_email')) aria-invalid="true" @endif>{{ old('notification_escalation_email', $monitor->notification_escalation_email) }}</textarea>
-                            <p id="notification-escalation-email-help" class="field-help">選填，每行一個信箱。事件持續未恢復且未被認領時，等待下方時間後只寄送一次升級通知；此清單不會收到一般異常通知。</p>
+                            <p id="notification-escalation-email-help" class="field-help">事件未恢復且未認領時，依等待時間通知此清單；不接收一般告警。</p>
                             @error('notification_escalation_email')<p id="notification-escalation-email-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="notification_escalation_delay_minutes">升級等待時間（分鐘）</label>
                             <input class="field-input @error('notification_escalation_delay_minutes') is-invalid @enderror" id="notification_escalation_delay_minutes" name="notification_escalation_delay_minutes" type="number" inputmode="numeric" min="5" max="1440" step="1" value="{{ old('notification_escalation_delay_minutes', $monitor->notification_escalation_delay_minutes) }}" aria-invalid="{{ $errors->has('notification_escalation_delay_minutes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('notification_escalation_delay_minutes') ? 'notification-escalation-delay-help notification-escalation-delay-error' : 'notification-escalation-delay-help' }}">
-                            <p id="notification-escalation-delay-help" class="field-help">設定升級收件信箱時必填，範圍為 5–1440 分鐘。事件若已恢復或在寄送前被認領，升級通知會取消。</p>
+                            <p id="notification-escalation-delay-help" class="field-help">5–1440 分鐘；事件恢復或被認領時取消升級通知。</p>
                             @error('notification_escalation_delay_minutes')<p id="notification-escalation-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">
                             <label class="field-label" for="notification_escalation_stage_2_email">第二階段升級收件信箱</label>
                             <textarea class="field-textarea @error('notification_escalation_stage_2_email') is-invalid @enderror" id="notification_escalation_stage_2_email" name="notification_escalation_stage_2_email" rows="2" maxlength="2549" autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('notification_escalation_stage_2_email') ? 'notification-escalation-stage-2-email-help notification-escalation-stage-2-email-error' : 'notification-escalation-stage-2-email-help' }}" @if ($errors->has('notification_escalation_stage_2_email')) aria-invalid="true" @endif>{{ old('notification_escalation_stage_2_email', $monitor->notification_escalation_stage_2_email) }}</textarea>
-                            <p id="notification-escalation-stage-2-email-help" class="field-help">選填，第一階段後仍未恢復且未被認領時，等待第二階段時間後通知這組收件人。需先設定第一階段。</p>
+                            <p id="notification-escalation-stage-2-email-help" class="field-help">第一階段後仍未恢復、未認領時通知；需先設定第一階段。</p>
                             @error('notification_escalation_stage_2_email')<p id="notification-escalation-stage-2-email-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="notification_escalation_stage_2_delay_minutes">第二階段等待時間（分鐘）</label>
                             <input class="field-input @error('notification_escalation_stage_2_delay_minutes') is-invalid @enderror" id="notification_escalation_stage_2_delay_minutes" name="notification_escalation_stage_2_delay_minutes" type="number" inputmode="numeric" min="5" max="1440" step="1" value="{{ old('notification_escalation_stage_2_delay_minutes', $monitor->notification_escalation_stage_2_delay_minutes) }}" aria-invalid="{{ $errors->has('notification_escalation_stage_2_delay_minutes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('notification_escalation_stage_2_delay_minutes') ? 'notification-escalation-stage-2-delay-help notification-escalation-stage-2-delay-error' : 'notification-escalation-stage-2-delay-help' }}">
-                            <p id="notification-escalation-stage-2-delay-help" class="field-help">設定第二階段收件信箱時必填，範圍為 5–1440 分鐘，且必須晚於第一階段；時間從事件開始計算。</p>
+                            <p id="notification-escalation-stage-2-delay-help" class="field-help">5–1440 分鐘，且須晚於第一階段。</p>
                             @error('notification_escalation_stage_2_delay_minutes')<p id="notification-escalation-stage-2-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -217,7 +217,7 @@
                         <div class="field-group field-group-full">
                             <label class="field-label" for="accepted_status_codes">額外接受的 HTTP 狀態碼</label>
                             <input class="field-input @error('accepted_status_codes') is-invalid @enderror" id="accepted_status_codes" name="accepted_status_codes" type="text" value="{{ $acceptedStatusCodesValue }}" maxlength="1000" autocomplete="off" placeholder="例如：401, 404 429" aria-describedby="{{ $errors->has('accepted_status_codes') ? 'accepted-status-codes-help accepted-status-codes-error' : 'accepted-status-codes-help' }}" @if ($errors->has('accepted_status_codes')) aria-invalid="true" @endif>
-                            <p id="accepted-status-codes-help" class="field-help">選填，輸入以逗號或空白分隔的 400–599 狀態碼。預設只接受 200–399；加入 429 後，429 會視為預期回應，不會觸發限制警告。</p>
+                            <p id="accepted-status-codes-help" class="field-help">以逗號或空白分隔，輸入 400–599；預設接受 200–399。</p>
                             @error('accepted_status_codes')<p id="accepted-status-codes-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -228,7 +228,7 @@
                                     <option value="{{ $seconds }}" @selected((string) old('interval_seconds', $monitor->interval_seconds ?? config('monitoring.interval_seconds')) === (string) $seconds)>{{ $label }}</option>
                                 @endforeach
                             </select>
-                            <p id="interval-help" class="field-help">檢查越頻繁，發出的請求越多。手動檢查不會更改排程頻率。</p>
+                            <p id="interval-help" class="field-help">頻率越高，請求越多；手動檢查不改排程。</p>
                             @error('interval_seconds')<p id="interval-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -239,14 +239,14 @@
                                     <option value="{{ $basisPoints }}" @selected((string) old('slo_target_basis_points', $monitor->slo_target_basis_points ?? \App\Models\Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS) === (string) $basisPoints)>{{ $label }}</option>
                                 @endforeach
                             </select>
-                            <p id="slo-target-help" class="field-help">用最近 30 天估算錯誤預算。只統計已觀測時間；維護時段與資料空窗會排除，請一併查看覆蓋率。</p>
+                            <p id="slo-target-help" class="field-help">依近 30 天觀測估算；請一併查看覆蓋率。</p>
                             @error('slo_target_basis_points')<p id="slo-target-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">
                             <label class="field-label" for="expected_text">預期貼文／回應文字片段</label>
                             <textarea class="field-textarea @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" rows="4" maxlength="500" autocomplete="off" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}" @if ($errors->has('expected_text')) aria-invalid="true" @endif>{{ old('expected_text', $monitor->expected_text) }}</textarea>
-                            <p id="expected-text-help" class="field-help">每行輸入一個文字片段，最多 500 字。「全部片段都需包含」要求每一行都找到；「至少包含一個片段」找到任一行即可；「不得出現」只要找到任一行就告警。任一片段模式適合原始回應只呈現部分貼文文字的情況；請使用具辨識度的片語降低誤符合。社群貼文可填入預期文字，或啟用下方可見文字變更警示，以首次完整回應建立基準。系統不保存整份回應或截圖；比對不區分大小寫。</p>
+                            <p id="expected-text-help" class="field-help">每行一個片語，最多 500 字；比對方式見選項與<a href="{{ route('features.index') }}#content-checks">功能說明</a>。</p>
                             @error('expected_text')<p id="expected-text-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 
@@ -257,7 +257,7 @@
                                 <option value="present_any" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'present_any')>至少包含一個片段</option>
                                 <option value="absent" @selected(old('expected_text_mode', $monitor->expected_text_mode ?? 'present') === 'absent')>回應中不得包含</option>
                             </select>
-                            <p id="expected-text-mode-help" class="field-help">只在上方輸入文字時套用。全部片段都需包含會檢查每一行；至少包含一個片段會檢查任一行；不得包含會在找到任一行時告警。</p>
+                            <p id="expected-text-mode-help" class="field-help">套用於上方輸入的片語。</p>
                             @error('expected_text_mode')<p id="expected-text-mode-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -267,7 +267,7 @@
                                 <input id="alert_on_visible_text_change" name="alert_on_visible_text_change" type="checkbox" value="1" aria-describedby="visible-text-change-help{{ $errors->has('alert_on_visible_text_change') ? ' visible-text-change-error' : '' }}" @checked(old('alert_on_visible_text_change', $monitor->alert_on_visible_text_change))>
                                 原始回應可見文字改變時建立警告
                             </label>
-                            <p id="visible-text-change-help" class="field-help">首次完整回應會建立基準；之後文字摘要改變會建立警告，並依既有通知設定發送；連續兩次檢查維持相同內容後自動恢復。只比對可見文字摘要，不保存回應本文；頁面上的動態時間或輪播文字也可能觸發警告。</p>
+                            <p id="visible-text-change-help" class="field-help">首次完整回應建立基準；內容變更時告警，連續兩次穩定後恢復。</p>
                             @error('alert_on_visible_text_change')<p id="visible-text-change-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -277,14 +277,14 @@
                                 <input id="alert_on_response_metadata_change" name="alert_on_response_metadata_change" type="checkbox" value="1" aria-describedby="response-metadata-change-help{{ $errors->has('alert_on_response_metadata_change') ? ' response-metadata-change-error' : '' }}" @checked(old('alert_on_response_metadata_change', $monitor->alert_on_response_metadata_change))>
                                 分享預覽資訊改變時建立警告
                             </label>
-                            <p id="response-metadata-change-help" class="field-help">比對標題、摘要、圖片參照、Open Graph 類型、標準網址參照與發佈／修改時間。首次完整回應建立基準；變更時建立警告，連續兩次回應穩定後自動恢復。若同時啟用可見文字警示，同一檢查只建立一個事件；事件只記錄變更欄位名稱。</p>
+                            <p id="response-metadata-change-help" class="field-help">首次完整回應建立基準；分享資訊變更時告警。比對欄位見<a href="{{ route('features.index') }}#content-checks">功能說明</a>。</p>
                             @error('alert_on_response_metadata_change')<p id="response-metadata-change-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="response_time_threshold_ms">回應時間警示門檻（毫秒）</label>
                             <input class="field-input @error('response_time_threshold_ms') is-invalid @enderror" id="response_time_threshold_ms" name="response_time_threshold_ms" type="number" inputmode="numeric" min="100" max="14000" step="1" value="{{ old('response_time_threshold_ms', $monitor->response_time_threshold_ms) }}" aria-invalid="{{ $errors->has('response_time_threshold_ms') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('response_time_threshold_ms') ? 'response-time-threshold-help response-time-threshold-error' : 'response-time-threshold-help' }}">
-                            <p id="response-time-threshold-help" class="field-help">留空即可停用。一般 HTTP 檢查成功且耗時超過 100–14,000 毫秒門檻時，系統會建立警告事件；此值需低於請求逾時上限。</p>
+                            <p id="response-time-threshold-help" class="field-help">留空停用；門檻須低於請求逾時值。</p>
                             @error('response_time_threshold_ms')<p id="response-time-threshold-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -297,21 +297,21 @@
                         <div class="field-group">
                             <label class="field-label" for="max_response_body_bytes">最大回應本文大小（bytes）</label>
                             <input class="field-input @error('max_response_body_bytes') is-invalid @enderror" id="max_response_body_bytes" name="max_response_body_bytes" type="number" inputmode="numeric" min="1" max="{{ (int) config('monitoring.max_body_bytes', 1048576) }}" step="1" value="{{ old('max_response_body_bytes', $monitor->max_response_body_bytes) }}" aria-invalid="{{ $errors->has('max_response_body_bytes') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('max_response_body_bytes') ? 'response-body-size-help max-response-body-bytes-error' : 'response-body-size-help' }}">
-                            <p id="response-body-size-help" class="field-help">可設定下限、上限或兩者；留空代表不檢查該方向。門檻最高為 {{ number_format((int) config('monitoring.max_body_bytes', 1048576)) }} bytes。超過讀取上限時大小無法判定，系統會建立警告並略過可用率計算。</p>
+                            <p id="response-body-size-help" class="field-help">可設下限、上限或兩者；留空停用該方向。</p>
                             @error('max_response_body_bytes')<p id="max-response-body-bytes-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="timeout_seconds">請求逾時上限（秒）</label>
                             <input class="field-input @error('timeout_seconds') is-invalid @enderror" id="timeout_seconds" name="timeout_seconds" type="number" inputmode="numeric" min="1" max="15" step="1" value="{{ old('timeout_seconds', $monitor->timeout_seconds ?? config('monitoring.request_timeout_seconds')) }}" required aria-invalid="{{ $errors->has('timeout_seconds') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('timeout_seconds') ? 'timeout-seconds-help timeout-seconds-error' : 'timeout-seconds-help' }}">
-                            <p id="timeout-seconds-help" class="field-help">每次 HTTP 檢查可設定 1–15 秒；一般檢查與 AdsBot 比對各自使用此上限，整個佇列工作仍有 45 秒總期限。</p>
+                            <p id="timeout-seconds-help" class="field-help">每次檢查上限為 1–15 秒。</p>
                             @error('timeout_seconds')<p id="timeout-seconds-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group">
                             <label class="field-label" for="confirmation_delay_seconds">異常與恢復確認延遲（秒）</label>
                             <input class="field-input @error('confirmation_delay_seconds') is-invalid @enderror" id="confirmation_delay_seconds" name="confirmation_delay_seconds" type="number" inputmode="numeric" min="30" max="300" step="15" value="{{ old('confirmation_delay_seconds', $monitor->confirmation_delay_seconds ?? config('monitoring.confirmation_delay_seconds')) }}" required aria-invalid="{{ $errors->has('confirmation_delay_seconds') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('confirmation_delay_seconds') ? 'confirmation-delay-help confirmation-delay-error' : 'confirmation-delay-help' }}">
-                            <p id="confirmation-delay-help" class="field-help">首次異常或恢復後，等待此時間再執行確認檢查；可設 30–300 秒。預設 60 秒，可降低短暫波動造成的誤報或過早恢復。</p>
+                            <p id="confirmation-delay-help" class="field-help">設定 30–300 秒，以再次檢查確認異常或恢復。</p>
                             @error('confirmation_delay_seconds')<p id="confirmation-delay-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
@@ -323,7 +323,7 @@
                     <p class="form-section-copy">可額外確認回應標頭是否存在或包含預期片語。條件會加密儲存；為避免洩漏，儲存或預檢後不會重新填入預期值。</p>
                     <div class="field-group field-group-full">
                         <label class="field-label" for="expected_response_header">回應標頭名稱與預期值</label>
-                        <p id="expected-response-header-help" class="field-help">格式為「名稱: 預期值」，比對不區分大小寫並檢查值是否包含片語；只確認標頭存在時，冒號後留空。留白會保留現有條件；輸入新條件會取代。最多 1200 字元。</p>
+                        <p id="expected-response-header-help" class="field-help">格式為「名稱: 預期值」；留空預期值時只檢查標頭是否存在。</p>
                         <input class="field-input @error('expected_response_header') is-invalid @enderror" id="expected_response_header" name="expected_response_header" type="text" value="" maxlength="1200" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="X-Robots-Tag: noindex" aria-describedby="expected-response-header-help{{ $errors->has('expected_response_header') ? ' expected-response-header-error' : '' }}" @if ($errors->has('expected_response_header')) aria-invalid="true" @endif>
                         @if ($configuredResponseHeaderName !== null)
                             <p class="field-help">目前監測標頭「{{ $configuredResponseHeaderName }}」；{{ $monitor->expectedResponseHeaderChecksPresenceOnly() ? '只檢查是否存在' : '預期值已加密保存' }}。</p>
@@ -343,7 +343,7 @@
                     <div class="field-group field-group-full">
                         <label class="field-label" for="request_headers">標頭名稱與值</label>
                         <textarea class="field-textarea @error('request_headers') is-invalid @enderror" id="request_headers" name="request_headers" rows="4" maxlength="8192" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('request_headers') ? 'request-headers-help request-headers-error' : 'request-headers-help' }}" @if ($errors->has('request_headers')) aria-invalid="true" @endif>{{ old('request_headers', '') }}</textarea>
-                        <p id="request-headers-help" class="field-help">每行輸入一個「名稱: 值」，最多 20 個，每個值最多 2048 字元，總長度最多 8192 位元組。User-Agent、Host、Proxy 與連線控制標頭由安全設定管理。預檢或驗證失敗後為保護憑證，標頭值不會留在表單；如要新增，請重新輸入。</p>
+                        <p id="request-headers-help" class="field-help">每行一個「名稱: 值」，最多 20 個。敏感值會加密；預檢或驗證失敗後需重新輸入。</p>
                         @if ($configuredRequestHeaders !== [])
                             <p class="field-help">目前已加密保存 {{ count($configuredRequestHeaders) }} 個標頭：{{ implode('、', array_keys($configuredRequestHeaders)) }}。留白會保留原設定；輸入新清單會取代原設定。</p>
                             <label class="field-check spaced-top" for="clear_request_headers">

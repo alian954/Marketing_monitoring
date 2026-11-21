@@ -112,10 +112,11 @@
     @if ($socialPlatform)
         <div class="form-note spaced-bottom">
             @if ($monitor->usesSocialContentBaseline())
-                {{ $socialPlatform }} 貼文以原始 HTTP 回應建立可見文字基準，不使用平台 API，也不執行 JavaScript。首次成功回應建立基準；後續文字變更會建立警告。系統不保存整份回應或截圖。
+                {{ $socialPlatform }} 貼文：首次完整回應建立文字基準，後續變更會告警。
             @else
-                {{ $socialPlatform }} 貼文以每行一個文字片段比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；可選擇要求全部片段出現，或只要求任一片段出現。每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
+                {{ $socialPlatform }} 貼文：依原始 HTTP 回應比對指定文字。
             @endif
+            <a href="{{ route('features.index') }}#social-monitoring">功能說明</a>
         </div>
     @endif
     @if ($monitor->socialContentExpectationMissing())
@@ -265,7 +266,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="recent-run-title" class="panel-title">最近一次檢查</h2>
-                    <p class="panel-description">顯示 HTTP 回應提供的分享標題、摘要與預覽圖片參照，並與同設定版本的前次完成檢查比較。</p>
+                    <p class="panel-description">最近一次 HTTP 回應與分享資訊。</p>
                 </div>
             </div>
             @if ($monitor->latestCheckRun)
@@ -448,7 +449,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="response-metadata-history-title" class="panel-title">分享預覽變更歷史</h2>
-                <p class="panel-description">比對完成檢查提供的分享標題、摘要、預覽圖片參照、Open Graph 類型、標準網址參照，以及發佈與修改時間；設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+                <p class="panel-description">顯示最近 10 次分享資訊變更；只比較相同設定版本。</p>
             </div>
             <span class="secondary-text">{{ count($responseMetadataChanges) }} 次變更</span>
         </div>
@@ -538,7 +539,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="redirect-history-title" class="panel-title">重新導向變更歷史</h2>
-                <p class="panel-description">比較完成檢查記錄的重新導向路徑；網址的查詢字串與片段不列入比較或顯示，設定版本不同的檢查不會互相比較，最多列出最近 10 次變更。</p>
+                <p class="panel-description">顯示最近 10 次重新導向路徑變更；網址參數不納入比較。</p>
             </div>
             <span class="secondary-text">{{ count($redirectChanges) }} 次變更</span>
         </div>
@@ -590,7 +591,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="response-content-history-title" class="panel-title">頁面文字變更歷史</h2>
-                <p class="panel-description">比較 HTTP 回應中的頁面文字，忽略 script、style 與空白差異。系統只保存指紋，不保存或顯示原文；首次檢查、超過讀取上限或設定版本不同時不比較，最多列出最近 10 次變更。</p>
+                <p class="panel-description">顯示最近 10 次頁面文字指紋變更；不保存原文。</p>
             </div>
             <span class="secondary-text">{{ count($responseContentChanges) }} 次變更</span>
         </div>
@@ -658,7 +659,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="latest-domain-observation-title" class="panel-title">每日網域註冊期限檢查</h2>
-                    <p class="panel-description">透過 IANA RDAP 服務查詢網站註冊網域，不使用社群平台 API。註冊機構未提供資料時會顯示為無法判定。</p>
+                    <p class="panel-description">每日查詢註冊網域到期日；無公開資料時顯示未判定。</p>
                 </div>
             </div>
             <div class="panel-body">
@@ -692,7 +693,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="maintenance-window-title" class="panel-title">維護時段</h2>
-            <p class="panel-description">排定期間照常檢查；期間內成立或恢復的事件仍會記錄，但不會建立通知。已排入佇列的通知仍照原排程處理。</p>
+            <p class="panel-description">維護期間仍會檢查並記錄事件，但不會建立新通知。</p>
             </div>
         </div>
 
@@ -788,7 +789,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-success-rate-title" class="panel-title">歷史檢查成功率</h2>
-                <p class="panel-description">以可判定的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。社群貼文未設定預期文字且未啟用可見文字基準時不計入統計；啟用基準後，首次可比較回應只建立基準，之後依文字變更結果計算。</p>
+                <p class="panel-description">依排程檢查結果計算成功率，不推估未觀測時間；統計方式見<a href="{{ route('features.index') }}#availability">功能說明</a>。</p>
             </div>
         </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的檢查成功率">
@@ -847,7 +848,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="daily-availability-title" class="panel-title">每日估算時間可用率</h2>
-                <p class="panel-description">依台灣曆日切分排程檢查的實際觀測時間；資料空窗與維護時段不計入。若整日觀測可用率為 100% 但覆蓋率低於 90%，會標示資料不足，避免把少量觀測當成整日正常。</p>
+                <p class="panel-description">依台灣日期統計；覆蓋率不足時標示資料不足。</p>
             </div>
         </div>
         <div class="panel-body public-status-history">
@@ -903,7 +904,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="availability-title" class="panel-title">估算時間可用率</h2>
-                <p class="panel-description">依已完成的排程 HTTP 檢查估算：通過目前狀態碼與文字條件的結果算可用，其他完成結果算不可用。每次結果最多延伸至檢查頻率加寬限時間；佇列工作失敗及超過延伸上限的資料空窗不算可用或停機。維護時段不計入觀測。可用率只計入有觀測的時間，覆蓋率顯示有觀測時間占非維護時間的比例。</p>
+                <p class="panel-description">可用率依實際觀測時間估算；資料空窗不算正常或故障。詳情見<a href="{{ route('features.index') }}#availability">功能說明</a>。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.availability.export', $monitor) }}">匯出可用率 CSV</a>
         </div>
@@ -911,7 +912,7 @@
             <div class="panel-header">
                 <div>
                     <h3 id="slo-budget-title" class="panel-title">服務可用率目標與 30 天錯誤預算</h3>
-                    <p class="panel-description">目標 {{ number_format($sloBudget['target_percent'], 2) }}%；允許的不可用時間按最近 30 天非維護時間計算，已用時間只包括實際觀測到的不可用時間。</p>
+                    <p class="panel-description">目標 {{ number_format($sloBudget['target_percent'], 2) }}%；依近 30 天非維護時間計算。</p>
                 </div>
             </div>
             <div class="stat-grid monitor-availability-grid" aria-label="服務可用率目標與錯誤預算">
@@ -967,7 +968,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="http-recovery-title" class="panel-title">HTTP 故障確認後恢復時間</h2>
-                <p class="panel-description">以最近 30 天內已恢復的 HTTP 事件計算，從事件確認成立到確認恢復；排除誤報、未確認及尚未恢復的事件。</p>
+                <p class="panel-description">近 30 天已確認並恢復的 HTTP 事件。</p>
             </div>
             @if ($httpRecoveryStats['count'] > 0)
                 <span class="secondary-text">{{ $httpRecoveryStats['count'] }} 件</span>
@@ -1069,7 +1070,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="response-body-size-title" class="panel-title">HTTP 回應大小趨勢</h2>
-                <p class="panel-description">最近 24 小時完整讀取的排程 HTTP 回應本文大小，可協助辨認空白頁或登入頁等回應變化。</p>
+                <p class="panel-description">最近 24 小時 HTTP 回應本文大小。</p>
             </div>
             @if ($responseBodySize['count'] > 0)
                 <span class="secondary-text">{{ $responseBodySize['count'] }} 筆</span>
@@ -1140,7 +1141,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-change-history-title" class="panel-title">DNS 記錄變更</h2>
-                <p class="panel-description">顯示最近 50 筆已完成排程檢查偵測到的 A/AAAA、CNAME、MX、NS、TXT 與 CAA 記錄變更，也包含主機暫時沒有公開 IP 回答的中斷。</p>
+                <p class="panel-description">顯示最近 50 筆排程檢查偵測到的 DNS 變更。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.dns-changes.export', $monitor) }}">匯出 DNS 變更 CSV</a>
         </div>
@@ -1432,7 +1433,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-history-title" class="panel-title">檢查紀錄</h2>
-                <p class="panel-description">顯示保留期間內的檢查結果；可展開查看最終網址與重新導向路徑，網址中的敏感參數會遮罩。</p>
+                <p class="panel-description">展開紀錄可查看遮罩後的最終網址與重新導向路徑。</p>
             </div>
             <div class="row-actions">
                 <a class="button button-secondary button-small" href="{{ $checkRunExportUrl }}">匯出檢查 CSV</a>

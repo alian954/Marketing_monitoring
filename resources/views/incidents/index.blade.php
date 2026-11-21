@@ -13,7 +13,7 @@
         <div class="heading-copy">
             <p class="eyebrow">工作區</p>
             <h1 class="page-title">事件紀錄</h1>
-            <p class="page-description">集中檢視所有監測事件，依監測項目、訊號、嚴重度與處理狀態搜尋；完整事件脈絡可在監測詳情頁查看。</p>
+            <p class="page-description">搜尋、認領與處理監測事件。</p>
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('incidents.export', $exportFilters) }}">匯出符合條件的 CSV</a>
@@ -191,7 +191,7 @@
                             <option value="1440" @selected(old('duration_minutes') === '1440')>24 小時</option>
                         </select>
                     </div>
-                    <p id="bulk-incident-help" class="field-help">選取本頁進行中的事件；批次暫停只會套用至已成立且通知尚未暫停的事件，恢復通知只會套用至目前已暫停的事件。認領會略過已認領事件，解除認領會略過尚未認領事件。每次最多處理 25 件，已恢復或已結束的事件無法變更。</p>
+                    <p id="bulk-incident-help" class="field-help">每次最多處理 25 件。操作只會套用至符合目前狀態的事件；已恢復或已結束的事件不會變更。</p>
                 </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="incident-list-title" tabindex="0">
                     <table class="data-table">

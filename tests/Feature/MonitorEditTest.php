@@ -172,7 +172,7 @@ class MonitorEditTest extends TestCase
         $firstPage = $this->actingAs($user)
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('顯示保留期間內的檢查結果');
+            ->assertSee('展開紀錄可查看遮罩後的最終網址與重新導向路徑');
 
         $firstPageRuns = $firstPage->viewData('runs');
         $this->assertSame(51, $firstPageRuns->total());

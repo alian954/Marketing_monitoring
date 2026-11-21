@@ -54,7 +54,7 @@ class MonitorCheckSuccessRateTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('以可判定的排程檢查計算成功率')
+            ->assertSee('依排程檢查結果計算成功率')
             ->assertSee('可判定')
             ->assertSee('2 次');
 
