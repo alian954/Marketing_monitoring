@@ -22,6 +22,30 @@ class Incident extends Model
 
     public const STATE_SUPERSEDED = 'superseded';
 
+    /** @var array<string, string> */
+    public const RULE_LABELS = [
+        'http' => 'HTTP 回應異常',
+        'probe_restricted' => '檢查受到限制',
+        'probe_incomplete' => '文字驗證未完成',
+        'content' => '原始回應未包含預期文字',
+        'forbidden_text' => '回應包含不應出現的文字',
+        'response_header' => 'HTTP 回應標頭不符合設定',
+        'response_time' => 'HTTP 回應時間超過設定門檻',
+        'response_content_change' => '原始回應文字或分享預覽資訊已變更',
+        'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
+        'monitor_stale' => '監測資料逾時',
+        'adsbot_difference' => 'AdsBot 模擬結果不同',
+        'tls_expired' => 'TLS 憑證已過期',
+        'tls_handshake' => 'TLS 交握失敗',
+        'tls_7d' => 'TLS 憑證將於 7 天內到期',
+        'tls_14d' => 'TLS 憑證將於 14 天內到期',
+        'tls_30d' => 'TLS 憑證將於 30 天內到期',
+        'domain_expired' => '網域已到期',
+        'domain_7d' => '網域將於 7 天內到期',
+        'domain_14d' => '網域將於 14 天內到期',
+        'domain_30d' => '網域將於 30 天內到期',
+    ];
+
     /** @use HasFactory<IncidentFactory> */
     use HasFactory;
 
@@ -59,5 +83,10 @@ class Incident extends Model
     public function outboxMessages(): HasMany
     {
         return $this->hasMany(NotificationOutbox::class);
+    }
+
+    public function ruleLabel(): string
+    {
+        return self::RULE_LABELS[$this->rule_key] ?? '其他監測異常';
     }
 }

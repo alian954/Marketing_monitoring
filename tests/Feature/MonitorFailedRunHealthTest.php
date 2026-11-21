@@ -79,7 +79,7 @@ class MonitorFailedRunHealthTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('警告')
-            ->assertSee('回應過大，驗證未完成');
+            ->assertSee('文字驗證未完成');
 
         $this->assertSame('warning', $response->viewData('monitors')->first()->health_state);
     }

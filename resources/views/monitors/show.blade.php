@@ -10,28 +10,6 @@
         : ($monitor->interval_seconds >= 60
             ? intdiv($monitor->interval_seconds, 60).' 分鐘'
             : $monitor->interval_seconds.' 秒');
-    $ruleLabels = [
-        'http' => 'HTTP 回應異常',
-        'probe_restricted' => '檢查受到限制',
-        'probe_incomplete' => '文字驗證未完成',
-        'content' => '原始回應未包含預期文字',
-        'forbidden_text' => '回應包含不應出現的文字',
-        'response_header' => 'HTTP 回應標頭不符合設定',
-        'response_time' => 'HTTP 回應時間超過設定門檻',
-        'response_content_change' => '原始回應文字或分享預覽資訊已變更',
-        'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
-        'monitor_stale' => '監測資料逾時',
-        'adsbot_difference' => 'AdsBot 模擬結果不同',
-        'tls_expired' => 'TLS 憑證已過期',
-        'tls_handshake' => 'TLS 交握失敗',
-        'tls_7d' => 'TLS 憑證將於 7 天內到期',
-        'tls_14d' => 'TLS 憑證將於 14 天內到期',
-        'tls_30d' => 'TLS 憑證將於 30 天內到期',
-        'domain_expired' => '網域已到期',
-        'domain_7d' => '網域將於 7 天內到期',
-        'domain_14d' => '網域將於 14 天內到期',
-        'domain_30d' => '網域將於 30 天內到期',
-    ];
     $domainExpiryErrorLabels = [
         'rdap_invalid_host' => '無法辨識此網址的網域名稱',
         'rdap_unsupported' => 'IANA 清單未提供此頂級網域的 RDAP 服務',
@@ -1066,7 +1044,7 @@
                         <div class="incident-card-header">
                             <div>
                                 <h3 id="incident-{{ $incident->id }}-title" class="incident-card-title">
-                                    {{ $ruleLabels[$incident->rule_key] ?? '其他監測異常' }}
+                                    {{ $incident->ruleLabel() }}
                                     <x-state-badge :state="$incident->state" />
                                 </h3>
                                 <div class="incident-meta">

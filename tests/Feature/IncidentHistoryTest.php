@@ -287,7 +287,7 @@ class IncidentHistoryTest extends TestCase
             ->assertSee('匯出符合條件的 CSV');
     }
 
-    public function test_incident_history_labels_incomplete_probe_warnings(): void
+    public function test_dashboard_and_incident_history_label_incomplete_probe_warnings(): void
     {
         $monitor = $this->createMonitor('Large campaign page');
         Incident::factory()->for($monitor)->create([
@@ -299,7 +299,13 @@ class IncidentHistoryTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('incidents.index', ['rule_key' => 'probe_incomplete']))
             ->assertOk()
-            ->assertSee('回應過大，驗證未完成')
+            ->assertSee('文字驗證未完成')
+            ->assertSee('Large campaign page');
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('文字驗證未完成')
             ->assertSee('Large campaign page');
     }
 

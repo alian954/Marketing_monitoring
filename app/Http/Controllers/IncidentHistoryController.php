@@ -14,29 +14,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class IncidentHistoryController extends Controller
 {
     /** @var array<string, string> */
-    private const RULE_LABELS = [
-        'http' => 'HTTP 回應異常',
-        'probe_restricted' => '檢查受到限制',
-        'probe_incomplete' => '回應過大，驗證未完成',
-        'content' => '原始回應未包含預期文字',
-        'forbidden_text' => '回應包含不應出現的文字',
-        'response_header' => 'HTTP 回應標頭不符合設定',
-        'response_time' => 'HTTP 回應時間超過設定門檻',
-        'response_content_change' => '原始回應文字或分享預覽資訊已變更',
-        'monitor_stale' => '監測資料逾時',
-        'adsbot_difference' => 'AdsBot 模擬結果不同',
-        'tls_expired' => 'TLS 憑證已過期',
-        'tls_handshake' => 'TLS 交握失敗',
-        'tls_7d' => 'TLS 憑證將於 7 天內到期',
-        'tls_14d' => 'TLS 憑證將於 14 天內到期',
-        'tls_30d' => 'TLS 憑證將於 30 天內到期',
-        'domain_expired' => '網域已到期',
-        'domain_7d' => '網域將於 7 天內到期',
-        'domain_14d' => '網域將於 14 天內到期',
-        'domain_30d' => '網域將於 30 天內到期',
-    ];
-
-    /** @var array<string, string> */
     private const STATE_LABELS = [
         Incident::STATE_SUSPECT => '確認中',
         Incident::STATE_OPEN => '已確認',
@@ -64,7 +41,7 @@ class IncidentHistoryController extends Controller
         return view('incidents.index', [
             'incidents' => $incidents,
             'monitors' => $monitors,
-            'ruleLabels' => self::RULE_LABELS,
+            'ruleLabels' => Incident::RULE_LABELS,
             'stateLabels' => self::STATE_LABELS,
             'severityLabels' => self::SEVERITY_LABELS,
             'filters' => [
@@ -159,7 +136,7 @@ class IncidentHistoryController extends Controller
             'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
             'notification_status' => ['nullable', 'in:active,snoozed'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
-            'rule_key' => ['nullable', 'in:'.implode(',', array_keys(self::RULE_LABELS))],
+            'rule_key' => ['nullable', 'in:'.implode(',', array_keys(Incident::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ], [
