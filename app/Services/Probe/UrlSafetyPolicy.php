@@ -62,7 +62,7 @@ class UrlSafetyPolicy
         }
 
         if ($ips === []) {
-            throw new ProbeException('dns_nxdomain', '主機名稱未解析到任何 IP 位址。');
+            throw new ProbeException('dns_no_address', 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
         }
 
         $ips = array_values(array_unique($ips));

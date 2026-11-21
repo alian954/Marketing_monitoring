@@ -18,7 +18,8 @@ class DnsChangeRecorder
         $currentCnames = $this->normalizeCnames($run->monitor_host_cnames);
         $currentRecords = $this->normalizeRecords($run->monitor_host_dns_records);
 
-        if ($run->monitor_host_ips === null || ($currentIps === [] && $run->error_type !== 'dns_nxdomain')) {
+        if ($run->monitor_host_ips === null
+            || ($currentIps === [] && ! in_array($run->error_type, ['dns_no_address', 'dns_nxdomain'], true))) {
             return;
         }
 
@@ -31,7 +32,7 @@ class DnsChangeRecorder
             ->whereNotNull('monitor_host_ips')
             ->where(function (Builder $query): void {
                 $query->whereJsonLength('monitor_host_ips', '>', 0)
-                    ->orWhere('error_type', 'dns_nxdomain');
+                    ->orWhereIn('error_type', ['dns_no_address', 'dns_nxdomain']);
             })
             ->where('id', '<>', $run->id)
             ->orderByDesc('finished_at')

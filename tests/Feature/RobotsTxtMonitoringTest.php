@@ -105,7 +105,7 @@ class RobotsTxtMonitoringTest extends TestCase
         {
             public function inspect(string $url, array $allowedRedirectHosts = []): RobotsTxtResult
             {
-                return RobotsTxtResult::failed(null, 'dns_nxdomain');
+                return RobotsTxtResult::failed(null, 'dns_no_address');
             }
         };
 
@@ -114,7 +114,7 @@ class RobotsTxtMonitoringTest extends TestCase
         $observation = RobotsObservation::query()->where('monitor_id', $monitor->id)->firstOrFail();
 
         $this->assertSame('error', $observation->file_state);
-        $this->assertSame('dns_nxdomain', $observation->error_type);
+        $this->assertSame('dns_no_address', $observation->error_type);
         $this->assertNull($observation->crawler_decisions);
         $this->assertNull($observation->policy_hash);
     }

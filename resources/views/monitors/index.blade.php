@@ -133,7 +133,7 @@
                                 aria-describedby="{{ $errors->has('signal') ? 'monitor-signal-help monitor-signal-error' : 'monitor-signal-help' }}"
                                 @if ($errors->has('signal')) aria-invalid="true" @endif
                             >
-                            <p id="monitor-signal-help" class="field-help">輸入最新一般探測或 AdsBot 模擬的精確代碼，例如 timeout、dns_nxdomain 或 tls_verify。</p>
+                            <p id="monitor-signal-help" class="field-help">輸入最新一般探測或 AdsBot 模擬的精確代碼，例如 timeout、dns_no_address 或 tls_verify。</p>
                             @error('signal')
                                 <p id="monitor-signal-error" class="field-error">{{ $message }}</p>
                             @enderror

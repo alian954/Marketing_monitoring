@@ -100,6 +100,58 @@ class ProbeSecurityTest extends TestCase
         ], $resolution['records']);
     }
 
+    public function test_secure_probe_does_not_call_an_empty_dns_answer_nxdomain(): void
+    {
+        $resolver = new NativeHostResolver(static fn (string $hostname, int $type): array => []);
+        $transport = new class implements ProbeTransport
+        {
+            public int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(200, null, '', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0');
+
+        $this->assertSame('dns_no_address', $result->errorType);
+        $this->assertSame([], $result->monitorHostIps);
+        $this->assertSame(0, $transport->calls);
+    }
+
+    public function test_url_policy_reports_an_empty_host_resolver_answer_as_missing_address_data(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return [];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(200, null, '', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0');
+
+        $this->assertSame('dns_no_address', $result->errorType);
+        $this->assertSame([], $result->monitorHostIps);
+        $this->assertSame(0, $transport->calls);
+    }
+
     public function test_mixed_public_and_private_dns_answers_are_blocked_before_any_dial(): void
     {
         $resolver = new class implements HostResolver

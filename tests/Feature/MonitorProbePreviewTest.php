@@ -156,6 +156,28 @@ class MonitorProbePreviewTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_probe_preview_explains_an_empty_dns_answer_without_claiming_nxdomain(): void
+    {
+        $url = 'https://example.test/dns-check';
+        $detail = 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。';
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->andReturn(new ProbeResult(null, 3, null, [], [], 'dns_no_address', $detail, null, null));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->followingRedirects()
+            ->post(route('monitors.probe-preview'), $this->socialPost($url, ''))
+            ->assertOk()
+            ->assertSee('預檢未通過')
+            ->assertSee('DNS 回應沒有可用的 A/AAAA 位址')
+            ->assertSee('可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
+
+        $this->assertDatabaseCount('monitors', 0);
+        $this->assertDatabaseCount('check_runs', 0);
+    }
+
     public function test_social_post_preview_reports_missing_text_without_creating_an_incident(): void
     {
         $url = 'https://www.facebook.com/page/posts/123/';

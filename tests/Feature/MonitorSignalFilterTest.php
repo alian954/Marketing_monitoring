@@ -39,7 +39,7 @@ class MonitorSignalFilterTest extends TestCase
         CheckRun::factory()->for($otherSignalMonitor)->create([
             'scheduled_at' => $asOf,
             'normal_status' => null,
-            'error_type' => 'dns_nxdomain',
+            'error_type' => 'dns_no_address',
         ]);
 
         $recoveredMonitor = $this->createMonitor('Recovered timeout');

@@ -2043,6 +2043,7 @@ class MonitorController extends Controller
             return match ($errorType) {
                 'blocked_ssrf' => '網址主機解析到非公開 IP，安全檢查已封鎖此次請求。',
                 'blocked_port' => '只允許連接埠 80 或 443。',
+                'dns_no_address' => 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。',
                 'dns_nxdomain' => '網址主機無法解析，請確認網址與 DNS 設定。',
                 'dns_timeout', 'timeout' => '請求逾時，請稍後再試。',
                 'tls_handshake', 'tls_verify' => '無法完成安全 TLS 連線。',

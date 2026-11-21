@@ -13,13 +13,13 @@ class DnsChangeRecorderTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_recorder_tracks_transition_from_public_addresses_to_a_dns_nxdomain_answer(): void
+    public function test_recorder_tracks_transition_from_public_addresses_to_a_dns_answer_without_addresses(): void
     {
         $monitor = Monitor::factory()->create();
         $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinutes(2));
-        $nxdomainRun = $this->createScheduledRun($monitor, [], 'dns_nxdomain', now()->subMinute());
+        $noAddressRun = $this->createScheduledRun($monitor, [], 'dns_no_address', now()->subMinute());
 
-        app(DnsChangeRecorder::class)->recordFor($nxdomainRun);
+        app(DnsChangeRecorder::class)->recordFor($noAddressRun);
 
         $event = DnsChangeEvent::query()->sole();
         $this->assertSame(['93.184.216.34'], $event->previous_ips);
@@ -27,10 +27,10 @@ class DnsChangeRecorderTest extends TestCase
         $this->assertSame('無公開 IP 回答', $event->currentIpsLabel());
     }
 
-    public function test_recorder_tracks_recovery_from_a_dns_nxdomain_answer_to_public_addresses(): void
+    public function test_recorder_tracks_recovery_from_a_dns_answer_without_addresses_to_public_addresses(): void
     {
         $monitor = Monitor::factory()->create();
-        $this->createScheduledRun($monitor, [], 'dns_nxdomain', now()->subMinutes(2));
+        $this->createScheduledRun($monitor, [], 'dns_no_address', now()->subMinutes(2));
         $recoveredRun = $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinute());
 
         app(DnsChangeRecorder::class)->recordFor($recoveredRun);
@@ -39,6 +39,20 @@ class DnsChangeRecorderTest extends TestCase
         $this->assertSame([], $event->previous_ips);
         $this->assertSame(['93.184.216.34'], $event->current_ips);
         $this->assertSame('無公開 IP 回答', $event->previousIpsLabel());
+    }
+
+    public function test_recorder_keeps_legacy_nxdomain_runs_in_recovery_comparisons(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $this->createScheduledRun($monitor, [], 'dns_nxdomain', now()->subMinutes(2));
+        $recoveredRun = $this->createScheduledRun($monitor, ['93.184.216.34'], null, now()->subMinute());
+
+        app(DnsChangeRecorder::class)->recordFor($recoveredRun);
+
+        $event = DnsChangeEvent::query()->sole();
+
+        $this->assertSame([], $event->previous_ips);
+        $this->assertSame(['93.184.216.34'], $event->current_ips);
     }
 
     public function test_recorder_tracks_a_cname_change_when_public_ip_addresses_are_unchanged(): void
@@ -172,10 +186,10 @@ class DnsChangeRecorderTest extends TestCase
     public function test_recorder_does_not_repeat_an_event_for_an_unchanged_nxdomain_answer(): void
     {
         $monitor = Monitor::factory()->create();
-        $this->createScheduledRun($monitor, [], 'dns_nxdomain', now()->subMinutes(2));
-        $nxdomainRun = $this->createScheduledRun($monitor, [], 'dns_nxdomain', now()->subMinute());
+        $this->createScheduledRun($monitor, [], 'dns_no_address', now()->subMinutes(2));
+        $noAddressRun = $this->createScheduledRun($monitor, [], 'dns_no_address', now()->subMinute());
 
-        app(DnsChangeRecorder::class)->recordFor($nxdomainRun);
+        app(DnsChangeRecorder::class)->recordFor($noAddressRun);
 
         $this->assertDatabaseCount('dns_change_events', 0);
     }

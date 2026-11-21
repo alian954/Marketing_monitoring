@@ -145,6 +145,58 @@ class MonitorWorkflowTest extends TestCase
             ->assertSee('noindex, nofollow');
     }
 
+    public function test_check_run_reports_a_missing_dns_address_without_claiming_nxdomain(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $monitor = Monitor::factory()->create();
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+
+        $this->assertNotNull($run);
+        $normal = new ProbeResult(
+            null,
+            3,
+            null,
+            [],
+            [],
+            'dns_no_address',
+            'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。',
+            null,
+            null,
+        );
+        $adsbot = new ProbeResult(
+            null,
+            2,
+            null,
+            [],
+            [],
+            'dns_no_address',
+            'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。',
+            null,
+            null,
+        );
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')->twice()->andReturn($normal, $adsbot);
+
+        (new RunMonitorCheck($run->id))->handle(
+            $probe,
+            app(IncidentManager::class),
+            app(RunScheduler::class),
+        );
+
+        $this->assertDatabaseHas('check_runs', [
+            'id' => $run->id,
+            'status' => 'completed',
+            'error_type' => 'dns_no_address',
+            'error_detail' => 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('dns_no_address')
+            ->assertSee('可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
+    }
+
     public function test_scheduled_run_persists_two_user_agent_results_once(): void
     {
         Queue::fake([RunMonitorCheck::class]);

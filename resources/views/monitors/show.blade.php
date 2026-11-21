@@ -21,7 +21,8 @@
         'rdap_expiration_unavailable' => '註冊機構未提供網域到期日',
         'rdap_insecure_endpoint' => 'RDAP 服務未使用 HTTPS',
         'blocked_ssrf' => 'RDAP 服務位址未通過安全檢查',
-        'dns_nxdomain' => 'RDAP 主機名稱無法解析',
+        'dns_no_address' => 'RDAP DNS 回應沒有可用的 A/AAAA 位址',
+        'dns_nxdomain' => '舊版 DNS 查詢未取得 IP 位址',
     ];
     $eventLabels = [
         'failure_seen' => '發現異常',
