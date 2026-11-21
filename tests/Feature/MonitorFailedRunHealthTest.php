@@ -52,6 +52,37 @@ class MonitorFailedRunHealthTest extends TestCase
         $this->assertSame('pending', $response->viewData('monitors')->first()->health_state);
     }
 
+    public function test_queued_follow_up_does_not_hide_the_latest_completed_result(): void
+    {
+        $monitor = Monitor::factory()->create(['last_checked_at' => now()]);
+        $completedRun = CheckRun::factory()->for($monitor)->create([
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(1),
+            'finished_at' => now()->subMinutes(1),
+            'normal_status' => 200,
+            'error_type' => null,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'source' => 'confirmation',
+            'status' => 'queued',
+            'scheduled_at' => now()->addMinutes(1),
+            'started_at' => null,
+            'finished_at' => null,
+            'normal_status' => null,
+        ]);
+
+        $freshMonitor = $monitor->fresh();
+        $this->assertNotNull($freshMonitor);
+        $this->assertSame($completedRun->id, $freshMonitor->latestCheckRun?->id);
+        $this->assertSame('healthy', $freshMonitor->healthState());
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('HTTP 200');
+    }
+
     public function test_indeterminate_content_check_is_a_warning_instead_of_a_site_outage(): void
     {
         $monitor = Monitor::factory()->create(['last_checked_at' => now()]);

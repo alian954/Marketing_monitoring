@@ -114,8 +114,10 @@ class Monitor extends Model
     public function latestCheckRun(): HasOne
     {
         return $this->hasOne(CheckRun::class)
-            ->ofMany(['scheduled_at' => 'MAX'], static function (Builder $query): void {
-                $query->whereNotIn('source', ['tls_daily', 'domain_daily']);
+            ->ofMany(['finished_at' => 'MAX'], static function (Builder $query): void {
+                $query->whereIn('status', ['completed', 'failed'])
+                    ->whereNotNull('finished_at')
+                    ->whereNotIn('source', ['tls_daily', 'domain_daily']);
             });
     }
 

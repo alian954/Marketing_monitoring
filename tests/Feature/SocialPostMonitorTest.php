@@ -563,6 +563,7 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('completed', $savedRun->status);
         $this->assertSame(200, $savedRun->normal_status);
         $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertSame($savedRun->id, $monitor->fresh()->latestCheckRun?->id);
         $this->assertSame('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。', $savedRun->error_detail);
         $this->assertNull($savedRun->expectedTextMatchResult());
         $this->assertTrue($savedRun->hasIndeterminateContentMatch());
@@ -583,6 +584,11 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('平台要求登入，無法判定貼文文字')
             ->assertSee('平台要求登入，無法判定')
             ->assertSee('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。');
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('平台要求登入，文字比對無法判定');
     }
 
     public function test_configured_http_status_can_still_confirm_social_post_text(): void
