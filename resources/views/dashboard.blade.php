@@ -138,7 +138,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">社群貼文最近一次可讀取的公開互動數</caption>
+                    <caption class="sr-only">社群貼文最近一次可讀取的公開互動數與觀看互動率</caption>
                     <thead>
                         <tr>
                             <th scope="col">貼文</th>
@@ -148,6 +148,8 @@
                             <th scope="col">讚</th>
                             <th scope="col">留言</th>
                             <th scope="col">分享</th>
+                            <th scope="col">總互動</th>
+                            <th scope="col">觀看互動率</th>
                             <th scope="col">資料時間</th>
                         </tr>
                     </thead>
@@ -167,6 +169,12 @@
                                 @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
                                     <td class="numeric">{{ isset($engagementMetrics[$metric]) ? number_format((int) $engagementMetrics[$metric]) : '—' }}</td>
                                 @endforeach
+                                <td class="numeric">
+                                    {{ $socialEngagementMonitor->getAttribute('social_engagement_interaction_total') !== null ? number_format((int) $socialEngagementMonitor->getAttribute('social_engagement_interaction_total')) : '—' }}
+                                </td>
+                                <td class="numeric">
+                                    {{ $socialEngagementMonitor->getAttribute('social_engagement_rate_percent') !== null ? number_format((float) $socialEngagementMonitor->getAttribute('social_engagement_rate_percent'), 2).'%' : '—' }}
+                                </td>
                                 <td>
                                     @if ($engagementRun?->finished_at)
                                         <time class="timestamp" datetime="{{ $engagementRun->finished_at->toIso8601String() }}">{{ $engagementRun->finished_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
@@ -179,7 +187,7 @@
                     </tbody>
                 </table>
             </div>
-            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次數值的資料時間。</p>
+            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。總互動與觀看互動率只在三項互動數完整時計算，觀看為 0 時不計比例。</p>
         @endif
     </section>
 

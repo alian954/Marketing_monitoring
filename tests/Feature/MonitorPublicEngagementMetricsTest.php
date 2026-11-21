@@ -105,7 +105,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $monitor = $this->createSocialMonitor();
         $this->createMetricRun($monitor, now(), ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
 
-        $this->actingAs(User::factory()->create())
+        $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('公開互動數')
@@ -113,7 +113,32 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('5,320')
             ->assertSee('184')
             ->assertSee('19')
-            ->assertSee('7');
+            ->assertSee('7')
+            ->assertSee('210')
+            ->assertSee('3.95%');
+
+        $monitorRow = $response->viewData('socialEngagementMonitors')->firstWhere('id', $monitor->id);
+        $this->assertSame(210, $monitorRow?->getAttribute('social_engagement_interaction_total'));
+        $this->assertSame(3.95, $monitorRow?->getAttribute('social_engagement_rate_percent'));
+    }
+
+    public function test_dashboard_hides_post_interaction_rates_when_counts_are_incomplete_or_views_are_zero(): void
+    {
+        $postWithMissingCount = $this->createSocialMonitor('PARTIAL001');
+        $this->createMetricRun($postWithMissingCount, now(), ['views' => 100, 'likes' => 10, 'comments' => null, 'shares' => 2, 'source' => 'json_ld']);
+
+        $postWithZeroViews = $this->createSocialMonitor('ZEROVIEWS001');
+        $this->createMetricRun($postWithZeroViews, now(), ['views' => 0, 'likes' => 0, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk();
+        $monitorRows = $response->viewData('socialEngagementMonitors')->keyBy('id');
+
+        $this->assertNull($monitorRows[$postWithMissingCount->id]->getAttribute('social_engagement_interaction_total'));
+        $this->assertNull($monitorRows[$postWithMissingCount->id]->getAttribute('social_engagement_rate_percent'));
+        $this->assertSame(0, $monitorRows[$postWithZeroViews->id]->getAttribute('social_engagement_interaction_total'));
+        $this->assertNull($monitorRows[$postWithZeroViews->id]->getAttribute('social_engagement_rate_percent'));
     }
 
     public function test_dashboard_distinguishes_public_engagement_capture_statuses(): void
