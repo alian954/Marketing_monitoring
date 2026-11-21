@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { DCARD_CAPTURE_READY_MARKERS } from './dcard-page-capture-readiness.mjs';
 
 const [, , targetUrl, expectedHost, pinnedIp, timeoutValue, browserChannel] = process.argv;
 const timeoutMilliseconds = Math.max(1, Math.min(15_000, Number.parseInt(timeoutValue ?? '10000', 10)));
@@ -70,7 +71,17 @@ try {
     page.setDefaultNavigationTimeout(timeoutMilliseconds);
     page.setDefaultTimeout(timeoutMilliseconds);
     const response = await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMilliseconds });
-    await page.waitForTimeout(Math.min(1_200, Math.max(0, timeoutMilliseconds - 250)));
+    const remainingWaitMilliseconds = Math.max(0, timeoutMilliseconds - (Date.now() - startedAt) - 250);
+    const contentWaitMilliseconds = Math.min(3_500, remainingWaitMilliseconds);
+
+    if (response?.status() !== 403 && contentWaitMilliseconds > 0) {
+        await page.waitForFunction((markers) => {
+            const visibleText = document.body?.innerText ?? '';
+            const normalizedText = visibleText.toLowerCase();
+
+            return markers.some((marker) => normalizedText.includes(marker.toLowerCase()));
+        }, DCARD_CAPTURE_READY_MARKERS, { timeout: contentWaitMilliseconds }).catch(() => {});
+    }
 
     const [html, visibleText, contentType, finalUrl] = await Promise.all([
         page.content(),
