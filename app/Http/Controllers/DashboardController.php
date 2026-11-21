@@ -76,6 +76,8 @@ class DashboardController extends Controller
             $platformCounts[$platform] = [
                 'label' => $label,
                 'total' => 0,
+                'enabled_total' => 0,
+                'engagement_captured' => 0,
                 'states' => array_fill_keys(['healthy', 'issue', 'warning', 'stale', 'paused', 'pending'], 0),
             ];
         }
@@ -130,6 +132,28 @@ class DashboardController extends Controller
                     $platform = $monitor->social_platform;
                     if (isset($platformCounts[$platform])) {
                         $platformCounts[$platform]['total']++;
+
+                        if ($monitor->enabled) {
+                            $platformCounts[$platform]['enabled_total']++;
+                            $latestCheckRun = $monitor->latestCheckRun;
+                            $latestMetrics = $latestCheckRun?->response_public_engagement_metrics;
+                            $hasPublicEngagementMetric = false;
+
+                            if ($latestCheckRun?->status === 'completed' && is_array($latestMetrics)) {
+                                foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+                                    if (is_numeric($latestMetrics[$metric] ?? null)) {
+                                        $hasPublicEngagementMetric = true;
+
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if ($hasPublicEngagementMetric) {
+                                $platformCounts[$platform]['engagement_captured']++;
+                            }
+                        }
+
                         $platformState = $healthState === 'suspect' ? 'issue' : $healthState;
 
                         if (array_key_exists($platformState, $platformCounts[$platform]['states'])) {

@@ -52,7 +52,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
-                <p class="panel-description">顯示各平台貼文的最近檢查狀態。</p>
+                <p class="panel-description">顯示各平台貼文狀態，以及啟用貼文最近一次檢查讀到互動數的篇數。</p>
             </div>
         </div>
         @if (collect($platformCounts)->sum('total') === 0)
@@ -63,11 +63,12 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-platform-summary-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 公開貼文健康狀態統計</caption>
+                    <caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 貼文健康狀態及最近讀到公開互動數的篇數</caption>
                     <thead>
                         <tr>
                             <th scope="col">平台</th>
                             <th scope="col">監測貼文</th>
+                            <th scope="col">最近讀到互動數</th>
                             <th scope="col">正常</th>
                             <th scope="col">需留意</th>
                             <th scope="col">警告</th>
@@ -86,6 +87,7 @@
                                     </a>
                                 </th>
                                 <td class="numeric">{{ $platformCount['total'] }}</td>
+                                <td class="numeric">{{ $platformCount['enabled_total'] > 0 ? number_format($platformCount['engagement_captured']).' / '.number_format($platformCount['enabled_total']) : '—' }}</td>
                                 <td class="numeric">{{ $platformCount['states']['healthy'] }}</td>
                                 <td class="numeric">{{ $platformCount['states']['issue'] }}</td>
                                 <td class="numeric">{{ $platformCount['states']['warning'] }}</td>

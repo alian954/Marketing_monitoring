@@ -24,6 +24,13 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             'config_version' => $facebookHealthyMonitor->config_version,
             'normal_status' => 200,
             'scheduled_at' => now(),
+            'response_public_engagement_metrics' => [
+                'views' => 100,
+                'likes' => 10,
+                'comments' => 2,
+                'shares' => 1,
+                'source' => 'embedded_json',
+            ],
         ]);
 
         $facebookIssueMonitor = $this->createSocialMonitor('facebook', 'FBISSUE001', 'Facebook issue');
@@ -62,6 +69,19 @@ class DashboardSocialPlatformSummaryTest extends TestCase
         CheckRun::factory()->for($dcardHealthyMonitor)->create([
             'config_version' => $dcardHealthyMonitor->config_version,
             'normal_status' => 200,
+            'scheduled_at' => now()->subMinute(),
+            'finished_at' => now()->subMinute(),
+            'response_public_engagement_metrics' => [
+                'views' => null,
+                'likes' => 20,
+                'comments' => 3,
+                'shares' => null,
+                'source' => 'rendered_dom',
+            ],
+        ]);
+        CheckRun::factory()->for($dcardHealthyMonitor)->create([
+            'config_version' => $dcardHealthyMonitor->config_version,
+            'normal_status' => 200,
             'scheduled_at' => now(),
         ]);
         Monitor::factory()->create([
@@ -78,8 +98,11 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             ->assertSee('需留意')
             ->assertSee('待檢查')
             ->assertSee('role="region" aria-labelledby="social-platform-summary-title" tabindex="0"', false)
-            ->assertSee('<caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 公開貼文健康狀態統計</caption>', false)
+            ->assertSee('<caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 貼文健康狀態及最近讀到公開互動數的篇數</caption>', false)
             ->assertSee('<th scope="col">平台</th>', false)
+            ->assertSee('<th scope="col">最近讀到互動數</th>', false)
+            ->assertSee('1 / 2')
+            ->assertSee('0 / 1')
             ->assertSee(route('monitors.index', ['platform' => 'facebook']), false)
             ->assertSee(route('monitors.index', ['platform' => 'instagram']), false)
             ->assertSee(route('monitors.index', ['platform' => 'threads']), false)
@@ -90,21 +113,29 @@ class DashboardSocialPlatformSummaryTest extends TestCase
         $this->assertSame([
             'label' => 'Facebook',
             'total' => 2,
+            'enabled_total' => 2,
+            'engagement_captured' => 1,
             'states' => ['healthy' => 1, 'issue' => 1, 'warning' => 0, 'stale' => 0, 'paused' => 0, 'pending' => 0],
         ], $platformCounts['facebook']);
         $this->assertSame([
             'label' => 'Instagram',
             'total' => 1,
+            'enabled_total' => 1,
+            'engagement_captured' => 0,
             'states' => ['healthy' => 0, 'issue' => 0, 'warning' => 1, 'stale' => 0, 'paused' => 0, 'pending' => 0],
         ], $platformCounts['instagram']);
         $this->assertSame([
             'label' => 'Threads',
             'total' => 4,
+            'enabled_total' => 3,
+            'engagement_captured' => 0,
             'states' => ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 1, 'paused' => 1, 'pending' => 2],
         ], $platformCounts['threads']);
         $this->assertSame([
             'label' => 'Dcard',
             'total' => 1,
+            'enabled_total' => 1,
+            'engagement_captured' => 0,
             'states' => ['healthy' => 1, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0, 'pending' => 0],
         ], $platformCounts['dcard']);
         $this->assertDatabaseHas('monitors', [
