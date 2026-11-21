@@ -235,6 +235,57 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="tagged-engagement-change-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="tagged-engagement-change-title" class="panel-title">近 7 天互動變化</h2>
+                <p class="panel-description">各貼文以區間內首次與最新讀數相減；只計有兩次讀值的貼文。跨標籤可能重複計入。</p>
+            </div>
+        </div>
+        @if ($socialEngagementChangeSummaries === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無可比較的互動歷史</h3>
+                <p class="empty-copy">貼文累積至少兩次可讀取數值後，這裡會彙總近 7 天變化。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-change-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依標籤彙總的社群貼文近 7 天互動數變化與資料覆蓋篇數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">標籤</th>
+                            @foreach (['views' => '觀看變化', 'likes' => '讚變化', 'comments' => '留言變化', 'shares' => '分享變化'] as $metricLabel)
+                                <th scope="col">{{ $metricLabel }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementChangeSummaries as $socialEngagementChangeSummary)
+                            <tr>
+                                <th scope="row">
+                                    @if ($socialEngagementChangeSummary['filter_label'] !== null)
+                                        <a href="{{ route('monitors.index', ['label' => $socialEngagementChangeSummary['filter_label']]) }}">{{ $socialEngagementChangeSummary['tag'] }}</a>
+                                    @else
+                                        {{ $socialEngagementChangeSummary['tag'] }}
+                                    @endif
+                                </th>
+                                @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
+                                    @php
+                                        $changeSummary = $socialEngagementChangeSummary['metrics'][$metric];
+                                    @endphp
+                                    <td class="numeric">
+                                        {{ $changeSummary['available'] > 0 ? ($changeSummary['change'] > 0 ? '+' : '').number_format($changeSummary['change']) : '—' }}
+                                        <span class="secondary-text">({{ number_format($changeSummary['available']) }} 篇)</span>
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="social-platform-availability-title">
         <div class="panel-header">
             <div>

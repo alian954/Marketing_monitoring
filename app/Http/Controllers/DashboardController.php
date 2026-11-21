@@ -153,6 +153,7 @@ class DashboardController extends Controller
             ->limit(self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS)
             ->get(['id', 'name', 'url', 'config_version', 'social_platform']);
         $socialEngagementSummaries = $this->socialEngagementSummaries();
+        $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries($asOf, $socialEngagementSummaries);
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -233,6 +234,7 @@ class DashboardController extends Controller
             'platformCounts' => $platformCounts,
             'socialEngagementMonitors' => $socialEngagementMonitors,
             'socialEngagementSummaries' => $socialEngagementSummaries,
+            'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
@@ -322,6 +324,113 @@ class DashboardController extends Controller
             });
 
         $results = array_values($summaries);
+        usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
+
+        return $results;
+    }
+
+    /**
+     * @param  list<array{tag: string, filter_label: string|null}>  $tagSummaries
+     * @return list<array{tag: string, filter_label: string|null, metrics: array<string, array{change: int, available: int}>}>
+     */
+    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries): array
+    {
+        $changesByTag = [];
+
+        foreach ($tagSummaries as $tagSummary) {
+            $tagKey = $tagSummary['filter_label'] ?? "\0untagged";
+            $changesByTag[$tagKey] = [
+                'tag' => $tagSummary['tag'],
+                'filter_label' => $tagSummary['filter_label'],
+                'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['change' => 0, 'available' => 0]),
+            ];
+        }
+
+        /**
+         * @var array<int, array<string, array<string, array{
+         *     first: array{id: int, finished_at: CarbonImmutable, value: int},
+         *     latest: array{id: int, finished_at: CarbonImmutable, value: int}
+         * }>>> $observationsByMonitor
+         */
+        $observationsByMonitor = [];
+
+        CheckRun::query()
+            ->select(['id', 'monitor_id', 'config_version', 'finished_at', 'response_public_engagement_metrics'])
+            ->where('status', 'completed')
+            ->whereNotNull('finished_at')
+            ->whereBetween('finished_at', [$asOf->subDays(7), $asOf])
+            ->whereNotNull('response_public_engagement_metrics')
+            ->whereNotIn('source', ['tls_daily', 'domain_daily'])
+            ->whereHas('monitor', static function (Builder $query): void {
+                $query->whereNotNull('social_platform')
+                    ->whereColumn('check_runs.config_version', 'monitors.config_version');
+            })
+            ->with('monitor:id,social_platform,config_version,tags,label')
+            ->lazyById(500)
+            ->each(function (CheckRun $run) use (&$observationsByMonitor): void {
+                $monitor = $run->monitor;
+                $metrics = $run->response_public_engagement_metrics ?? [];
+                $tags = $monitor->tagNames();
+                $tagEntries = $tags === [] ? [null] : array_unique($tags);
+
+                foreach ($tagEntries as $tag) {
+                    $tagKey = $tag ?? "\0untagged";
+
+                    foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+                        if (! is_numeric($metrics[$metric] ?? null)) {
+                            continue;
+                        }
+
+                        $sample = [
+                            'id' => (int) $run->id,
+                            'finished_at' => $run->finished_at,
+                            'value' => (int) $metrics[$metric],
+                        ];
+                        $observation = $observationsByMonitor[$monitor->id][$tagKey][$metric] ?? null;
+
+                        if ($observation === null) {
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric] = [
+                                'first' => $sample,
+                                'latest' => $sample,
+                            ];
+
+                            continue;
+                        }
+
+                        $firstSample = $observation['first'];
+                        $latestSample = $observation['latest'];
+
+                        if ($sample['finished_at']->lessThan($firstSample['finished_at'])
+                            || ($sample['finished_at']->equalTo($firstSample['finished_at']) && $sample['id'] < $firstSample['id'])) {
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric]['first'] = $sample;
+                        }
+
+                        if ($sample['finished_at']->greaterThan($latestSample['finished_at'])
+                            || ($sample['finished_at']->equalTo($latestSample['finished_at']) && $sample['id'] > $latestSample['id'])) {
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric]['latest'] = $sample;
+                        }
+                    }
+                }
+            });
+
+        foreach ($observationsByMonitor as $monitorObservations) {
+            foreach ($monitorObservations as $tagKey => $metricObservations) {
+                if (! isset($changesByTag[$tagKey])) {
+                    continue;
+                }
+
+                foreach ($metricObservations as $metric => $observation) {
+                    if ($observation['first']['id'] === $observation['latest']['id']) {
+                        continue;
+                    }
+
+                    $changesByTag[$tagKey]['metrics'][$metric]['change'] += $observation['latest']['value'] - $observation['first']['value'];
+                    $changesByTag[$tagKey]['metrics'][$metric]['available']++;
+                }
+            }
+        }
+
+        $results = array_values($changesByTag);
         usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
         return $results;

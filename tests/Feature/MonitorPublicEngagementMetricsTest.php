@@ -162,6 +162,46 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(now()->toIso8601String(), $summaries['summer']['latest_at']->toIso8601String());
     }
 
+    public function test_dashboard_summarizes_seven_day_metric_changes_by_tag_with_coverage(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $summerPost = $this->createSocialMonitor('WEEKLY001', 'summer, brand');
+        $secondSummerPost = $this->createSocialMonitor('WEEKLY002', 'summer');
+        $singleSnapshotPost = $this->createSocialMonitor('WEEKLY003', 'summer');
+        $staleConfigPost = $this->createSocialMonitor('WEEKLY004', 'summer');
+
+        $this->createMetricRun($summerPost, now()->subDays(8), ['views' => 10000, 'likes' => 1000, 'comments' => 100, 'shares' => 50, 'source' => 'json_ld']);
+        $this->createMetricRun($summerPost, now()->subDays(6), ['views' => 1000, 'likes' => 100, 'comments' => 20, 'shares' => 10, 'source' => 'json_ld']);
+        $this->createMetricRun($summerPost, now(), ['views' => 1500, 'likes' => 130, 'comments' => 29, 'shares' => 15, 'source' => 'json_ld']);
+        $this->createMetricRun($secondSummerPost, now()->subDays(6), ['views' => 400, 'likes' => 50, 'comments' => 4, 'shares' => 2, 'source' => 'json_ld']);
+        $this->createMetricRun($secondSummerPost, now(), ['views' => 600, 'likes' => 70, 'comments' => 9, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($singleSnapshotPost, now(), ['views' => 100, 'likes' => 20, 'comments' => 1, 'shares' => 0, 'source' => 'json_ld']);
+        $staleConfigRun = $this->createMetricRun($staleConfigPost, now()->subDays(6), ['views' => 100, 'likes' => 20, 'comments' => 1, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($staleConfigPost, now(), ['views' => 200, 'likes' => 30, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+        $staleConfigRun->forceFill(['config_version' => $staleConfigPost->config_version - 1])->save();
+        $staleConfigPost->checkRuns()->latest('id')->firstOrFail()->forceFill([
+            'config_version' => $staleConfigPost->config_version - 1,
+        ])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('近 7 天互動變化')
+            ->assertSee('只計有兩次讀值的貼文')
+            ->assertSee('+700')
+            ->assertSee('+50');
+
+        $summaries = collect($response->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
+
+        $this->assertCount(2, $summaries);
+        $this->assertSame(['change' => 700, 'available' => 2], $summaries['summer']['metrics']['views']);
+        $this->assertSame(['change' => 50, 'available' => 2], $summaries['summer']['metrics']['likes']);
+        $this->assertSame(['change' => 14, 'available' => 2], $summaries['summer']['metrics']['comments']);
+        $this->assertSame(['change' => 6, 'available' => 2], $summaries['summer']['metrics']['shares']);
+        $this->assertSame(['change' => 500, 'available' => 1], $summaries['brand']['metrics']['views']);
+        $this->assertSame(['change' => 30, 'available' => 1], $summaries['brand']['metrics']['likes']);
+    }
+
     public function test_social_engagement_csv_exports_latest_values_with_formula_protection(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
