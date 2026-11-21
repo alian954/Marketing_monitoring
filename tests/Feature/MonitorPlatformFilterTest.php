@@ -82,6 +82,21 @@ class MonitorPlatformFilterTest extends TestCase
         ]);
     }
 
+    public function test_threads_share_link_migration_backfills_existing_encrypted_monitor_rows(): void
+    {
+        $url = 'https://www.threads.com/share/BAGYFgPihu';
+        $monitor = $this->createMonitor('Threads share link', $url);
+        DB::table('monitors')->where('id', $monitor->id)->update(['social_platform' => null]);
+        $migration = require base_path('database/migrations/2026_11_21_103640_backfill_threads_share_link_platforms.php');
+
+        $migration->up();
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'threads',
+        ]);
+    }
+
     public function test_monitor_list_and_export_reject_unknown_platform_filters(): void
     {
         $user = User::factory()->create();

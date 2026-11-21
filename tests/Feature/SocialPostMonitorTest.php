@@ -127,6 +127,23 @@ class SocialPostMonitorTest extends TestCase
         ]);
     }
 
+    public function test_threads_share_link_can_be_monitored_with_expected_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.threads.com/share/BAGYFgPihu';
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost($url, '原來社區裝電動車充電樁'));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame('Threads', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'threads',
+        ]);
+    }
+
     public function test_facebook_group_permalink_can_be_monitored_as_a_social_post(): void
     {
         $url = 'https://www.facebook.com/groups/marketing/permalink/1234567890/';
@@ -331,6 +348,7 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://www.instagram.com/stories/creator/123'));
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://instagr.am/p/ABC123/'));
         $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://threads.net/@creator/post/123'));
+        $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://www.threads.com/share/BAGYFgPihu'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://fb.watch/ABC123/'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.facebook.com/creator'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.instagram.com/creator/'));

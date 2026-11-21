@@ -50,6 +50,13 @@ class DashboardSocialPlatformSummaryTest extends TestCase
 
         $this->createSocialMonitor('threads', 'THREADPAUSE1', 'Threads paused', ['enabled' => false]);
         $this->createSocialMonitor('threads', 'THREADPEND01', 'Threads pending');
+        $threadsShareUrl = 'https://www.threads.com/share/BAGYFgPihu';
+        $threadsShareMonitor = Monitor::factory()->create([
+            'name' => 'Threads share link',
+            'url' => $threadsShareUrl,
+            'url_hash' => Monitor::fingerprintUrl($threadsShareUrl),
+            'expected_text' => 'Original post text',
+        ]);
         Monitor::factory()->create([
             'name' => 'Website excluded from platform totals',
             'url' => 'https://example.test/status',
@@ -84,10 +91,14 @@ class DashboardSocialPlatformSummaryTest extends TestCase
         ], $platformCounts['instagram']);
         $this->assertSame([
             'label' => 'Threads',
-            'total' => 3,
-            'states' => ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 1, 'paused' => 1, 'pending' => 1],
+            'total' => 4,
+            'states' => ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 1, 'paused' => 1, 'pending' => 2],
         ], $platformCounts['threads']);
-        $this->assertSame(7, $response->viewData('monitorCount'));
+        $this->assertDatabaseHas('monitors', [
+            'id' => $threadsShareMonitor->id,
+            'social_platform' => 'threads',
+        ]);
+        $this->assertSame(8, $response->viewData('monitorCount'));
     }
 
     public function test_dashboard_shows_an_empty_state_when_no_social_posts_are_monitored(): void

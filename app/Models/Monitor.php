@@ -249,7 +249,7 @@ class Monitor extends Model
                 return $platform;
             }
 
-            if ($platform === 'Threads' && preg_match('/\A@[^\/]+\/post\/[^\/]+\z|\At\/[^\/]+\z/i', $path) === 1) {
+            if ($platform === 'Threads' && preg_match('/\A@[^\/]+\/post\/[^\/]+\z|\At\/[^\/]+\z|\Ashare\/[^\/]+\z/i', $path) === 1) {
                 return $platform;
             }
         }
