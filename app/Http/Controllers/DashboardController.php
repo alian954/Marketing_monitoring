@@ -146,8 +146,29 @@ class DashboardController extends Controller
         $monitors->each(function (Monitor $monitor) use ($urlMasker): void {
             $monitor->setAttribute('masked_url', $urlMasker->mask($monitor->url));
         });
-        $socialEngagementMonitors = Monitor::query()
-            ->whereNotNull('social_platform')
+        $socialEngagementPlatformOptions = [
+            'all' => '全部平台',
+            'facebook' => 'Facebook',
+            'instagram' => 'Instagram',
+            'threads' => 'Threads',
+            'dcard' => 'Dcard',
+        ];
+        $requestedSocialEngagementPlatform = $request->query('engagement_platform');
+        $socialEngagementSelectedPlatform = is_string($requestedSocialEngagementPlatform)
+            && array_key_exists($requestedSocialEngagementPlatform, $socialEngagementPlatformOptions)
+                ? $requestedSocialEngagementPlatform
+                : 'all';
+        $socialEngagementPlatform = $socialEngagementSelectedPlatform === 'all'
+            ? null
+            : $socialEngagementSelectedPlatform;
+        $socialEngagementMonitorsQuery = Monitor::query()
+            ->whereNotNull('social_platform');
+
+        if ($socialEngagementPlatform !== null) {
+            $socialEngagementMonitorsQuery->where('social_platform', $socialEngagementPlatform);
+        }
+
+        $socialEngagementMonitors = $socialEngagementMonitorsQuery
             ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
             ->orderByDesc('last_checked_at')
             ->orderBy('name')
@@ -170,7 +191,7 @@ class DashboardController extends Controller
                 $this->socialEngagementCaptureStatus($latestCheckRun, $engagementRun),
             );
         });
-        $socialEngagementSummaries = $this->socialEngagementSummaries();
+        $socialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform);
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -185,6 +206,7 @@ class DashboardController extends Controller
             $socialEngagementSummaries,
             $socialEngagementChangePeriodDays,
             $socialEngagementChangeComparisonAvailable,
+            $socialEngagementPlatform,
         );
 
         $incidents = Incident::query()
@@ -265,6 +287,8 @@ class DashboardController extends Controller
             'counts' => $counts,
             'platformCounts' => $platformCounts,
             'socialEngagementMonitors' => $socialEngagementMonitors,
+            'socialEngagementPlatformOptions' => $socialEngagementPlatformOptions,
+            'socialEngagementSelectedPlatform' => $socialEngagementSelectedPlatform,
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
             'socialEngagementChangePeriodDays' => $socialEngagementChangePeriodDays,
@@ -286,7 +310,7 @@ class DashboardController extends Controller
      *     latest_at: CarbonImmutable|null
      * }>
      */
-    private function socialEngagementSummaries(): array
+    private function socialEngagementSummaries(?string $platform): array
     {
         /**
          * @var array<string, array{
@@ -300,8 +324,13 @@ class DashboardController extends Controller
          */
         $summaries = [];
 
-        Monitor::query()
-            ->whereNotNull('social_platform')
+        $monitorsQuery = Monitor::query()->whereNotNull('social_platform');
+
+        if ($platform !== null) {
+            $monitorsQuery->where('social_platform', $platform);
+        }
+
+        $monitorsQuery
             ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
             ->with('latestPublicEngagementCheckRun')
             ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries): void {
@@ -392,7 +421,7 @@ class DashboardController extends Controller
      *     }>
      * }>
      */
-    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod): array
+    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod, ?string $platform): array
     {
         $changesByTag = [];
 
@@ -428,9 +457,13 @@ class DashboardController extends Controller
             ->whereBetween('finished_at', [$observationsStartAt, $asOf])
             ->whereNotNull('response_public_engagement_metrics')
             ->whereNotIn('source', ['tls_daily', 'domain_daily'])
-            ->whereHas('monitor', static function (Builder $query): void {
+            ->whereHas('monitor', static function (Builder $query) use ($platform): void {
                 $query->whereNotNull('social_platform')
                     ->whereColumn('check_runs.config_version', 'monitors.config_version');
+
+                if ($platform !== null) {
+                    $query->where('social_platform', $platform);
+                }
             })
             ->with('monitor:id,social_platform,config_version,tags,label')
             ->lazyById(500)

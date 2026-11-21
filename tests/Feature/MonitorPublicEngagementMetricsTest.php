@@ -205,6 +205,67 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(now()->toIso8601String(), $summaries['summer']['latest_at']->toIso8601String());
     }
 
+    public function test_dashboard_platform_filter_scopes_engagement_data_and_preserves_other_platform_health_counts(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $platformMetrics = [
+            'facebook' => [
+                ['views' => 100, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld'],
+                ['views' => 150, 'likes' => 14, 'comments' => 3, 'shares' => 2, 'source' => 'json_ld'],
+            ],
+            'instagram' => [
+                ['views' => 1000, 'likes' => 100, 'comments' => 30, 'shares' => 10, 'source' => 'json_ld'],
+                ['views' => 2000, 'likes' => 250, 'comments' => 40, 'shares' => 20, 'source' => 'json_ld'],
+            ],
+            'threads' => [
+                ['views' => 500, 'likes' => 80, 'comments' => 15, 'shares' => 5, 'source' => 'json_ld'],
+                ['views' => 900, 'likes' => 125, 'comments' => 25, 'shares' => 10, 'source' => 'json_ld'],
+            ],
+            'dcard' => [
+                ['views' => null, 'likes' => 20, 'comments' => 3, 'shares' => 2, 'source' => 'rendered_dom'],
+                ['views' => null, 'likes' => 29, 'comments' => 5, 'shares' => 4, 'source' => 'rendered_dom'],
+            ],
+        ];
+        $monitors = [];
+
+        foreach ($platformMetrics as $platform => [$previousMetrics, $latestMetrics]) {
+            $postId = $platform === 'dcard' ? '262476944' : 'FILTER'.strtoupper($platform);
+            $monitor = $this->createSocialMonitorForPlatform($platform, $postId, 'summer');
+            $monitors[$platform] = $monitor;
+            $this->createMetricRun($monitor, now()->subDays(2), $previousMetrics);
+            $this->createMetricRun($monitor, now(), $latestMetrics);
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_period' => 7, 'engagement_platform' => 'facebook']))
+            ->assertOk()
+            ->assertSee('<option value="facebook" selected>Facebook</option>', false)
+            ->assertSee('name="engagement_period" value="7"', false)
+            ->assertSee(route('dashboard', ['engagement_period' => 30, 'engagement_platform' => 'facebook']))
+            ->assertSee(route('monitors.social-engagement.export', ['engagement_platform' => 'facebook']), false)
+            ->assertSee(route('monitors.social-engagement.export.history', ['engagement_platform' => 'facebook']), false);
+
+        $this->assertSame([$monitors['facebook']->id], $response->viewData('socialEngagementMonitors')->modelKeys());
+        $this->assertSame(1, $response->viewData('socialEngagementSummaries')[0]['monitor_count']);
+        $this->assertSame(['total' => 14, 'available' => 1], $response->viewData('socialEngagementSummaries')[0]['metrics']['likes']);
+        $this->assertSame(['change' => 4, 'available' => 1], Arr::only(
+            $response->viewData('socialEngagementChangeSummaries')[0]['metrics']['likes'],
+            ['change', 'available'],
+        ));
+        $this->assertSame(1, $response->viewData('platformCounts')['instagram']['total']);
+        $this->assertSame(1, $response->viewData('platformCounts')['threads']['total']);
+        $this->assertSame(1, $response->viewData('platformCounts')['dcard']['total']);
+
+        $invalidPlatformResponse = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_platform' => 'unknown']))
+            ->assertOk()
+            ->assertSee('<option value="all" selected>全部平台</option>', false);
+
+        $this->assertCount(4, $invalidPlatformResponse->viewData('socialEngagementMonitors'));
+        $this->assertCount(1, $invalidPlatformResponse->viewData('socialEngagementSummaries'));
+        $this->assertSame(4, $invalidPlatformResponse->viewData('socialEngagementSummaries')[0]['monitor_count']);
+    }
+
     public function test_dashboard_summarizes_seven_day_metric_changes_by_tag_with_coverage(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
@@ -399,6 +460,38 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('60.00', $rows[2]['public_engagement_rate_percent']);
     }
 
+    public function test_social_engagement_csv_exports_can_be_scoped_to_the_selected_platform(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $facebook = $this->createSocialMonitorForPlatform('facebook', 'EXPORTFB001', 'campaign');
+        $instagram = $this->createSocialMonitorForPlatform('instagram', 'EXPORTIG001', 'campaign');
+        $this->createMetricRun($facebook, now()->subHour(), ['views' => 100, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($facebook, now(), ['views' => 150, 'likes' => 15, 'comments' => 3, 'shares' => 2, 'source' => 'json_ld']);
+        $this->createMetricRun($instagram, now()->subHour(), ['views' => 1000, 'likes' => 100, 'comments' => 20, 'shares' => 10, 'source' => 'json_ld']);
+        $this->createMetricRun($instagram, now(), ['views' => 1500, 'likes' => 150, 'comments' => 30, 'shares' => 15, 'source' => 'json_ld']);
+        $user = User::factory()->create();
+
+        $latestRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export', ['engagement_platform' => 'facebook']))
+            ->assertOk()
+            ->streamedContent();
+        $latestRows = $this->csvRows($latestRows);
+
+        $this->assertCount(1, $latestRows);
+        $this->assertSame('Facebook', $latestRows[0]['platform']);
+        $this->assertSame($facebook->name, $latestRows[0]['monitor_name']);
+
+        $historyRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.history', ['engagement_platform' => 'facebook']))
+            ->assertOk()
+            ->streamedContent();
+        $historyRows = $this->csvRows($historyRows);
+
+        $this->assertCount(2, $historyRows);
+        $this->assertSame(['Facebook', 'Facebook'], array_column($historyRows, 'platform'));
+        $this->assertSame([$facebook->name, $facebook->name], array_column($historyRows, 'monitor_name'));
+    }
+
     public function test_social_engagement_history_csv_limits_rows_to_recent_current_social_checks(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
@@ -443,6 +536,25 @@ class MonitorPublicEngagementMetricsTest extends TestCase
 
         return Monitor::factory()->create([
             'name' => 'Instagram campaign reel',
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'label' => $label,
+            'expected_text' => 'Campaign announcement',
+        ]);
+    }
+
+    private function createSocialMonitorForPlatform(string $platform, string $postId, ?string $label = null): Monitor
+    {
+        $url = match ($platform) {
+            'facebook' => 'https://www.facebook.com/share/p/'.$postId.'/',
+            'instagram' => 'https://www.instagram.com/reel/'.$postId.'/',
+            'threads' => 'https://www.threads.com/share/'.$postId,
+            'dcard' => 'https://www.dcard.tw/f/makeup/p/'.$postId,
+            default => throw new \InvalidArgumentException('Unsupported social platform.'),
+        };
+
+        return Monitor::factory()->create([
+            'name' => ucfirst($platform).' campaign post',
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
             'label' => $label,

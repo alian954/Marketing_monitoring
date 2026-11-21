@@ -16,10 +16,10 @@
             <div>
                 <h2 id="social-monitoring-title" class="panel-title">監測範圍</h2>
                 <p class="panel-description">這是網站與貼文健康檢查，也會追蹤頁面公開的互動數；不提供帳號洞察，例如觸及、曝光、點擊、轉換或廣告花費。</p>
-                <p class="panel-description">支援網站、Facebook、Instagram、Threads 與 Dcard 公開網址。系統定期讀取原始 HTTP 回應，不登入、不使用平台 API，也不執行 JavaScript；完整回應與截圖不會保存。</p>
+                <p class="panel-description">支援網站、Facebook、Instagram、Threads 與 Dcard 公開網址；Dcard 以 Chrome 渲染公開頁面。無需平台 API 金鑰或帳號授權；不保存完整頁面或截圖，遇到驗證時不會自動處理。</p>
                 <p class="panel-description">若平台只回傳登入頁或動態載入外殼，系統無法確認貼文內容。HTTP 檢查正常只代表收到回應，不代表貼文一定成功發布或仍對所有人可見。</p>
                 <p class="panel-description">若原始回應含明確的觀看、讚、留言或分享數，會記錄每次檢查並呈現近 30 天趨勢與前次變化比例；前次為 0 時不計比例，缺值會標示無法比較。</p>
-                <p class="panel-description">儀表板可依標籤比較最新互動總數、近 7／30／90 天增量與前期同篇比較；前期比較需完整保留兩倍期間資料。互動率只計資料完整且觀看大於 0 的貼文，同篇多標籤會計入每個標籤。</p>
+                <p class="panel-description">儀表板可依平台或標籤比較最新互動總數、近 7／30／90 天增量與前期同篇比較；前期比較需完整保留兩倍期間資料。互動率只計資料完整且觀看大於 0 的貼文，同篇多標籤會計入每個標籤。</p>
             </div>
         </div>
     </section>

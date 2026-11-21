@@ -42,6 +42,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MonitorController extends Controller
 {
+    private const SOCIAL_ENGAGEMENT_PLATFORMS = ['facebook', 'instagram', 'threads', 'dcard'];
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const DAILY_HISTORY_DAYS = 30;
@@ -1269,9 +1271,11 @@ class MonitorController extends Controller
         }, 'check-history-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function exportSocialEngagement(): StreamedResponse
+    public function exportSocialEngagement(Request $request): StreamedResponse
     {
-        return response()->streamDownload(function (): void {
+        $platform = $this->socialEngagementPlatformFilter($request);
+
+        return response()->streamDownload(function () use ($platform): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'monitor_name',
@@ -1287,8 +1291,13 @@ class MonitorController extends Controller
                 'collected_at_utc',
             ], ',', '"', '');
 
-            Monitor::query()
-                ->whereNotNull('social_platform')
+            $monitorsQuery = Monitor::query()->whereNotNull('social_platform');
+
+            if ($platform !== null) {
+                $monitorsQuery->where('social_platform', $platform);
+            }
+
+            $monitorsQuery
                 ->with('latestPublicEngagementCheckRun')
                 ->orderBy('id')
                 ->lazyById(250)
@@ -1332,12 +1341,13 @@ class MonitorController extends Controller
         }, 'social-engagement-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function exportSocialEngagementHistory(): StreamedResponse
+    public function exportSocialEngagementHistory(Request $request): StreamedResponse
     {
+        $platform = $this->socialEngagementPlatformFilter($request);
         $asOf = now()->toImmutable();
         $startsAt = $asOf->subDays(30);
 
-        return response()->streamDownload(function () use ($asOf, $startsAt): void {
+        return response()->streamDownload(function () use ($asOf, $startsAt, $platform): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'check_run_id',
@@ -1361,9 +1371,13 @@ class MonitorController extends Controller
                 ->whereBetween('finished_at', [$startsAt, $asOf])
                 ->whereNotNull('response_public_engagement_metrics')
                 ->whereNotIn('source', ['tls_daily', 'domain_daily'])
-                ->whereHas('monitor', static function (Builder $query): void {
+                ->whereHas('monitor', static function (Builder $query) use ($platform): void {
                     $query->whereNotNull('social_platform')
                         ->whereColumn('check_runs.config_version', 'monitors.config_version');
+
+                    if ($platform !== null) {
+                        $query->where('social_platform', $platform);
+                    }
                 })
                 ->with('monitor')
                 ->orderBy('id')
@@ -1402,6 +1416,15 @@ class MonitorController extends Controller
 
             fclose($stream);
         }, 'social-engagement-history-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    private function socialEngagementPlatformFilter(Request $request): ?string
+    {
+        $platform = $request->query('engagement_platform');
+
+        return is_string($platform) && in_array($platform, self::SOCIAL_ENGAGEMENT_PLATFORMS, true)
+            ? $platform
+            : null;
     }
 
     public function exportAvailability(Monitor $monitor): StreamedResponse

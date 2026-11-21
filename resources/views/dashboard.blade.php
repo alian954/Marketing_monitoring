@@ -107,9 +107,28 @@
                 <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；數字依平台原始回應提供情形顯示。</p>
             </div>
             <div class="row-actions">
-                <a class="strong-link" href="{{ route('monitors.social-engagement.export') }}">最新值 CSV <span aria-hidden="true">↓</span></a>
-                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history') }}">30 天歷史 CSV <span aria-hidden="true">↓</span></a>
+                <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
+                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">30 天歷史 CSV <span aria-hidden="true">↓</span></a>
             </div>
+        </div>
+        <div class="panel-body">
+            <search aria-label="篩選社群互動成效">
+                <form action="{{ route('dashboard') }}" method="GET" class="check-history-filter">
+                    <div class="field-group">
+                        <label class="field-label" for="dashboard-engagement-platform">社群平台</label>
+                        <select class="field-select" id="dashboard-engagement-platform" name="engagement_platform">
+                            @foreach ($socialEngagementPlatformOptions as $platform => $platformLabel)
+                                <option value="{{ $platform }}" @selected($socialEngagementSelectedPlatform === $platform)>{{ $platformLabel }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <input type="hidden" name="engagement_period" value="{{ $socialEngagementChangePeriodDays }}">
+                    <div class="check-history-filter-actions">
+                        <button class="button button-secondary" type="submit">套用</button>
+                    </div>
+                    <p class="field-help">套用於互動清單、標籤彙總、期間變化與 CSV；平台健康狀態不受影響。</p>
+                </form>
+            </search>
         </div>
         @if ($socialEngagementMonitors->isEmpty())
             <div class="empty-state">
@@ -250,7 +269,7 @@
                 @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
                     <a
                         class="button button-small {{ $periodDays === $socialEngagementChangePeriodDays ? 'button-primary' : 'button-secondary' }}"
-                        href="{{ route('dashboard', ['engagement_period' => $periodDays]) }}"
+                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform]) }}"
                         @if ($periodDays === $socialEngagementChangePeriodDays) aria-current="page" @endif
                     >{{ $periodLabel }}</a>
                 @endforeach
