@@ -266,7 +266,10 @@
                                         <span class="secondary-text">{{ implode(' · ', $monitor->tagNames()) }}</span>
                                     @endif
                                     @if ($monitor->socialPlatform())
-                                        <span class="secondary-text">{{ $monitor->socialPlatform() }} 公開貼文</span>
+                                        <span class="platform-chip platform-chip--{{ $monitor->social_platform }}">
+                                            <span class="platform-chip__dot" aria-hidden="true"></span>
+                                            {{ $monitor->socialPlatform() }} 公開貼文
+                                        </span>
                                     @endif
                                     @if ($monitor->expected_text !== null && $monitor->expected_text !== '')
                                         <span class="secondary-text">

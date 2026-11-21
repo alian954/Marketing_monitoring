@@ -79,7 +79,12 @@
                     <tbody>
                         @foreach ($platformCounts as $platform => $platformCount)
                             <tr>
-                                <th scope="row"><a class="strong-link" href="{{ route('monitors.index', ['platform' => $platform]) }}">{{ $platformCount['label'] }}</a></th>
+                                <th scope="row">
+                                    <a class="platform-chip platform-chip--{{ $platform }}" href="{{ route('monitors.index', ['platform' => $platform]) }}">
+                                        <span class="platform-chip__dot" aria-hidden="true"></span>
+                                        {{ $platformCount['label'] }}
+                                    </a>
+                                </th>
                                 <td class="numeric">{{ $platformCount['total'] }}</td>
                                 <td class="numeric">{{ $platformCount['states']['healthy'] }}</td>
                                 <td class="numeric">{{ $platformCount['states']['issue'] }}</td>
@@ -321,7 +326,10 @@
                                             <span class="secondary-text">{{ $monitor->label }}</span>
                                         @endif
                                         @if ($monitor->socialPlatform())
-                                            <span class="secondary-text">{{ $monitor->socialPlatform() }} 公開貼文</span>
+                                            <span class="platform-chip platform-chip--{{ $monitor->social_platform }}">
+                                                <span class="platform-chip__dot" aria-hidden="true"></span>
+                                                {{ $monitor->socialPlatform() }} 公開貼文
+                                            </span>
                                         @endif
                                         @if ($monitor->getAttribute('masked_url'))
                                             <span class="secondary-text masked-url">{{ $monitor->getAttribute('masked_url') }}</span>

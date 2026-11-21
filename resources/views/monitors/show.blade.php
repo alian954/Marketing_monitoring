@@ -147,7 +147,12 @@
                     @if ($socialPlatform)
                         <div class="metadata-item">
                             <dt>監測平台</dt>
-                            <dd>{{ $socialPlatform }} 公開貼文</dd>
+                            <dd>
+                                <span class="platform-chip platform-chip--{{ $monitor->social_platform }}">
+                                    <span class="platform-chip__dot" aria-hidden="true"></span>
+                                    {{ $socialPlatform }} 公開貼文
+                                </span>
+                            </dd>
                         </div>
                     @endif
                     <div class="metadata-item">
