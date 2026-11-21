@@ -9,6 +9,7 @@ class UrlSafetyPolicy
         ['facebook.com', 'fb.watch'],
         ['instagram.com', 'instagr.am'],
         ['threads.com', 'threads.net'],
+        ['dcard.tw'],
     ];
 
     public function __construct(private readonly HostResolver $resolver) {}

@@ -189,7 +189,7 @@ class DashboardAvailabilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('受監測貼文歷史品質')
-            ->assertSee('不代表 Facebook、Instagram 或 Threads 的整體 SLA')
+            ->assertSee('不代表 Facebook、Instagram、Threads 或 Dcard 的整體 SLA')
             ->assertSee('24 小時可用率')
             ->assertSee('24 小時覆蓋率')
             ->assertSee('7 天覆蓋率')
@@ -201,7 +201,7 @@ class DashboardAvailabilityTest extends TestCase
         $instagramDaily = collect($platformStatistics['instagram']['statistics'])->firstWhere('label', '24 小時');
         $threadsDaily = collect($platformStatistics['threads']['statistics'])->firstWhere('label', '24 小時');
 
-        $this->assertSame(['facebook', 'instagram', 'threads'], array_keys($platformStatistics));
+        $this->assertSame(['facebook', 'instagram', 'threads', 'dcard'], array_keys($platformStatistics));
         $this->assertSame(2, $platformStatistics['facebook']['monitor_count']);
         $this->assertSame(33.33, $facebookDaily['availability_rate']);
         $this->assertSame(1, $platformStatistics['instagram']['monitor_count']);
@@ -209,6 +209,7 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(1, $platformStatistics['threads']['monitor_count']);
         $this->assertNull($threadsDaily['availability_rate']);
         $this->assertSame(0.0, $threadsDaily['coverage_rate']);
+        $this->assertSame(0, $platformStatistics['dcard']['monitor_count']);
     }
 
     public function test_dashboard_ranks_exceeded_budgets_high_usage_and_missing_coverage(): void

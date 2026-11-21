@@ -57,6 +57,13 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($threadsShareUrl),
             'expected_text' => 'Original post text',
         ]);
+        $dcardHealthyMonitor = $this->createSocialMonitor('dcard', '262476944', 'Dcard healthy');
+        $dcardHealthyMonitor->forceFill(['last_checked_at' => now()])->save();
+        CheckRun::factory()->for($dcardHealthyMonitor)->create([
+            'config_version' => $dcardHealthyMonitor->config_version,
+            'normal_status' => 200,
+            'scheduled_at' => now(),
+        ]);
         Monitor::factory()->create([
             'name' => 'Website excluded from platform totals',
             'url' => 'https://example.test/status',
@@ -67,15 +74,16 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('社群平台狀態')
-            ->assertSee('Facebook、Instagram 與 Threads')
+            ->assertSee('Facebook、Instagram、Threads 與 Dcard')
             ->assertSee('需留意')
             ->assertSee('待檢查')
             ->assertSee('role="region" aria-labelledby="social-platform-summary-title" tabindex="0"', false)
-            ->assertSee('<caption class="sr-only">Facebook、Instagram 與 Threads 公開貼文健康狀態統計</caption>', false)
+            ->assertSee('<caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 公開貼文健康狀態統計</caption>', false)
             ->assertSee('<th scope="col">平台</th>', false)
             ->assertSee(route('monitors.index', ['platform' => 'facebook']), false)
             ->assertSee(route('monitors.index', ['platform' => 'instagram']), false)
-            ->assertSee(route('monitors.index', ['platform' => 'threads']), false);
+            ->assertSee(route('monitors.index', ['platform' => 'threads']), false)
+            ->assertSee(route('monitors.index', ['platform' => 'dcard']), false);
 
         $platformCounts = $response->viewData('platformCounts');
 
@@ -94,11 +102,16 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             'total' => 4,
             'states' => ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 1, 'paused' => 1, 'pending' => 2],
         ], $platformCounts['threads']);
+        $this->assertSame([
+            'label' => 'Dcard',
+            'total' => 1,
+            'states' => ['healthy' => 1, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0, 'pending' => 0],
+        ], $platformCounts['dcard']);
         $this->assertDatabaseHas('monitors', [
             'id' => $threadsShareMonitor->id,
             'social_platform' => 'threads',
         ]);
-        $this->assertSame(8, $response->viewData('monitorCount'));
+        $this->assertSame(9, $response->viewData('monitorCount'));
     }
 
     public function test_dashboard_shows_an_empty_state_when_no_social_posts_are_monitored(): void
@@ -113,7 +126,7 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('尚無社群貼文監測項目')
-            ->assertDontSee('Facebook、Instagram 與 Threads 公開貼文健康狀態統計');
+            ->assertDontSee('Facebook、Instagram、Threads 與 Dcard 公開貼文健康狀態統計');
 
         $this->assertSame(0, collect($response->viewData('platformCounts'))->sum('total'));
     }
@@ -125,6 +138,7 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             'facebook' => 'https://www.facebook.com/brand/posts/'.$postId,
             'instagram' => 'https://www.instagram.com/p/'.$postId.'/',
             'threads' => 'https://www.threads.com/@brand/post/'.$postId,
+            'dcard' => 'https://www.dcard.tw/f/makeup/p/'.$postId,
         };
 
         return Monitor::factory()->create([
@@ -132,6 +146,7 @@ class DashboardSocialPlatformSummaryTest extends TestCase
             'name' => $name,
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Expected public post text',
         ]);
     }
 }

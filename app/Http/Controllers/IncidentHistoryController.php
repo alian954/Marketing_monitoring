@@ -140,7 +140,7 @@ class IncidentHistoryController extends Controller
             'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
             'notification_status' => ['nullable', 'in:active,snoozed'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
-            'platform' => ['nullable', 'in:website,facebook,instagram,threads'],
+            'platform' => ['nullable', 'in:website,facebook,instagram,threads,dcard'],
             'label' => ['nullable', 'string', 'max:100'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(Incident::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],

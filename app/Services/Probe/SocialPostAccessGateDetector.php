@@ -13,6 +13,7 @@ class SocialPostAccessGateDetector
             'facebook' => 'facebook',
             'instagram' => 'instagram',
             'threads' => 'threads',
+            'dcard' => 'dcard',
             default => null,
         };
 

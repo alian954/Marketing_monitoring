@@ -23,6 +23,7 @@ class FleetAvailabilityReport
         'facebook' => 'Facebook',
         'instagram' => 'Instagram',
         'threads' => 'Threads',
+        'dcard' => 'Dcard',
     ];
 
     private const PERIODS = [

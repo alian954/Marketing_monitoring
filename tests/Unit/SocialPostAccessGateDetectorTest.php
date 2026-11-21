@@ -9,7 +9,7 @@ class SocialPostAccessGateDetectorTest extends TestCase
 {
     public function test_detects_a_platform_login_wall_from_matching_metadata_and_visible_text(): void
     {
-        foreach (['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads'] as $platform => $title) {
+        foreach (['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'] as $platform => $title) {
             $body = '<html><head><title>'.$title.'</title></head><body><main>Log in to see this post</main></body></html>';
             $metadata = ['title' => $title, 'description' => 'Log in to see this post'];
 

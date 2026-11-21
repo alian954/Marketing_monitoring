@@ -305,6 +305,11 @@ class IncidentHistoryTest extends TestCase
                 'url' => 'https://www.threads.net/@brand/post/PLATFORM3',
                 'url_hash' => Monitor::fingerprintUrl('https://www.threads.net/@brand/post/PLATFORM3'),
             ]),
+            'dcard' => Monitor::factory()->create([
+                'name' => 'Dcard platform filter',
+                'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+                'url_hash' => Monitor::fingerprintUrl('https://www.dcard.tw/f/makeup/p/262476944'),
+            ]),
         ];
         $incidents = [];
 
@@ -332,6 +337,13 @@ class IncidentHistoryTest extends TestCase
 
         $websiteResponse = $this->get(route('incidents.index', ['platform' => 'website']))->assertOk();
         $this->assertSame([$incidents['website']->id], $websiteResponse->viewData('incidents')->getCollection()->modelKeys());
+
+        $dcardFilters = ['platform' => 'dcard'];
+        $dcardResponse = $this->get(route('incidents.index', $dcardFilters))
+            ->assertOk()
+            ->assertSee('<option value="dcard" selected>Dcard</option>', false)
+            ->assertSee(route('incidents.export', $dcardFilters));
+        $this->assertSame([$incidents['dcard']->id], $dcardResponse->viewData('incidents')->getCollection()->modelKeys());
     }
 
     public function test_incident_history_rejects_unknown_platform_filters(): void

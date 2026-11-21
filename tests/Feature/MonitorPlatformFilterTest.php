@@ -19,6 +19,7 @@ class MonitorPlatformFilterTest extends TestCase
             'facebook' => $this->createMonitor('Facebook post', 'https://www.facebook.com/page/posts/12345'),
             'instagram' => $this->createMonitor('Instagram post', 'https://www.instagram.com/p/ABC123/'),
             'threads' => $this->createMonitor('Threads post', 'https://www.threads.net/@creator/post/ABC123'),
+            'dcard' => $this->createMonitor('Dcard article', 'https://www.dcard.tw/f/makeup/p/262476944?cid=campaign'),
         ];
         $user = User::factory()->create();
 
@@ -94,6 +95,21 @@ class MonitorPlatformFilterTest extends TestCase
         $this->assertDatabaseHas('monitors', [
             'id' => $monitor->id,
             'social_platform' => 'threads',
+        ]);
+    }
+
+    public function test_dcard_migration_backfills_existing_encrypted_monitor_rows(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944?cid=campaign';
+        $monitor = $this->createMonitor('Dcard article', $url);
+        DB::table('monitors')->where('id', $monitor->id)->update(['social_platform' => null]);
+        $migration = require base_path('database/migrations/2026_11_21_111228_backfill_dcard_platform_monitors_table.php');
+
+        $migration->up();
+
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'dcard',
         ]);
     }
 

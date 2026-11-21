@@ -85,7 +85,7 @@ class MonitorController extends Controller
     private const MONITOR_LIST_FILTER_RULES = [
         'search' => ['nullable', 'string', 'max:2048'],
         'label' => ['nullable', 'string', 'max:100'],
-        'platform' => ['nullable', 'in:all,website,facebook,instagram,threads'],
+        'platform' => ['nullable', 'in:all,website,facebook,instagram,threads,dcard'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
         'content_match' => ['nullable', 'in:all,found,missing,not_checked'],
         'http_status' => ['nullable', 'integer', 'between:100,599'],

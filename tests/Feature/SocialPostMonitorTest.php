@@ -55,6 +55,17 @@ class SocialPostMonitorTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_dcard_article_requires_expected_text(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->post(route('monitors.store'), $this->socialPost('https://www.dcard.tw/f/makeup/p/262476944'))
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('expected_text');
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_direct_facebook_post_id_requires_expected_text(): void
     {
         $this->actingAs(User::factory()->create())
@@ -142,6 +153,48 @@ class SocialPostMonitorTest extends TestCase
             'id' => $monitor->id,
             'social_platform' => 'threads',
         ]);
+    }
+
+    public function test_dcard_public_article_can_be_monitored_with_expected_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944?cid=41eda507-f928-4d63-8285-a03f21820110';
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), $this->socialPost($url, '妝容分享測試文字'));
+
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertSame('妝容分享測試文字', $monitor->expected_text);
+        $this->assertSame('Dcard', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'dcard',
+        ]);
+    }
+
+    public function test_legacy_social_monitor_without_an_expected_phrase_is_flagged_and_explained(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $monitor = Monitor::factory()->create([
+            'name' => 'Legacy Dcard article',
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'last_checked_at' => now(),
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'normal_status' => 200,
+            'expected_text_found' => null,
+        ]);
+
+        $this->assertSame('warning', $monitor->fresh()->healthState());
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('尚未設定預期貼文文字，目前只能確認連線與 HTTP 回應，無法驗證文章內容。')
+            ->assertSee('編輯並新增文字片段');
     }
 
     public function test_facebook_group_permalink_can_be_monitored_as_a_social_post(): void
@@ -349,10 +402,13 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('Instagram', Monitor::socialPlatformForUrl('https://instagr.am/p/ABC123/'));
         $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://threads.net/@creator/post/123'));
         $this->assertSame('Threads', Monitor::socialPlatformForUrl('https://www.threads.com/share/BAGYFgPihu'));
+        $this->assertSame('Dcard', Monitor::socialPlatformForUrl('https://www.dcard.tw/f/makeup/p/262476944?cid=campaign'));
         $this->assertSame('Facebook', Monitor::socialPlatformForUrl('https://fb.watch/ABC123/'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.facebook.com/creator'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.instagram.com/creator/'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.threads.com/@creator'));
+        $this->assertNull(Monitor::socialPlatformForUrl('https://www.dcard.tw/f/makeup'));
+        $this->assertNull(Monitor::socialPlatformForUrl('https://www.dcard.tw.attacker.test/f/makeup/p/262476944'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://instagram.com.attacker.test/p/123'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://instagr.am.attacker.test/p/123'));
         $this->assertNull(Monitor::socialPlatformForUrl('https://www.instagram.com/share/reel'));

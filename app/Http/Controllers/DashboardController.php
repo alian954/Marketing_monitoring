@@ -46,7 +46,7 @@ class DashboardController extends Controller
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
         $platformCounts = [];
 
-        foreach (['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads'] as $platform => $label) {
+        foreach (['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'] as $platform => $label) {
             $platformCounts[$platform] = [
                 'label' => $label,
                 'total' => 0,

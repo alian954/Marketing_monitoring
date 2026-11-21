@@ -41,6 +41,7 @@ class Monitor extends Model
         'instagr.am' => 'Instagram',
         'threads.com' => 'Threads',
         'threads.net' => 'Threads',
+        'dcard.tw' => 'Dcard',
     ];
 
     /** @use HasFactory<MonitorFactory> */
@@ -160,6 +161,11 @@ class Monitor extends Model
         return self::socialPlatformForUrl($this->url);
     }
 
+    public function socialContentExpectationMissing(): bool
+    {
+        return $this->socialPlatform() !== null && trim((string) $this->expected_text) === '';
+    }
+
     /** @return list<string> */
     public static function parseTags(?string $input): array
     {
@@ -224,6 +230,7 @@ class Monitor extends Model
             'Facebook' => 'facebook',
             'Instagram' => 'instagram',
             'Threads' => 'threads',
+            'Dcard' => 'dcard',
             default => null,
         };
     }
@@ -250,6 +257,10 @@ class Monitor extends Model
             }
 
             if ($platform === 'Threads' && preg_match('/\A@[^\/]+\/post\/[^\/]+\z|\At\/[^\/]+\z|\Ashare\/[^\/]+\z/i', $path) === 1) {
+                return $platform;
+            }
+
+            if ($platform === 'Dcard' && preg_match('/\Af\/[^\/]+\/p\/[0-9]+\z/i', $path) === 1) {
                 return $platform;
             }
         }
@@ -358,6 +369,10 @@ class Monitor extends Model
 
         if ($currentIncidents->isNotEmpty()) {
             return 'suspect';
+        }
+
+        if ($this->socialContentExpectationMissing()) {
+            return 'warning';
         }
 
         $run = $this->latestCheckRun;

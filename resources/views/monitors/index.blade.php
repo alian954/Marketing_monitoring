@@ -21,7 +21,7 @@
         <div class="heading-copy">
             <p class="eyebrow">工作區</p>
             <h1 class="page-title">監測項目</h1>
-            <p class="page-description">管理網站與 Facebook、Instagram、Threads 公開貼文，查看最近一次檢查結果。</p>
+            <p class="page-description">管理網站與 Facebook、Instagram、Threads、Dcard 公開貼文，查看最近一次檢查結果。</p>
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('monitors.export', $monitorExportFilters) }}">{{ $hasFilters ? '匯出符合條件 CSV' : '匯出 CSV' }}</a>
@@ -65,6 +65,7 @@
                                 <option value="facebook" @selected(old('platform', $filters['platform']) === 'facebook')>Facebook</option>
                                 <option value="instagram" @selected(old('platform', $filters['platform']) === 'instagram')>Instagram</option>
                                 <option value="threads" @selected(old('platform', $filters['platform']) === 'threads')>Threads</option>
+                                <option value="dcard" @selected(old('platform', $filters['platform']) === 'dcard')>Dcard</option>
                             </select>
                         </div>
                         <div class="field-group">
@@ -91,7 +92,7 @@
                                 <option value="missing" @selected(old('content_match', $filters['content_match']) === 'missing')>未找到設定文字片段</option>
                                 <option value="not_checked" @selected(old('content_match', $filters['content_match']) === 'not_checked')>尚未比對</option>
                             </select>
-                            <p id="monitor-content-match-help" class="field-help">只篩選 Facebook、Instagram、Threads 公開貼文；尚未比對也包含設定變更後等待新檢查的項目。</p>
+                            <p id="monitor-content-match-help" class="field-help">只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；尚未比對也包含設定變更後等待新檢查的項目。</p>
                             @error('content_match')
                                 <p id="monitor-content-match-error" class="field-error">{{ $message }}</p>
                             @enderror

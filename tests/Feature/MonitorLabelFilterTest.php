@@ -302,7 +302,7 @@ class MonitorLabelFilterTest extends TestCase
                 ->get(route('monitors.index', ['content_match' => $matchState]))
                 ->assertOk()
                 ->assertSee('name="content_match"', false)
-                ->assertSee('只篩選 Facebook、Instagram、Threads 公開貼文');
+                ->assertSee('只篩選 Facebook、Instagram、Threads、Dcard 公開貼文');
 
             $this->assertEqualsCanonicalizing(
                 $expectedIds,

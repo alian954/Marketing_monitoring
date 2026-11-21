@@ -87,6 +87,7 @@
                                 <option value="facebook" @selected(old('platform', $filters['platform']) === 'facebook')>Facebook</option>
                                 <option value="instagram" @selected(old('platform', $filters['platform']) === 'instagram')>Instagram</option>
                                 <option value="threads" @selected(old('platform', $filters['platform']) === 'threads')>Threads</option>
+                                <option value="dcard" @selected(old('platform', $filters['platform']) === 'dcard')>Dcard</option>
                             </select>
                             @error('platform')
                                 <p id="incident-platform-error" class="field-error">{{ $message }}</p>

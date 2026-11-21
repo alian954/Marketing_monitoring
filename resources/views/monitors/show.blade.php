@@ -114,6 +114,11 @@
             {{ $socialPlatform }} 貼文以每行一個文字片段比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；可選擇要求全部片段出現，或只要求任一片段出現。每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
         </div>
     @endif
+    @if ($monitor->socialContentExpectationMissing())
+        <div class="form-note spaced-bottom" role="status">
+            尚未設定預期貼文文字，目前只能確認連線與 HTTP 回應，無法驗證文章內容。<a href="{{ route('monitors.edit', $monitor) }}">編輯並新增文字片段</a>。
+        </div>
+    @endif
     @error('check')
         <div class="alert alert-error" role="alert">{{ $message }}</div>
     @enderror

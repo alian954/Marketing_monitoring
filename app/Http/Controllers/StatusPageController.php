@@ -36,6 +36,7 @@ class StatusPageController extends Controller
         'facebook' => 'Facebook 貼文',
         'instagram' => 'Instagram 貼文',
         'threads' => 'Threads 貼文',
+        'dcard' => 'Dcard 文章',
     ];
 
     public function __construct(private readonly MonitorAvailabilityCalculator $availabilityCalculator) {}
@@ -193,6 +194,7 @@ class StatusPageController extends Controller
             'Facebook' => 'facebook',
             'Instagram' => 'instagram',
             'Threads' => 'threads',
+            'Dcard' => 'dcard',
             default => 'website',
         });
 

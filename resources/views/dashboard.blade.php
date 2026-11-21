@@ -52,18 +52,18 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
-                <p class="panel-description">依最近一次檢查列出 Facebook、Instagram 與 Threads 貼文狀態；「需留意」包含待確認或已成立的異常。</p>
+                <p class="panel-description">依最近一次檢查列出 Facebook、Instagram、Threads 與 Dcard 貼文狀態；「需留意」包含待確認或已成立的異常。</p>
             </div>
         </div>
         @if (collect($platformCounts)->sum('total') === 0)
             <div class="empty-state">
                 <h3 class="empty-title">尚無社群貼文監測項目</h3>
-                <p class="empty-copy">新增 Facebook、Instagram 或 Threads 公開貼文網址後，這裡會顯示各平台的檢查狀態。</p>
+                <p class="empty-copy">新增 Facebook、Instagram、Threads 或 Dcard 公開貼文網址後，這裡會顯示各平台的檢查狀態。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-platform-summary-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">Facebook、Instagram 與 Threads 公開貼文健康狀態統計</caption>
+                    <caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 公開貼文健康狀態統計</caption>
                     <thead>
                         <tr>
                             <th scope="col">平台</th>
@@ -99,18 +99,18 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-availability-title" class="panel-title">受監測貼文歷史品質</h2>
-                <p class="panel-description">依已啟用貼文的排程檢查觀測時間加權；資料空窗與維護時段不計入。這是受監測貼文樣本的結果，不代表 Facebook、Instagram 或 Threads 的整體 SLA。</p>
+                <p class="panel-description">依已啟用貼文的排程檢查觀測時間加權；資料空窗與維護時段不計入。這是受監測貼文樣本的結果，不代表 Facebook、Instagram、Threads 或 Dcard 的整體 SLA。</p>
             </div>
         </div>
         @if (collect($fleetAvailability['social_platform_statistics'])->sum('monitor_count') === 0)
             <div class="empty-state">
                 <h3 class="empty-title">尚無啟用中的社群貼文監測</h3>
-                <p class="empty-copy">啟用 Facebook、Instagram 或 Threads 貼文監測後，這裡會比較各平台樣本的可用率與資料覆蓋度。</p>
+                <p class="empty-copy">啟用 Facebook、Instagram、Threads 或 Dcard 貼文監測後，這裡會比較各平台樣本的可用率與資料覆蓋度。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-platform-availability-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">Facebook、Instagram 與 Threads 受監測貼文的估算可用率與資料覆蓋率</caption>
+                    <caption class="sr-only">Facebook、Instagram、Threads 與 Dcard 受監測貼文的估算可用率與資料覆蓋率</caption>
                     <thead>
                         <tr>
                             <th scope="col">平台</th>

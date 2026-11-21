@@ -58,6 +58,7 @@ class StatusPageWorkflowTest extends TestCase
             ['name' => 'Facebook post', 'url' => 'https://www.facebook.com/campaign/posts/123'],
             ['name' => 'Instagram post', 'url' => 'https://www.instagram.com/p/abc123/'],
             ['name' => 'Threads post', 'url' => 'https://www.threads.net/@campaign/post/xyz789'],
+            ['name' => 'Dcard article', 'url' => 'https://www.dcard.tw/f/makeup/p/262476944'],
         ])->map(fn (array $attributes): Monitor => Monitor::factory()->create([
             ...$attributes,
             'url_hash' => Monitor::fingerprintUrl($attributes['url']),
@@ -87,15 +88,17 @@ class StatusPageWorkflowTest extends TestCase
                 'Instagram post',
                 'Threads 貼文',
                 'Threads post',
+                'Dcard 文章',
+                'Dcard article',
             ])
             ->assertDontSee('Private campaign monitor')
             ->assertDontSee('INTERNAL_LABEL_SECRET');
 
         $monitorGroups = $response->viewData('monitorGroups');
 
-        $this->assertSame(['website', 'facebook', 'instagram', 'threads'], $monitorGroups->keys()->all());
-        $this->assertSame([1, 1, 1, 1], $monitorGroups->pluck('monitors')->map->count()->values()->all());
-        foreach (['website', 'facebook', 'instagram', 'threads'] as $index => $platform) {
+        $this->assertSame(['website', 'facebook', 'instagram', 'threads', 'dcard'], $monitorGroups->keys()->all());
+        $this->assertSame([1, 1, 1, 1, 1], $monitorGroups->pluck('monitors')->map->count()->values()->all());
+        foreach (['website', 'facebook', 'instagram', 'threads', 'dcard'] as $index => $platform) {
             $this->assertSame($monitors[$index]->id, $monitorGroups->get($platform)['monitors']->sole()->id);
         }
     }
@@ -107,6 +110,7 @@ class StatusPageWorkflowTest extends TestCase
             ['name' => 'Facebook settings post', 'url' => 'https://www.facebook.com/campaign/posts/123'],
             ['name' => 'Instagram settings post', 'url' => 'https://www.instagram.com/p/abc123/'],
             ['name' => 'Threads settings post', 'url' => 'https://www.threads.net/@campaign/post/xyz789'],
+            ['name' => 'Dcard settings article', 'url' => 'https://www.dcard.tw/f/makeup/p/262476944'],
         ])->map(fn (array $attributes): Monitor => Monitor::factory()->create([
             ...$attributes,
             'url_hash' => Monitor::fingerprintUrl($attributes['url']),
@@ -132,13 +136,15 @@ class StatusPageWorkflowTest extends TestCase
                 'Instagram settings post',
                 'Threads 貼文',
                 'Threads settings post',
+                'Dcard 文章',
+                'Dcard settings article',
             ])
             ->assertSee('2 個項目')
             ->assertSee(route('status-pages.monitors.toggle', $monitors[1]), false);
 
         $monitorGroups = $response->viewData('monitorGroups');
 
-        $this->assertSame(['website', 'facebook', 'instagram', 'threads'], $monitorGroups->keys()->all());
+        $this->assertSame(['website', 'facebook', 'instagram', 'threads', 'dcard'], $monitorGroups->keys()->all());
         $this->assertSame(2, $monitorGroups->get('website')['monitors']->count());
         $this->assertSame($monitors[1]->id, $monitorGroups->get('facebook')['monitors']->sole()->id);
 

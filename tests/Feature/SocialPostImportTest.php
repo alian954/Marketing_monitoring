@@ -359,6 +359,38 @@ class SocialPostImportTest extends TestCase
         Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
+    public function test_csv_can_preview_and_import_dcard_articles_with_expected_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $user = User::factory()->create();
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944?cid=campaign';
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'expected_text'],
+            [['Dcard campaign', $url, '', 'Article phrase']],
+        );
+
+        $preview = $this->actingAs($user)
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('Article phrase')
+            ->assertSee('可匯入');
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $this->assertSame($url, $monitor->url);
+        $this->assertSame('Article phrase', $monitor->expected_text);
+        $this->assertSame('Dcard', $monitor->socialPlatform());
+        $this->assertDatabaseHas('monitors', [
+            'id' => $monitor->id,
+            'social_platform' => 'dcard',
+        ]);
+    }
+
     public function test_csv_rejects_an_invalid_visible_text_change_alert_value(): void
     {
         $csv = $this->csvContent(
