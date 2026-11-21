@@ -434,7 +434,7 @@ class MonitorController extends Controller
         ])->map(function (array $period) use ($historyRuns): array {
             $periodRuns = $historyRuns->filter(
                 fn (CheckRun $run): bool => $run->finished_at->greaterThanOrEqualTo($period['starts_at']),
-            );
+            )->reject(static fn (CheckRun $run): bool => $run->hasIndeterminateContentMatch());
             $endedChecks = $periodRuns->count();
             $successfulChecks = $periodRuns->filter(static fn (CheckRun $run): bool => $run->passesMonitorChecks())->count();
 
@@ -450,7 +450,9 @@ class MonitorController extends Controller
         $dailyHistoryCounts = [];
 
         foreach ($historyRuns as $run) {
-            if ($run->finished_at->lessThan($dailyHistoryStartsAt) || $run->finished_at->greaterThan($asOf)) {
+            if ($run->finished_at->lessThan($dailyHistoryStartsAt)
+                || $run->finished_at->greaterThan($asOf)
+                || $run->hasIndeterminateContentMatch()) {
                 continue;
             }
 
@@ -477,7 +479,7 @@ class MonitorController extends Controller
                 ? 'unknown'
                 : ($successRate >= 100 ? 'healthy' : ($counts['successful_checks'] === 0 ? 'issue' : 'warning'));
             $accessibleLabel = $successRate === null
-                ? $day->toDateString().' 台灣時間：沒有已結束的排程檢查。'
+                ? $day->toDateString().' 台灣時間：沒有可判定的排程檢查。'
                 : $day->toDateString().' 台灣時間：成功 '.$counts['successful_checks'].'／'.$counts['total_checks'].' 次，成功率 '.number_format($successRate, 2).'%。';
 
             $dailyCheckHistory[] = [

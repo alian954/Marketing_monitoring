@@ -54,8 +54,8 @@ class MonitorCheckSuccessRateTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('以已完成或重試耗盡的排程檢查計算成功率')
-            ->assertSee('已結束')
+            ->assertSee('以可判定的排程檢查計算成功率')
+            ->assertSee('可判定')
             ->assertSee('2 次');
 
         foreach ($response->viewData('checkSuccessStats') as $period) {
@@ -158,6 +158,92 @@ class MonitorCheckSuccessRateTest extends TestCase
         }
     }
 
+    public function test_social_post_checks_without_expected_text_are_excluded_from_success_rate(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $configuredSnapshot = json_encode([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'accepted_status_codes' => [],
+            'expected_text' => 'Campaign headline',
+            'expected_text_mode' => 'present',
+        ], JSON_THROW_ON_ERROR);
+        $uncheckedSnapshot = json_encode([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+        ], JSON_THROW_ON_ERROR);
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $configuredSnapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(10),
+            'finished_at' => now()->subMinutes(10),
+            'normal_status' => 200,
+            'expected_text_found' => true,
+        ]);
+        $uncheckedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $uncheckedSnapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => 200,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+
+        $this->assertTrue($uncheckedRun->hasIndeterminateContentMatch());
+
+        foreach ($response->viewData('checkSuccessStats') as $period) {
+            $this->assertSame(100.0, $period['success_rate']);
+            $this->assertSame(1, $period['successful_checks']);
+            $this->assertSame(1, $period['ended_checks']);
+        }
+    }
+
+    public function test_social_dns_failures_without_expected_text_lower_success_rate(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $uncheckedSnapshot = json_encode([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+        ], JSON_THROW_ON_ERROR);
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $uncheckedSnapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(10),
+            'finished_at' => now()->subMinutes(10),
+            'normal_status' => 200,
+        ]);
+        $failedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $uncheckedSnapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => null,
+            'error_type' => 'dns_timeout',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+
+        $this->assertFalse($failedRun->hasIndeterminateContentMatch());
+
+        foreach ($response->viewData('checkSuccessStats') as $period) {
+            $this->assertSame(0.0, $period['success_rate']);
+            $this->assertSame(0, $period['successful_checks']);
+            $this->assertSame(1, $period['ended_checks']);
+        }
+    }
+
     public function test_absent_text_condition_counts_a_missing_phrase_as_success(): void
     {
         $monitor = Monitor::factory()->create();
@@ -233,7 +319,7 @@ class MonitorCheckSuccessRateTest extends TestCase
     {
         return json_encode([
             'name' => 'Marketing post',
-            'url' => 'https://www.instagram.com/p/ABC123/',
+            'url' => 'https://example.com/landing',
             'accepted_status_codes' => $acceptedStatusCodes,
             'expected_text' => $expectedText,
             'expected_text_mode' => $expectedTextMode,

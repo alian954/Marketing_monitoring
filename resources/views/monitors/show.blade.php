@@ -763,7 +763,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-success-rate-title" class="panel-title">歷史檢查成功率</h2>
-                <p class="panel-description">以已完成或重試耗盡的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。</p>
+                <p class="panel-description">以可判定的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。社群貼文未設定預期文字時不計入成功率或可用率。</p>
             </div>
         </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的檢查成功率">
@@ -771,7 +771,7 @@
                 <article class="stat-card">
                     <div class="stat-topline"><span class="stat-label">最近 {{ $stat['label'] }}</span></div>
                     <strong class="stat-value">{{ $stat['success_rate'] === null ? '—' : number_format($stat['success_rate'], 2).'%' }}</strong>
-                    <p class="stat-hint">成功 {{ $stat['successful_checks'] }} / 已結束 {{ $stat['ended_checks'] }} 次</p>
+                    <p class="stat-hint">成功 {{ $stat['successful_checks'] }} / 可判定 {{ $stat['ended_checks'] }} 次</p>
                 </article>
             @endforeach
         </div>
@@ -798,7 +798,7 @@
                                 <th scope="col">狀態</th>
                                 <th scope="col">成功率</th>
                                 <th scope="col">成功次數</th>
-                                <th scope="col">已結束檢查</th>
+                                <th scope="col">可判定檢查</th>
                             </tr>
                         </thead>
                         <tbody>

@@ -163,6 +163,73 @@ class MonitorAvailabilityTest extends TestCase
         $this->assertSame(5.0, $dailyStat['observed_minutes']);
     }
 
+    public function test_social_post_check_without_expected_text_is_excluded_from_availability_observations(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create(['interval_seconds' => 300]);
+        $this->createScheduledRun($monitor, now()->subMinutes(10), 200);
+        $uncheckedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => json_encode([
+                'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+                'accepted_status_codes' => [],
+                'expected_text' => null,
+                'expected_text_mode' => 'present',
+                'interval_seconds' => 300,
+            ], JSON_THROW_ON_ERROR),
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => 200,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+        $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');
+
+        $this->assertTrue($uncheckedRun->hasIndeterminateContentMatch());
+        $this->assertFalse($uncheckedRun->passesMonitorChecks());
+        $this->assertSame(100.0, $dailyStat['availability_rate']);
+        $this->assertSame(0.35, $dailyStat['coverage_rate']);
+        $this->assertSame(5.0, $dailyStat['observed_minutes']);
+    }
+
+    public function test_social_dns_failure_without_expected_text_counts_as_unavailable(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create(['interval_seconds' => 300]);
+        $this->createScheduledRun($monitor, now()->subMinutes(10), 200);
+        $failedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => json_encode([
+                'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+                'accepted_status_codes' => [],
+                'expected_text' => null,
+                'interval_seconds' => 300,
+            ], JSON_THROW_ON_ERROR),
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => null,
+            'error_type' => 'dns_timeout',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+        $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');
+
+        $this->assertFalse($failedRun->hasIndeterminateContentMatch());
+        $this->assertFalse($failedRun->passesMonitorChecks());
+        $this->assertSame(50.0, $dailyStat['availability_rate']);
+        $this->assertSame(0.69, $dailyStat['coverage_rate']);
+        $this->assertSame(10.0, $dailyStat['observed_minutes']);
+        $this->assertSame(5.0, $dailyStat['unavailable_minutes']);
+    }
+
     public function test_incomplete_response_size_check_is_excluded_from_availability_observations(): void
     {
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));

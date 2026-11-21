@@ -40,7 +40,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="public-status-services-title" class="panel-title">監測服務</h2>
-                <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 90 天檢查成功率與估算時間可用率，以及目前事件與近 30 天已恢復事件；不會公開網址、比對文字或事件備註。</p>
+                <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 90 天檢查成功率與估算時間可用率，以及目前事件與近 30 天已恢復事件；不會公開網址、比對文字或事件備註。社群貼文未設定預期文字時不計入統計。</p>
             </div>
         </div>
         @foreach ($monitorGroups as $groupKey => $group)
@@ -65,7 +65,7 @@
                                 <div class="public-status-history-summary">
                                     <span>近 90 天檢查成功率</span>
                                     <strong>{{ $monitor->public_history['success_rate'] === null ? '—' : number_format($monitor->public_history['success_rate'], 2).'%' }}</strong>
-                                    <span class="secondary-text">成功 {{ $monitor->public_history['successful_checks'] }} / 已結束 {{ $monitor->public_history['total_checks'] }} 次</span>
+                                    <span class="secondary-text">成功 {{ $monitor->public_history['successful_checks'] }} / 可判定 {{ $monitor->public_history['total_checks'] }} 次</span>
                                 </div>
                                 <div class="public-status-history-summary">
                                     <span>近 90 天估算時間可用率</span>
@@ -98,7 +98,7 @@
                                                     <th scope="col">日期（台灣時間）</th>
                                                     <th scope="col">成功率</th>
                                                     <th scope="col">成功次數</th>
-                                                    <th scope="col">已結束檢查</th>
+                                                    <th scope="col">可判定檢查</th>
                                                 </tr>
                                             </thead>
                                             <tbody>

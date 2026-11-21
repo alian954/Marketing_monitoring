@@ -341,6 +341,10 @@ class StatusPageController extends Controller
             ->select(['id', 'monitor_id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'response_body_bytes', 'expected_text_found', 'expected_response_header_found'])
             ->chunkById(500, static function (EloquentCollection $runs) use (&$dailyHistory): void {
                 foreach ($runs as $run) {
+                    if ($run->hasIndeterminateContentMatch()) {
+                        continue;
+                    }
+
                     $day = $run->finished_at->timezone(self::HISTORY_TIMEZONE)->toDateString();
 
                     if (! isset($dailyHistory[$run->monitor_id][$day])) {
@@ -404,7 +408,7 @@ class StatusPageController extends Controller
                     ? 'unknown'
                     : ($daySuccessRate >= 100 ? 'healthy' : ($daySuccessful === 0 ? 'issue' : 'warning'));
                 $accessibleLabel = $daySuccessRate === null
-                    ? $day['date'].' 台灣時間：沒有已結束的排程檢查。'
+                    ? $day['date'].' 台灣時間：沒有可判定的排程檢查。'
                     : $day['date'].' 台灣時間：成功 '.$daySuccessful.'／'.$dayTotal.' 次，成功率 '.number_format($daySuccessRate, 2).'%。';
 
                 $dailyChecks[] = [

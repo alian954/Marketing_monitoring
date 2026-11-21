@@ -48,7 +48,7 @@ class CheckRun extends Model
 
     public function passesMonitorChecks(): bool
     {
-        if ($this->status !== 'completed' || $this->error_type !== null) {
+        if ($this->status !== 'completed' || $this->error_type !== null || $this->hasUnconfiguredSocialContentExpectation()) {
             return false;
         }
 
@@ -95,6 +95,11 @@ class CheckRun extends Model
 
     public function hasIndeterminateContentMatch(): bool
     {
+        if ($this->hasUnconfiguredSocialContentExpectation()) {
+            return $this->normalStatusIsAccepted($this->configurationSnapshot())
+                && in_array($this->error_type, [null, 'body_too_large', 'social_access_required'], true);
+        }
+
         if (! in_array($this->error_type, ['body_too_large', 'social_access_required'], true)
             || $this->expectedTextMatchResult() !== null
             || ! $this->normalStatusIsAccepted($this->configurationSnapshot())) {
@@ -105,6 +110,17 @@ class CheckRun extends Model
         $expectedText = $snapshot['expected_text'] ?? null;
 
         return is_string($expectedText) && $expectedText !== '';
+    }
+
+    public function hasUnconfiguredSocialContentExpectation(): bool
+    {
+        $snapshot = $this->configurationSnapshot();
+        $url = $snapshot['url'] ?? null;
+        $expectedText = $snapshot['expected_text'] ?? null;
+
+        return is_string($url)
+            && Monitor::socialPlatformKeyForUrl($url) !== null
+            && (! is_string($expectedText) || trim($expectedText) === '');
     }
 
     public function hasIndeterminateResponseSizeCheck(): bool
