@@ -196,9 +196,9 @@
         <div class="panel-header">
             <div>
                 <h2 id="fleet-slo-title" class="panel-title">SLO 錯誤預算狀態</h2>
-                <p class="panel-description">依最近 30 天啟用中的監測項目整理；使用率達 80% 會列為高用量，覆蓋率低於 90% 或尚無觀測時會提示資料不足。提醒可能重疊，完整項目可在監測清單查看。</p>
+                <p class="panel-description">依最近 30 天啟用中的監測項目整理；使用率達 80% 會列為高用量，覆蓋率低於 90% 或尚無觀測時會提示資料不足。提醒可能重疊，完整資料可匯出查看。</p>
             </div>
-            <a class="button button-secondary button-small" href="{{ route('monitors.index') }}">查看所有監測項目</a>
+            <a class="button button-secondary button-small" href="{{ route('monitors.availability.export.fleet') }}">匯出完整 SLO CSV</a>
         </div>
         @if ($fleetAvailability['slo_budget_summary']['monitor_count'] === 0)
             <div class="empty-state">

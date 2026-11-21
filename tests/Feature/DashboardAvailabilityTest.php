@@ -240,6 +240,8 @@ class DashboardAvailabilityTest extends TestCase
             ->assertSee('預算已超支')
             ->assertSee('用量 ≥ 80%')
             ->assertSee('覆蓋不足')
+            ->assertSee('匯出完整 SLO CSV')
+            ->assertSee(route('monitors.availability.export.fleet'), false)
             ->assertSee('tabindex="0"', false);
 
         $summary = $response->viewData('fleetAvailability')['slo_budget_summary'];
