@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['notification_status'] !== '' || $filters['monitor_id'] !== '' || $filters['platform'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['notification_status'] !== '' || $filters['monitor_id'] !== '' || $filters['platform'] !== '' || $filters['label'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
         $hasSelectableIncidents = $incidents->getCollection()->contains(static fn ($incident): bool => in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true));
     @endphp
@@ -90,6 +90,18 @@
                             </select>
                             @error('platform')
                                 <p id="incident-platform-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-label">專案標籤</label>
+                            <select class="field-select @error('label') is-invalid @enderror" id="incident-label" name="label" @if ($errors->has('label')) aria-invalid="true" aria-describedby="incident-label-error" @endif>
+                                <option value="" @selected(old('label', $filters['label']) === '')>全部標籤</option>
+                                @foreach ($labels as $label)
+                                    <option value="{{ $label }}" @selected(old('label', $filters['label']) === $label)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('label')
+                                <p id="incident-label-error" class="field-error">{{ $message }}</p>
                             @enderror
                         </div>
                         <div class="field-group">

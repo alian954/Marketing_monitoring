@@ -36,11 +36,13 @@ class IncidentHistoryController extends Controller
             ->orderByDesc('id')
             ->paginate(25)
             ->withQueryString();
-        $monitors = Monitor::query()->orderBy('name')->get(['id', 'name']);
+        $monitors = Monitor::query()->orderBy('name')->get(['id', 'name', 'label']);
+        $labels = $monitors->pluck('label')->filter()->unique()->sort()->values();
 
         return view('incidents.index', [
             'incidents' => $incidents,
             'monitors' => $monitors,
+            'labels' => $labels,
             'ruleLabels' => Incident::RULE_LABELS,
             'stateLabels' => self::STATE_LABELS,
             'severityLabels' => self::SEVERITY_LABELS,
@@ -52,6 +54,7 @@ class IncidentHistoryController extends Controller
                 'notification_status' => $filters['notification_status'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
                 'platform' => $filters['platform'] ?? '',
+                'label' => $filters['label'] ?? '',
                 'rule_key' => $filters['rule_key'] ?? '',
                 'date_from' => $filters['date_from'] ?? '',
                 'date_to' => $filters['date_to'] ?? '',
@@ -127,7 +130,7 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, rule_key?: string, date_from?: string, date_to?: string} */
+    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, label?: string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
@@ -138,6 +141,7 @@ class IncidentHistoryController extends Controller
             'notification_status' => ['nullable', 'in:active,snoozed'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'platform' => ['nullable', 'in:website,facebook,instagram,threads'],
+            'label' => ['nullable', 'string', 'max:100'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(Incident::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
@@ -149,10 +153,11 @@ class IncidentHistoryController extends Controller
             'acknowledgement.in' => '請選擇有效的事件認領篩選條件。',
             'notification_status.in' => '請選擇有效的提醒狀態篩選條件。',
             'platform.in' => '請選擇有效的平台篩選條件。',
+            'label.max' => '標籤篩選不得超過 100 個字元。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, rule_key?: string, date_from?: string, date_to?: string} $filters */
+    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, label?: string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -187,6 +192,9 @@ class IncidentHistoryController extends Controller
 
                     $monitorQuery->where('social_platform', $platform);
                 });
+            })
+            ->when($filters['label'] ?? null, static function (Builder $query, string $label): void {
+                $query->whereHas('monitor', static fn (Builder $monitorQuery): Builder => $monitorQuery->where('label', $label));
             })
             ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
             ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {

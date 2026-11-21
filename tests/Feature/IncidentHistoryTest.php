@@ -21,6 +21,7 @@ class IncidentHistoryTest extends TestCase
     {
         $user = User::factory()->create();
         $monitor = $this->createMonitor('Launch Campaign');
+        $monitor->forceFill(['label' => 'Spring Launch'])->save();
         $otherMonitor = $this->createMonitor('Other Campaign');
         $incidents = collect();
 
@@ -50,6 +51,7 @@ class IncidentHistoryTest extends TestCase
             'state' => Incident::STATE_OPEN,
             'monitor_id' => $monitor->id,
             'platform' => 'website',
+            'label' => 'Spring Launch',
             'rule_key' => 'http',
             'date_from' => now('Asia/Taipei')->toDateString(),
             'date_to' => now('Asia/Taipei')->toDateString(),
@@ -61,6 +63,7 @@ class IncidentHistoryTest extends TestCase
             ->assertSee('26 筆符合條件')
             ->assertSee('HTTP 回應異常')
             ->assertSee('<option value="website" selected>網站</option>', false)
+            ->assertSee('<option value="Spring Launch" selected>Spring Launch</option>', false)
             ->assertSee(route('incidents.export', $query))
             ->assertSee('page=2')
             ->assertSee('#'.$incidents->last()->id);
@@ -392,6 +395,7 @@ class IncidentHistoryTest extends TestCase
     {
         $user = User::factory()->create();
         $monitor = $this->createMonitor('Launch Campaign');
+        $monitor->forceFill(['label' => 'Spring Launch'])->save();
         $otherMonitor = $this->createMonitor('Other Campaign');
         $matchingIncident = Incident::factory()->for($monitor)->create([
             'rule_key' => 'content',
@@ -411,6 +415,7 @@ class IncidentHistoryTest extends TestCase
                 'search' => 'Launch',
                 'state' => Incident::STATE_RESOLVED,
                 'monitor_id' => $monitor->id,
+                'label' => 'Spring Launch',
                 'rule_key' => 'content',
             ]))
             ->assertOk();
