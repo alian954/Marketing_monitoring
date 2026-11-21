@@ -158,6 +158,67 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="tagged-engagement-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
+                <p class="panel-description">彙總貼文最近一次可讀取的數值；每篇可有多個標籤，跨標籤的數字會重複計入。</p>
+            </div>
+        </div>
+        @if ($socialEngagementSummaries === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無標籤成效資料</h3>
+                <p class="empty-copy">新增社群貼文監測後，這裡會比較不同標籤下的公開互動數。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依標籤彙總的社群貼文公開互動數與資料覆蓋篇數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">標籤</th>
+                            <th scope="col">貼文數</th>
+                            @foreach (['views' => '觀看', 'likes' => '讚', 'comments' => '留言', 'shares' => '分享'] as $metricLabel)
+                                <th scope="col">{{ $metricLabel }}</th>
+                            @endforeach
+                            <th scope="col">最近資料</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementSummaries as $socialEngagementSummary)
+                            <tr>
+                                <th scope="row">
+                                    @if ($socialEngagementSummary['filter_label'] !== null)
+                                        <a href="{{ route('monitors.index', ['label' => $socialEngagementSummary['filter_label']]) }}">{{ $socialEngagementSummary['tag'] }}</a>
+                                    @else
+                                        {{ $socialEngagementSummary['tag'] }}
+                                    @endif
+                                </th>
+                                <td class="numeric">{{ number_format($socialEngagementSummary['monitor_count']) }}</td>
+                                @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
+                                    @php
+                                        $metricSummary = $socialEngagementSummary['metrics'][$metric];
+                                    @endphp
+                                    <td class="numeric">
+                                        {{ $metricSummary['available'] > 0 ? number_format($metricSummary['total']) : '—' }}
+                                        <span class="secondary-text">({{ number_format($metricSummary['available']) }}/{{ number_format($socialEngagementSummary['monitor_count']) }} 篇)</span>
+                                    </td>
+                                @endforeach
+                                <td>
+                                    @if ($socialEngagementSummary['latest_at'])
+                                        <time class="timestamp" datetime="{{ $socialEngagementSummary['latest_at']->toIso8601String() }}">{{ $socialEngagementSummary['latest_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="social-platform-availability-title">
         <div class="panel-header">
             <div>

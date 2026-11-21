@@ -114,14 +114,59 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('7');
     }
 
-    private function createSocialMonitor(): Monitor
+    public function test_dashboard_summarizes_latest_public_engagement_by_tag_with_metric_coverage(): void
     {
-        $url = 'https://www.instagram.com/reel/POST123/';
+        $this->travelTo('2026-11-22 12:00:00');
+        $summerPost = $this->createSocialMonitor('CAMPAIGN001', 'summer, brand');
+        $summerPostWithoutLikes = $this->createSocialMonitor('CAMPAIGN002', 'summer');
+        $untaggedPost = $this->createSocialMonitor('CAMPAIGN003');
+        $websiteUrl = 'https://example.test/summer-campaign';
+        Monitor::factory()->create([
+            'url' => $websiteUrl,
+            'url_hash' => Monitor::fingerprintUrl($websiteUrl),
+            'label' => 'summer',
+        ]);
+
+        $this->createMetricRun($summerPost, now()->subHour(), ['views' => 9000, 'likes' => 100, 'comments' => 80, 'shares' => 50, 'source' => 'json_ld']);
+        $this->createMetricRun($summerPost, now(), ['views' => 1500, 'likes' => 30, 'comments' => 8, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($summerPostWithoutLikes, now(), ['views' => 500, 'likes' => null, 'comments' => 4, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($untaggedPost, now(), ['views' => null, 'likes' => 8, 'comments' => null, 'shares' => null, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('標籤成效比較')
+            ->assertSee('跨標籤的數字會重複計入')
+            ->assertSee(route('monitors.index', ['label' => 'summer']), false)
+            ->assertSee('<th scope="col">留言</th>', false)
+            ->assertSee('2,000')
+            ->assertSee('(1/2 篇)')
+            ->assertSee('未標籤');
+
+        $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
+
+        $this->assertCount(3, $summaries);
+        $this->assertSame(2, $summaries['summer']['monitor_count']);
+        $this->assertSame(['total' => 2000, 'available' => 2], $summaries['summer']['metrics']['views']);
+        $this->assertSame(['total' => 30, 'available' => 1], $summaries['summer']['metrics']['likes']);
+        $this->assertSame(['total' => 12, 'available' => 2], $summaries['summer']['metrics']['comments']);
+        $this->assertSame(['total' => 3, 'available' => 2], $summaries['summer']['metrics']['shares']);
+        $this->assertSame(1, $summaries['brand']['monitor_count']);
+        $this->assertSame(1, $summaries['未標籤']['monitor_count']);
+        $this->assertSame(['total' => 0, 'available' => 0], $summaries['未標籤']['metrics']['views']);
+        $this->assertSame(['total' => 8, 'available' => 1], $summaries['未標籤']['metrics']['likes']);
+        $this->assertSame(now()->toIso8601String(), $summaries['summer']['latest_at']->toIso8601String());
+    }
+
+    private function createSocialMonitor(string $postId = 'POST123', ?string $label = null): Monitor
+    {
+        $url = 'https://www.instagram.com/reel/'.$postId.'/';
 
         return Monitor::factory()->create([
             'name' => 'Instagram campaign reel',
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
+            'label' => $label,
             'expected_text' => 'Campaign announcement',
         ]);
     }

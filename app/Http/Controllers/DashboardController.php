@@ -152,6 +152,7 @@ class DashboardController extends Controller
             ->orderBy('name')
             ->limit(self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS)
             ->get(['id', 'name', 'url', 'config_version', 'social_platform']);
+        $socialEngagementSummaries = $this->socialEngagementSummaries();
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -231,9 +232,86 @@ class DashboardController extends Controller
             'counts' => $counts,
             'platformCounts' => $platformCounts,
             'socialEngagementMonitors' => $socialEngagementMonitors,
+            'socialEngagementSummaries' => $socialEngagementSummaries,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
+    }
+
+    /**
+     * @return list<array{
+     *     tag: string,
+     *     filter_label: string|null,
+     *     monitor_count: int,
+     *     metrics: array<string, array{total: int, available: int}>,
+     *     latest_at: CarbonImmutable|null
+     * }>
+     */
+    private function socialEngagementSummaries(): array
+    {
+        /**
+         * @var array<string, array{
+         *     tag: string,
+         *     filter_label: string|null,
+         *     monitor_count: int,
+         *     metrics: array<string, array{total: int, available: int}>,
+         *     latest_at: CarbonImmutable|null
+         * }> $summaries
+         */
+        $summaries = [];
+
+        Monitor::query()
+            ->whereNotNull('social_platform')
+            ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
+            ->with('latestPublicEngagementCheckRun')
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries): void {
+                foreach ($monitorBatch as $monitor) {
+                    $engagementRun = $monitor->latestPublicEngagementCheckRun;
+
+                    if ($engagementRun?->config_version !== $monitor->config_version) {
+                        $engagementRun = null;
+                    }
+
+                    $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $tags = $monitor->tagNames();
+                    $tagEntries = $tags === [] ? [null] : array_unique($tags);
+
+                    foreach ($tagEntries as $tag) {
+                        $tagKey = $tag ?? "\0untagged";
+
+                        if (! isset($summaries[$tagKey])) {
+                            $summaries[$tagKey] = [
+                                'tag' => $tag ?? '未標籤',
+                                'filter_label' => $tag,
+                                'monitor_count' => 0,
+                                'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['total' => 0, 'available' => 0]),
+                                'latest_at' => null,
+                            ];
+                        }
+
+                        $summaries[$tagKey]['monitor_count']++;
+
+                        foreach (array_keys($summaries[$tagKey]['metrics']) as $metric) {
+                            if (is_numeric($metrics[$metric] ?? null)) {
+                                $summaries[$tagKey]['metrics'][$metric]['total'] += (int) $metrics[$metric];
+                                $summaries[$tagKey]['metrics'][$metric]['available']++;
+                            }
+                        }
+
+                        $finishedAt = $engagementRun?->finished_at;
+
+                        if ($finishedAt !== null
+                            && ($summaries[$tagKey]['latest_at'] === null || $finishedAt->greaterThan($summaries[$tagKey]['latest_at']))) {
+                            $summaries[$tagKey]['latest_at'] = $finishedAt;
+                        }
+                    }
+                }
+            });
+
+        $results = array_values($summaries);
+        usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
+
+        return $results;
     }
 
     /**
