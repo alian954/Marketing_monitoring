@@ -100,6 +100,10 @@ class CheckRun extends Model
 
     public function hasIndeterminateContentMatch(): bool
     {
+        if ($this->error_type === 'social_access_required') {
+            return true;
+        }
+
         $snapshot = $this->configurationSnapshot();
 
         if ($this->usesSocialContentBaseline()) {

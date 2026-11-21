@@ -163,6 +163,46 @@ class MonitorAvailabilityTest extends TestCase
         $this->assertSame(5.0, $dailyStat['observed_minutes']);
     }
 
+    public function test_social_access_verification_gate_is_unknown_instead_of_a_page_outage(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'interval_seconds' => 300,
+        ]);
+        $this->createScheduledRun($monitor, now()->subMinutes(10), 200);
+        $blockedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => json_encode([
+                'url' => $url,
+                'accepted_status_codes' => [],
+                'expected_text' => 'Campaign headline',
+                'expected_text_mode' => 'present',
+                'interval_seconds' => 300,
+            ], JSON_THROW_ON_ERROR),
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => 403,
+            'error_type' => 'social_access_required',
+            'expected_text_found' => null,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+        $dailyStat = collect($response->viewData('availabilityStats'))->firstWhere('label', '24 小時');
+
+        $this->assertTrue($blockedRun->hasIndeterminateContentMatch());
+        $this->assertSame(100.0, $dailyStat['availability_rate']);
+        $this->assertSame(0.35, $dailyStat['coverage_rate']);
+        $this->assertSame(5.0, $dailyStat['observed_minutes']);
+        $this->assertSame(0.0, $dailyStat['unavailable_minutes']);
+    }
+
     public function test_social_post_check_without_expected_text_is_excluded_from_availability_observations(): void
     {
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
