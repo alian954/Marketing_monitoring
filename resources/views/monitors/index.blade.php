@@ -186,9 +186,10 @@
                                 <option value="label" @selected(old('action') === 'label')>更新所選項目的標籤</option>
                                 <option value="interval" @selected(old('action') === 'interval')>調整所選項目的檢查頻率</option>
                                 <option value="check" @selected(old('action') === 'check')>立即檢查所選項目</option>
+                                <option value="export" @selected(old('action') === 'export')>匯出所選項目 CSV</option>
                                 <option value="delete" @selected(old('action') === 'delete')>刪除所選監測項目</option>
                             </select>
-                            <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。立即檢查會略過已暫停、冷卻中或已有檢查執行的項目。</p>
+                            <p id="bulk-monitor-action-help" class="field-help">請勾選下方項目；每次最多 50 個，只會套用到本頁所選項目。匯出會下載所選項目 CSV；立即檢查會略過已暫停、冷卻中或已有檢查執行的項目。</p>
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
@@ -220,7 +221,7 @@
                     @error('monitor_ids')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                     @error('monitor_ids.*')<p class="field-error" role="alert">{{ $message }}</p>@enderror
                     <div class="form-actions">
-                        <button class="button button-secondary" type="submit">套用至所選項目</button>
+                        <button class="button button-secondary" type="submit">執行所選操作</button>
                     </div>
                 </form>
             </div>

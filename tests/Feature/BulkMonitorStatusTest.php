@@ -595,11 +595,39 @@ class BulkMonitorStatusTest extends TestCase
             ->assertSee('恢復所選監測項目')
             ->assertSee('更新所選項目的標籤')
             ->assertSee('立即檢查所選項目')
+            ->assertSee('匯出所選項目 CSV')
             ->assertSee('調整所選項目的檢查頻率')
             ->assertSee('name="interval_seconds"', false)
             ->assertSee('bulk-monitor-interval', false)
             ->assertSee('name="label"', false)
             ->assertSee('留空會清除所選項目的標籤');
+    }
+
+    public function test_bulk_export_downloads_only_selected_monitors_and_keeps_csv_safety(): void
+    {
+        $selectedMonitor = Monitor::factory()->create([
+            'name' => '=Selected campaign',
+            'url' => 'https://example.test/selected?token=private-token',
+            'url_hash' => Monitor::fingerprintUrl('https://example.test/selected?token=private-token'),
+            'label' => 'Launch',
+        ]);
+        $anotherSelectedMonitor = $this->createMonitor(['name' => 'Another selected campaign']);
+        $unselectedMonitor = $this->createMonitor(['name' => 'Unselected campaign']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.bulk-status'), [
+                'action' => 'export',
+                'monitor_ids' => [$selectedMonitor->id, $anotherSelectedMonitor->id],
+            ])
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $content = $response->streamedContent();
+
+        $this->assertStringContainsString("'=Selected campaign", $content);
+        $this->assertStringContainsString('Another selected campaign', $content);
+        $this->assertStringNotContainsString($unselectedMonitor->name, $content);
+        $this->assertStringContainsString('token=REDACTED', $content);
+        $this->assertStringNotContainsString('private-token', $content);
     }
 
     /** @param array<string, mixed> $attributes */

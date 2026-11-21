@@ -718,10 +718,10 @@ class MonitorController extends Controller
         return back()->with('status', '監測已恢復，排程器下次執行時會進行檢查。');
     }
 
-    public function bulkStatus(Request $request, IncidentManager $incidents, RunScheduler $scheduler): RedirectResponse
+    public function bulkStatus(Request $request, IncidentManager $incidents, RunScheduler $scheduler): RedirectResponse|StreamedResponse
     {
         $validated = $request->validate([
-            'action' => ['required', 'in:pause,resume,label,interval,check,delete'],
+            'action' => ['required', 'in:pause,resume,label,interval,check,delete,export'],
             'label' => ['nullable', 'string', 'max:100'],
             'interval_seconds' => ['exclude_unless:action,interval', 'required', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
             'confirm_delete' => ['exclude_unless:action,delete', 'accepted'],
@@ -751,6 +751,18 @@ class MonitorController extends Controller
         $intervalSeconds = array_key_exists('interval_seconds', $validated)
             ? (int) $validated['interval_seconds']
             : null;
+
+        if ($action === 'export') {
+            $query = Monitor::query()->whereIn('id', $monitorIds);
+
+            if ((clone $query)->count() !== count($monitorIds)) {
+                throw ValidationException::withMessages([
+                    'monitor_ids' => '部分監測項目已不存在，請重新載入清單後再試。',
+                ]);
+            }
+
+            return $this->streamMonitorCsv($query);
+        }
 
         if ($action === 'check') {
             $monitors = Monitor::query()->whereIn('id', $monitorIds)->orderBy('id')->get();
@@ -1432,11 +1444,16 @@ class MonitorController extends Controller
             'signal' => (string) ($validated['signal'] ?? ''),
         ];
 
-        return response()->streamDownload(function () use ($filters): void {
+        return $this->streamMonitorCsv($this->filterMonitorList(Monitor::query(), $filters));
+    }
+
+    private function streamMonitorCsv(Builder $query): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($query): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, ['name', 'url', 'label', 'enabled', 'last_checked_at_utc', 'http_status', 'error_type', 'adsbot_error_type']);
 
-            $this->filterMonitorList(Monitor::query(), $filters)
+            $query
                 ->with('latestCheckRun')
                 ->orderBy('id')
                 ->lazyById()
