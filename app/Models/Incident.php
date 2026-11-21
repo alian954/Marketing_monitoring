@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\IncidentFactory;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -88,5 +89,58 @@ class Incident extends Model
     public function ruleLabel(): string
     {
         return self::RULE_LABELS[$this->rule_key] ?? '其他監測異常';
+    }
+
+    public function confirmedDurationSeconds(?DateTimeInterface $asOf = null): ?int
+    {
+        if ($this->classification === 'false_alarm' || $this->opened_at === null) {
+            return null;
+        }
+
+        $durationEndsAt = match ($this->state) {
+            self::STATE_OPEN => $asOf ?? now(),
+            self::STATE_RESOLVED => $this->resolved_at,
+            default => null,
+        };
+
+        if ($durationEndsAt === null) {
+            return null;
+        }
+
+        return max(0, $durationEndsAt->getTimestamp() - $this->opened_at->getTimestamp());
+    }
+
+    public function confirmedDurationLabel(?DateTimeInterface $asOf = null): ?string
+    {
+        $durationSeconds = $this->confirmedDurationSeconds($asOf);
+
+        if ($durationSeconds === null) {
+            return null;
+        }
+
+        if ($durationSeconds < 60) {
+            return $durationSeconds.' 秒';
+        }
+
+        $durationMinutes = intdiv($durationSeconds, 60);
+
+        if ($durationMinutes < 60) {
+            $remainingSeconds = $durationSeconds % 60;
+
+            return $durationMinutes.' 分鐘'.($remainingSeconds > 0 ? ' '.$remainingSeconds.' 秒' : '');
+        }
+
+        $durationHours = intdiv($durationMinutes, 60);
+
+        if ($durationHours < 24) {
+            $remainingMinutes = $durationMinutes % 60;
+
+            return $durationHours.' 小時'.($remainingMinutes > 0 ? ' '.$remainingMinutes.' 分鐘' : '');
+        }
+
+        $durationDays = intdiv($durationHours, 24);
+        $remainingHours = $durationHours % 24;
+
+        return $durationDays.' 天'.($remainingHours > 0 ? ' '.$remainingHours.' 小時' : '');
     }
 }

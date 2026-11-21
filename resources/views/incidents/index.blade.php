@@ -217,6 +217,7 @@
                                 <th scope="col">失敗次數</th>
                                 <th scope="col">首次發現</th>
                                 <th scope="col">成立時間</th>
+                                <th scope="col">確認後時長</th>
                                 <th scope="col">恢復時間</th>
                                 <th scope="col">認領者</th>
                             </tr>
@@ -268,6 +269,17 @@
                                             <time class="timestamp" datetime="{{ $incident->opened_at->toIso8601String() }}">{{ $incident->opened_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                                         @else
                                             <span class="secondary-text">尚未成立</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if ($incident->classification === 'false_alarm')
+                                            <span class="secondary-text">誤報，不計時</span>
+                                        @elseif ($incident->confirmed_duration_label !== null)
+                                            <span aria-label="確認後時長 {{ $incident->confirmed_duration_label }}">{{ $incident->confirmed_duration_label }}</span>
+                                        @elseif ($incident->opened_at === null)
+                                            <span class="secondary-text">尚未成立</span>
+                                        @else
+                                            <span class="secondary-text">—</span>
                                         @endif
                                     </td>
                                     <td>

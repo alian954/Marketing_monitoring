@@ -17,6 +17,49 @@ class IncidentHistoryTest extends TestCase
         $this->get(route('incidents.index'))->assertRedirect(route('login'));
     }
 
+    public function test_incident_history_shows_elapsed_time_after_confirmation(): void
+    {
+        $this->travelTo('2026-11-21 12:00:00');
+        $user = User::factory()->create();
+        $monitor = $this->createMonitor('Incident duration campaign');
+        $openIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_OPEN,
+            'classification' => 'true_issue',
+            'opened_at' => now()->subSeconds(3727),
+        ]);
+        $resolvedIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'classification' => 'true_issue',
+            'opened_at' => now()->subHour(),
+            'resolved_at' => now()->subMinutes(30),
+        ]);
+        $suspectIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_SUSPECT,
+            'classification' => null,
+            'opened_at' => null,
+        ]);
+        $falseAlarmIncident = Incident::factory()->for($monitor)->create([
+            'state' => Incident::STATE_RESOLVED,
+            'classification' => 'false_alarm',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('incidents.index'))
+            ->assertOk()
+            ->assertSee('確認後時長')
+            ->assertSee('1 小時 2 分鐘')
+            ->assertSee('30 分鐘')
+            ->assertSee('尚未成立')
+            ->assertSee('誤報，不計時');
+
+        $durationByIncident = $response->viewData('incidents')->getCollection()->keyBy('id');
+
+        $this->assertSame(3727, $durationByIncident[$openIncident->id]->confirmed_duration_seconds);
+        $this->assertSame(1800, $durationByIncident[$resolvedIncident->id]->confirmed_duration_seconds);
+        $this->assertNull($durationByIncident[$suspectIncident->id]->confirmed_duration_seconds);
+        $this->assertNull($durationByIncident[$falseAlarmIncident->id]->confirmed_duration_seconds);
+    }
+
     public function test_authenticated_user_can_filter_and_page_through_incident_history(): void
     {
         $user = User::factory()->create();

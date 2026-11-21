@@ -36,6 +36,11 @@ class IncidentHistoryController extends Controller
             ->orderByDesc('id')
             ->paginate(25)
             ->withQueryString();
+        $asOf = now();
+        $incidents->getCollection()->each(static function (Incident $incident) use ($asOf): void {
+            $incident->setAttribute('confirmed_duration_seconds', $incident->confirmedDurationSeconds($asOf));
+            $incident->setAttribute('confirmed_duration_label', $incident->confirmedDurationLabel($asOf));
+        });
         $monitors = Monitor::query()->orderBy('name')->get(['id', 'name', 'label']);
         $labels = $monitors->pluck('label')->filter()->unique()->sort()->values();
 
@@ -93,16 +98,7 @@ class IncidentHistoryController extends Controller
                 ->orderBy('id')
                 ->lazyById()
                 ->each(function (Incident $incident) use ($stream, $exportedAt): void {
-                    $durationEndsAt = match ($incident->state) {
-                        Incident::STATE_OPEN => $exportedAt,
-                        Incident::STATE_RESOLVED => $incident->resolved_at,
-                        default => null,
-                    };
-                    $confirmedDurationSeconds = $incident->classification === 'false_alarm'
-                        || $incident->opened_at === null
-                        || $durationEndsAt === null
-                        ? ''
-                        : (string) max(0, $durationEndsAt->getTimestamp() - $incident->opened_at->getTimestamp());
+                    $confirmedDurationSeconds = $incident->confirmedDurationSeconds($exportedAt);
                     $fields = [
                         (string) $incident->id,
                         $incident->monitor?->name ?? '',
@@ -115,7 +111,7 @@ class IncidentHistoryController extends Controller
                         (string) $incident->recovery_count,
                         $incident->opened_at?->utc()->toIso8601String() ?? '',
                         $incident->resolved_at?->utc()->toIso8601String() ?? '',
-                        $confirmedDurationSeconds,
+                        $confirmedDurationSeconds === null ? '' : (string) $confirmedDurationSeconds,
                         $incident->acknowledgedBy?->name ?? '',
                         $incident->acknowledged_at?->utc()->toIso8601String() ?? '',
                         $incident->snoozed_until?->utc()->toIso8601String() ?? '',
