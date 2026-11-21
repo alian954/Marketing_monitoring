@@ -135,7 +135,7 @@
                     <div class="check-history-filter-actions">
                         <button class="button button-secondary" type="submit">套用</button>
                     </div>
-                    <p class="field-help">平台與標籤篩選會同步更新貼文清單、成效彙總及 CSV。</p>
+                    <p class="field-help">平台與標籤篩選會同步更新貼文清單、互動量排行、成效彙總及 CSV。</p>
                 </form>
             </search>
         </div>
@@ -200,6 +200,65 @@
                 <div class="panel-body pagination-wrap">{{ $socialEngagementMonitors->links('vendor.pagination.monitor') }}</div>
             @endif
             <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。總互動與觀看互動率只在三項互動數完整時計算，觀看為 0 時不計比例。</p>
+        @endif
+    </section>
+
+    <section class="panel spaced-top" aria-labelledby="top-engagement-posts-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
+                <p class="panel-description">依目前篩選列出互動量最高的前五篇；只計讚、留言與分享數完整的貼文。</p>
+            </div>
+        </div>
+        @if ($socialEngagementTopPosts === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無完整互動數可排名</h3>
+                <p class="empty-copy">貼文至少要有讚、留言及分享數，才會列入排行。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="top-engagement-posts-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依讚、留言與分享總數排序的前五篇社群貼文</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">排名</th>
+                            <th scope="col">貼文</th>
+                            <th scope="col">平台</th>
+                            <th scope="col">活動標籤</th>
+                            <th scope="col">觀看</th>
+                            <th scope="col">讚</th>
+                            <th scope="col">留言</th>
+                            <th scope="col">分享</th>
+                            <th scope="col">總互動</th>
+                            <th scope="col">觀看互動率</th>
+                            <th scope="col">資料時間</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementTopPosts as $topPost)
+                            <tr>
+                                <th scope="row">{{ $loop->iteration }}</th>
+                                <td><a href="{{ route('monitors.show', $topPost['id']) }}">{{ $topPost['name'] }}</a></td>
+                                <td>{{ $topPost['platform'] }}</td>
+                                <td>{{ $topPost['tags'] !== [] ? implode(', ', $topPost['tags']) : '未標籤' }}</td>
+                                <td class="numeric">{{ $topPost['views'] !== null ? number_format($topPost['views']) : '—' }}</td>
+                                <td class="numeric">{{ number_format($topPost['likes']) }}</td>
+                                <td class="numeric">{{ number_format($topPost['comments']) }}</td>
+                                <td class="numeric">{{ number_format($topPost['shares']) }}</td>
+                                <td class="numeric">{{ number_format($topPost['interaction_total']) }}</td>
+                                <td class="numeric">{{ $topPost['engagement_rate_percent'] !== null ? number_format($topPost['engagement_rate_percent'], 2).'%' : '—' }}</td>
+                                <td>
+                                    @if ($topPost['finished_at'] !== null)
+                                        <time class="timestamp" datetime="{{ $topPost['finished_at']->toIso8601String() }}">{{ $topPost['finished_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
         @endif
     </section>
 

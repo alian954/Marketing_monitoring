@@ -362,6 +362,67 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         );
     }
 
+    public function test_dashboard_ranks_complete_interactions_using_selected_platform_and_tag(): void
+    {
+        $facebookPost = $this->createSocialMonitorForPlatform('facebook', 'RANKFB001', 'summer');
+        $instagramPost = $this->createSocialMonitorForPlatform('instagram', 'RANKIG001', 'summer');
+        $threadsPost = $this->createSocialMonitorForPlatform('threads', 'RANKTH001', 'winter');
+        $incompletePost = $this->createSocialMonitorForPlatform('facebook', 'RANKMISS001', 'summer');
+        $thirdRankedPost = $this->createSocialMonitorForPlatform('facebook', 'RANKTHIRD001', 'summer');
+        $fourthRankedPost = $this->createSocialMonitorForPlatform('facebook', 'RANKFOURTH001', 'summer');
+        $fifthRankedPost = $this->createSocialMonitorForPlatform('facebook', 'RANKFIFTH001', 'summer');
+        $sixthRankedPost = $this->createSocialMonitorForPlatform('facebook', 'RANKSIXTH001', 'summer');
+
+        for ($index = 1; $index <= 51; $index++) {
+            $decoyPost = $this->createSocialMonitorForPlatform('facebook', 'RANKDECOY'.str_pad((string) $index, 3, '0', STR_PAD_LEFT), 'summer');
+            $decoyPost->forceFill(['name' => 'A Ranked Out Decoy '.str_pad((string) $index, 3, '0', STR_PAD_LEFT)])->save();
+        }
+
+        $this->createMetricRun($facebookPost, now(), ['views' => 1000, 'likes' => 2, 'comments' => 1, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($instagramPost, now(), ['views' => 200, 'likes' => 10, 'comments' => 5, 'shares' => 5, 'source' => 'json_ld']);
+        $this->createMetricRun($threadsPost, now(), ['views' => 500, 'likes' => 100, 'comments' => 10, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($incompletePost, now(), ['views' => 500, 'likes' => 40, 'comments' => null, 'shares' => 20, 'source' => 'json_ld']);
+        $this->createMetricRun($thirdRankedPost, now(), ['views' => 1000, 'likes' => 3, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($fourthRankedPost, now(), ['views' => 1000, 'likes' => 2, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($fifthRankedPost, now(), ['views' => 1000, 'likes' => 1, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($sixthRankedPost, now(), ['views' => 1000, 'likes' => 0, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+
+        $user = User::factory()->create();
+        $allPlatformsResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_tag' => 'tag:summer']))
+            ->assertOk()
+            ->assertSee('互動量排行')
+            ->assertSee('10.00%')
+            ->assertSee('0.40%');
+        $topPosts = $allPlatformsResponse->viewData('socialEngagementTopPosts');
+        $firstPageMonitorIds = $allPlatformsResponse->viewData('socialEngagementMonitors')->getCollection()->modelKeys();
+
+        $this->assertCount(5, $topPosts);
+        $this->assertSame([
+            $instagramPost->id,
+            $facebookPost->id,
+            $thirdRankedPost->id,
+            $fourthRankedPost->id,
+            $fifthRankedPost->id,
+        ], array_column($topPosts, 'id'));
+        $this->assertNotContains($facebookPost->id, $firstPageMonitorIds);
+        $this->assertNotContains($sixthRankedPost->id, array_column($topPosts, 'id'));
+        $this->assertSame(20, $topPosts[0]['interaction_total']);
+        $this->assertSame(4, $topPosts[1]['interaction_total']);
+
+        $facebookOnlyResponse = $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:summer',
+            ]))
+            ->assertOk();
+
+        $facebookOnlyTopPosts = $facebookOnlyResponse->viewData('socialEngagementTopPosts');
+        $this->assertCount(5, $facebookOnlyTopPosts);
+        $this->assertSame($facebookPost->id, $facebookOnlyTopPosts[0]['id']);
+        $this->assertSame('Facebook', $facebookOnlyTopPosts[0]['platform']);
+    }
+
     public function test_dashboard_compares_engagement_for_the_same_tag_across_platforms(): void
     {
         $facebookPost = $this->createSocialMonitorForPlatform('facebook', 'CROSSFB001', 'summer');

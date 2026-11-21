@@ -35,6 +35,8 @@ class DashboardController extends Controller
 
     private const MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS = 50;
 
+    private const MAX_DASHBOARD_SOCIAL_TOP_POSTS = 5;
+
     /** @var array<string, string> */
     private const SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS = [
         'tag' => '依標籤名稱',
@@ -272,14 +274,20 @@ class DashboardController extends Controller
                 default => true,
             },
         ));
+        $socialEngagementDashboardData = $this->socialEngagementDashboardData(
+            $socialEngagementPlatform,
+            $socialEngagementSelectedTag,
+            $socialEngagementSelectedTagValue,
+        );
         $socialEngagementComparisonSummaries = array_values(array_filter(
-            $this->socialEngagementPlatformSummaries(),
+            $socialEngagementDashboardData['summaries'],
             static fn (array $summary): bool => match (true) {
                 $socialEngagementSelectedTag === 'unlabeled' => $summary['filter_label'] === null,
                 $socialEngagementSelectedTagValue !== null => $summary['filter_label'] === $socialEngagementSelectedTagValue,
                 default => true,
             },
         ));
+        $socialEngagementTopPosts = $socialEngagementDashboardData['top_posts'];
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -381,6 +389,7 @@ class DashboardController extends Controller
             'socialEngagementSelectedTag' => $socialEngagementSelectedTag,
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
+            'socialEngagementTopPosts' => $socialEngagementTopPosts,
             'socialEngagementComparisonPlatformOptions' => [
                 'facebook' => 'Facebook',
                 'instagram' => 'Instagram',
@@ -521,29 +530,79 @@ class DashboardController extends Controller
     }
 
     /**
-     * @return list<array{
-     *     tag: string,
-     *     filter_label: string|null,
-     *     platforms: array<string, array{
-     *         monitor_count: int,
-     *         metrics: array<string, array{total: int, available: int}>,
+     * @return array{
+     *     summaries: list<array{
+     *         tag: string,
+     *         filter_label: string|null,
+     *         platforms: array<string, array{
+     *             monitor_count: int,
+     *             metrics: array<string, array{total: int, available: int}>,
+     *             interaction_total: int,
+     *             interaction_count: int,
+     *             engagement_rate: array{interactions: int, views: int, available: int}
+     *         }>
+     *     }>,
+     *     top_posts: list<array{
+     *         id: int,
+     *         name: string,
+     *         platform: string,
+     *         tags: list<string>,
+     *         views: int|null,
+     *         likes: int,
+     *         comments: int,
+     *         shares: int,
      *         interaction_total: int,
-     *         interaction_count: int,
-     *         engagement_rate: array{interactions: int, views: int, available: int}
+     *         engagement_rate_percent: float|null,
+     *         finished_at: CarbonImmutable|null
      *     }>
-     * }>
+     * }
      */
-    private function socialEngagementPlatformSummaries(): array
+    private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue): array
     {
         /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
         $summaries = [];
+        $topPosts = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
+        $platformLabels = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'];
+        $sortTopPosts = static function (array $first, array $second): int {
+            $interactionComparison = $second['interaction_total'] <=> $first['interaction_total'];
+
+            if ($interactionComparison !== 0) {
+                return $interactionComparison;
+            }
+
+            $firstRate = $first['engagement_rate_percent'];
+            $secondRate = $second['engagement_rate_percent'];
+
+            if ($firstRate === null && $secondRate !== null) {
+                return 1;
+            }
+
+            if ($firstRate !== null && $secondRate === null) {
+                return -1;
+            }
+
+            if ($firstRate !== null && $secondRate !== null) {
+                $rateComparison = $secondRate <=> $firstRate;
+
+                if ($rateComparison !== 0) {
+                    return $rateComparison;
+                }
+            }
+
+            $finishedAtComparison = ($second['finished_at']?->getTimestamp() ?? 0)
+                <=> ($first['finished_at']?->getTimestamp() ?? 0);
+
+            return $finishedAtComparison !== 0
+                ? $finishedAtComparison
+                : (strnatcasecmp($first['name'], $second['name']) ?: ($first['id'] <=> $second['id']));
+        };
 
         Monitor::query()
             ->whereNotNull('social_platform')
-            ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
+            ->select(['id', 'name', 'social_platform', 'config_version', 'tags', 'label'])
             ->with('latestPublicEngagementCheckRun')
-            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, $supportedPlatforms): void {
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts): void {
                 foreach ($monitorBatch as $monitor) {
                     $platform = $monitor->social_platform;
 
@@ -560,6 +619,43 @@ class DashboardController extends Controller
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
                     $tags = $monitor->tagNames();
                     $tagEntries = $tags === [] ? [null] : array_unique($tags);
+                    $matchesSelectedPlatform = $selectedPlatform === null || $platform === $selectedPlatform;
+                    $matchesSelectedTag = match (true) {
+                        $selectedTag === 'unlabeled' => $tags === [],
+                        $selectedTagValue !== null => in_array($selectedTagValue, $tags, true),
+                        default => true,
+                    };
+                    $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
+                        && is_numeric($metrics['comments'] ?? null)
+                        && is_numeric($metrics['shares'] ?? null);
+
+                    if ($matchesSelectedPlatform && $matchesSelectedTag && $hasCompleteInteractionCounts) {
+                        $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                        $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
+                        $finishedAt = $engagementRun?->finished_at?->toImmutable();
+
+                        $topPosts[] = [
+                            'id' => (int) $monitor->id,
+                            'name' => $monitor->name,
+                            'platform' => $platformLabels[$platform],
+                            'tags' => $tags,
+                            'views' => $views,
+                            'likes' => (int) $metrics['likes'],
+                            'comments' => (int) $metrics['comments'],
+                            'shares' => (int) $metrics['shares'],
+                            'interaction_total' => $interactionTotal,
+                            'engagement_rate_percent' => $views !== null && $views > 0
+                                ? round($interactionTotal / $views * 100, 2)
+                                : null,
+                            'finished_at' => $finishedAt,
+                        ];
+
+                        usort($topPosts, $sortTopPosts);
+
+                        if (count($topPosts) > self::MAX_DASHBOARD_SOCIAL_TOP_POSTS) {
+                            array_pop($topPosts);
+                        }
+                    }
 
                     foreach ($tagEntries as $tag) {
                         $tagKey = $tag ?? "\0untagged";
@@ -616,7 +712,7 @@ class DashboardController extends Controller
         $results = array_values($summaries);
         usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
-        return $results;
+        return ['summaries' => $results, 'top_posts' => $topPosts];
     }
 
     /** @return array<int, string> */
