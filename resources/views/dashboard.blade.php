@@ -192,6 +192,98 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="fleet-slo-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="fleet-slo-title" class="panel-title">SLO 錯誤預算狀態</h2>
+                <p class="panel-description">依最近 30 天啟用中的監測項目整理；使用率達 80% 會列為高用量，覆蓋率低於 90% 或尚無觀測時會提示資料不足。提醒可能重疊，完整項目可在監測清單查看。</p>
+            </div>
+            <a class="button button-secondary button-small" href="{{ route('monitors.index') }}">查看所有監測項目</a>
+        </div>
+        @if ($fleetAvailability['slo_budget_summary']['monitor_count'] === 0)
+            <div class="empty-state">
+                <h3 class="empty-title">沒有啟用中的監測項目</h3>
+                <p class="empty-copy">啟用監測後，這裡會整理近 30 天的錯誤預算與資料覆蓋情形。</p>
+            </div>
+        @else
+            <div class="stat-grid">
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">已超出預算</span><span class="badge badge-issue">需處理</span></div>
+                    <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['exceeded_count'] }}</strong>
+                    <p class="stat-hint">觀測到的不可用時間已超過目標允許值</p>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">預算高用量</span><span class="badge badge-warning">≥ 80%</span></div>
+                    <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['high_usage_count'] }}</strong>
+                    <p class="stat-hint">已使用至少 80% 的錯誤預算</p>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">資料覆蓋不足</span><span class="badge badge-unknown">待補觀測</span></div>
+                    <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['insufficient_coverage_count'] }}</strong>
+                    <p class="stat-hint">無可用觀測，或最近 30 天覆蓋率低於 90%</p>
+                </article>
+            </div>
+
+            @if ($fleetAvailability['slo_budget_summary']['priority_monitors'] === [])
+                <div class="empty-state">
+                    <h3 class="empty-title">目前沒有 SLO 預算提醒</h3>
+                    <p class="empty-copy">啟用中的項目尚無預算超支、高用量或覆蓋不足狀況。</p>
+                </div>
+            @else
+                <div class="data-table-wrap" role="region" aria-labelledby="fleet-slo-title" tabindex="0">
+                    <table class="data-table">
+                        <caption class="sr-only">最需要留意的監測項目近 30 天錯誤預算狀態</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">監測項目</th>
+                                <th scope="col">SLO 目標</th>
+                                <th scope="col">錯誤預算用量</th>
+                                <th scope="col">剩餘預算</th>
+                                <th scope="col">資料覆蓋率</th>
+                                <th scope="col">提醒</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($fleetAvailability['slo_budget_summary']['priority_monitors'] as $sloMonitor)
+                                <tr>
+                                    <th scope="row"><a class="monitor-name-link" href="{{ route('monitors.show', $sloMonitor['id']) }}">{{ $sloMonitor['name'] }}</a></th>
+                                    <td class="numeric">{{ number_format($sloMonitor['target_percent'], 2) }}%</td>
+                                    <td class="numeric">{{ $sloMonitor['error_budget_used_percent'] === null ? '—' : number_format($sloMonitor['error_budget_used_percent'], 2).'%' }}</td>
+                                    <td class="numeric">
+                                        @if ($sloMonitor['remaining_error_budget_minutes'] === null)
+                                            —
+                                        @elseif ($sloMonitor['remaining_error_budget_minutes'] < 0)
+                                            超支 {{ number_format(abs($sloMonitor['remaining_error_budget_minutes']), 1) }} 分鐘
+                                        @else
+                                            {{ number_format($sloMonitor['remaining_error_budget_minutes'], 1) }} 分鐘
+                                        @endif
+                                    </td>
+                                    <td class="numeric">{{ $sloMonitor['coverage_rate'] === null ? '—' : number_format($sloMonitor['coverage_rate'], 2).'%' }}</td>
+                                    <td>
+                                        <div class="row-actions">
+                                            @if ($sloMonitor['is_exhausted'])
+                                                <span class="badge badge-issue">預算已超支</span>
+                                            @endif
+                                            @if ($sloMonitor['is_high_usage'])
+                                                <span class="badge badge-warning">用量 ≥ 80%</span>
+                                            @endif
+                                            @if ($sloMonitor['insufficient_coverage'])
+                                                <span class="badge badge-unknown">覆蓋不足</span>
+                                            @endif
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @if ($fleetAvailability['slo_budget_summary']['flagged_monitor_count'] > count($fleetAvailability['slo_budget_summary']['priority_monitors']))
+                    <p class="panel-description spaced-top">顯示最需留意的前 {{ count($fleetAvailability['slo_budget_summary']['priority_monitors']) }} 項；共 {{ $fleetAvailability['slo_budget_summary']['flagged_monitor_count'] }} 項有提醒。</p>
+                @endif
+            @endif
+        @endif
+    </section>
+
     <div class="dashboard-top">
         <section class="panel">
             <div class="panel-header">

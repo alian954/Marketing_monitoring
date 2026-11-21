@@ -92,7 +92,7 @@ class DashboardAvailabilityTest extends TestCase
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));
         $monitor = $this->createMonitor('full-maintenance');
         MaintenanceWindow::factory()->for($monitor)->create([
-            'starts_at' => now()->subDay(),
+            'starts_at' => now()->subDays(30),
             'ends_at' => now(),
         ]);
 
@@ -110,6 +110,8 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(0.0, $dailyStatistic['eligible_minutes']);
         $this->assertSame(0.0, $dailyStatistic['unavailable_minutes']);
         $this->assertSame(1440.0, $dailyStatistic['maintenance_excluded_minutes']);
+        $this->assertSame(0, $response->viewData('fleetAvailability')['slo_budget_summary']['insufficient_coverage_count']);
+        $this->assertSame(0, $response->viewData('fleetAvailability')['slo_budget_summary']['flagged_monitor_count']);
     }
 
     public function test_dashboard_displays_dns_ip_and_cname_changes_in_a_keyboard_scrollable_table(): void
@@ -207,6 +209,56 @@ class DashboardAvailabilityTest extends TestCase
         $this->assertSame(1, $platformStatistics['threads']['monitor_count']);
         $this->assertNull($threadsDaily['availability_rate']);
         $this->assertSame(0.0, $threadsDaily['coverage_rate']);
+    }
+
+    public function test_dashboard_ranks_exceeded_budgets_high_usage_and_missing_coverage(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+
+        $exceededMonitor = $this->createMonitor('slo-budget-exceeded', 1800);
+        $exceededMonitor->forceFill([
+            'name' => 'Budget exceeded',
+            'slo_target_basis_points' => 9999,
+        ])->save();
+        $this->createScheduledRun($exceededMonitor, now()->subMinutes(10), 503, 1800);
+
+        $highUsageMonitor = $this->createMonitor('slo-budget-high-usage', 21_600);
+        $highUsageMonitor->forceFill([
+            'name' => 'High budget use',
+            'slo_target_basis_points' => 9900,
+        ])->save();
+        $this->createScheduledRun($highUsageMonitor, now()->subHours(6), 503, 21_600);
+
+        $noObservationMonitor = $this->createMonitor('slo-budget-no-observations');
+        $noObservationMonitor->forceFill(['name' => 'No SLO observations'])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('SLO 錯誤預算狀態')
+            ->assertSee('預算已超支')
+            ->assertSee('用量 ≥ 80%')
+            ->assertSee('覆蓋不足')
+            ->assertSee('tabindex="0"', false);
+
+        $summary = $response->viewData('fleetAvailability')['slo_budget_summary'];
+        $priorityMonitors = $summary['priority_monitors'];
+
+        $this->assertSame(3, $summary['monitor_count']);
+        $this->assertSame(1, $summary['exceeded_count']);
+        $this->assertSame(2, $summary['high_usage_count']);
+        $this->assertSame(3, $summary['insufficient_coverage_count']);
+        $this->assertSame(3, $summary['flagged_monitor_count']);
+        $this->assertSame([
+            'Budget exceeded',
+            'High budget use',
+            'No SLO observations',
+        ], array_column($priorityMonitors, 'name'));
+        $this->assertTrue($priorityMonitors[0]['is_exhausted']);
+        $this->assertTrue($priorityMonitors[1]['is_high_usage']);
+        $this->assertTrue($priorityMonitors[1]['insufficient_coverage']);
+        $this->assertFalse($priorityMonitors[2]['has_observations']);
     }
 
     private function createScheduledRun(Monitor $monitor, Carbon $finishedAt, int $normalStatus, int $intervalSeconds): CheckRun

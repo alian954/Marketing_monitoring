@@ -12,6 +12,10 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class FleetAvailabilityReport
 {
+    private const MAX_PRIORITY_SLO_MONITORS = 10;
+
+    private const HIGH_ERROR_BUDGET_USAGE_PERCENT = 80.0;
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     /** @var array<string, string> */
@@ -27,19 +31,31 @@ class FleetAvailabilityReport
         ['label' => '30 天', 'duration_seconds' => 2_592_000],
     ];
 
-    public function __construct(private readonly MonitorAvailabilityCalculator $calculator) {}
+    public function __construct(
+        private readonly MonitorAvailabilityCalculator $calculator,
+        private readonly MonitorSloBudgetCalculator $sloBudgetCalculator,
+    ) {}
 
     /**
      * @return array{
      *     monitor_count: int,
      *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>,
-     *     social_platform_statistics: array<string, array{label: string, monitor_count: int, statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>}>
+     *     social_platform_statistics: array<string, array{label: string, monitor_count: int, statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, legacy_interval_fallback: bool}>>,
+     *     slo_budget_summary: array{monitor_count: int, exceeded_count: int, high_usage_count: int, insufficient_coverage_count: int, flagged_monitor_count: int, priority_monitors: list<array{id: int, name: string, target_percent: float, allowed_downtime_minutes: float, observed_downtime_minutes: ?float, remaining_error_budget_minutes: ?float, error_budget_used_percent: ?float, coverage_rate: ?float, is_exhausted: bool, is_high_usage: bool, insufficient_coverage: bool, has_observations: bool, sort_priority: int}>}
      * }
      */
     public function build(CarbonImmutable $asOf): array
     {
         $totalsByPeriod = $this->emptyTotalsByPeriod();
         $socialPlatformTotals = [];
+        $sloBudgetSummary = [
+            'monitor_count' => 0,
+            'exceeded_count' => 0,
+            'high_usage_count' => 0,
+            'insufficient_coverage_count' => 0,
+            'flagged_monitor_count' => 0,
+            'priority_monitors' => [],
+        ];
 
         foreach (self::SOCIAL_PLATFORM_LABELS as $platform => $label) {
             $socialPlatformTotals[$platform] = [
@@ -53,6 +69,7 @@ class FleetAvailabilityReport
         foreach ($this->monitorStatistics($asOf) as $monitorStatistics) {
             $monitorCount++;
             $this->accumulateStatistics($totalsByPeriod, $monitorStatistics['statistics']);
+            $this->accumulateSloBudgetSummary($sloBudgetSummary, $monitorStatistics['monitor'], $monitorStatistics['statistics']);
 
             $platform = $monitorStatistics['monitor']->social_platform;
 
@@ -79,7 +96,78 @@ class FleetAvailabilityReport
             'monitor_count' => $monitorCount,
             'statistics' => $this->formatTotalsByPeriod($totalsByPeriod),
             'social_platform_statistics' => $socialPlatformStatistics,
+            'slo_budget_summary' => $sloBudgetSummary,
         ];
+    }
+
+    /**
+     * @param  array{monitor_count: int, exceeded_count: int, high_usage_count: int, insufficient_coverage_count: int, flagged_monitor_count: int, priority_monitors: list<array{id: int, name: string, target_percent: float, allowed_downtime_minutes: float, observed_downtime_minutes: ?float, remaining_error_budget_minutes: ?float, error_budget_used_percent: ?float, coverage_rate: ?float, is_exhausted: bool, is_high_usage: bool, insufficient_coverage: bool, has_observations: bool, sort_priority: int}>}  $summary
+     * @param  list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $statistics
+     */
+    private function accumulateSloBudgetSummary(array &$summary, Monitor $monitor, array $statistics): void
+    {
+        $thirtyDayStatistic = null;
+
+        foreach ($statistics as $statistic) {
+            if ($statistic['label'] === '30 天') {
+                $thirtyDayStatistic = $statistic;
+
+                break;
+            }
+        }
+
+        if ($thirtyDayStatistic === null) {
+            return;
+        }
+
+        $budget = $this->sloBudgetCalculator->calculate(
+            $thirtyDayStatistic,
+            $monitor->slo_target_basis_points,
+        );
+        $isExhausted = $budget['remaining_error_budget_minutes'] !== null
+            && $budget['remaining_error_budget_minutes'] < 0;
+        $isHighUsage = $budget['error_budget_used_percent'] !== null
+            && $budget['error_budget_used_percent'] >= self::HIGH_ERROR_BUDGET_USAGE_PERCENT;
+        $hasInsufficientCoverage = $budget['has_eligible_time']
+            && (! $budget['has_observations'] || $budget['low_coverage']);
+
+        $summary['monitor_count']++;
+        $summary['exceeded_count'] += (int) $isExhausted;
+        $summary['high_usage_count'] += (int) $isHighUsage;
+        $summary['insufficient_coverage_count'] += (int) $hasInsufficientCoverage;
+
+        if (! $isExhausted && ! $isHighUsage && ! $hasInsufficientCoverage) {
+            return;
+        }
+
+        $summary['flagged_monitor_count']++;
+        $summary['priority_monitors'][] = [
+            'id' => (int) $monitor->id,
+            'name' => $monitor->name,
+            'target_percent' => $budget['target_percent'],
+            'allowed_downtime_minutes' => $budget['allowed_downtime_minutes'],
+            'observed_downtime_minutes' => $budget['observed_downtime_minutes'],
+            'remaining_error_budget_minutes' => $budget['remaining_error_budget_minutes'],
+            'error_budget_used_percent' => $budget['error_budget_used_percent'],
+            'coverage_rate' => $budget['coverage_rate'],
+            'is_exhausted' => $isExhausted,
+            'is_high_usage' => $isHighUsage,
+            'insufficient_coverage' => $hasInsufficientCoverage,
+            'has_observations' => $budget['has_observations'],
+            'sort_priority' => $isExhausted ? 0 : ($isHighUsage ? 1 : 2),
+        ];
+
+        usort($summary['priority_monitors'], function (array $first, array $second): int {
+            return ($first['sort_priority'] <=> $second['sort_priority'])
+                ?: (($second['error_budget_used_percent'] ?? -1.0) <=> ($first['error_budget_used_percent'] ?? -1.0))
+                ?: (($first['coverage_rate'] ?? -1.0) <=> ($second['coverage_rate'] ?? -1.0))
+                ?: strcasecmp($first['name'], $second['name'])
+                ?: ($first['id'] <=> $second['id']);
+        });
+
+        if (count($summary['priority_monitors']) > self::MAX_PRIORITY_SLO_MONITORS) {
+            array_pop($summary['priority_monitors']);
+        }
     }
 
     /**

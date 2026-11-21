@@ -72,6 +72,9 @@ class DashboardScalabilityTest extends TestCase
 
         $this->assertSame(501, $response->viewData('monitorCount'));
         $this->assertSame(501, $response->viewData('fleetAvailability')['monitor_count']);
+        $this->assertSame(501, $response->viewData('fleetAvailability')['slo_budget_summary']['monitor_count']);
+        $this->assertSame(501, $response->viewData('fleetAvailability')['slo_budget_summary']['flagged_monitor_count']);
+        $this->assertCount(10, $response->viewData('fleetAvailability')['slo_budget_summary']['priority_monitors']);
         $this->assertCount(8, $response->viewData('monitors'));
         $this->assertSame(['ZZZ issue monitor', 'A warning monitor'], $response->viewData('monitors')->take(2)->pluck('name')->all());
         $this->assertSame(1, $response->viewData('counts')['healthy']);
@@ -112,8 +115,7 @@ class DashboardScalabilityTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Warning monitor')
-            ->assertSee('Z stale monitor')
-            ->assertDontSee('Healthy monitor 007');
+            ->assertSee('Z stale monitor');
 
         $dashboardMonitors = $response->viewData('monitors');
 
@@ -121,6 +123,12 @@ class DashboardScalabilityTest extends TestCase
         $this->assertSame('warning', $dashboardMonitors->first()->getAttribute('health_state'));
         $this->assertSame('stale', $dashboardMonitors->get(1)->getAttribute('health_state'));
         $this->assertCount(8, $dashboardMonitors);
+        $this->assertFalse(in_array('Healthy monitor 007', $dashboardMonitors->pluck('name')->all(), true));
+        $this->assertTrue(in_array(
+            'Healthy monitor 007',
+            array_column($response->viewData('fleetAvailability')['slo_budget_summary']['priority_monitors'], 'name'),
+            true,
+        ));
     }
 
     private function createMonitor(string $name, string $url): Monitor
