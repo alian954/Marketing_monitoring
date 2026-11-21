@@ -107,20 +107,28 @@ class SecureProbeClient implements ProbeClient
                 unset($attemptTarget['cnames'], $attemptTarget['dns_records']);
                 $attemptTarget['ips'] = [$ip];
                 $headersForHop = $this->sameOrigin($url, $target['url']) ? $requestHeaders : [];
-                $response = null;
+                $response = $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
+                    ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop, $expectedResponseHeaderName)
+                    : $this->transport->get($attemptTarget, $userAgent, $remainingMs);
+                $elapsedMs += $response->elapsedMs;
 
                 if ($hop === 0
                     && $index === 0
                     && $socialPlatform === 'dcard'
                     && $this->dcardBrowserRenderer !== null
-                    && (bool) config('monitoring.dcard_browser_enabled', true)) {
-                    $response = $this->dcardBrowserRenderer->render($target, $remainingMs);
-                }
+                    && (bool) config('monitoring.dcard_browser_enabled', true)
+                    && $this->dcardPageNeedsRendering($target['url'], $response)) {
+                    $remainingMs = $this->remainingMilliseconds($deadline);
 
-                $response ??= $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
-                    ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop, $expectedResponseHeaderName)
-                    : $this->transport->get($attemptTarget, $userAgent, $remainingMs);
-                $elapsedMs += $response->elapsedMs;
+                    if ($remainingMs > 0) {
+                        $renderedResponse = $this->dcardBrowserRenderer->render($target, $remainingMs);
+
+                        if ($renderedResponse !== null) {
+                            $response = $renderedResponse;
+                            $elapsedMs += $renderedResponse->elapsedMs;
+                        }
+                    }
+                }
 
                 if (hrtime(true) >= $deadline) {
                     return $this->failure($this->timeoutException($requestTimeoutSeconds), $startedAt, $redirects, $resolvedIps, $target['url'], $elapsedMs, $response->tlsExpiresAt, $monitorHostIps, $monitorHostCnames, $monitorHostDnsRecords);
@@ -282,7 +290,7 @@ class SecureProbeClient implements ProbeClient
                     : array_column($matchDetails['terms'], 'matched');
                 $hasExpectedText = $expectedText !== null && $expectedText !== '';
                 $cloudflareBlockDetected = $socialPlatform !== null
-                    && $response->statusCode === 403
+                    && $response->statusCode !== null
                     && SocialPostAccessGateDetector::detectsCloudflareBlock($response->body, $responseMetadata);
                 $dcardVerificationDetected = $socialPlatform === 'dcard'
                     && SocialPostAccessGateDetector::detectsDcardVerification($response->visibleText ?? $response->body);
@@ -302,6 +310,7 @@ class SecureProbeClient implements ProbeClient
                         ? array_fill(0, count(ExpectedTextMatcher::terms((string) $expectedText)), null)
                         : null;
                     $responseVisibleTextHash = null;
+                    $publicEngagementMetrics = null;
                 }
 
                 return new ProbeResult(
@@ -313,7 +322,7 @@ class SecureProbeClient implements ProbeClient
                     $accessGateDetected ? 'social_access_required' : null,
                     $accessGateDetected
                         ? ($cloudflareBlockDetected
-                            ? '平台回傳 HTTP 403 Cloudflare 防護頁；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。'
+                            ? '平台回傳 Cloudflare 防護頁（HTTP '.($response->statusCode ?? '狀態未知').'）；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。'
                             : ($dcardVerificationDetected
                                 ? 'Dcard 要求人工驗證，這次無法讀取貼文內容或互動數；系統不會自動處理驗證。請稍後再試或手動開啟網址確認。'
                                 : '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。'))
@@ -406,6 +415,41 @@ class SecureProbeClient implements ProbeClient
         $contentType = preg_replace('/[\x00-\x1F\x7F]/', '', trim($contentType));
 
         return $contentType === null || $contentType === '' ? null : mb_substr($contentType, 0, 255);
+    }
+
+    private function dcardPageNeedsRendering(string $url, HopResponse $response): bool
+    {
+        if (($response->errorType !== null && $response->errorType !== 'body_too_large')
+            || $response->statusCode === null
+            || $response->statusCode < 200
+            || $response->statusCode >= 300) {
+            return false;
+        }
+
+        $contentType = $this->responseContentType($response->responseHeaders);
+
+        if ($contentType === null
+            || preg_match('/\A(?:text\/html|application\/xhtml\+xml)(?:\s*;|\z)/i', $contentType) !== 1) {
+            return false;
+        }
+
+        $inspection = ResponseMetadataExtractor::inspect(
+            $response->body,
+            $url,
+            $response->responseHeaders,
+            $response->errorType !== 'body_too_large',
+        );
+        $visibleText = $response->visibleText ?? $response->body;
+        $metrics = $inspection['public_engagement_metrics']
+            ?? DcardPublicEngagementMetricExtractor::extract($visibleText);
+        $hasCompletePublicMetrics = is_array($metrics)
+            && is_numeric($metrics['likes'] ?? null)
+            && is_numeric($metrics['comments'] ?? null);
+        $isAccessGate = SocialPostAccessGateDetector::detectsDcardVerification($visibleText)
+            || SocialPostAccessGateDetector::detectsCloudflareBlock($response->body, $inspection['metadata'])
+            || SocialPostAccessGateDetector::detects('dcard', $response->body, $inspection['metadata']);
+
+        return ! $hasCompletePublicMetrics && ! $isAccessGate;
     }
 
     /** @param list<string> $redirects @param list<string> $resolvedIps */

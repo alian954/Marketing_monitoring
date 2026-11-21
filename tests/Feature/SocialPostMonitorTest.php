@@ -729,7 +729,18 @@ class SocialPostMonitorTest extends TestCase
                 );
             }
         };
-        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return null;
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
 
@@ -741,8 +752,9 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('obge 凝露心得分享', $monitor->expected_text);
         $this->assertNull($savedRun->expectedTextMatchResult());
         $this->assertNull($savedRun->response_public_engagement_metrics);
+        $this->assertSame(0, $renderer->calls);
         $this->assertSame(
-            '平台回傳 HTTP 403 Cloudflare 防護頁；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。',
+            '平台回傳 Cloudflare 防護頁（HTTP 403）；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。',
             $savedRun->error_detail,
         );
         $this->assertDatabaseHas('incidents', [
@@ -758,7 +770,7 @@ class SocialPostMonitorTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('平台回傳 HTTP 403 Cloudflare 防護頁')
+            ->assertSee('平台回傳 Cloudflare 防護頁（HTTP 403）')
             ->assertSee('這次無法讀取貼文內容或互動數');
     }
 
@@ -782,7 +794,16 @@ class SocialPostMonitorTest extends TestCase
             {
                 $this->calls++;
 
-                return new HopResponse(403, null, '', 40, null, null, null);
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Campaign headline | Dcard</title><script type="application/json">{"post":{"id":"262476944","like_count":20}}</script></head><body><div id="app"></div></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
             }
         };
         $renderer = new class implements DcardBrowserRenderer
@@ -813,7 +834,7 @@ class SocialPostMonitorTest extends TestCase
         $savedRun = $run->fresh();
         $this->assertNotNull($savedRun);
         $this->assertSame(1, $renderer->calls);
-        $this->assertSame(0, $transport->calls);
+        $this->assertSame(1, $transport->calls);
         $this->assertSame(200, $savedRun->normal_status);
         $this->assertNull($savedRun->error_type);
         $this->assertSame([
@@ -824,6 +845,178 @@ class SocialPostMonitorTest extends TestCase
             'source' => 'rendered_dom',
         ], $savedRun->response_public_engagement_metrics);
         $this->assertTrue($savedRun->expectedTextMatchResult());
+    }
+
+    public function test_dcard_static_public_metrics_skip_browser_rendering(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><script type="application/json">{"post":{"id":"262476944","like_count":20,"comment_count":3}}</script></head><body></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return null;
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        $result = $probe->inspect(
+            $url,
+            [],
+            'MarketingMonitor/1.0 (+authorized landing page check)',
+            null,
+            10,
+            'present',
+            [],
+            null,
+            'dcard',
+        );
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertSame([
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'embedded_json',
+        ], $result->publicEngagementMetrics);
+        $this->assertSame(0, $renderer->calls);
+    }
+
+    public function test_dcard_cloudflare_interstitial_with_http_success_is_indeterminate_without_browser_retry(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Attention Required | Cloudflare</title><script type="application/json">{"post":{"id":"262476944","like_count":9999,"comment_count":500}}</script></head><body><div class="cf-error-details">Sorry, you have been blocked. You are unable to access dcard.tw. Cloudflare Ray ID: abc123</div></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return null;
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        $result = $probe->inspect(
+            $url,
+            [],
+            'MarketingMonitor/1.0 (+authorized landing page check)',
+            'Campaign headline',
+            10,
+            'present',
+            [],
+            null,
+            'dcard',
+        );
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertSame('social_access_required', $result->errorType);
+        $this->assertNull($result->expectedTextFound);
+        $this->assertNull($result->publicEngagementMetrics);
+        $this->assertStringContainsString('Cloudflare 防護頁（HTTP 200）', (string) $result->errorDetail);
+        $this->assertSame(0, $renderer->calls);
+    }
+
+    public function test_dcard_truncated_html_uses_browser_rendering_for_public_metrics(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Dcard</title></head><body><main>Partial article</main>',
+                    40,
+                    'body_too_large',
+                    'The response exceeded the configured body limit.',
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Dcard</title></head><body><main>Public article</main></body></html>',
+                    80,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                    visibleText: "Public article\n20\n3\n全部留言\n留言內容",
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        $result = $probe->inspect(
+            $url,
+            [],
+            'MarketingMonitor/1.0 (+authorized landing page check)',
+            null,
+            10,
+            'present',
+            [],
+            null,
+            'dcard',
+        );
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertSame([
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ], $result->publicEngagementMetrics);
+        $this->assertSame(1, $renderer->calls);
     }
 
     public function test_dcard_browser_verification_response_is_reported_as_indeterminate(): void
@@ -855,7 +1048,16 @@ class SocialPostMonitorTest extends TestCase
         {
             public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
             {
-                return new HopResponse(403, null, '', 40, null, null, null);
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Dcard article</title></head><body><div id="app"></div></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
             }
         };
         $renderer = new class implements DcardBrowserRenderer
