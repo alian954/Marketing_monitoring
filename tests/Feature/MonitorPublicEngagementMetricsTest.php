@@ -137,6 +137,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('標籤成效比較')
             ->assertSee('跨標籤可能重複計入')
+            ->assertSee('觀看互動率＝（讚＋留言＋分享）總和÷觀看總和')
             ->assertSee(route('monitors.index', ['label' => 'summer']), false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')

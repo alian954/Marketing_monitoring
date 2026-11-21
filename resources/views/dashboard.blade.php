@@ -166,7 +166,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">觀看互動率＝（讚＋留言＋分享）/觀看，只計資料完整且觀看大於 0 的貼文；跨標籤可能重複計入。</p>
+                <p class="panel-description">觀看互動率＝（讚＋留言＋分享）總和÷觀看總和；只計資料完整且觀看大於 0 的貼文。跨標籤可能重複計入。</p>
             </div>
         </div>
         @if ($socialEngagementSummaries === [])
