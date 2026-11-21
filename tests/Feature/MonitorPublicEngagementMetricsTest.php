@@ -158,6 +158,44 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(now()->toIso8601String(), $summaries['summer']['latest_at']->toIso8601String());
     }
 
+    public function test_social_engagement_csv_exports_latest_values_with_formula_protection(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $monitor = $this->createSocialMonitor('CSVPOST001', '=1+1,summer');
+        $monitor->forceFill(['name' => '=SUM(1,1)'])->save();
+        $monitorWithoutMetrics = $this->createSocialMonitor('CSVPOST002');
+        $websiteUrl = 'https://example.test/not-a-social-post';
+        Monitor::factory()->create([
+            'url' => $websiteUrl,
+            'url_hash' => Monitor::fingerprintUrl($websiteUrl),
+        ]);
+        $this->createMetricRun($monitor, now()->subHour(), ['views' => 900, 'likes' => 90, 'comments' => 9, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), ['views' => 0, 'likes' => null, 'comments' => 5, 'shares' => 1, 'source' => 'json_ld']);
+
+        $this->get(route('monitors.social-engagement.export'))->assertRedirect(route('login'));
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.social-engagement.export'))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-2026-11-22.csv');
+        $rows = $this->csvRows($response->streamedContent());
+
+        $this->assertCount(2, $rows);
+        $this->assertSame("'=SUM(1,1)", $rows[0]['monitor_name']);
+        $this->assertSame('Instagram', $rows[0]['platform']);
+        $this->assertSame("'=1+1, summer", $rows[0]['tags']);
+        $this->assertSame('0', $rows[0]['public_views']);
+        $this->assertSame('', $rows[0]['public_likes']);
+        $this->assertSame('5', $rows[0]['public_comments']);
+        $this->assertSame('1', $rows[0]['public_shares']);
+        $this->assertSame('json_ld', $rows[0]['metrics_source']);
+        $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
+        $this->assertSame($monitorWithoutMetrics->name, $rows[1]['monitor_name']);
+        $this->assertSame('', $rows[1]['public_views']);
+        $this->assertSame('', $rows[1]['collected_at_utc']);
+    }
+
     private function createSocialMonitor(string $postId = 'POST123', ?string $label = null): Monitor
     {
         $url = 'https://www.instagram.com/reel/'.$postId.'/';
@@ -196,5 +234,25 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             'normal_status' => 200,
             'response_public_engagement_metrics' => $metrics,
         ]);
+    }
+
+    /** @return list<array<string, string|null>> */
+    private function csvRows(string $content): array
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+        $headers = fgetcsv($stream, null, ',', '"', '');
+        $rows = [];
+
+        if ($headers !== false) {
+            while (($values = fgetcsv($stream, null, ',', '"', '')) !== false) {
+                $rows[] = array_combine($headers, $values);
+            }
+        }
+
+        fclose($stream);
+
+        return $rows;
     }
 }

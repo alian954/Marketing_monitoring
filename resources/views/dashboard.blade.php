@@ -106,6 +106,7 @@
                 <h2 id="public-engagement-title" class="panel-title">公開互動數</h2>
                 <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；數字依平台原始回應提供情形顯示。</p>
             </div>
+            <a class="strong-link" href="{{ route('monitors.social-engagement.export') }}">匯出 CSV <span aria-hidden="true">↓</span></a>
         </div>
         @if ($socialEngagementMonitors->isEmpty())
             <div class="empty-state">

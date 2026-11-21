@@ -1269,6 +1269,56 @@ class MonitorController extends Controller
         }, 'check-history-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    public function exportSocialEngagement(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'monitor_name',
+                'platform',
+                'url',
+                'tags',
+                'public_views',
+                'public_likes',
+                'public_comments',
+                'public_shares',
+                'metrics_source',
+                'collected_at_utc',
+            ], ',', '"', '');
+
+            Monitor::query()
+                ->whereNotNull('social_platform')
+                ->with('latestPublicEngagementCheckRun')
+                ->orderBy('id')
+                ->lazyById(250)
+                ->each(function (Monitor $monitor) use ($stream): void {
+                    $engagementRun = $monitor->latestPublicEngagementCheckRun;
+
+                    if ($engagementRun?->config_version !== $monitor->config_version) {
+                        $engagementRun = null;
+                    }
+
+                    $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $fields = [
+                        $monitor->name,
+                        $monitor->socialPlatform() ?? '',
+                        $this->urlMasker->mask($monitor->url),
+                        $monitor->tagInputValue(),
+                        ...array_map(
+                            static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
+                            ['views', 'likes', 'comments', 'shares'],
+                        ),
+                        (string) ($metrics['source'] ?? ''),
+                        $engagementRun?->finished_at?->utc()->toIso8601String() ?? '',
+                    ];
+
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+                });
+
+            fclose($stream);
+        }, 'social-engagement-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function exportAvailability(Monitor $monitor): StreamedResponse
     {
         $asOf = now()->toImmutable();
