@@ -29,7 +29,7 @@ class PlaywrightDcardBrowserRenderer implements DcardBrowserRenderer
             $target['host'],
             $publicIpv4,
             (string) $timeoutMilliseconds,
-            (string) config('monitoring.dcard_browser_channel', 'chrome'),
+            (string) config('monitoring.dcard_browser_channel', 'chromium'),
         ], base_path());
         $process->setTimeout($timeoutSeconds);
 

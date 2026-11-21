@@ -10,7 +10,7 @@ return [
     'max_body_bytes' => 1_048_576,
     'dcard_browser_enabled' => (bool) env('MONITORING_DCARD_BROWSER_ENABLED', true),
     'dcard_browser_node_binary' => env('MONITORING_DCARD_NODE_BINARY', 'node'),
-    'dcard_browser_channel' => env('MONITORING_DCARD_BROWSER_CHANNEL', 'chrome'),
+    'dcard_browser_channel' => env('MONITORING_DCARD_BROWSER_CHANNEL', 'chromium'),
     'stale_grace_seconds' => 900,
     'retry_after_fallback_seconds' => max(0, (int) env('MONITOR_RETRY_AFTER_FALLBACK_SECONDS', 300)),
     'retention_days' => max(1, (int) env('MONITOR_CHECK_RUN_RETENTION_DAYS', 100)),

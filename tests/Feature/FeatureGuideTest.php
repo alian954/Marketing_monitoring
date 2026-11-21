@@ -20,7 +20,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('公開的互動數')
             ->assertSee('不提供帳號洞察')
             ->assertSee('可依平台或活動標籤篩選貼文')
-            ->assertSee('Dcard 以 Chrome 渲染公開頁面')
+            ->assertSee('Dcard 以 Playwright Chromium 渲染公開頁面')
             ->assertSee('單篇與標籤觀看互動率')
             ->assertSee('近 7／30／90 天增量及前期同篇變化')
             ->assertSee('貼文清單每頁 50 篇並可分頁')
