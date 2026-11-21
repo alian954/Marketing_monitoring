@@ -12,6 +12,7 @@ use App\Services\Probe\ProbeResult;
 use App\Services\RunScheduler;
 use DateTimeInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -236,12 +237,12 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $summaries = collect($response->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
 
         $this->assertCount(2, $summaries);
-        $this->assertSame(['change' => 700, 'available' => 2], $summaries['summer']['metrics']['views']);
-        $this->assertSame(['change' => 50, 'available' => 2], $summaries['summer']['metrics']['likes']);
-        $this->assertSame(['change' => 14, 'available' => 2], $summaries['summer']['metrics']['comments']);
-        $this->assertSame(['change' => 6, 'available' => 2], $summaries['summer']['metrics']['shares']);
-        $this->assertSame(['change' => 500, 'available' => 1], $summaries['brand']['metrics']['views']);
-        $this->assertSame(['change' => 30, 'available' => 1], $summaries['brand']['metrics']['likes']);
+        $this->assertSame(['change' => 700, 'available' => 2], Arr::only($summaries['summer']['metrics']['views'], ['change', 'available']));
+        $this->assertSame(['change' => 50, 'available' => 2], Arr::only($summaries['summer']['metrics']['likes'], ['change', 'available']));
+        $this->assertSame(['change' => 14, 'available' => 2], Arr::only($summaries['summer']['metrics']['comments'], ['change', 'available']));
+        $this->assertSame(['change' => 6, 'available' => 2], Arr::only($summaries['summer']['metrics']['shares'], ['change', 'available']));
+        $this->assertSame(['change' => 500, 'available' => 1], Arr::only($summaries['brand']['metrics']['views'], ['change', 'available']));
+        $this->assertSame(['change' => 30, 'available' => 1], Arr::only($summaries['brand']['metrics']['likes'], ['change', 'available']));
     }
 
     public function test_dashboard_summarizes_engagement_changes_for_the_selected_period(): void
@@ -264,17 +265,68 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('近 30 天互動變化')
             ->assertSee('aria-current="page"', false);
+        $this->assertTrue($thirtyDayResponse->viewData('socialEngagementChangeComparisonAvailable'));
         $thirtyDaySummaries = collect($thirtyDayResponse->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
 
-        $this->assertSame(['change' => 400, 'available' => 1], $thirtyDaySummaries['summer']['metrics']['views']);
+        $this->assertSame(['change' => 400, 'available' => 1], Arr::only($thirtyDaySummaries['summer']['metrics']['views'], ['change', 'available']));
 
         $ninetyDayResponse = $this->actingAs($user)
             ->get(route('dashboard', ['engagement_period' => 90]))
             ->assertOk()
-            ->assertSee('近 90 天互動變化');
+            ->assertSee('近 90 天互動變化')
+            ->assertSee('前期比較需保留 180 天；目前設定保留 100 天。');
+        $this->assertFalse($ninetyDayResponse->viewData('socialEngagementChangeComparisonAvailable'));
         $ninetyDaySummaries = collect($ninetyDayResponse->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
 
-        $this->assertSame(['change' => 550, 'available' => 2], $ninetyDaySummaries['summer']['metrics']['views']);
+        $this->assertSame(['change' => 550, 'available' => 2], Arr::only($ninetyDaySummaries['summer']['metrics']['views'], ['change', 'available']));
+    }
+
+    public function test_dashboard_compares_equal_period_changes_for_the_same_posts(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $postWithBothPeriods = $this->createSocialMonitor('COMPARE001', 'summer');
+        $postWithCurrentPeriodOnly = $this->createSocialMonitor('COMPARE002', 'summer');
+        $user = User::factory()->create();
+
+        $this->createMetricRun($postWithBothPeriods, now()->subDays(13), ['views' => 100, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithBothPeriods, now()->subDays(8), ['views' => 200, 'likes' => 20, 'comments' => 4, 'shares' => 2, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithBothPeriods, now()->subDays(6), ['views' => 300, 'likes' => 30, 'comments' => 6, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithBothPeriods, now(), ['views' => 600, 'likes' => 60, 'comments' => 12, 'shares' => 4, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithCurrentPeriodOnly, now()->subDays(6), ['views' => 100, 'likes' => 10, 'comments' => 3, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithCurrentPeriodOnly, now(), ['views' => 150, 'likes' => 15, 'comments' => 4, 'shares' => 1, 'source' => 'json_ld']);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_period' => 7]))
+            ->assertOk()
+            ->assertSee('同時有兩期讀值的貼文')
+            ->assertSee('較前期');
+        $summaries = collect($response->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
+
+        $this->assertSame(['change' => 350, 'available' => 2], Arr::only($summaries['summer']['metrics']['views'], ['change', 'available']));
+        $this->assertSame([
+            'current_change' => 300,
+            'previous_change' => 100,
+            'difference' => 200,
+            'available' => 1,
+        ], $summaries['summer']['metrics']['views']['comparison']);
+        $this->assertSame([
+            'current_change' => 30,
+            'previous_change' => 10,
+            'difference' => 20,
+            'available' => 1,
+        ], $summaries['summer']['metrics']['likes']['comparison']);
+        $this->assertSame([
+            'current_change' => 6,
+            'previous_change' => 2,
+            'difference' => 4,
+            'available' => 1,
+        ], $summaries['summer']['metrics']['comments']['comparison']);
+        $this->assertSame([
+            'current_change' => 1,
+            'previous_change' => 1,
+            'difference' => 0,
+            'available' => 1,
+        ], $summaries['summer']['metrics']['shares']['comparison']);
     }
 
     public function test_dashboard_limits_engagement_period_options_to_the_data_retention_period(): void
@@ -294,6 +346,13 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('近 7 天互動變化')
             ->assertDontSee('近 90 天');
+
+        $thirtyDayResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_period' => 30]))
+            ->assertOk()
+            ->assertSee('前期比較需保留 60 天；目前設定保留 30 天。');
+
+        $this->assertFalse($thirtyDayResponse->viewData('socialEngagementChangeComparisonAvailable'));
     }
 
     public function test_social_engagement_csv_exports_latest_values_with_formula_protection(): void

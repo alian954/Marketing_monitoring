@@ -171,17 +171,20 @@ class DashboardController extends Controller
             );
         });
         $socialEngagementSummaries = $this->socialEngagementSummaries();
-        $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions();
+        $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
+        $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
         $socialEngagementChangePeriodDays = is_string($requestedSocialEngagementPeriod)
             && ctype_digit($requestedSocialEngagementPeriod)
             && array_key_exists((int) $requestedSocialEngagementPeriod, $socialEngagementChangePeriodOptions)
                 ? (int) $requestedSocialEngagementPeriod
                 : (int) array_key_first($socialEngagementChangePeriodOptions);
+        $socialEngagementChangeComparisonAvailable = $socialEngagementRetentionDays >= $socialEngagementChangePeriodDays * 2;
         $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries(
             $asOf,
             $socialEngagementSummaries,
             $socialEngagementChangePeriodDays,
+            $socialEngagementChangeComparisonAvailable,
         );
 
         $incidents = Incident::query()
@@ -266,6 +269,8 @@ class DashboardController extends Controller
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
             'socialEngagementChangePeriodDays' => $socialEngagementChangePeriodDays,
             'socialEngagementChangePeriodOptions' => $socialEngagementChangePeriodOptions,
+            'socialEngagementChangeComparisonAvailable' => $socialEngagementChangeComparisonAvailable,
+            'socialEngagementRetentionDays' => $socialEngagementRetentionDays,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
@@ -361,9 +366,8 @@ class DashboardController extends Controller
     }
 
     /** @return array<int, string> */
-    private function socialEngagementChangePeriodOptions(): array
+    private function socialEngagementChangePeriodOptions(int $retentionDays): array
     {
-        $retentionDays = max(1, (int) config('monitoring.retention_days'));
         $standardPeriods = [7 => '近 7 天', 30 => '近 30 天', 90 => '近 90 天'];
         $availablePeriods = array_filter(
             $standardPeriods,
@@ -378,9 +382,17 @@ class DashboardController extends Controller
 
     /**
      * @param  list<array{tag: string, filter_label: string|null}>  $tagSummaries
-     * @return list<array{tag: string, filter_label: string|null, metrics: array<string, array{change: int, available: int}>}>
+     * @return list<array{
+     *     tag: string,
+     *     filter_label: string|null,
+     *     metrics: array<string, array{
+     *         change: int,
+     *         available: int,
+     *         comparison: array{current_change: int, previous_change: int, difference: int, available: int}
+     *     }>
+     * }>
      */
-    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays): array
+    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod): array
     {
         $changesByTag = [];
 
@@ -389,23 +401,31 @@ class DashboardController extends Controller
             $changesByTag[$tagKey] = [
                 'tag' => $tagSummary['tag'],
                 'filter_label' => $tagSummary['filter_label'],
-                'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['change' => 0, 'available' => 0]),
+                'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], [
+                    'change' => 0,
+                    'available' => 0,
+                    'comparison' => ['current_change' => 0, 'previous_change' => 0, 'difference' => 0, 'available' => 0],
+                ]),
             ];
         }
 
         /**
-         * @var array<int, array<string, array<string, array{
+         * @var array<int, array<string, array<string, array<string, array{
          *     first: array{id: int, finished_at: CarbonImmutable, value: int},
          *     latest: array{id: int, finished_at: CarbonImmutable, value: int}
-         * }>>> $observationsByMonitor
+         * }>>>> $observationsByMonitor
          */
         $observationsByMonitor = [];
+        $currentPeriodStartsAt = $asOf->subDays($periodDays);
+        $observationsStartAt = $includePreviousPeriod
+            ? $currentPeriodStartsAt->subDays($periodDays)
+            : $currentPeriodStartsAt;
 
         CheckRun::query()
             ->select(['id', 'monitor_id', 'config_version', 'finished_at', 'response_public_engagement_metrics'])
             ->where('status', 'completed')
             ->whereNotNull('finished_at')
-            ->whereBetween('finished_at', [$asOf->subDays($periodDays), $asOf])
+            ->whereBetween('finished_at', [$observationsStartAt, $asOf])
             ->whereNotNull('response_public_engagement_metrics')
             ->whereNotIn('source', ['tls_daily', 'domain_daily'])
             ->whereHas('monitor', static function (Builder $query): void {
@@ -414,11 +434,14 @@ class DashboardController extends Controller
             })
             ->with('monitor:id,social_platform,config_version,tags,label')
             ->lazyById(500)
-            ->each(function (CheckRun $run) use (&$observationsByMonitor): void {
+            ->each(function (CheckRun $run) use (&$observationsByMonitor, $currentPeriodStartsAt, $includePreviousPeriod): void {
                 $monitor = $run->monitor;
                 $metrics = $run->response_public_engagement_metrics ?? [];
                 $tags = $monitor->tagNames();
                 $tagEntries = $tags === [] ? [null] : array_unique($tags);
+                $period = $includePreviousPeriod && $run->finished_at->lessThan($currentPeriodStartsAt)
+                    ? 'previous'
+                    : 'current';
 
                 foreach ($tagEntries as $tag) {
                     $tagKey = $tag ?? "\0untagged";
@@ -433,10 +456,10 @@ class DashboardController extends Controller
                             'finished_at' => $run->finished_at,
                             'value' => (int) $metrics[$metric],
                         ];
-                        $observation = $observationsByMonitor[$monitor->id][$tagKey][$metric] ?? null;
+                        $observation = $observationsByMonitor[$monitor->id][$tagKey][$metric][$period] ?? null;
 
                         if ($observation === null) {
-                            $observationsByMonitor[$monitor->id][$tagKey][$metric] = [
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric][$period] = [
                                 'first' => $sample,
                                 'latest' => $sample,
                             ];
@@ -449,12 +472,12 @@ class DashboardController extends Controller
 
                         if ($sample['finished_at']->lessThan($firstSample['finished_at'])
                             || ($sample['finished_at']->equalTo($firstSample['finished_at']) && $sample['id'] < $firstSample['id'])) {
-                            $observationsByMonitor[$monitor->id][$tagKey][$metric]['first'] = $sample;
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric][$period]['first'] = $sample;
                         }
 
                         if ($sample['finished_at']->greaterThan($latestSample['finished_at'])
                             || ($sample['finished_at']->equalTo($latestSample['finished_at']) && $sample['id'] > $latestSample['id'])) {
-                            $observationsByMonitor[$monitor->id][$tagKey][$metric]['latest'] = $sample;
+                            $observationsByMonitor[$monitor->id][$tagKey][$metric][$period]['latest'] = $sample;
                         }
                     }
                 }
@@ -466,13 +489,29 @@ class DashboardController extends Controller
                     continue;
                 }
 
-                foreach ($metricObservations as $metric => $observation) {
-                    if ($observation['first']['id'] === $observation['latest']['id']) {
+                foreach ($metricObservations as $metric => $periodObservations) {
+                    $currentObservation = $periodObservations['current'] ?? null;
+                    $previousObservation = $periodObservations['previous'] ?? null;
+                    $currentChange = $currentObservation !== null && $currentObservation['first']['id'] !== $currentObservation['latest']['id']
+                        ? $currentObservation['latest']['value'] - $currentObservation['first']['value']
+                        : null;
+                    $previousChange = $previousObservation !== null && $previousObservation['first']['id'] !== $previousObservation['latest']['id']
+                        ? $previousObservation['latest']['value'] - $previousObservation['first']['value']
+                        : null;
+
+                    if ($currentChange !== null) {
+                        $changesByTag[$tagKey]['metrics'][$metric]['change'] += $currentChange;
+                        $changesByTag[$tagKey]['metrics'][$metric]['available']++;
+                    }
+
+                    if ($currentChange === null || $previousChange === null) {
                         continue;
                     }
 
-                    $changesByTag[$tagKey]['metrics'][$metric]['change'] += $observation['latest']['value'] - $observation['first']['value'];
-                    $changesByTag[$tagKey]['metrics'][$metric]['available']++;
+                    $changesByTag[$tagKey]['metrics'][$metric]['comparison']['current_change'] += $currentChange;
+                    $changesByTag[$tagKey]['metrics'][$metric]['comparison']['previous_change'] += $previousChange;
+                    $changesByTag[$tagKey]['metrics'][$metric]['comparison']['difference'] += $currentChange - $previousChange;
+                    $changesByTag[$tagKey]['metrics'][$metric]['comparison']['available']++;
                 }
             }
         }

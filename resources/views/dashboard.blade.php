@@ -241,7 +241,10 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-change-title" class="panel-title">近 {{ $socialEngagementChangePeriodDays }} 天互動變化</h2>
-                <p class="panel-description">只計有兩次讀值的貼文，呈現所選期間的互動增量；跨標籤可能重複計入。</p>
+                <p class="panel-description">只計有兩次讀值的貼文；前期比較限同時有兩期讀值的貼文，跨標籤可能重複計入。</p>
+                @if (! $socialEngagementChangeComparisonAvailable)
+                    <p class="secondary-text">前期比較需保留 {{ $socialEngagementChangePeriodDays * 2 }} 天；目前設定保留 {{ $socialEngagementRetentionDays }} 天。</p>
+                @endif
             </div>
             <nav class="heading-actions" aria-label="互動變化期間">
                 @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
@@ -261,7 +264,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-change-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">依標籤彙總的社群貼文近 {{ $socialEngagementChangePeriodDays }} 天互動數變化與資料覆蓋篇數</caption>
+                    <caption class="sr-only">依標籤彙總的社群貼文近 {{ $socialEngagementChangePeriodDays }} 天互動增量、前期比較與資料覆蓋篇數</caption>
                     <thead>
                         <tr>
                             <th scope="col">標籤</th>
@@ -287,6 +290,16 @@
                                     <td class="numeric">
                                         {{ $changeSummary['available'] > 0 ? ($changeSummary['change'] > 0 ? '+' : '').number_format($changeSummary['change']) : '—' }}
                                         <span class="secondary-text">({{ number_format($changeSummary['available']) }} 篇)</span>
+                                        @if ($socialEngagementChangeComparisonAvailable)
+                                            @if ($changeSummary['comparison']['available'] > 0)
+                                                <span class="secondary-text">
+                                                    同 {{ number_format($changeSummary['comparison']['available']) }} 篇：前期
+                                                    {{ $changeSummary['comparison']['previous_change'] > 0 ? '+' : '' }}{{ number_format($changeSummary['comparison']['previous_change']) }} → 本期
+                                                    {{ $changeSummary['comparison']['current_change'] > 0 ? '+' : '' }}{{ number_format($changeSummary['comparison']['current_change']) }}（較前期
+                                                    {{ $changeSummary['comparison']['difference'] > 0 ? '+' : '' }}{{ number_format($changeSummary['comparison']['difference']) }}）
+                                                </span>
+                                            @endif
+                                        @endif
                                     </td>
                                 @endforeach
                             </tr>
