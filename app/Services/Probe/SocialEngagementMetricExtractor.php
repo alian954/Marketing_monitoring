@@ -8,15 +8,31 @@ use JsonException;
 
 class SocialEngagementMetricExtractor
 {
-    private const MAX_JSON_SCRIPTS = 24;
+    private const MAX_JSON_SCRIPTS = 72;
 
-    private const MAX_JSON_BYTES = 524_288;
+    private const MAX_JSON_BYTES = 900_000;
 
     private const MAX_SINGLE_JSON_BYTES = 262_144;
 
     private const MAX_JSON_NODES = 20_000;
 
-    private const MAX_JSON_DEPTH = 32;
+    private const MAX_JSON_DEPTH = 64;
+
+    /** @var list<string> */
+    private const NON_TARGET_METRIC_CHILD_KEYS = [
+        'carouselmedia',
+        'children',
+        'comments',
+        'commentlistrenderer',
+        'commentsconnection',
+        'edges',
+        'feedunits',
+        'replies',
+        'repliesconnection',
+        'recommendations',
+        'suggestedposts',
+        'toplevelcomments',
+    ];
 
     /** @var list<string> */
     private const METRIC_KEYS = ['views', 'likes', 'comments', 'shares'];
@@ -186,17 +202,27 @@ class SocialEngagementMetricExtractor
             self::collectTargetMetrics($decoded, $targetIdentifiers, 0, $visitedNodes, $candidates);
         }
 
-        $uniqueCandidates = [];
+        $metricValues = array_fill_keys(self::METRIC_KEYS, []);
 
         foreach ($candidates as $candidate) {
-            $uniqueCandidates[hash('sha256', json_encode($candidate, JSON_THROW_ON_ERROR))] = $candidate;
+            foreach (self::METRIC_KEYS as $metric) {
+                if ($candidate[$metric] !== null) {
+                    $metricValues[$metric][] = $candidate[$metric];
+                }
+            }
         }
 
-        if (count($uniqueCandidates) !== 1) {
-            return self::emptyMetrics();
+        $metrics = self::emptyMetrics();
+
+        foreach (self::METRIC_KEYS as $metric) {
+            $uniqueValues = array_values(array_unique($metricValues[$metric]));
+
+            if (count($uniqueValues) === 1) {
+                $metrics[$metric] = $uniqueValues[0];
+            }
         }
 
-        return array_values($uniqueCandidates)[0];
+        return self::hasAnyMetric($metrics) ? $metrics : self::emptyMetrics();
     }
 
     /** @param list<array<string, mixed>> $entities */
@@ -412,17 +438,56 @@ class SocialEngagementMetricExtractor
         $visitedNodes++;
 
         if (self::hasTargetIdentifier($value, $targetIdentifiers)) {
-            $metrics = self::explicitMetrics($value);
+            $metricValues = array_fill_keys(self::METRIC_KEYS, []);
+            self::collectTargetSubtreeMetricValues($value, $depth, $visitedNodes, $metricValues);
+            $metrics = self::emptyMetrics();
+
+            foreach (self::METRIC_KEYS as $metric) {
+                $uniqueValues = array_values(array_unique($metricValues[$metric]));
+
+                if (count($uniqueValues) === 1) {
+                    $metrics[$metric] = $uniqueValues[0];
+                }
+            }
 
             if (self::hasAnyMetric($metrics)) {
                 $candidates[] = $metrics;
             }
+
+            return;
         }
 
         foreach ($value as $child) {
             if (is_array($child)) {
                 self::collectTargetMetrics($child, $targetIdentifiers, $depth + 1, $visitedNodes, $candidates);
             }
+        }
+    }
+
+    /**
+     * @param  array<string, list<int>>  $metricValues
+     */
+    private static function collectTargetSubtreeMetricValues(mixed $value, int $depth, int &$visitedNodes, array &$metricValues): void
+    {
+        if (! is_array($value) || $depth > self::MAX_JSON_DEPTH || $visitedNodes >= self::MAX_JSON_NODES) {
+            return;
+        }
+
+        $visitedNodes++;
+        $metrics = self::explicitMetrics($value);
+
+        foreach (self::METRIC_KEYS as $metric) {
+            if ($metrics[$metric] !== null) {
+                $metricValues[$metric][] = $metrics[$metric];
+            }
+        }
+
+        foreach ($value as $key => $child) {
+            if (! is_array($child) || in_array(self::normalizeKey((string) $key), self::NON_TARGET_METRIC_CHILD_KEYS, true)) {
+                continue;
+            }
+
+            self::collectTargetSubtreeMetricValues($child, $depth + 1, $visitedNodes, $metricValues);
         }
     }
 
@@ -440,10 +505,26 @@ class SocialEngagementMetricExtractor
                 if (hash_equals(mb_strtolower($targetIdentifier), mb_strtolower((string) $identifier))) {
                     return true;
                 }
+
+                if ($key === 'id' && self::decodedIdentifierContains((string) $identifier, $targetIdentifier)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    private static function decodedIdentifierContains(string $identifier, string $targetIdentifier): bool
+    {
+        if (strlen($identifier) > 512 || preg_match('/\A[A-Za-z0-9+\/_=-]+\z/', $identifier) !== 1) {
+            return false;
+        }
+
+        $decodedIdentifier = base64_decode($identifier, true);
+
+        return is_string($decodedIdentifier)
+            && preg_match('/(?:\A|[:\/])'.preg_quote($targetIdentifier, '/').'(?:\z|[:\/])/i', $decodedIdentifier) === 1;
     }
 
     /** @param array<string, mixed> $node @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int} */
@@ -465,10 +546,13 @@ class SocialEngagementMetricExtractor
             'commentscount' => 'comments',
             'comments' => 'comments',
             'replycount' => 'comments',
+            'directreplycount' => 'comments',
             'repliescount' => 'comments',
             'replies' => 'comments',
+            'totalcommentcount' => 'comments',
             'sharecount' => 'shares',
             'sharescount' => 'shares',
+            'sharecountreduced' => 'shares',
             'shares' => 'shares',
             'repostcount' => 'shares',
             'resharecount' => 'shares',

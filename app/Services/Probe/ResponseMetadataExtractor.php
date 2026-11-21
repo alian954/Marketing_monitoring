@@ -78,6 +78,9 @@ class ResponseMetadataExtractor
         }
 
         $robotsDirectives = self::extractRobotsDirectives($document, $html, $responseHeaders, $bodyComplete);
+        $publicEngagementMetrics = $bodyComplete
+            ? SocialEngagementMetricExtractor::extract($document, $responseUrl)
+            : null;
 
         $pageTitle = self::normalize($document->getElementsByTagName('title')->item(0)?->textContent);
         $openGraphTitle = null;
@@ -155,9 +158,7 @@ class ResponseMetadataExtractor
             ],
             'visible_text_hash' => self::visibleTextHash($document),
             'robots_directives' => $robotsDirectives,
-            'public_engagement_metrics' => $bodyComplete
-                ? SocialEngagementMetricExtractor::extract($document, $responseUrl)
-                : null,
+            'public_engagement_metrics' => $publicEngagementMetrics,
         ];
     }
 

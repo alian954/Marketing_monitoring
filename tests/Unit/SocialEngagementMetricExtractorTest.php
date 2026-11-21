@@ -56,6 +56,134 @@ class SocialEngagementMetricExtractorTest extends TestCase
         ], $result);
     }
 
+    public function test_it_extracts_metrics_from_body_scripts_before_hashing_visible_text(): void
+    {
+        $html = <<<'HTML'
+            <html><body>
+                <p>Public post</p>
+                <script type="application/json">
+                    {"media":{"code":"POST123","like_count":184}}
+                </script>
+            </body></html>
+            HTML;
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.instagram.com/p/POST123/');
+
+        $this->assertSame([
+            'views' => null,
+            'likes' => 184,
+            'comments' => null,
+            'shares' => null,
+            'source' => 'embedded_json',
+        ], $result['public_engagement_metrics']);
+        $this->assertSame(hash('sha256', 'Public post'), $result['visible_text_hash']);
+    }
+
+    public function test_it_scans_past_early_json_scripts_and_reads_nested_post_counts(): void
+    {
+        $irrelevantScripts = str_repeat('<script type="application/json">{}</script>', 25);
+        $html = '<html><head>'.$irrelevantScripts.'<script type="application/json">'
+            .'{"media":{"__typename":"XIGPolarisVideoMedia","pk":"4034361585031839456","code":"POST123","like_count":184,"if_not_gated_logged_out":{"view_count":5320,"comment_count":19}}}'
+            .'</script></head><body></body></html>';
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.instagram.com/reel/POST123/')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => null,
+            'source' => 'embedded_json',
+        ], $result);
+    }
+
+    public function test_it_decodes_matching_social_json_beyond_the_default_depth_limit(): void
+    {
+        $json = '{"media":{"code":"POST123","like_count":21}}';
+
+        for ($depth = 0; $depth < 36; $depth++) {
+            $json = '{"wrapper":'.$json.'}';
+        }
+
+        $html = '<html><body><script type="application/json">'.$json.'</script></body></html>';
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.instagram.com/p/POST123/')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => null,
+            'likes' => 21,
+            'comments' => null,
+            'shares' => null,
+            'source' => 'embedded_json',
+        ], $result);
+    }
+
+    public function test_it_merges_nested_facebook_counts_from_the_matching_post_only(): void
+    {
+        $html = <<<'HTML'
+            <html><head>
+                <meta property="og:url" content="https://www.facebook.com/KSSG12/posts/1579756554170483/">
+                <script type="application/json">
+                    {"node":{"post_id":"1579756554170483","feedback":{"feedback_context":{"feedback_target_with_context":{
+                        "comet_ufi_summary_and_actions_renderer":{"feedback":{"reaction_count":{"count":36},"share_count":{"count":4}}},
+                        "comments_count_summary_renderer":{"feedback":{"total_comment_count":9}},
+                        "comments":[{"feedback":{"reaction_count":999}}],
+                        "top_level_comments":{"edges":[{"node":{"feedback":{"reaction_count":999}}}]}
+                    }}}}}
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.facebook.com/KSSG12/posts/1579756554170483/')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => null,
+            'likes' => 36,
+            'comments' => 9,
+            'shares' => 4,
+            'source' => 'embedded_json',
+        ], $result);
+    }
+
+    public function test_it_matches_facebook_feedback_ids_that_encode_the_target_video_id(): void
+    {
+        $encodedTargetId = base64_encode('S:100057195890042:VK:2327132884801281');
+        $html = '<html><head><script type="application/json">'
+            .'{"feedback":{"id":"'.$encodedTargetId.'","total_comment_count":2,"share_count_reduced":"0"}}'
+            .'</script></head><body></body></html>';
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.facebook.com/reel/2327132884801281/')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => null,
+            'likes' => null,
+            'comments' => 2,
+            'shares' => 0,
+            'source' => 'embedded_json',
+        ], $result);
+    }
+
+    public function test_it_recognizes_public_reply_counts_as_comments(): void
+    {
+        $html = <<<'HTML'
+            <html><head>
+                <meta property="og:url" content="https://www.threads.com/@creator/post/POST123">
+                <script type="application/json">
+                    {"media":{"id":"4027866067012284001_63092002311","code":"POST123","view_count":5320,"like_count":184,"text_post_app_info":{"direct_reply_count":19,"repost_count":7}}}
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.threads.com/share/SHARE123')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => 7,
+            'source' => 'embedded_json',
+        ], $result);
+    }
+
     public function test_it_ignores_ambiguous_counts_and_rounded_display_values(): void
     {
         $html = <<<'HTML'
