@@ -36,7 +36,7 @@ try {
         '--disable-sync',
         `--host-resolver-rules=MAP ${expectedHost} ${pinnedIp},EXCLUDE localhost`,
     ];
-    const launchOptions = { headless: false, args };
+    const launchOptions = { headless: true, args };
 
     if (browserChannel === 'chromium') {
         browser = await chromium.launch(launchOptions);
