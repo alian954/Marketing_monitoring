@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Jobs\RecordQueueWorkerHeartbeat;
+use App\Models\CheckRun;
+use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
 use App\Models\User;
 use Illuminate\Console\Scheduling\CallbackEvent;
@@ -71,12 +73,21 @@ class QueueWorkerHeartbeatTest extends TestCase
             ->assertOk()
             ->assertSee('Queue worker')
             ->assertSee('目前佇列工作總數：0 筆')
+            ->assertSee('到期排隊 0 筆')
             ->assertSee('最近成功處理佇列工作的時間')
             ->assertDontSee('佇列是否塞住');
 
         $this->assertTrue($freshResponse->viewData('queueWorkerEnabled'));
         $this->assertTrue($freshResponse->viewData('workerHeartbeatFresh'));
         $this->assertSame(0, $freshResponse->viewData('queueSize'));
+        $this->assertSame([
+            'due_queued_count' => 0,
+            'oldest_due_wait_seconds' => null,
+            'queued_warning' => false,
+            'running_count' => 0,
+            'longest_running_seconds' => null,
+            'running_warning' => false,
+        ], $freshResponse->viewData('checkRunQueueHealth'));
 
         $workerHeartbeat->update(['last_succeeded_at' => now()->subMinutes(3)]);
 
@@ -120,6 +131,62 @@ class QueueWorkerHeartbeatTest extends TestCase
             'delayed' => 1,
             'reserved' => 1,
         ], $response->viewData('queueStateCounts'));
+    }
+
+    public function test_dashboard_reports_overdue_and_long_running_monitor_checks(): void
+    {
+        $this->travelTo(now()->startOfMinute());
+        Config::set('queue.default', 'database');
+        $monitor = Monitor::factory()->create();
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'queued',
+            'scheduled_at' => now()->subMinutes(3),
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'queued',
+            'scheduled_at' => now()->subSeconds(30),
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'queued',
+            'scheduled_at' => now()->addMinutes(10),
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'running',
+            'scheduled_at' => now()->subMinutes(4),
+            'started_at' => now()->subMinutes(4),
+            'finished_at' => null,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'running',
+            'scheduled_at' => now()->subSeconds(15),
+            'started_at' => now()->subSeconds(15),
+            'finished_at' => null,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('到期排隊 2 筆')
+            ->assertSee('最久等待 3.0 分鐘')
+            ->assertSee('執行中 2 筆')
+            ->assertSee('最久執行 4.0 分鐘')
+            ->assertSee('有到期檢查已等待超過 2 分鐘')
+            ->assertSee('有檢查已執行超過 3 分鐘');
+
+        $this->assertSame([
+            'due_queued_count' => 2,
+            'oldest_due_wait_seconds' => 180,
+            'queued_warning' => true,
+            'running_count' => 2,
+            'longest_running_seconds' => 240,
+            'running_warning' => true,
+        ], $response->viewData('checkRunQueueHealth'));
     }
 
     public function test_dashboard_counts_failed_jobs_when_database_storage_is_configured(): void
@@ -203,5 +270,6 @@ class QueueWorkerHeartbeatTest extends TestCase
 
         $this->assertFalse($response->viewData('queueWorkerEnabled'));
         $this->assertNull($response->viewData('queueSize'));
+        $this->assertNull($response->viewData('checkRunQueueHealth'));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CheckRun;
 use App\Models\DnsChangeEvent;
 use App\Models\DomainRegistrationObservation;
 use App\Models\Incident;
@@ -21,6 +22,10 @@ use Throwable;
 
 class DashboardController extends Controller
 {
+    private const QUEUED_CHECK_WARNING_AFTER_SECONDS = 120;
+
+    private const RUNNING_CHECK_WARNING_AFTER_SECONDS = 180;
+
     private const MAINTENANCE_LOOKAHEAD_DAYS = 30;
 
     private const MAX_DASHBOARD_MAINTENANCE_OCCURRENCES = 10;
@@ -155,6 +160,7 @@ class DashboardController extends Controller
         $workerHeartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-worker')->first();
         $workerHeartbeatFresh = $workerHeartbeat?->last_succeeded_at !== null && $workerHeartbeat->last_succeeded_at->gte(now()->subMinutes(2));
         $queueWorkerEnabled = config('queue.default') !== 'sync';
+        $checkRunQueueHealth = $queueWorkerEnabled ? $this->checkRunQueueHealth($asOf) : null;
         $queueSize = null;
         $queueStateCounts = null;
         $failedQueueJobStorageSupported = in_array(config('queue.failed.driver'), ['database', 'database-uuids'], true);
@@ -208,6 +214,7 @@ class DashboardController extends Controller
             'workerHeartbeat' => $workerHeartbeat,
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
             'queueWorkerEnabled' => $queueWorkerEnabled,
+            'checkRunQueueHealth' => $checkRunQueueHealth,
             'queueSize' => $queueSize,
             'queueStateCounts' => $queueStateCounts,
             'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
@@ -217,6 +224,51 @@ class DashboardController extends Controller
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
+    }
+
+    /**
+     * @return array{
+     *     due_queued_count: int,
+     *     oldest_due_wait_seconds: int|null,
+     *     queued_warning: bool,
+     *     running_count: int,
+     *     longest_running_seconds: int|null,
+     *     running_warning: bool
+     * }
+     */
+    private function checkRunQueueHealth(CarbonImmutable $asOf): array
+    {
+        $queuedSummary = CheckRun::query()
+            ->where('status', 'queued')
+            ->where('scheduled_at', '<=', $asOf)
+            ->selectRaw('COUNT(*) AS run_count, MIN(scheduled_at) AS oldest_at')
+            ->first();
+        $runningSummary = CheckRun::query()
+            ->where('status', 'running')
+            ->whereNotNull('started_at')
+            ->selectRaw('COUNT(*) AS run_count, MIN(started_at) AS oldest_at')
+            ->first();
+        $oldestDueAt = $queuedSummary?->oldest_at === null
+            ? null
+            : CarbonImmutable::parse((string) $queuedSummary->oldest_at, (string) config('app.timezone', 'UTC'));
+        $oldestRunningAt = $runningSummary?->oldest_at === null
+            ? null
+            : CarbonImmutable::parse((string) $runningSummary->oldest_at, (string) config('app.timezone', 'UTC'));
+        $oldestDueWaitSeconds = $oldestDueAt === null
+            ? null
+            : max(0, $asOf->getTimestamp() - $oldestDueAt->getTimestamp());
+        $longestRunningSeconds = $oldestRunningAt === null
+            ? null
+            : max(0, $asOf->getTimestamp() - $oldestRunningAt->getTimestamp());
+
+        return [
+            'due_queued_count' => (int) ($queuedSummary?->run_count ?? 0),
+            'oldest_due_wait_seconds' => $oldestDueWaitSeconds,
+            'queued_warning' => $oldestDueWaitSeconds !== null && $oldestDueWaitSeconds >= self::QUEUED_CHECK_WARNING_AFTER_SECONDS,
+            'running_count' => (int) ($runningSummary?->run_count ?? 0),
+            'longest_running_seconds' => $longestRunningSeconds,
+            'running_warning' => $longestRunningSeconds !== null && $longestRunningSeconds >= self::RUNNING_CHECK_WARNING_AFTER_SECONDS,
+        ];
     }
 
     /**

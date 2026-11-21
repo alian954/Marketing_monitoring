@@ -306,6 +306,28 @@
                     @if ($queueStateCounts !== null)
                         <p class="heartbeat-copy">可立即處理 {{ number_format($queueStateCounts['pending']) }} 筆、延遲等待 {{ number_format($queueStateCounts['delayed']) }} 筆、保留中 {{ number_format($queueStateCounts['reserved']) }} 筆。</p>
                     @endif
+                    @if ($checkRunQueueHealth !== null)
+                        <p class="heartbeat-copy">監測檢查：到期排隊 {{ number_format($checkRunQueueHealth['due_queued_count']) }} 筆、執行中 {{ number_format($checkRunQueueHealth['running_count']) }} 筆。</p>
+                        @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null || $checkRunQueueHealth['longest_running_seconds'] !== null)
+                            <p class="heartbeat-copy">
+                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null)
+                                    最久等待 {{ number_format($checkRunQueueHealth['oldest_due_wait_seconds'] / 60, 1) }} 分鐘
+                                @endif
+                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null && $checkRunQueueHealth['longest_running_seconds'] !== null)
+                                    ；
+                                @endif
+                                @if ($checkRunQueueHealth['longest_running_seconds'] !== null)
+                                    最久執行 {{ number_format($checkRunQueueHealth['longest_running_seconds'] / 60, 1) }} 分鐘
+                                @endif
+                            </p>
+                        @endif
+                        @if ($checkRunQueueHealth['queued_warning'])
+                            <p class="heartbeat-copy">有到期檢查已等待超過 2 分鐘，請確認佇列處理狀況。</p>
+                        @endif
+                        @if ($checkRunQueueHealth['running_warning'])
+                            <p class="heartbeat-copy">有檢查已執行超過 3 分鐘，請查看 worker 與該次檢查紀錄。</p>
+                        @endif
+                    @endif
                     @if ($workerHeartbeat?->last_succeeded_at)
                         <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
                         <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
