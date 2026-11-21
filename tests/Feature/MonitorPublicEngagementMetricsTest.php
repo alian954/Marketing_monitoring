@@ -362,6 +362,39 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         );
     }
 
+    public function test_dashboard_compares_engagement_for_the_same_tag_across_platforms(): void
+    {
+        $facebookPost = $this->createSocialMonitorForPlatform('facebook', 'CROSSFB001', 'summer');
+        $instagramPost = $this->createSocialMonitorForPlatform('instagram', 'CROSSIG001', 'summer');
+        $threadsPost = $this->createSocialMonitorForPlatform('threads', 'CROSSTH001', 'summer');
+        $dcardPost = $this->createSocialMonitorForPlatform('dcard', 'CROSSDC001', 'winter');
+
+        $this->createMetricRun($facebookPost, now(), ['views' => 1000, 'likes' => 20, 'comments' => 4, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($instagramPost, now(), ['views' => 1000, 'likes' => 30, 'comments' => 10, 'shares' => 5, 'source' => 'json_ld']);
+        $this->createMetricRun($threadsPost, now(), ['views' => null, 'likes' => 8, 'comments' => 2, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($dcardPost, now(), ['views' => 500, 'likes' => 10, 'comments' => 2, 'shares' => 3, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:summer',
+            ]))
+            ->assertOk()
+            ->assertSee('活動標籤跨平台比較')
+            ->assertSee('4.50%')
+            ->assertSee('2.50%');
+
+        $comparisonSummaries = $response->viewData('socialEngagementComparisonSummaries');
+
+        $this->assertCount(1, $comparisonSummaries);
+        $this->assertSame('summer', $comparisonSummaries[0]['tag']);
+        $this->assertSame(25, $comparisonSummaries[0]['platforms']['facebook']['interaction_total']);
+        $this->assertSame(['interactions' => 45, 'views' => 1000, 'available' => 1], $comparisonSummaries[0]['platforms']['instagram']['engagement_rate']);
+        $this->assertSame(10, $comparisonSummaries[0]['platforms']['threads']['interaction_total']);
+        $this->assertSame(0, $comparisonSummaries[0]['platforms']['threads']['engagement_rate']['available']);
+        $this->assertArrayNotHasKey('dcard', $comparisonSummaries[0]['platforms']);
+    }
+
     public function test_dashboard_tag_filter_scopes_posts_summaries_and_engagement_csv_exports(): void
     {
         $this->travelTo('2026-11-22 12:00:00');

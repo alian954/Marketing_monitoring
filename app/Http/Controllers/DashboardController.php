@@ -272,6 +272,14 @@ class DashboardController extends Controller
                 default => true,
             },
         ));
+        $socialEngagementComparisonSummaries = array_values(array_filter(
+            $this->socialEngagementPlatformSummaries(),
+            static fn (array $summary): bool => match (true) {
+                $socialEngagementSelectedTag === 'unlabeled' => $summary['filter_label'] === null,
+                $socialEngagementSelectedTagValue !== null => $summary['filter_label'] === $socialEngagementSelectedTagValue,
+                default => true,
+            },
+        ));
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -372,6 +380,13 @@ class DashboardController extends Controller
             'socialEngagementTagFilterOptions' => $socialEngagementTagFilterOptions,
             'socialEngagementSelectedTag' => $socialEngagementSelectedTag,
             'socialEngagementSummaries' => $socialEngagementSummaries,
+            'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
+            'socialEngagementComparisonPlatformOptions' => [
+                'facebook' => 'Facebook',
+                'instagram' => 'Instagram',
+                'threads' => 'Threads',
+                'dcard' => 'Dcard',
+            ],
             'socialEngagementTagSortOptions' => self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS,
             'socialEngagementTagSort' => $socialEngagementTagSort,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
@@ -501,6 +516,105 @@ class DashboardController extends Controller
 
             return strnatcasecmp($first['tag'], $second['tag']);
         });
+
+        return $results;
+    }
+
+    /**
+     * @return list<array{
+     *     tag: string,
+     *     filter_label: string|null,
+     *     platforms: array<string, array{
+     *         monitor_count: int,
+     *         metrics: array<string, array{total: int, available: int}>,
+     *         interaction_total: int,
+     *         interaction_count: int,
+     *         engagement_rate: array{interactions: int, views: int, available: int}
+     *     }>
+     * }>
+     */
+    private function socialEngagementPlatformSummaries(): array
+    {
+        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
+        $summaries = [];
+        $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
+
+        Monitor::query()
+            ->whereNotNull('social_platform')
+            ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
+            ->with('latestPublicEngagementCheckRun')
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, $supportedPlatforms): void {
+                foreach ($monitorBatch as $monitor) {
+                    $platform = $monitor->social_platform;
+
+                    if (! in_array($platform, $supportedPlatforms, true)) {
+                        continue;
+                    }
+
+                    $engagementRun = $monitor->latestPublicEngagementCheckRun;
+
+                    if ($engagementRun?->config_version !== $monitor->config_version) {
+                        $engagementRun = null;
+                    }
+
+                    $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $tags = $monitor->tagNames();
+                    $tagEntries = $tags === [] ? [null] : array_unique($tags);
+
+                    foreach ($tagEntries as $tag) {
+                        $tagKey = $tag ?? "\0untagged";
+
+                        if (! isset($summaries[$tagKey])) {
+                            $summaries[$tagKey] = [
+                                'tag' => $tag ?? '未標籤',
+                                'filter_label' => $tag,
+                                'platforms' => [],
+                            ];
+                        }
+
+                        if (! isset($summaries[$tagKey]['platforms'][$platform])) {
+                            $summaries[$tagKey]['platforms'][$platform] = [
+                                'monitor_count' => 0,
+                                'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['total' => 0, 'available' => 0]),
+                                'interaction_total' => 0,
+                                'interaction_count' => 0,
+                                'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
+                            ];
+                        }
+
+                        $platformSummary = $summaries[$tagKey]['platforms'][$platform];
+                        $platformSummary['monitor_count']++;
+
+                        foreach (array_keys($platformSummary['metrics']) as $metric) {
+                            if (is_numeric($metrics[$metric] ?? null)) {
+                                $platformSummary['metrics'][$metric]['total'] += (int) $metrics[$metric];
+                                $platformSummary['metrics'][$metric]['available']++;
+                            }
+                        }
+
+                        $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
+                            && is_numeric($metrics['comments'] ?? null)
+                            && is_numeric($metrics['shares'] ?? null);
+
+                        if ($hasCompleteInteractionCounts) {
+                            $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                            $platformSummary['interaction_total'] += $interactionTotal;
+                            $platformSummary['interaction_count']++;
+
+                            if (is_numeric($metrics['views'] ?? null) && (int) $metrics['views'] > 0) {
+                                $platformSummary['engagement_rate']['interactions'] += $interactionTotal;
+                                $platformSummary['engagement_rate']['views'] += (int) $metrics['views'];
+                                $platformSummary['engagement_rate']['available']++;
+                            }
+                        }
+
+                        $summaries[$tagKey]['platforms'][$platform] = $platformSummary;
+                    }
+                }
+            });
+
+        $results = array_values($summaries);
+        usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
         return $results;
     }

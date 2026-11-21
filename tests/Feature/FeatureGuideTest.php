@@ -21,6 +21,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('不提供帳號洞察')
             ->assertSee('可依平台或活動標籤篩選貼文')
             ->assertSee('Dcard 以 Playwright Chromium 渲染公開頁面')
+            ->assertSee('並列比較活動標籤在 Facebook、Instagram、Threads 與 Dcard 的公開互動數')
             ->assertSee('單篇與標籤觀看互動率')
             ->assertSee('近 7／30／90 天增量及前期同篇變化')
             ->assertSee('貼文清單每頁 50 篇並可分頁')

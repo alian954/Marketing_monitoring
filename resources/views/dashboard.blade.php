@@ -287,6 +287,66 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="cross-platform-engagement-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="cross-platform-engagement-title" class="panel-title">活動標籤跨平台比較</h2>
+                <p class="panel-description">依標籤並列各平台最新可讀取的公開數字。括號顯示資料篇數；觀看互動率只計互動數完整且觀看大於 0 的貼文。</p>
+            </div>
+        </div>
+        @if ($socialEngagementComparisonSummaries === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無跨平台標籤資料</h3>
+                <p class="empty-copy">新增已標記的社群貼文並累積公開互動數後，這裡會並列比較各平台。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="cross-platform-engagement-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依活動標籤比較 Facebook、Instagram、Threads 與 Dcard 公開互動數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">活動標籤</th>
+                            @foreach ($socialEngagementComparisonPlatformOptions as $platformLabel)
+                                <th scope="col">{{ $platformLabel }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementComparisonSummaries as $comparisonSummary)
+                            <tr>
+                                <th scope="row">
+                                    <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $comparisonSummary['filter_label'] === null ? 'unlabeled' : 'tag:'.$comparisonSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort]) }}">{{ $comparisonSummary['tag'] }}</a>
+                                </th>
+                                @foreach ($socialEngagementComparisonPlatformOptions as $platform => $platformLabel)
+                                    @php
+                                        $platformSummary = $comparisonSummary['platforms'][$platform] ?? null;
+                                    @endphp
+                                    <td>
+                                        @if ($platformSummary !== null)
+                                            <strong>{{ number_format($platformSummary['monitor_count']) }} 篇</strong><br>
+                                            <span class="secondary-text">觀看 {{ $platformSummary['metrics']['views']['available'] > 0 ? number_format($platformSummary['metrics']['views']['total']) : '—' }}（{{ number_format($platformSummary['metrics']['views']['available']) }} 篇）</span><br>
+                                            <span class="secondary-text">總互動 {{ $platformSummary['interaction_count'] > 0 ? number_format($platformSummary['interaction_total']) : '—' }}（{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>
+                                            <span class="secondary-text">觀看互動率
+                                                @if ($platformSummary['engagement_rate']['views'] > 0)
+                                                    {{ number_format($platformSummary['engagement_rate']['interactions'] / $platformSummary['engagement_rate']['views'] * 100, 2) }}%
+                                                @else
+                                                    —
+                                                @endif
+                                                （{{ number_format($platformSummary['engagement_rate']['available']) }} 篇）
+                                            </span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="tagged-engagement-change-title">
         <div class="panel-header">
             <div>
