@@ -27,6 +27,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('貼文排行可依總互動或觀看互動率排序；標籤排行可依平均互動或觀看互動率排序')
             ->assertSee('首頁顯示近 7／30／90 天每日互動淨變化')
             ->assertSee('前五篇貼文變化、互動成長率及同篇前期變化差；單篇排行可依淨變化或成長率排序')
+            ->assertSee('完整排行可匯出 CSV')
             ->assertSee('前期比較只計兩期都有讀值的同項指標')
             ->assertSee('期初互動量為零時不計成長率')
             ->assertSee('貼文清單每頁 50 篇並可分頁')

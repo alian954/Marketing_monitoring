@@ -526,6 +526,9 @@
                         <p class="empty-copy">貼文需在所選期間內至少兩次讀到同項互動數，才會列入排行。</p>
                     </div>
                 @else
+                    <div class="heading-actions spaced-top">
+                        <a class="strong-link" href="{{ route('monitors.social-engagement.export.growth', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}">匯出完整排行 CSV <span aria-hidden="true">↓</span></a>
+                    </div>
                     <nav class="heading-actions spaced-top" aria-label="單篇互動變化排行排序">
                         @foreach ($socialEngagementGrowthPostSortOptions as $sort => $sortLabel)
                             <a

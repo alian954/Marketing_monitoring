@@ -10,6 +10,7 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
 use App\Models\TlsObservation;
+use App\Services\CsvFormulaSanitizer;
 use App\Services\FleetAvailabilityReport;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class DashboardController extends Controller
@@ -441,6 +443,128 @@ class DashboardController extends Controller
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
+    }
+
+    public function exportSocialEngagementGrowth(Request $request, UrlMasker $urlMasker): StreamedResponse
+    {
+        $asOf = now()->toImmutable();
+        $requestedPlatform = $request->query('engagement_platform');
+        $platform = is_string($requestedPlatform) && in_array($requestedPlatform, ['facebook', 'instagram', 'threads', 'dcard'], true)
+            ? $requestedPlatform
+            : null;
+        $allTagSummaries = $this->socialEngagementSummaries($platform, 'tag');
+        $availableTags = array_column($allTagSummaries, 'filter_label');
+        $requestedTag = $request->query('engagement_tag');
+        $selectedTag = 'all';
+        $selectedTagValue = null;
+
+        if ($requestedTag === 'unlabeled'
+            && in_array(null, $availableTags, true)) {
+            $selectedTag = 'unlabeled';
+        } elseif (is_string($requestedTag) && str_starts_with($requestedTag, 'tag:')) {
+            $candidateTag = substr($requestedTag, 4);
+
+            if ($candidateTag !== ''
+                && in_array($candidateTag, $availableTags, true)) {
+                $selectedTag = $requestedTag;
+                $selectedTagValue = $candidateTag;
+            }
+        }
+
+        $tagSummaries = array_values(array_filter(
+            $allTagSummaries,
+            static fn (array $summary): bool => match (true) {
+                $selectedTag === 'unlabeled' => $summary['filter_label'] === null,
+                $selectedTagValue !== null => $summary['filter_label'] === $selectedTagValue,
+                default => true,
+            },
+        ));
+        $retentionDays = max(1, (int) config('monitoring.retention_days'));
+        $periodOptions = $this->socialEngagementChangePeriodOptions($retentionDays);
+        $requestedPeriod = $request->query('engagement_period');
+        $periodDays = is_string($requestedPeriod)
+            && ctype_digit($requestedPeriod)
+            && array_key_exists((int) $requestedPeriod, $periodOptions)
+                ? (int) $requestedPeriod
+                : (int) array_key_first($periodOptions);
+        $requestedGrowthSort = $request->query('engagement_growth_sort');
+        $growthSort = is_string($requestedGrowthSort)
+            && array_key_exists($requestedGrowthSort, self::SOCIAL_ENGAGEMENT_GROWTH_POST_SORT_OPTIONS)
+                ? $requestedGrowthSort
+                : 'change';
+        $changeData = $this->socialEngagementChangeSummaries(
+            $asOf,
+            $tagSummaries,
+            $periodDays,
+            $retentionDays >= $periodDays * 2,
+            $platform,
+            $growthSort,
+        );
+        $growthPosts = $changeData['growth_posts'];
+        $monitors = $growthPosts === []
+            ? []
+            : Monitor::query()
+                ->whereKey(array_column($growthPosts, 'id'))
+                ->get(['id', 'name', 'url', 'tags', 'label'])
+                ->keyBy('id')
+                ->all();
+        $filename = 'social-engagement-growth-'.$periodDays.'-days-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($growthPosts, $monitors, $periodDays, $urlMasker): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'monitor_id',
+                'monitor_name',
+                'platform',
+                'url',
+                'tags',
+                'period_days',
+                'starting_interactions',
+                'ending_interactions',
+                'interaction_net_change',
+                'interaction_growth_rate_percent',
+                'likes_change',
+                'comments_change',
+                'shares_change',
+                'available_metrics',
+                'comparable_current_interaction_change',
+                'previous_period_interaction_change',
+                'period_interaction_change_difference',
+                'period_comparable_metrics',
+                'last_observed_at_utc',
+            ], ',', '"', '');
+
+            foreach ($growthPosts as $growthPost) {
+                $monitor = $monitors[$growthPost['id']] ?? null;
+                $metricChanges = $growthPost['metric_changes'];
+                $fields = [
+                    (string) $growthPost['id'],
+                    $monitor?->name ?? $growthPost['name'],
+                    $growthPost['platform'],
+                    $monitor === null ? '' : $urlMasker->mask($monitor->url),
+                    $monitor?->tagInputValue() ?? '',
+                    (string) $periodDays,
+                    (string) $growthPost['starting_interactions'],
+                    (string) ($growthPost['starting_interactions'] + $growthPost['interaction_change']),
+                    (string) $growthPost['interaction_change'],
+                    $growthPost['interaction_growth_rate'] === null ? '' : number_format($growthPost['interaction_growth_rate'], 1, '.', ''),
+                    ...array_map(
+                        static fn (string $metric): string => $metricChanges[$metric] === null ? '' : (string) $metricChanges[$metric],
+                        ['likes', 'comments', 'shares'],
+                    ),
+                    (string) $growthPost['available_metrics'],
+                    $growthPost['comparable_current_interaction_change'] === null ? '' : (string) $growthPost['comparable_current_interaction_change'],
+                    $growthPost['previous_period_interaction_change'] === null ? '' : (string) $growthPost['previous_period_interaction_change'],
+                    $growthPost['period_interaction_change_difference'] === null ? '' : (string) $growthPost['period_interaction_change_difference'],
+                    (string) $growthPost['period_comparable_metrics'],
+                    $growthPost['finished_at']->utc()->toIso8601String(),
+                ];
+
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /**

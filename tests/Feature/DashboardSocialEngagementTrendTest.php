@@ -287,6 +287,13 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee('依互動成長率')
+            ->assertSee('匯出完整排行 CSV')
+            ->assertSee(e(route('monitors.social-engagement.export.growth', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:campaign',
+                'engagement_period' => 7,
+                'engagement_growth_sort' => 'growth_rate',
+            ])), false)
             ->assertSee('name="engagement_growth_sort" value="growth_rate"', false)
             ->assertSee('engagement_growth_sort=change', false);
 
@@ -309,6 +316,67 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->assertOk();
 
         $this->assertSame('change', $response->viewData('socialEngagementGrowthPostSort'));
+    }
+
+    public function test_growth_csv_exports_all_rows_with_selected_filters_and_rate_order(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $highRatePost = $this->createSocialMonitor('facebook', 'EXPORTRATE', 'campaign');
+        $highVolumePost = $this->createSocialMonitor('facebook', 'EXPORTVOLUME', 'campaign');
+        $zeroBaselinePost = $this->createSocialMonitor('facebook', 'EXPORTZERO', 'campaign');
+        $otherTagPost = $this->createSocialMonitor('facebook', 'EXPORTOTHER', 'other');
+        $otherPlatformPost = $this->createSocialMonitor('threads', 'EXPORTTHREADS', 'campaign');
+        $privateUrl = 'https://www.facebook.com/brand/posts/EXPORTRATE?token=private-export-token';
+        $highRatePost->forceFill([
+            'name' => '=SUM(1,1)',
+            'url' => $privateUrl,
+            'url_hash' => Monitor::fingerprintUrl($privateUrl),
+        ])->save();
+
+        $this->createMetricRun($highRatePost, '2026-11-16 09:00:00', ['likes' => 10, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highRatePost, '2026-11-20 09:00:00', ['likes' => 30, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highVolumePost, '2026-11-16 10:00:00', ['likes' => 100, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highVolumePost, '2026-11-20 10:00:00', ['likes' => 150, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($zeroBaselinePost, '2026-11-16 11:00:00', ['likes' => 0, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($zeroBaselinePost, '2026-11-20 11:00:00', ['likes' => 60, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherTagPost, '2026-11-16 12:00:00', ['likes' => 1, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherTagPost, '2026-11-20 12:00:00', ['likes' => 10_000, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherPlatformPost, '2026-11-16 13:00:00', ['likes' => 1, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherPlatformPost, '2026-11-20 13:00:00', ['likes' => 10_000, 'comments' => 0, 'shares' => 0]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.social-engagement.export.growth', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:campaign',
+                'engagement_period' => 7,
+                'engagement_growth_sort' => 'growth_rate',
+            ]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-growth-7-days-2026-11-22.csv');
+        $csv = $response->streamedContent();
+        $rows = $this->csvRows($csv);
+
+        $this->assertSame([
+            (string) $highRatePost->id,
+            (string) $highVolumePost->id,
+            (string) $zeroBaselinePost->id,
+        ], array_column($rows, 'monitor_id'));
+        $this->assertSame("'=SUM(1,1)", $rows[0]['monitor_name']);
+        $this->assertSame('10', $rows[0]['starting_interactions']);
+        $this->assertSame('30', $rows[0]['ending_interactions']);
+        $this->assertSame('20', $rows[0]['interaction_net_change']);
+        $this->assertSame('200.0', $rows[0]['interaction_growth_rate_percent']);
+        $this->assertSame('', $rows[2]['interaction_growth_rate_percent']);
+        $this->assertStringNotContainsString('private-export-token', $csv);
+        $exportedMonitorIds = array_column($rows, 'monitor_id');
+        $this->assertNotContains((string) $otherTagPost->id, $exportedMonitorIds);
+        $this->assertNotContains((string) $otherPlatformPost->id, $exportedMonitorIds);
+    }
+
+    public function test_growth_csv_export_requires_authentication(): void
+    {
+        $this->get(route('monitors.social-engagement.export.growth'))
+            ->assertRedirect(route('login'));
     }
 
     /** @param array{likes: int|null, comments: int|null, shares: int|null} $metrics */
@@ -344,5 +412,18 @@ class DashboardSocialEngagementTrendTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($url),
             'label' => $tag,
         ]);
+    }
+
+    /** @return list<array<string, string|null>> */
+    private function csvRows(string $content): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', trim($content)) ?: [];
+        $headers = str_getcsv((string) array_shift($lines));
+
+        return array_map(static function (string $line) use ($headers): array {
+            $values = str_getcsv($line);
+
+            return array_combine($headers, $values) ?: [];
+        }, $lines);
     }
 }
