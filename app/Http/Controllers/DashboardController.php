@@ -318,6 +318,7 @@ class DashboardController extends Controller
             $socialEngagementPlatform,
         );
         $socialEngagementChangeSummaries = $socialEngagementChangeData['summaries'];
+        $socialEngagementGrowthPosts = $socialEngagementChangeData['growth_posts'];
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -415,6 +416,7 @@ class DashboardController extends Controller
             'socialEngagementTagSortOptions' => self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS,
             'socialEngagementTagSort' => $socialEngagementTagSort,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
+            'socialEngagementGrowthPosts' => $socialEngagementGrowthPosts,
             'socialEngagementTrend' => $socialEngagementChangeData['trend'],
             'socialEngagementTrendScale' => $socialEngagementChangeData['trend_scale'],
             'socialEngagementTrendAvailable' => $socialEngagementChangeData['trend_available'],
@@ -836,7 +838,18 @@ class DashboardController extends Controller
      *     }>,
      *     trend: list<array{date: string, label: string, change: int|null, posts: int, x: float, y: float, width: float, height: float, axis_label: bool}>,
      *     trend_scale: int,
-     *     trend_available: bool
+     *     trend_available: bool,
+     *     growth_posts: list<array{
+     *         id: int,
+     *         name: string,
+     *         platform: string,
+     *         interaction_change: int,
+     *         starting_interactions: int,
+     *         interaction_growth_rate: float|null,
+     *         metric_changes: array{likes: int|null, comments: int|null, shares: int|null},
+     *         available_metrics: int,
+     *         finished_at: CarbonImmutable
+     *     }>
      * }
      */
     private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod, ?string $platform): array
@@ -863,6 +876,8 @@ class DashboardController extends Controller
          * }>>>> $observationsByMonitor
          */
         $observationsByMonitor = [];
+        /** @var array<int, array{name: string, social_platform: string}> $monitorMetadata */
+        $monitorMetadata = [];
         /** @var array<int, array<string, array<string, array{id: int, finished_at: CarbonImmutable, value: int}>>> $trendObservationsByMonitor */
         $trendObservationsByMonitor = [];
         $currentPeriodStartsAt = $asOf->subDays($periodDays);
@@ -885,10 +900,14 @@ class DashboardController extends Controller
                     $query->where('social_platform', $platform);
                 }
             })
-            ->with('monitor:id,social_platform,config_version,tags,label')
+            ->with('monitor:id,name,social_platform,config_version,tags,label')
             ->lazyById(500)
-            ->each(function (CheckRun $run) use (&$observationsByMonitor, &$trendObservationsByMonitor, $changesByTag, $currentPeriodStartsAt, $includePreviousPeriod): void {
+            ->each(function (CheckRun $run) use (&$observationsByMonitor, &$monitorMetadata, &$trendObservationsByMonitor, $changesByTag, $currentPeriodStartsAt, $includePreviousPeriod): void {
                 $monitor = $run->monitor;
+                $monitorMetadata[$monitor->id] = [
+                    'name' => $monitor->name,
+                    'social_platform' => $monitor->social_platform,
+                ];
                 $metrics = $run->response_public_engagement_metrics ?? [];
                 $tags = $monitor->tagNames();
                 $tagEntries = $tags === [] ? [null] : array_unique($tags);
@@ -1001,6 +1020,86 @@ class DashboardController extends Controller
             }
         }
 
+        $growthPosts = [];
+
+        foreach ($observationsByMonitor as $monitorId => $monitorObservations) {
+            $selectedMetricObservations = null;
+
+            foreach ($monitorObservations as $tagKey => $metricObservations) {
+                if (isset($changesByTag[$tagKey])) {
+                    $selectedMetricObservations = $metricObservations;
+
+                    break;
+                }
+            }
+
+            if ($selectedMetricObservations === null) {
+                continue;
+            }
+
+            $metricChanges = ['likes' => null, 'comments' => null, 'shares' => null];
+            $interactionChange = 0;
+            $startingInteractions = 0;
+            $availableMetrics = 0;
+            $latestObservationAt = null;
+
+            foreach (array_keys($metricChanges) as $metric) {
+                $currentObservation = $selectedMetricObservations[$metric]['current'] ?? null;
+
+                if ($currentObservation === null || $currentObservation['first']['id'] === $currentObservation['latest']['id']) {
+                    continue;
+                }
+
+                $metricChange = $currentObservation['latest']['value'] - $currentObservation['first']['value'];
+                $metricChanges[$metric] = $metricChange;
+                $interactionChange += $metricChange;
+                $startingInteractions += $currentObservation['first']['value'];
+                $availableMetrics++;
+
+                if ($latestObservationAt === null || $currentObservation['latest']['finished_at']->greaterThan($latestObservationAt)) {
+                    $latestObservationAt = $currentObservation['latest']['finished_at'];
+                }
+            }
+
+            if ($availableMetrics === 0 || $latestObservationAt === null) {
+                continue;
+            }
+
+            $growthPosts[] = [
+                'id' => (int) $monitorId,
+                'name' => $monitorMetadata[$monitorId]['name'],
+                'platform' => match ($monitorMetadata[$monitorId]['social_platform']) {
+                    'facebook' => 'Facebook',
+                    'instagram' => 'Instagram',
+                    'threads' => 'Threads',
+                    'dcard' => 'Dcard',
+                    default => $monitorMetadata[$monitorId]['social_platform'],
+                },
+                'interaction_change' => $interactionChange,
+                'starting_interactions' => $startingInteractions,
+                'interaction_growth_rate' => $startingInteractions > 0
+                    ? round($interactionChange / $startingInteractions * 100, 1)
+                    : null,
+                'metric_changes' => $metricChanges,
+                'available_metrics' => $availableMetrics,
+                'finished_at' => $latestObservationAt,
+            ];
+        }
+
+        usort($growthPosts, static function (array $first, array $second): int {
+            $changeComparison = $second['interaction_change'] <=> $first['interaction_change'];
+
+            if ($changeComparison !== 0) {
+                return $changeComparison;
+            }
+
+            $timestampComparison = $second['finished_at']->getTimestamp() <=> $first['finished_at']->getTimestamp();
+
+            return $timestampComparison !== 0
+                ? $timestampComparison
+                : (strnatcasecmp($first['name'], $second['name']) ?: ($first['id'] <=> $second['id']));
+        });
+
         $results = array_values($changesByTag);
         usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
@@ -1078,6 +1177,7 @@ class DashboardController extends Controller
             'trend' => $trendDates,
             'trend_scale' => $trendScale,
             'trend_available' => $observedChanges !== [],
+            'growth_posts' => array_slice($growthPosts, 0, self::MAX_DASHBOARD_SOCIAL_TOP_POSTS),
         ];
     }
 

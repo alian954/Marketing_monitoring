@@ -513,6 +513,56 @@
                     </div>
                 @endif
             </div>
+            <div class="spaced-top" aria-labelledby="social-engagement-growth-title">
+                <h3 id="social-engagement-growth-title" class="panel-title">單篇互動變化排行</h3>
+                <p class="panel-description">依所選期間內互動淨變化排序。成長率＝淨變化÷期初互動量；期初為 0 時無法計算，缺少的指標不當成 0。</p>
+                @if ($socialEngagementGrowthPosts === [])
+                    <div class="empty-state">
+                        <h4 class="empty-title">尚無單篇互動變化</h4>
+                        <p class="empty-copy">貼文需在所選期間內至少兩次讀到同項互動數，才會列入排行。</p>
+                    </div>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-growth-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">依近 {{ $socialEngagementChangePeriodDays }} 天互動淨變化排序的前五篇貼文</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">貼文</th>
+                                    <th scope="col">平台</th>
+                                    <th scope="col">互動淨變化</th>
+                                    <th scope="col">互動成長率</th>
+                                    <th scope="col">指標變化</th>
+                                    <th scope="col">最後觀測</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($socialEngagementGrowthPosts as $growthPost)
+                                    <tr>
+                                        <th scope="row"><a href="{{ route('monitors.show', $growthPost['id']) }}">{{ $growthPost['name'] }}</a></th>
+                                        <td>{{ $growthPost['platform'] }}</td>
+                                        <td class="numeric">{{ $growthPost['interaction_change'] > 0 ? '+' : '' }}{{ number_format($growthPost['interaction_change']) }}</td>
+                                        <td class="numeric">
+                                            @if ($growthPost['interaction_growth_rate'] === null)
+                                                — <span class="secondary-text">(期初 {{ number_format($growthPost['starting_interactions']) }}，無法計算)</span>
+                                            @else
+                                                {{ $growthPost['interaction_growth_rate'] > 0 ? '+' : '' }}{{ number_format($growthPost['interaction_growth_rate'], 1) }}%
+                                                <span class="secondary-text">(期初 {{ number_format($growthPost['starting_interactions']) }})</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @foreach (['likes' => '讚', 'comments' => '留言', 'shares' => '分享'] as $metric => $metricLabel)
+                                                <span>{{ $metricLabel }} {{ $growthPost['metric_changes'][$metric] === null ? '—' : ($growthPost['metric_changes'][$metric] > 0 ? '+' : '').number_format($growthPost['metric_changes'][$metric]) }}</span>@if (! $loop->last) <span aria-hidden="true">・</span> @endif
+                                            @endforeach
+                                            <span class="secondary-text">({{ $growthPost['available_metrics'] }}/3 項)</span>
+                                        </td>
+                                        <td><time class="timestamp" datetime="{{ $growthPost['finished_at']->toIso8601String() }}">{{ $growthPost['finished_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </div>
             <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-change-title" tabindex="0">
                 <table class="data-table">
                     <caption class="sr-only">依標籤彙總的社群貼文近 {{ $socialEngagementChangePeriodDays }} 天互動增量、前期比較與資料覆蓋篇數</caption>
