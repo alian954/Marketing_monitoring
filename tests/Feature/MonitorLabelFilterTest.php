@@ -319,6 +319,56 @@ class MonitorLabelFilterTest extends TestCase
         }
     }
 
+    public function test_monitor_list_shows_and_filters_visible_text_baseline_results(): void
+    {
+        $changedMonitor = $this->createBaselineMonitor('Changed baseline post', 'CHANGED123');
+        CheckRun::factory()->for($changedMonitor)->create([
+            'config_snapshot' => $this->baselineSnapshot($changedMonitor),
+            'response_visible_text_changed' => true,
+            'normal_status' => 200,
+        ]);
+
+        $stableMonitor = $this->createBaselineMonitor('Stable baseline post', 'STABLE123');
+        CheckRun::factory()->for($stableMonitor)->create([
+            'config_snapshot' => $this->baselineSnapshot($stableMonitor),
+            'response_visible_text_changed' => false,
+            'normal_status' => 200,
+        ]);
+
+        $pendingMonitor = $this->createBaselineMonitor('Pending baseline post', 'PENDING123');
+        CheckRun::factory()->for($pendingMonitor)->create([
+            'config_snapshot' => $this->baselineSnapshot($pendingMonitor),
+            'error_type' => 'dns_timeout',
+            'normal_status' => null,
+            'response_visible_text_changed' => null,
+        ]);
+        $newMonitor = $this->createBaselineMonitor('New baseline post', 'NEW123');
+
+        $filterCases = [
+            'visible_text_changed' => [[$changedMonitor->id], [$changedMonitor->name], '與前次相比有變更'],
+            'visible_text_stable' => [[$stableMonitor->id], [$stableMonitor->name], '與前次相比未變更'],
+            'visible_text_pending' => [[$pendingMonitor->id, $newMonitor->id], [$pendingMonitor->name, $newMonitor->name], '等待可比較回應'],
+        ];
+        $user = User::factory()->create();
+
+        foreach ($filterCases as $filter => [$expectedIds, $expectedNames, $expectedLabel]) {
+            $response = $this->actingAs($user)
+                ->get(route('monitors.index', ['content_match' => $filter]))
+                ->assertOk()
+                ->assertSee('name="content_match"', false)
+                ->assertSee($expectedLabel);
+
+            $this->assertEqualsCanonicalizing($expectedIds, $response->viewData('monitors')->getCollection()->modelKeys());
+
+            $exportResponse = $this->actingAs($user)
+                ->get(route('monitors.export', ['content_match' => $filter]))
+                ->assertOk();
+            $rows = $this->csvRows($exportResponse->streamedContent());
+
+            $this->assertEqualsCanonicalizing($expectedNames, array_column($rows, 'name'));
+        }
+    }
+
     public function test_monitor_list_rejects_unknown_social_text_match_filter(): void
     {
         $this->actingAs(User::factory()->create())
@@ -563,6 +613,28 @@ class MonitorLabelFilterTest extends TestCase
             'expected_text' => 'Campaign phrase',
             'config_version' => $configVersion,
         ]);
+    }
+
+    private function createBaselineMonitor(string $name, string $postId): Monitor
+    {
+        $url = 'https://www.threads.com/share/'.$postId;
+
+        return Monitor::factory()->create([
+            'name' => $name,
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'alert_on_visible_text_change' => true,
+        ]);
+    }
+
+    private function baselineSnapshot(Monitor $monitor): string
+    {
+        return json_encode([
+            'url' => $monitor->url,
+            'expected_text' => null,
+            'alert_on_visible_text_change' => true,
+            'accepted_status_codes' => [],
+        ], JSON_THROW_ON_ERROR);
     }
 
     /** @return array<int, array<string, string>> */

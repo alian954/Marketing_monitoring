@@ -79,7 +79,7 @@
                             </select>
                         </div>
                         <div class="field-group">
-                            <label class="field-label" for="monitor-content-match">社群貼文文字比對</label>
+                            <label class="field-label" for="monitor-content-match">內容比對狀態</label>
                             <select
                                 class="field-select @error('content_match') is-invalid @enderror"
                                 id="monitor-content-match"
@@ -91,8 +91,11 @@
                                 <option value="found" @selected(old('content_match', $filters['content_match']) === 'found')>已找到設定文字片段</option>
                                 <option value="missing" @selected(old('content_match', $filters['content_match']) === 'missing')>未找到設定文字片段</option>
                                 <option value="not_checked" @selected(old('content_match', $filters['content_match']) === 'not_checked')>尚未比對</option>
+                                <option value="visible_text_changed" @selected(old('content_match', $filters['content_match']) === 'visible_text_changed')>可見文字已變更</option>
+                                <option value="visible_text_stable" @selected(old('content_match', $filters['content_match']) === 'visible_text_stable')>可見文字維持不變</option>
+                                <option value="visible_text_pending" @selected(old('content_match', $filters['content_match']) === 'visible_text_pending')>等待可比較回應</option>
                             </select>
-                            <p id="monitor-content-match-help" class="field-help">只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；尚未比對也包含設定變更後等待新檢查的項目。</p>
+                            <p id="monitor-content-match-help" class="field-help">文字片段比對只篩選 Facebook、Instagram、Threads、Dcard 公開貼文；可見文字狀態適用已啟用文字變更警示的監測項目。</p>
                             @error('content_match')
                                 <p id="monitor-content-match-error" class="field-error">{{ $message }}</p>
                             @enderror
@@ -276,6 +279,22 @@
                                                 {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '找到禁止文字', 'present_any' => '已找到至少一個片段', default => '已找到全部片段' } }}
                                             @else
                                                 {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '未找到禁止文字', 'present_any' => '未找到任何片段', default => '缺少至少一個片段' } }}
+                                            @endif
+                                        </span>
+                                    @endif
+                                    @if ($monitor->alert_on_visible_text_change)
+                                        <span class="secondary-text">
+                                            可見文字基準：
+                                            @if ($monitor->latestCheckRun === null || $monitor->latestCheckRun->config_version !== $monitor->config_version)
+                                                等待目前設定的檢查結果
+                                            @elseif ($monitor->latestCheckRun->response_visible_text_changed === true)
+                                                與前次相比有變更
+                                            @elseif ($monitor->latestCheckRun->response_visible_text_changed === false)
+                                                與前次相比未變更
+                                            @elseif ($monitor->latestCheckRun->error_type === null && $monitor->latestCheckRun->response_visible_text_hash !== null)
+                                                已建立首次基準，等待比較
+                                            @else
+                                                等待可比較回應
                                             @endif
                                         </span>
                                     @endif

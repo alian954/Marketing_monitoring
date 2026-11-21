@@ -87,7 +87,7 @@ class MonitorController extends Controller
         'label' => ['nullable', 'string', 'max:100'],
         'platform' => ['nullable', 'in:all,website,facebook,instagram,threads,dcard'],
         'state' => ['nullable', 'in:all,enabled,paused,incidents,stale'],
-        'content_match' => ['nullable', 'in:all,found,missing,not_checked'],
+        'content_match' => ['nullable', 'in:all,found,missing,not_checked,visible_text_changed,visible_text_stable,visible_text_pending'],
         'http_status' => ['nullable', 'integer', 'between:100,599'],
         'signal' => ['nullable', 'string', 'max:40', 'regex:/\A[a-z0-9_]+\z/'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
@@ -201,6 +201,32 @@ class MonitorController extends Controller
                 $query->where('social_platform', $filters['platform']);
             })
             ->when($filters['content_match'] !== 'all', static function (Builder $query) use ($filters): void {
+                if (in_array($filters['content_match'], ['visible_text_changed', 'visible_text_stable', 'visible_text_pending'], true)) {
+                    $query->where('alert_on_visible_text_change', true);
+
+                    if ($filters['content_match'] === 'visible_text_pending') {
+                        $query->where(function (Builder $baselineQuery): void {
+                            $baselineQuery->whereDoesntHave('latestCheckRun')
+                                ->orWhereHas('latestCheckRun', static function (Builder $checkRunQuery): void {
+                                    $checkRunQuery->where(function (Builder $pendingQuery): void {
+                                        $pendingQuery->whereColumn('check_runs.config_version', '!=', 'monitors.config_version')
+                                            ->orWhereNull('check_runs.response_visible_text_changed');
+                                    });
+                                });
+                        });
+
+                        return;
+                    }
+
+                    $visibleTextChanged = $filters['content_match'] === 'visible_text_changed';
+                    $query->whereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($visibleTextChanged): void {
+                        $checkRunQuery->where('response_visible_text_changed', $visibleTextChanged)
+                            ->whereColumn('check_runs.config_version', 'monitors.config_version');
+                    });
+
+                    return;
+                }
+
                 $query->whereNotNull('social_platform');
 
                 if ($filters['content_match'] === 'not_checked') {
