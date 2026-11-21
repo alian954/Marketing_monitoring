@@ -258,6 +258,59 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertSame(2, $growthPosts[0]['period_comparable_metrics']);
     }
 
+    public function test_dashboard_can_sort_post_growth_by_rate_and_places_zero_baselines_last(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $highRatePost = $this->createSocialMonitor('facebook', 'GROWTHRATEHIGH', 'campaign');
+        $highVolumePost = $this->createSocialMonitor('facebook', 'GROWTHVOLUME', 'campaign');
+        $zeroBaselinePost = $this->createSocialMonitor('facebook', 'GROWTHRATENULL', 'campaign');
+        $otherTagPost = $this->createSocialMonitor('facebook', 'GROWTHRATEOTHER', 'other');
+        $otherPlatformPost = $this->createSocialMonitor('threads', 'GROWTHRATEPLATFORM', 'campaign');
+
+        $this->createMetricRun($highRatePost, '2026-11-16 09:00:00', ['likes' => 10, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highRatePost, '2026-11-20 09:00:00', ['likes' => 30, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highVolumePost, '2026-11-16 10:00:00', ['likes' => 100, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($highVolumePost, '2026-11-20 10:00:00', ['likes' => 150, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($zeroBaselinePost, '2026-11-16 11:00:00', ['likes' => 0, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($zeroBaselinePost, '2026-11-20 11:00:00', ['likes' => 60, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherTagPost, '2026-11-16 12:00:00', ['likes' => 1, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherTagPost, '2026-11-20 12:00:00', ['likes' => 10_000, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherPlatformPost, '2026-11-16 13:00:00', ['likes' => 1, 'comments' => 0, 'shares' => 0]);
+        $this->createMetricRun($otherPlatformPost, '2026-11-20 13:00:00', ['likes' => 10_000, 'comments' => 0, 'shares' => 0]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:campaign',
+                'engagement_period' => 7,
+                'engagement_growth_sort' => 'growth_rate',
+            ]))
+            ->assertOk()
+            ->assertSee('依互動成長率')
+            ->assertSee('name="engagement_growth_sort" value="growth_rate"', false)
+            ->assertSee('engagement_growth_sort=change', false);
+
+        $growthPosts = $response->viewData('socialEngagementGrowthPosts');
+
+        $this->assertSame('growth_rate', $response->viewData('socialEngagementGrowthPostSort'));
+        $this->assertSame([
+            $highRatePost->id,
+            $highVolumePost->id,
+            $zeroBaselinePost->id,
+        ], array_column($growthPosts, 'id'));
+        $this->assertNotContains($otherTagPost->id, array_column($growthPosts, 'id'));
+        $this->assertNotContains($otherPlatformPost->id, array_column($growthPosts, 'id'));
+    }
+
+    public function test_dashboard_defaults_an_unknown_growth_sort_to_net_change(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_growth_sort' => 'unknown']))
+            ->assertOk();
+
+        $this->assertSame('change', $response->viewData('socialEngagementGrowthPostSort'));
+    }
+
     /** @param array{likes: int|null, comments: int|null, shares: int|null} $metrics */
     private function createMetricRun(Monitor $monitor, string $finishedAt, array $metrics): CheckRun
     {

@@ -50,6 +50,12 @@ class DashboardController extends Controller
         'engagement_rate' => '觀看互動率由高到低',
     ];
 
+    /** @var array<string, string> */
+    private const SOCIAL_ENGAGEMENT_GROWTH_POST_SORT_OPTIONS = [
+        'change' => '依互動淨變化',
+        'growth_rate' => '依互動成長率',
+    ];
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
@@ -186,6 +192,11 @@ class DashboardController extends Controller
             && array_key_exists($requestedSocialEngagementTopPostSort, self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS)
                 ? $requestedSocialEngagementTopPostSort
                 : 'interactions';
+        $requestedSocialEngagementGrowthPostSort = $request->query('engagement_growth_sort');
+        $socialEngagementGrowthPostSort = is_string($requestedSocialEngagementGrowthPostSort)
+            && array_key_exists($requestedSocialEngagementGrowthPostSort, self::SOCIAL_ENGAGEMENT_GROWTH_POST_SORT_OPTIONS)
+                ? $requestedSocialEngagementGrowthPostSort
+                : 'change';
         $allSocialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform, $socialEngagementTagSort);
         $socialEngagementTagFilterOptions = ['all' => '所有標籤'];
         $availableSocialEngagementTags = [];
@@ -316,6 +327,7 @@ class DashboardController extends Controller
             $socialEngagementChangePeriodDays,
             $socialEngagementChangeComparisonAvailable,
             $socialEngagementPlatform,
+            $socialEngagementGrowthPostSort,
         );
         $socialEngagementChangeSummaries = $socialEngagementChangeData['summaries'];
         $socialEngagementGrowthPosts = $socialEngagementChangeData['growth_posts'];
@@ -417,6 +429,8 @@ class DashboardController extends Controller
             'socialEngagementTagSort' => $socialEngagementTagSort,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
             'socialEngagementGrowthPosts' => $socialEngagementGrowthPosts,
+            'socialEngagementGrowthPostSortOptions' => self::SOCIAL_ENGAGEMENT_GROWTH_POST_SORT_OPTIONS,
+            'socialEngagementGrowthPostSort' => $socialEngagementGrowthPostSort,
             'socialEngagementTrend' => $socialEngagementChangeData['trend'],
             'socialEngagementTrendScale' => $socialEngagementChangeData['trend_scale'],
             'socialEngagementTrendAvailable' => $socialEngagementChangeData['trend_available'],
@@ -856,7 +870,7 @@ class DashboardController extends Controller
      *     }>
      * }
      */
-    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod, ?string $platform): array
+    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod, ?string $platform, string $growthSort): array
     {
         $changesByTag = [];
 
@@ -1110,7 +1124,32 @@ class DashboardController extends Controller
             ];
         }
 
-        usort($growthPosts, static function (array $first, array $second): int {
+        usort($growthPosts, static function (array $first, array $second) use ($growthSort): int {
+            if ($growthSort === 'growth_rate') {
+                $firstGrowthRate = $first['starting_interactions'] > 0
+                    ? $first['interaction_change'] / $first['starting_interactions']
+                    : null;
+                $secondGrowthRate = $second['starting_interactions'] > 0
+                    ? $second['interaction_change'] / $second['starting_interactions']
+                    : null;
+
+                if ($firstGrowthRate === null && $secondGrowthRate !== null) {
+                    return 1;
+                }
+
+                if ($secondGrowthRate === null && $firstGrowthRate !== null) {
+                    return -1;
+                }
+
+                if ($firstGrowthRate !== null && $secondGrowthRate !== null) {
+                    $growthRateComparison = $secondGrowthRate <=> $firstGrowthRate;
+
+                    if ($growthRateComparison !== 0) {
+                        return $growthRateComparison;
+                    }
+                }
+            }
+
             $changeComparison = $second['interaction_change'] <=> $first['interaction_change'];
 
             if ($changeComparison !== 0) {

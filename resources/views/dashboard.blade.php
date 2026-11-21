@@ -133,6 +133,7 @@
                     <input type="hidden" name="engagement_period" value="{{ $socialEngagementChangePeriodDays }}">
                     <input type="hidden" name="engagement_tag_sort" value="{{ $socialEngagementTagSort }}">
                     <input type="hidden" name="engagement_post_sort" value="{{ $socialEngagementTopPostSort }}">
+                    <input type="hidden" name="engagement_growth_sort" value="{{ $socialEngagementGrowthPostSort }}">
                     <div class="check-history-filter-actions">
                         <button class="button button-secondary" type="submit">套用</button>
                     </div>
@@ -215,7 +216,7 @@
                     @foreach ($socialEngagementTopPostSortOptions as $sort => $sortLabel)
                         <a
                             class="button button-small {{ $socialEngagementTopPostSort === $sort ? 'button-primary' : 'button-secondary' }}"
-                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $sort]) }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $sort, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}"
                             @if ($socialEngagementTopPostSort === $sort) aria-current="page" @endif
                         >{{ $sortLabel }}</a>
                     @endforeach
@@ -285,7 +286,7 @@
                     @foreach ($socialEngagementTagSortOptions as $sort => $sortLabel)
                         <a
                             class="button button-small {{ $socialEngagementTagSort === $sort ? 'button-primary' : 'button-secondary' }}"
-                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort, 'engagement_post_sort' => $socialEngagementTopPostSort, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}"
                             @if ($socialEngagementTagSort === $sort) aria-current="page" @endif
                         >{{ $sortLabel }}</a>
                     @endforeach
@@ -318,7 +319,7 @@
                             <tr>
                                 <th scope="row">
                                     @if ($socialEngagementSummary['filter_label'] !== null)
-                                        <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => 'tag:'.$socialEngagementSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}">{{ $socialEngagementSummary['tag'] }}</a>
+                                        <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => 'tag:'.$socialEngagementSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}">{{ $socialEngagementSummary['tag'] }}</a>
                                     @else
                                         {{ $socialEngagementSummary['tag'] }}
                                     @endif
@@ -391,7 +392,7 @@
                         @foreach ($socialEngagementComparisonSummaries as $comparisonSummary)
                             <tr>
                                 <th scope="row">
-                                    <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $comparisonSummary['filter_label'] === null ? 'unlabeled' : 'tag:'.$comparisonSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}">{{ $comparisonSummary['tag'] }}</a>
+                                    <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $comparisonSummary['filter_label'] === null ? 'unlabeled' : 'tag:'.$comparisonSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}">{{ $comparisonSummary['tag'] }}</a>
                                 </th>
                                 @foreach ($socialEngagementComparisonPlatformOptions as $platform => $platformLabel)
                                     @php
@@ -438,7 +439,7 @@
                 @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
                     <a
                         class="button button-small {{ $periodDays === $socialEngagementChangePeriodDays ? 'button-primary' : 'button-secondary' }}"
-                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}"
+                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort, 'engagement_growth_sort' => $socialEngagementGrowthPostSort]) }}"
                         @if ($periodDays === $socialEngagementChangePeriodDays) aria-current="page" @endif
                     >{{ $periodLabel }}</a>
                 @endforeach
@@ -515,7 +516,7 @@
             </div>
             <div class="spaced-top" aria-labelledby="social-engagement-growth-title">
                 <h3 id="social-engagement-growth-title" class="panel-title">單篇互動變化排行</h3>
-                <p class="panel-description">依所選期間內互動淨變化排序。成長率＝淨變化÷期初互動量；期初為 0 時無法計算，缺少的指標不當成 0。</p>
+                <p class="panel-description">{{ $socialEngagementGrowthPostSort === 'growth_rate' ? '依互動成長率由高到低排序；期初為 0 的貼文列在最後。' : '依互動淨變化由高到低排序。' }} 成長率＝淨變化÷期初互動量；期初為 0 時無法計算，缺少的指標不當成 0。</p>
                 @if ($socialEngagementChangeComparisonAvailable)
                     <p class="panel-description">較前期變化差＝本期增量減前期增量，只計兩期都有讀值的相同指標。</p>
                 @endif
@@ -525,9 +526,18 @@
                         <p class="empty-copy">貼文需在所選期間內至少兩次讀到同項互動數，才會列入排行。</p>
                     </div>
                 @else
+                    <nav class="heading-actions spaced-top" aria-label="單篇互動變化排行排序">
+                        @foreach ($socialEngagementGrowthPostSortOptions as $sort => $sortLabel)
+                            <a
+                                class="button button-small {{ $socialEngagementGrowthPostSort === $sort ? 'button-primary' : 'button-secondary' }}"
+                                href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort, 'engagement_growth_sort' => $sort]) }}"
+                                @if ($socialEngagementGrowthPostSort === $sort) aria-current="page" @endif
+                            >{{ $sortLabel }}</a>
+                        @endforeach
+                    </nav>
                     <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-growth-title" tabindex="0">
                         <table class="data-table">
-                            <caption class="sr-only">依近 {{ $socialEngagementChangePeriodDays }} 天互動淨變化排序的前五篇貼文</caption>
+                            <caption class="sr-only">依近 {{ $socialEngagementChangePeriodDays }} 天{{ $socialEngagementGrowthPostSort === 'growth_rate' ? '互動成長率' : '互動淨變化' }}排序的前五篇貼文</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">貼文</th>
