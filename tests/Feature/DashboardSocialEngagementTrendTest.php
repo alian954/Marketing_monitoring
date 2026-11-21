@@ -202,14 +202,14 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $response->assertSee('39.1%');
     }
 
-    public function test_dcard_platform_totals_use_public_likes_and_comments_without_shares(): void
+    public function test_dcard_platform_totals_use_public_likes_and_comments_even_when_legacy_shares_exist(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
         $campaignPost = $this->createSocialMonitor('dcard', '262476944', 'campaign');
         $metricRun = $this->createMetricRun($campaignPost, '2026-11-20 09:00:00', [
             'likes' => 28,
             'comments' => 4,
-            'shares' => null,
+            'shares' => 2,
         ]);
         $metricRun->forceFill([
             'response_public_engagement_metrics' => [
@@ -234,7 +234,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertCount(1, $dcardTopPosts);
         $this->assertSame($campaignPost->id, $dcardTopPosts[0]['id']);
         $this->assertSame(32, $dcardTopPosts[0]['interaction_total']);
-        $this->assertNull($dcardTopPosts[0]['shares']);
+        $this->assertSame(2, $dcardTopPosts[0]['shares']);
         $this->assertSame(['likes', 'comments'], $dcardTopPosts[0]['interaction_metric_keys']);
         $this->assertSame(32.0, $dcardTopPosts[0]['engagement_rate_percent']);
         $this->assertSame(32, $dcardTagSummary['interaction_total']);
@@ -278,7 +278,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertSame('32.00', $historyRows[0]['public_engagement_rate_percent']);
     }
 
-    public function test_instagram_totals_use_public_likes_and_comments_without_shares(): void
+    public function test_instagram_totals_use_public_likes_and_comments_even_when_legacy_shares_exist(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
         $url = 'https://www.instagram.com/reel/Df87nyTTf7g/';
@@ -290,7 +290,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $metricRun = $this->createMetricRun($monitor, '2026-11-20 09:00:00', [
             'likes' => 22,
             'comments' => 2,
-            'shares' => null,
+            'shares' => 5,
         ]);
         $metricRun->forceFill([
             'response_public_engagement_metrics' => [
@@ -316,7 +316,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertCount(1, $instagramTopPosts);
         $this->assertSame($monitor->id, $instagramTopPosts[0]['id']);
         $this->assertSame(24, $instagramTopPosts[0]['interaction_total']);
-        $this->assertNull($instagramTopPosts[0]['shares']);
+        $this->assertSame(5, $instagramTopPosts[0]['shares']);
         $this->assertSame(['likes', 'comments'], $instagramTopPosts[0]['interaction_metric_keys']);
         $this->assertSame(24.0, $instagramTopPosts[0]['engagement_rate_percent']);
         $this->assertSame(24, $instagramTagSummary['interaction_total']);

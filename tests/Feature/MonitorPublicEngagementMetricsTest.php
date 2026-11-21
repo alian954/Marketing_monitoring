@@ -372,8 +372,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('數據新鮮度')
             ->assertSee('擷取篇數')
-            ->assertSee('本次讀取 0 篇；前次資料 1 篇')
-            ->assertSee('沿用前次數據');
+            ->assertSee('本次讀取 0 篇；前次資料 1 篇');
 
         $tagSummary = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag')['campaign'];
         $platformSummary = collect($response->viewData('socialEngagementComparisonSummaries'))->keyBy('tag')['campaign']['platforms'];
@@ -382,8 +381,16 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(['current' => 1, 'previous' => 1], $tagSummary['capture_counts']);
         $this->assertSame(['current' => 0, 'previous' => 1], $platformSummary['dcard']['capture_counts']);
         $this->assertSame(['current' => 1, 'previous' => 0], $platformSummary['facebook']['capture_counts']);
-        $this->assertSame('沿用前次數據', $topPosts[$previousPost->id]['metrics_freshness']);
+        $this->assertArrayNotHasKey($previousPost->id, $topPosts);
         $this->assertSame('最新檢查讀取', $topPosts[$currentPost->id]['metrics_freshness']);
+
+        $dcardResponse = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_platform' => 'dcard']))
+            ->assertOk()
+            ->assertSee('沿用前次數據');
+        $dcardTopPosts = collect($dcardResponse->viewData('socialEngagementTopPosts'))->keyBy('id');
+
+        $this->assertSame('沿用前次數據', $dcardTopPosts[$previousPost->id]['metrics_freshness']);
     }
 
     public function test_dashboard_summarizes_latest_public_engagement_by_tag_with_metric_coverage(): void
@@ -405,7 +412,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->createMetricRun($untaggedPost, now(), ['views' => null, 'likes' => 8, 'comments' => null, 'shares' => null, 'source' => 'json_ld']);
 
         $response = $this->actingAs(User::factory()->create())
-            ->get(route('dashboard'))
+            ->get(route('dashboard', ['engagement_platform' => 'instagram']))
             ->assertOk()
             ->assertSee('標籤成效比較')
             ->assertSee('本次／前次擷取篇數另列')
@@ -416,7 +423,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('2,000')
             ->assertSee('(1/2 篇)')
             ->assertSee('觀看互動率')
-            ->assertSee('2.73%')
+            ->assertSee('2.53%')
             ->assertSee('未標籤');
 
         $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
@@ -427,10 +434,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(['total' => 30, 'available' => 1], $summaries['summer']['metrics']['likes']);
         $this->assertSame(['total' => 12, 'available' => 2], $summaries['summer']['metrics']['comments']);
         $this->assertSame(['total' => 3, 'available' => 2], $summaries['summer']['metrics']['shares']);
-        $this->assertSame(['interactions' => 41, 'views' => 1500, 'available' => 1], $summaries['summer']['engagement_rate']);
-        $this->assertSame(41, $summaries['summer']['interaction_total']);
+        $this->assertSame(['interactions' => 38, 'views' => 1500, 'available' => 1], $summaries['summer']['engagement_rate']);
+        $this->assertSame(38, $summaries['summer']['interaction_total']);
         $this->assertSame(1, $summaries['summer']['interaction_count']);
-        $this->assertSame(41.0, $summaries['summer']['average_interactions_per_post']);
+        $this->assertSame(38.0, $summaries['summer']['average_interactions_per_post']);
         $this->assertSame(1, $summaries['brand']['monitor_count']);
         $this->assertSame(1, $summaries['未標籤']['monitor_count']);
         $this->assertSame(['total' => 0, 'available' => 0], $summaries['未標籤']['metrics']['views']);
@@ -469,7 +476,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         );
 
         $invalidSortResponse = $this->actingAs(User::factory()->create())
-            ->get(route('dashboard', ['engagement_tag_sort' => 'unknown']))
+            ->get(route('dashboard', ['engagement_platform' => 'instagram', 'engagement_tag_sort' => 'unknown']))
             ->assertOk();
 
         $this->assertSame('tag', $invalidSortResponse->viewData('socialEngagementTagSort'));
@@ -492,7 +499,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->createMetricRun($incompletePost, now(), ['views' => 500, 'likes' => 1000, 'comments' => null, 'shares' => 10, 'source' => 'json_ld']);
 
         $response = $this->actingAs(User::factory()->create())
-            ->get(route('dashboard', ['engagement_tag_sort' => 'average_interactions']))
+            ->get(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_tag_sort' => 'average_interactions',
+            ]))
             ->assertOk()
             ->assertSee('平均互動／篇')
             ->assertSee('平均互動／篇由高到低')
@@ -501,9 +511,9 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
 
         $this->assertSame(['summer', 'winter', 'unavailable'], array_column($response->viewData('socialEngagementSummaries'), 'tag'));
-        $this->assertSame(45.0, $summaries['summer']['average_interactions_per_post']);
+        $this->assertSame(37.5, $summaries['summer']['average_interactions_per_post']);
         $this->assertSame(2, $summaries['summer']['interaction_count']);
-        $this->assertSame(30.0, $summaries['winter']['average_interactions_per_post']);
+        $this->assertSame(25.0, $summaries['winter']['average_interactions_per_post']);
         $this->assertNull($summaries['unavailable']['average_interactions_per_post']);
         $this->assertSame(0, $summaries['unavailable']['interaction_count']);
     }
@@ -539,24 +549,28 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('互動量排行')
             ->assertSee('總互動由高到低')
-            ->assertSee('10.00%')
             ->assertSee('0.40%');
         $topPosts = $allPlatformsResponse->viewData('socialEngagementTopPosts');
+        $summerSummary = collect($allPlatformsResponse->viewData('socialEngagementSummaries'))
+            ->keyBy('tag')['summer'];
         $firstPageMonitorIds = $allPlatformsResponse->viewData('socialEngagementMonitors')->getCollection()->modelKeys();
 
         $this->assertSame('interactions', $allPlatformsResponse->viewData('socialEngagementTopPostSort'));
+        $this->assertSame(10, $summerSummary['interaction_total']);
+        $this->assertSame(5, $summerSummary['interaction_count']);
+        $this->assertSame(2.0, $summerSummary['average_interactions_per_post']);
         $this->assertCount(5, $topPosts);
         $this->assertSame([
-            $instagramPost->id,
             $facebookPost->id,
             $thirdRankedPost->id,
             $fourthRankedPost->id,
             $fifthRankedPost->id,
+            $sixthRankedPost->id,
         ], array_column($topPosts, 'id'));
         $this->assertNotContains($facebookPost->id, $firstPageMonitorIds);
-        $this->assertNotContains($sixthRankedPost->id, array_column($topPosts, 'id'));
-        $this->assertSame(20, $topPosts[0]['interaction_total']);
-        $this->assertSame(4, $topPosts[1]['interaction_total']);
+        $this->assertNotContains($instagramPost->id, array_column($topPosts, 'id'));
+        $this->assertSame(4, $topPosts[0]['interaction_total']);
+        $this->assertSame(3, $topPosts[1]['interaction_total']);
 
         $facebookOnlyResponse = $this->actingAs($user)
             ->get(route('dashboard', [
@@ -609,12 +623,12 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $topPosts = $response->viewData('socialEngagementTopPosts');
 
         $this->assertSame([
-            $highRatePost->id,
             $mediumRatePost->id,
             $lowRatePost->id,
             $unavailableRatePost->id,
         ], array_column($topPosts, 'id'));
-        $this->assertSame([20.0, 10.0, 1.0, null], array_column($topPosts, 'engagement_rate_percent'));
+        $this->assertNotContains($highRatePost->id, array_column($topPosts, 'id'));
+        $this->assertSame([10.0, 1.0, null], array_column($topPosts, 'engagement_rate_percent'));
         $this->assertNotContains($incompleteInteractionPost->id, array_column($topPosts, 'id'));
     }
 

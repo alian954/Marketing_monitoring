@@ -24,6 +24,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('遇到驗證時不會自動處理，預設延後 6 小時再檢查')
             ->assertSee('支援比較 Facebook、Instagram、Threads 與 Dcard 的公開互動數')
             ->assertSee('Instagram 與 Dcard 以公開的讚與留言計')
+            ->assertSee('全部平台的互動排行與彙總只計 Facebook／Threads 的完整三項數據')
             ->assertSee('公開互動數、每篇平均互動及觀看互動率')
             ->assertSee('貼文排行可依互動合計或觀看互動率排序；標籤排行可依平均互動或觀看互動率排序')
             ->assertSee('首頁顯示近 7／30／90 天每日互動淨變化')

@@ -211,7 +211,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示數字是本次讀取或前次資料。Instagram 與 Dcard 以讚＋留言計；未限定平台時，排行只納入讚、留言、分享都有數字的貼文。</p>
+                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示資料時間。全部平台時只比較 Facebook／Threads 的完整三項數據；Instagram／Dcard 請篩選平台，以讚＋留言排行。</p>
             </div>
             @if ($socialEngagementTopPosts !== [])
                 <nav class="heading-actions" aria-label="互動量排行排序">
@@ -286,7 +286,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">本次／前次擷取篇數另列。篩選 Instagram 或 Dcard 時，平均互動以讚＋留言計；未篩選平台時只計讚、留言、分享完整的貼文。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
+                <p class="panel-description">本次／前次擷取篇數另列。全部平台時，平均互動與觀看互動率只計 Facebook／Threads 的完整三項數據；篩選 Instagram／Dcard 時以讚＋留言計。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
             @if ($socialEngagementSummaries !== [])
                 <nav class="heading-actions" aria-label="標籤成效排序">

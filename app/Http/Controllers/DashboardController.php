@@ -688,7 +688,11 @@ class DashboardController extends Controller
                             }
                         }
 
-                        $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
+                        $hasComparableCrossPlatformScope = $platform !== null
+                            || in_array($monitor->social_platform, ['facebook', 'threads'], true);
+                        $interactionTotal = $hasComparableCrossPlatformScope
+                            ? Monitor::publicEngagementInteractionTotal($metrics, $platform)
+                            : null;
 
                         if ($interactionTotal !== null) {
                             $summaries[$tagKey]['interaction_total'] += $interactionTotal;
@@ -900,7 +904,11 @@ class DashboardController extends Controller
                         default => true,
                     };
                     $interactionScopePlatform = $selectedPlatform;
-                    $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $interactionScopePlatform);
+                    $hasComparableCrossPlatformScope = $selectedPlatform !== null
+                        || in_array($platform, ['facebook', 'threads'], true);
+                    $interactionTotal = $hasComparableCrossPlatformScope
+                        ? Monitor::publicEngagementInteractionTotal($metrics, $interactionScopePlatform)
+                        : null;
 
                     if ($matchesSelectedPlatform && $matchesSelectedTag && $interactionTotal !== null) {
                         $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
