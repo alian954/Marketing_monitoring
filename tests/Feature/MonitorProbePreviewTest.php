@@ -82,6 +82,7 @@ class MonitorProbePreviewTest extends TestCase
 
         $response->assertOk()
             ->assertSee('預檢通過')
+            ->assertSee('id="url" name="url" type="url" value="'.$url.'"', false)
             ->assertSee('已找到全部指定片段')
             ->assertSee('HTTP 狀態與文字條件均符合目前設定。')
             ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)

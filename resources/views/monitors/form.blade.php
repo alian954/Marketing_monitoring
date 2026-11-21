@@ -101,7 +101,7 @@
                             @if ($isEditing && $maskedUrl)
                                 <p class="field-help">目前目的網址：<span class="masked-url">{{ $maskedUrl }}</span></p>
                             @endif
-                            <input class="field-input @error('url') is-invalid @enderror" id="url" name="url" type="url" inputmode="url" autocomplete="url" maxlength="2048" placeholder="{{ $isEditing ? '留空即可保留目前網址' : 'https://example.com/health' }}" @unless ($isEditing) required @endunless aria-describedby="{{ $errors->has('url') ? 'url-help url-error' : 'url-help' }}">
+                            <input class="field-input @error('url') is-invalid @enderror" id="url" name="url" type="url" value="{{ old('url') }}" inputmode="url" autocomplete="url" maxlength="2048" placeholder="{{ $isEditing ? '留空即可保留目前網址' : 'https://example.com/health' }}" @unless ($isEditing) required @endunless aria-describedby="{{ $errors->has('url') ? 'url-help url-error' : 'url-help' }}">
                             <p id="url-help" class="field-help">可貼上 Facebook、Instagram 或 Threads 的公開貼文網址。社群貼文需設定下方文字片段；系統會比對伺服器回傳的原始 HTTP 內容，不執行 JavaScript。若平台回傳登入頁或動態載入外殼，文字可能無法確認，這不代表貼文未發布。網址會加密儲存，畫面只顯示遮罩網址；編輯時留空可保留原網址。</p>
                             @error('url')<p id="url-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
