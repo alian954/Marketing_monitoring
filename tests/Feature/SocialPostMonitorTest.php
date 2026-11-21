@@ -954,6 +954,71 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame(0, $renderer->calls);
     }
 
+    public function test_dcard_plain_http_forbidden_response_uses_browser_rendering_for_public_metrics(): void
+    {
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    403,
+                    null,
+                    '<html><head><title>Dcard</title></head><body><main>Request blocked</main></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Dcard</title></head><body><main>Public article</main></body></html>',
+                    80,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                    visibleText: "Public article\n20\n3\n全部留言\n留言內容",
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        $result = $probe->inspect(
+            $url,
+            [],
+            'MarketingMonitor/1.0 (+authorized landing page check)',
+            null,
+            10,
+            'present',
+            [],
+            null,
+            'dcard',
+        );
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertSame([
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ], $result->publicEngagementMetrics);
+        $this->assertSame(1, $renderer->calls);
+    }
+
     public function test_dcard_truncated_html_uses_browser_rendering_for_public_metrics(): void
     {
         $url = 'https://www.dcard.tw/f/makeup/p/262476944';

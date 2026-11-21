@@ -422,7 +422,7 @@ class SecureProbeClient implements ProbeClient
         if (($response->errorType !== null && $response->errorType !== 'body_too_large')
             || $response->statusCode === null
             || $response->statusCode < 200
-            || $response->statusCode >= 300) {
+            || ($response->statusCode >= 300 && $response->statusCode !== 403)) {
             return false;
         }
 
