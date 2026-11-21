@@ -49,6 +49,7 @@ class IncidentHistoryTest extends TestCase
             'search' => 'Launch',
             'state' => Incident::STATE_OPEN,
             'monitor_id' => $monitor->id,
+            'platform' => 'website',
             'rule_key' => 'http',
             'date_from' => now('Asia/Taipei')->toDateString(),
             'date_to' => now('Asia/Taipei')->toDateString(),
@@ -59,6 +60,7 @@ class IncidentHistoryTest extends TestCase
             ->assertOk()
             ->assertSee('26 筆符合條件')
             ->assertSee('HTTP 回應異常')
+            ->assertSee('<option value="website" selected>網站</option>', false)
             ->assertSee(route('incidents.export', $query))
             ->assertSee('page=2')
             ->assertSee('#'.$incidents->last()->id);
@@ -231,6 +233,68 @@ class IncidentHistoryTest extends TestCase
             [(string) $warningIncident->id],
             array_column($this->csvRows($warningExport->streamedContent()), 'incident_id'),
         );
+    }
+
+    public function test_incident_history_and_csv_can_filter_by_social_or_website_platform(): void
+    {
+        $user = User::factory()->create();
+        $monitors = [
+            'website' => Monitor::factory()->create([
+                'name' => 'Website platform filter',
+                'url' => 'https://example.test/platform-filter',
+                'url_hash' => Monitor::fingerprintUrl('https://example.test/platform-filter'),
+            ]),
+            'facebook' => Monitor::factory()->create([
+                'name' => 'Facebook platform filter',
+                'url' => 'https://www.facebook.com/brand/posts/PLATFORM1',
+                'url_hash' => Monitor::fingerprintUrl('https://www.facebook.com/brand/posts/PLATFORM1'),
+            ]),
+            'instagram' => Monitor::factory()->create([
+                'name' => 'Instagram platform filter',
+                'url' => 'https://www.instagram.com/p/PLATFORM2/',
+                'url_hash' => Monitor::fingerprintUrl('https://www.instagram.com/p/PLATFORM2/'),
+            ]),
+            'threads' => Monitor::factory()->create([
+                'name' => 'Threads platform filter',
+                'url' => 'https://www.threads.net/@brand/post/PLATFORM3',
+                'url_hash' => Monitor::fingerprintUrl('https://www.threads.net/@brand/post/PLATFORM3'),
+            ]),
+        ];
+        $incidents = [];
+
+        foreach ($monitors as $platform => $monitor) {
+            $incidents[$platform] = Incident::factory()->for($monitor)->create([
+                'rule_key' => 'http',
+                'state' => Incident::STATE_OPEN,
+            ]);
+        }
+
+        $filters = ['platform' => 'facebook'];
+        $response = $this->actingAs($user)
+            ->get(route('incidents.index', $filters))
+            ->assertOk()
+            ->assertSee('<option value="facebook" selected>Facebook</option>', false)
+            ->assertSee(route('incidents.export', $filters));
+
+        $this->assertSame([$incidents['facebook']->id], $response->viewData('incidents')->getCollection()->modelKeys());
+
+        $export = $this->get(route('incidents.export', $filters))->assertOk();
+        $this->assertSame(
+            [(string) $incidents['facebook']->id],
+            array_column($this->csvRows($export->streamedContent()), 'incident_id'),
+        );
+
+        $websiteResponse = $this->get(route('incidents.index', ['platform' => 'website']))->assertOk();
+        $this->assertSame([$incidents['website']->id], $websiteResponse->viewData('incidents')->getCollection()->modelKeys());
+    }
+
+    public function test_incident_history_rejects_unknown_platform_filters(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->from(route('incidents.index'))
+            ->get(route('incidents.index', ['platform' => 'unknown']))
+            ->assertRedirect(route('incidents.index'))
+            ->assertSessionHasErrors(['platform' => '請選擇有效的平台篩選條件。']);
     }
 
     public function test_incident_history_rejects_unknown_severity_filter(): void

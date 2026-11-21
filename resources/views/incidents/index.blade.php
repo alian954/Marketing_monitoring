@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['notification_status'] !== '' || $filters['monitor_id'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['state'] !== '' || $filters['severity'] !== '' || $filters['acknowledgement'] !== '' || $filters['notification_status'] !== '' || $filters['monitor_id'] !== '' || $filters['platform'] !== '' || $filters['rule_key'] !== '' || $filters['date_from'] !== '' || $filters['date_to'] !== '';
         $exportFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
         $hasSelectableIncidents = $incidents->getCollection()->contains(static fn ($incident): bool => in_array($incident->state, [\App\Models\Incident::STATE_SUSPECT, \App\Models\Incident::STATE_OPEN], true));
     @endphp
@@ -78,6 +78,19 @@
                                     <option value="{{ $monitor->id }}" @selected((string) old('monitor_id', $filters['monitor_id']) === (string) $monitor->id)>{{ $monitor->name }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="incident-platform">監測平台</label>
+                            <select class="field-select @error('platform') is-invalid @enderror" id="incident-platform" name="platform" @if ($errors->has('platform')) aria-invalid="true" aria-describedby="incident-platform-error" @endif>
+                                <option value="" @selected(old('platform', $filters['platform']) === '')>全部平台</option>
+                                <option value="website" @selected(old('platform', $filters['platform']) === 'website')>網站</option>
+                                <option value="facebook" @selected(old('platform', $filters['platform']) === 'facebook')>Facebook</option>
+                                <option value="instagram" @selected(old('platform', $filters['platform']) === 'instagram')>Instagram</option>
+                                <option value="threads" @selected(old('platform', $filters['platform']) === 'threads')>Threads</option>
+                            </select>
+                            @error('platform')
+                                <p id="incident-platform-error" class="field-error">{{ $message }}</p>
+                            @enderror
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="incident-rule">偵測訊號</label>

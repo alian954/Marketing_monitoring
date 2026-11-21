@@ -51,6 +51,7 @@ class IncidentHistoryController extends Controller
                 'acknowledgement' => $filters['acknowledgement'] ?? '',
                 'notification_status' => $filters['notification_status'] ?? '',
                 'monitor_id' => (string) ($filters['monitor_id'] ?? ''),
+                'platform' => $filters['platform'] ?? '',
                 'rule_key' => $filters['rule_key'] ?? '',
                 'date_from' => $filters['date_from'] ?? '',
                 'date_to' => $filters['date_to'] ?? '',
@@ -126,7 +127,7 @@ class IncidentHistoryController extends Controller
         }, 'incidents.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} */
+    /** @return array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, rule_key?: string, date_from?: string, date_to?: string} */
     private function validatedFilters(Request $request): array
     {
         return $request->validate([
@@ -136,6 +137,7 @@ class IncidentHistoryController extends Controller
             'acknowledgement' => ['nullable', 'in:acknowledged,unacknowledged'],
             'notification_status' => ['nullable', 'in:active,snoozed'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
+            'platform' => ['nullable', 'in:website,facebook,instagram,threads'],
             'rule_key' => ['nullable', 'in:'.implode(',', array_keys(Incident::RULE_LABELS))],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
@@ -146,10 +148,11 @@ class IncidentHistoryController extends Controller
             'severity.in' => '請選擇有效的事件嚴重度篩選條件。',
             'acknowledgement.in' => '請選擇有效的事件認領篩選條件。',
             'notification_status.in' => '請選擇有效的提醒狀態篩選條件。',
+            'platform.in' => '請選擇有效的平台篩選條件。',
         ]);
     }
 
-    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, rule_key?: string, date_from?: string, date_to?: string} $filters */
+    /** @param array{search?: string, state?: string, severity?: string, acknowledgement?: string, notification_status?: string, monitor_id?: int|string, platform?: string, rule_key?: string, date_from?: string, date_to?: string} $filters */
     private function incidentQuery(array $filters): Builder
     {
         return Incident::query()
@@ -174,6 +177,17 @@ class IncidentHistoryController extends Controller
                 $statusQuery->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now());
             }))
             ->when($filters['monitor_id'] ?? null, static fn (Builder $query, int|string $monitorId): Builder => $query->where('monitor_id', $monitorId))
+            ->when($filters['platform'] ?? null, static function (Builder $query, string $platform): void {
+                $query->whereHas('monitor', static function (Builder $monitorQuery) use ($platform): void {
+                    if ($platform === 'website') {
+                        $monitorQuery->whereNull('social_platform');
+
+                        return;
+                    }
+
+                    $monitorQuery->where('social_platform', $platform);
+                });
+            })
             ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
             ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {
                 $start = CarbonImmutable::parse($dateFrom, 'Asia/Taipei')->startOfDay()->utc();
