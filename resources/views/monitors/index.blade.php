@@ -43,9 +43,9 @@
                 <form action="{{ route('monitors.index') }}" method="GET">
                     <div class="form-grid">
                         <div class="field-group">
-                            <label class="field-label" for="monitor-search">名稱、標籤、頁面標題或完整網址</label>
+                            <label class="field-label" for="monitor-search">名稱、標籤、頁面標題、摘要或完整網址</label>
                             <input class="field-input" id="monitor-search" name="search" type="search" value="{{ old('search', $filters['search']) }}" maxlength="2048" autocomplete="off" aria-describedby="monitor-search-help">
-                            <p id="monitor-search-help" class="field-help">名稱、標籤與最近一次回應的頁面標題支援部分搜尋；網址請貼上完整連結。</p>
+                            <p id="monitor-search-help" class="field-help">名稱、標籤與最近一次回應的頁面標題或摘要支援部分搜尋；網址請貼上完整連結。</p>
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-label">標籤篩選</label>

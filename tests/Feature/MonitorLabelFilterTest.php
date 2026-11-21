@@ -158,6 +158,56 @@ class MonitorLabelFilterTest extends TestCase
         $this->assertSame($targetMonitor->name, $rows[0]['name']);
     }
 
+    public function test_monitor_list_and_csv_export_search_only_the_latest_response_description(): void
+    {
+        $targetMonitor = Monitor::factory()->create([
+            'name' => 'Threads caption tracker',
+            'url' => 'https://www.threads.com/@creator/post/CAPTION123',
+            'url_hash' => Monitor::fingerprintUrl('https://www.threads.com/@creator/post/CAPTION123'),
+        ]);
+        CheckRun::factory()->for($targetMonitor)->create([
+            'response_description' => 'Autumn campaign details',
+            'scheduled_at' => now()->subHour(),
+        ]);
+        CheckRun::factory()->for($targetMonitor)->create([
+            'response_description' => 'Spring caption launch details',
+            'scheduled_at' => now(),
+        ]);
+
+        $outdatedDescriptionMonitor = Monitor::factory()->create([
+            'name' => 'Other post tracker',
+            'url' => 'https://www.instagram.com/p/OLD123/',
+            'url_hash' => Monitor::fingerprintUrl('https://www.instagram.com/p/OLD123/'),
+        ]);
+        CheckRun::factory()->for($outdatedDescriptionMonitor)->create([
+            'response_description' => 'Spring caption archived details',
+            'scheduled_at' => now()->subHour(),
+        ]);
+        CheckRun::factory()->for($outdatedDescriptionMonitor)->create([
+            'response_description' => 'Autumn caption details',
+            'scheduled_at' => now(),
+        ]);
+        $filters = ['search' => 'Spring caption'];
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', $filters))
+            ->assertOk()
+            ->assertSee('頁面標題、摘要')
+            ->assertSee('最近一次回應的頁面標題或摘要')
+            ->assertSee($targetMonitor->name)
+            ->assertDontSee($outdatedDescriptionMonitor->name);
+
+        $this->assertSame([$targetMonitor->id], $response->viewData('monitors')->getCollection()->modelKeys());
+
+        $exportResponse = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.export', $filters))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($targetMonitor->name, $rows[0]['name']);
+    }
+
     public function test_monitor_list_and_csv_export_filter_social_posts_by_current_text_match_state(): void
     {
         $foundMonitor = $this->createSocialMonitor('Found text post', 'FOUND123', 1);

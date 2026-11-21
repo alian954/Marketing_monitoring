@@ -168,7 +168,10 @@ class MonitorController extends Controller
                         ->orWhere('label', 'like', $searchTerm)
                         ->orWhere('url_hash', $urlFingerprint)
                         ->orWhereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($searchTerm): void {
-                            $checkRunQuery->where('response_title', 'like', $searchTerm);
+                            $checkRunQuery->where(function (Builder $metadataQuery) use ($searchTerm): void {
+                                $metadataQuery->where('response_title', 'like', $searchTerm)
+                                    ->orWhere('response_description', 'like', $searchTerm);
+                            });
                         });
                 });
             })
