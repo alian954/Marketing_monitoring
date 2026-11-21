@@ -284,7 +284,7 @@
                                 <dt>文字比對結果</dt>
                             <dd>
                                 @if ($monitor->latestCheckRun->expectedTextMatchResult() === null)
-                                    {{ $monitor->latestCheckRun->error_type === 'social_access_required' ? '平台要求登入，無法判定貼文文字' : '未檢查或無法判定' }}
+                                    {{ $monitor->latestCheckRun->error_type === 'social_access_required' ? '平台限制或要求登入，無法判定貼文文字' : '未檢查或無法判定' }}
                                 @elseif ($monitor->latestCheckRun->expectedTextMatchResult())
                                     {{ match ($monitor->latestCheckRun->expectedTextMode()) { 'absent' => '原始回應找到禁止文字', 'present_any' => '原始回應找到至少一個指定片段', default => '原始回應找到全部指定片段' } }}
                                 @else
@@ -296,7 +296,7 @@
                                 @if ($latestTextMatchDetails !== null)
                                     <ul aria-label="逐項文字片段結果">
                                         @foreach ($latestTextMatchDetails as $matchDetail)
-                                            <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? ($monitor->latestCheckRun->error_type === 'social_access_required' ? '平台要求登入，無法判定' : '回應截斷，無法判定') : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
+                                            <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? ($monitor->latestCheckRun->error_type === 'social_access_required' ? '平台限制或要求登入，無法判定' : '回應截斷，無法判定') : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
                                         @endforeach
                                     </ul>
                                 @endif
@@ -355,7 +355,7 @@
                                 <dt>檢查訊號</dt>
                                 <dd>
                                     @if ($monitor->latestCheckRun->error_type)
-                                        <p>一般探測：{{ $monitor->latestCheckRun->error_type === 'social_access_required' ? '平台要求登入，文字比對無法判定' : $monitor->latestCheckRun->error_type }}</p>
+                                        <p>一般探測：{{ $monitor->latestCheckRun->error_type === 'social_access_required' ? '平台限制或要求登入，文字比對無法判定' : $monitor->latestCheckRun->error_type }}</p>
                                         @if ($monitor->latestCheckRun->error_detail)
                                             <p>{{ $monitor->latestCheckRun->error_detail }}</p>
                                         @endif
@@ -1500,7 +1500,7 @@
                                 </td>
                                 @if ($monitor->expected_text)
                                     <td>
-                                        <p>{{ $run->expectedTextMatchResult() === null ? ($run->error_type === 'social_access_required' ? '平台要求登入，無法判定貼文文字' : '未進行比對或無法判定') : match ($run->expectedTextMode()) { 'absent' => $run->expectedTextMatchResult() ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expectedTextMatchResult() ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expectedTextMatchResult() ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>
+                                        <p>{{ $run->expectedTextMatchResult() === null ? ($run->error_type === 'social_access_required' ? '平台限制或要求登入，無法判定貼文文字' : '未進行比對或無法判定') : match ($run->expectedTextMode()) { 'absent' => $run->expectedTextMatchResult() ? '找到禁止文字' : '未找到禁止文字', 'present_any' => $run->expectedTextMatchResult() ? '找到至少一個指定片段' : '未找到任何指定片段', default => $run->expectedTextMatchResult() ? '找到全部指定片段' : '缺少至少一個指定片段' } }}</p>
                                         @php
                                             $textMatchDetails = $run->expectedTextMatchDetails();
                                         @endphp
@@ -1509,7 +1509,7 @@
                                                 <summary>查看逐項片段結果</summary>
                                                 <ul aria-label="逐項文字片段結果">
                                                     @foreach ($textMatchDetails as $matchDetail)
-                                                        <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? ($run->error_type === 'social_access_required' ? '平台要求登入，無法判定' : '回應截斷，無法判定') : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
+                                                        <li>{{ $matchDetail['term'] }}：{{ $matchDetail['matched'] === null ? ($run->error_type === 'social_access_required' ? '平台限制或要求登入，無法判定' : '回應截斷，無法判定') : ($matchDetail['matched'] ? '原始回應有此片段' : '原始回應未找到此片段') }}</li>
                                                     @endforeach
                                                 </ul>
                                             </details>
@@ -1522,7 +1522,7 @@
                                 <td class="numeric">{{ $run->elapsed_ms !== null ? number_format($run->elapsed_ms).' 毫秒' : '—' }}</td>
                                 <td>
                                     @if ($run->error_type)
-                                        <p>一般探測：{{ $run->error_type === 'social_access_required' ? '平台要求登入，文字比對無法判定' : $run->error_type }}</p>
+                                        <p>一般探測：{{ $run->error_type === 'social_access_required' ? '平台限制或要求登入，文字比對無法判定' : $run->error_type }}</p>
                                         @if ($run->error_detail)
                                             <p>{{ $run->error_detail }}</p>
                                         @endif

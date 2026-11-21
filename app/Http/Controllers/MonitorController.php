@@ -1990,7 +1990,7 @@ class MonitorController extends Controller
     ): string {
         if ($isIncomplete) {
             if ($errorType === 'social_access_required') {
-                return '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。';
+                return '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。';
             }
 
             return '回應超過讀取上限，指定文字比對尚未完成。';

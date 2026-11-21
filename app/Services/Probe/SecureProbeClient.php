@@ -251,7 +251,7 @@ class SecureProbeClient implements ProbeClient
                     $redirects,
                     $resolvedIps,
                     $accessGateDetected ? 'social_access_required' : null,
-                    $accessGateDetected ? '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。' : null,
+                    $accessGateDetected ? '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。' : null,
                     $matchesExpectedText,
                     $response->tlsExpiresAt,
                     $monitorHostIps,

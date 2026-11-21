@@ -366,7 +366,7 @@ class MonitorProbePreviewTest extends TestCase
                 [],
                 ['93.184.216.34'],
                 'social_access_required',
-                '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。',
+                '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。',
                 null,
                 null,
             ));
@@ -377,7 +377,7 @@ class MonitorProbePreviewTest extends TestCase
             ->post(route('monitors.probe-preview'), $this->socialPost($url))
             ->assertOk()
             ->assertSee('無法完整判定')
-            ->assertSee('平台公開回應包含登入提示')
+            ->assertSee('平台公開回應包含登入、驗證或暫時限制提示')
             ->assertSee('文字比對：無法判定');
 
         $this->assertDatabaseCount('monitors', 0);

@@ -177,7 +177,7 @@ class NotificationDispatcher
         if ($ruleKey === 'probe_incomplete') {
             return match ($run?->error_type) {
                 'body_too_large' => '回應內容超過讀取上限，文字比對未完成',
-                'social_access_required' => '平台公開回應要求登入，文字比對無法判定',
+                'social_access_required' => '平台公開回應受登入、驗證或暫時限制影響，文字比對無法判定',
                 default => '原始回應無法完整驗證，文字比對未完成',
             };
         }

@@ -564,7 +564,7 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame(200, $savedRun->normal_status);
         $this->assertSame('social_access_required', $savedRun->error_type);
         $this->assertSame($savedRun->id, $monitor->fresh()->latestCheckRun?->id);
-        $this->assertSame('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。', $savedRun->error_detail);
+        $this->assertSame('平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。', $savedRun->error_detail);
         $this->assertNull($savedRun->expectedTextMatchResult());
         $this->assertTrue($savedRun->hasIndeterminateContentMatch());
         $this->assertFalse($savedRun->passesMonitorChecks());
@@ -581,14 +581,53 @@ class SocialPostMonitorTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('平台要求登入，無法判定貼文文字')
-            ->assertSee('平台要求登入，無法判定')
-            ->assertSee('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。');
+            ->assertSee('平台限制或要求登入，無法判定貼文文字')
+            ->assertSee('平台限制或要求登入，無法判定')
+            ->assertSee('平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。');
 
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.index'))
             ->assertOk()
-            ->assertSee('平台要求登入，文字比對無法判定');
+            ->assertSee('平台限制或要求登入，文字比對無法判定');
+    }
+
+    public function test_social_security_challenge_page_is_indeterminate_and_does_not_report_missing_post_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/VERIFY123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $body = '<html><head><title>Instagram</title><meta name="description" content="Please complete a security check to continue"></head><body><main>Please complete a security check to continue</main></body></html>';
+        $transport = new class($body) implements ProbeTransport
+        {
+            public function __construct(private readonly string $body) {}
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, $this->body, 40, null, null, null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertNull($savedRun->expectedTextMatchResult());
+        $this->assertTrue($savedRun->hasIndeterminateContentMatch());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+            'state' => Incident::STATE_SUSPECT,
+        ]);
+        $this->assertDatabaseMissing('incidents', ['monitor_id' => $monitor->id, 'rule_key' => 'content']);
     }
 
     public function test_configured_http_status_can_still_confirm_social_post_text(): void
@@ -986,7 +1025,7 @@ class SocialPostMonitorTest extends TestCase
         app(NotificationDispatcher::class)->queue($incident, $monitor, $run, 'opened');
 
         $outbox = NotificationOutbox::query()->sole();
-        $this->assertStringContainsString('原因：平台公開回應要求登入，文字比對無法判定', $outbox->body);
+        $this->assertStringContainsString('原因：平台公開回應受登入、驗證或暫時限制影響，文字比對無法判定', $outbox->body);
     }
 
     /** @return array{name: string, url: string, label: string, expected_text: string, expected_text_mode: string} */
