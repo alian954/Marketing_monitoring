@@ -145,11 +145,12 @@ class MonitorController extends Controller
         });
 
         $labels = Monitor::query()
-            ->whereNotNull('label')
-            ->where('label', '!=', '')
-            ->distinct()
-            ->orderBy('label')
-            ->pluck('label');
+            ->select(['id', 'label', 'tags'])
+            ->lazyById(500)
+            ->flatMap(static fn (Monitor $monitor): array => $monitor->tagNames())
+            ->unique()
+            ->sort()
+            ->values();
 
         return view('monitors.index', compact('monitors', 'filters', 'labels') + [
             'intervalOptions' => self::INTERVAL_OPTIONS,
@@ -162,10 +163,13 @@ class MonitorController extends Controller
         return $query
             ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
                 $searchTerm = '%'.$filters['search'].'%';
+                $encodedSearchValue = json_encode($filters['search'], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '""';
+                $encodedSearchTerm = '%'.substr($encodedSearchValue, 1, -1).'%';
                 $urlFingerprint = Monitor::fingerprintUrl($filters['search']);
-                $query->where(function (Builder $query) use ($searchTerm, $urlFingerprint): void {
+                $query->where(function (Builder $query) use ($searchTerm, $encodedSearchTerm, $urlFingerprint): void {
                     $query->where('name', 'like', $searchTerm)
                         ->orWhere('label', 'like', $searchTerm)
+                        ->orWhere('tags', 'like', $searchTerm)
                         ->orWhere('url_hash', $urlFingerprint)
                         ->orWhereHas('latestCheckRun', static function (Builder $checkRunQuery) use ($searchTerm): void {
                             $checkRunQuery->where(function (Builder $metadataQuery) use ($searchTerm): void {
@@ -173,9 +177,18 @@ class MonitorController extends Controller
                                     ->orWhere('response_description', 'like', $searchTerm);
                             });
                         });
+
+                    if ($encodedSearchTerm !== $searchTerm) {
+                        $query->orWhere('tags', 'like', $encodedSearchTerm);
+                    }
                 });
             })
-            ->when($filters['label'] !== '', static fn (Builder $query) => $query->where('label', $filters['label']))
+            ->when($filters['label'] !== '', static function (Builder $query) use ($filters): void {
+                $query->where(function (Builder $tagQuery) use ($filters): void {
+                    $tagQuery->whereJsonContains('tags', $filters['label'])
+                        ->orWhere('label', $filters['label']);
+                });
+            })
             ->when($filters['platform'] !== 'all', static function (Builder $query) use ($filters): void {
                 if ($filters['platform'] === 'website') {
                     $query->whereNull('social_platform');
@@ -725,7 +738,7 @@ class MonitorController extends Controller
     {
         $validated = $request->validate([
             'action' => ['required', 'in:pause,resume,label,interval,check,delete,export'],
-            'label' => ['nullable', 'string', 'max:100'],
+            'label' => ['nullable', 'string', 'max:1200'],
             'interval_seconds' => ['exclude_unless:action,interval', 'required', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
             'confirm_delete' => ['exclude_unless:action,delete', 'accepted'],
             'monitor_ids' => ['required', 'array', 'min:1', 'max:50'],
@@ -733,7 +746,7 @@ class MonitorController extends Controller
         ], [
             'action.required' => '請選擇要執行的批次操作。',
             'action.in' => '請選擇有效的批次操作。',
-            'label.max' => '監測項目標籤不得超過 100 個字元。',
+            'label.max' => '標籤欄位不得超過 1200 個字元。',
             'interval_seconds.required' => '選擇此批次操作時，請指定檢查頻率。',
             'interval_seconds.integer' => '檢查頻率必須是秒數。',
             'interval_seconds.in' => '請選擇支援的檢查頻率。',
@@ -749,8 +762,9 @@ class MonitorController extends Controller
 
         $monitorIds = array_map('intval', $validated['monitor_ids']);
         $action = $validated['action'];
-        $label = trim((string) ($validated['label'] ?? ''));
-        $label = $label === '' ? null : $label;
+        $label = $action === 'label'
+            ? $this->normalizeTagInput($validated['label'] ?? null)
+            : null;
         $intervalSeconds = array_key_exists('interval_seconds', $validated)
             ? (int) $validated['interval_seconds']
             : null;
@@ -811,7 +825,7 @@ class MonitorController extends Controller
 
             if ($action === 'label') {
                 foreach ($monitors as $monitor) {
-                    if ($monitor->label === $label) {
+                    if ($monitor->tagNames() === Monitor::parseTags($label)) {
                         continue;
                     }
 
@@ -1473,7 +1487,7 @@ class MonitorController extends Controller
                     $fields = [
                         $monitor->name,
                         $this->urlMasker->mask($monitor->url),
-                        (string) $monitor->label,
+                        $monitor->tagInputValue(),
                         $monitor->enabled ? '1' : '0',
                         $monitor->last_checked_at?->utc()->toIso8601String() ?? '',
                         $run?->normal_status === null ? '' : (string) $run->normal_status,
@@ -1551,7 +1565,7 @@ class MonitorController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
-            'label' => ['nullable', 'string', 'max:100'],
+            'label' => ['nullable', 'string', 'max:1200'],
             'notification_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_delay_minutes' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:1440'],
@@ -1621,6 +1635,8 @@ class MonitorController extends Controller
             'interval_seconds.integer' => '檢查頻率格式不正確。',
             'interval_seconds.in' => '請選擇支援的檢查頻率。',
         ]);
+
+        $validated['label'] = $this->normalizeTagInput($validated['label'] ?? null);
 
         try {
             $requestHeaders = RequestHeaderParser::parse($requestHeadersInput);
@@ -1838,6 +1854,23 @@ class MonitorController extends Controller
                 : ($monitor?->interval_seconds ?? (int) config('monitoring.interval_seconds')),
             'allowed_redirect_hosts' => array_values(array_unique($allowedHosts)),
         ];
+    }
+
+    private function normalizeTagInput(?string $input): ?string
+    {
+        $tags = Monitor::parseTags($input);
+
+        if (count($tags) > 10) {
+            throw ValidationException::withMessages(['label' => '每個監測項目最多可設定 10 個標籤。']);
+        }
+
+        foreach ($tags as $tag) {
+            if (mb_strlen($tag) > 100) {
+                throw ValidationException::withMessages(['label' => '每個標籤不得超過 100 個字元。']);
+            }
+        }
+
+        return $tags === [] ? null : implode(', ', $tags);
     }
 
     private function validateNotificationEmailRecipients(?string $notificationEmail, string $attribute = 'notification_email'): void

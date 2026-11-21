@@ -41,8 +41,12 @@ class IncidentHistoryController extends Controller
             $incident->setAttribute('confirmed_duration_seconds', $incident->confirmedDurationSeconds($asOf));
             $incident->setAttribute('confirmed_duration_label', $incident->confirmedDurationLabel($asOf));
         });
-        $monitors = Monitor::query()->orderBy('name')->get(['id', 'name', 'label']);
-        $labels = $monitors->pluck('label')->filter()->unique()->sort()->values();
+        $monitors = Monitor::query()->orderBy('name')->get(['id', 'name', 'label', 'tags']);
+        $labels = $monitors
+            ->flatMap(static fn (Monitor $monitor): array => $monitor->tagNames())
+            ->unique()
+            ->sort()
+            ->values();
 
         return view('incidents.index', [
             'incidents' => $incidents,
@@ -190,7 +194,11 @@ class IncidentHistoryController extends Controller
                 });
             })
             ->when($filters['label'] ?? null, static function (Builder $query, string $label): void {
-                $query->whereHas('monitor', static fn (Builder $monitorQuery): Builder => $monitorQuery->where('label', $label));
+                $query->whereHas('monitor', static function (Builder $monitorQuery) use ($label): void {
+                    $monitorQuery->where(function (Builder $tagQuery) use ($label): void {
+                        $tagQuery->whereJsonContains('tags', $label)->orWhere('label', $label);
+                    });
+                });
             })
             ->when($filters['rule_key'] ?? null, static fn (Builder $query, string $ruleKey): Builder => $query->where('rule_key', $ruleKey))
             ->when($filters['date_from'] ?? null, static function (Builder $query, string $dateFrom): Builder {

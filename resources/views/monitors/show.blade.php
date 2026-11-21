@@ -142,7 +142,7 @@
                     @endif
                     <div class="metadata-item">
                         <dt>標籤</dt>
-                        <dd>{{ $monitor->label ?: '—' }}</dd>
+                        <dd>{{ $monitor->tagInputValue() ?: '—' }}</dd>
                     </div>
                     <div class="metadata-item">
                         <dt>檢查間隔</dt>

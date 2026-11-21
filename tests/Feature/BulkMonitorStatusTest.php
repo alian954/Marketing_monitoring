@@ -267,13 +267,14 @@ class BulkMonitorStatusTest extends TestCase
             ->from(route('monitors.index'))
             ->post(route('monitors.bulk-status'), [
                 'action' => 'label',
-                'label' => 'Campaign',
+                'label' => 'Campaign, Production',
                 'monitor_ids' => [$firstMonitor->id, $secondMonitor->id],
             ])
             ->assertRedirect(route('monitors.index'))
-            ->assertSessionHas('status', '已更新 2 個監測項目標籤為「Campaign」。');
+            ->assertSessionHas('status', '已更新 2 個監測項目標籤為「Campaign, Production」。');
 
         $this->assertSame('Campaign', $firstMonitor->fresh()->label);
+        $this->assertSame(['Campaign', 'Production'], $firstMonitor->fresh()->tags);
         $this->assertSame('Campaign', $secondMonitor->fresh()->label);
         $this->assertSame('Other', $untouchedMonitor->fresh()->label);
         $this->assertSame($configVersion, $firstMonitor->fresh()->config_version);
@@ -285,7 +286,7 @@ class BulkMonitorStatusTest extends TestCase
         ]);
         $this->assertDatabaseCount('incident_events', 0);
 
-        $this->get(route('monitors.index', ['label' => 'Campaign']))
+        $this->get(route('monitors.index', ['label' => 'Production']))
             ->assertOk()
             ->assertSee('Campaign one')
             ->assertSee('Campaign two')

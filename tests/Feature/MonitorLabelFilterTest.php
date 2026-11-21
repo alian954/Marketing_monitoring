@@ -62,7 +62,7 @@ class MonitorLabelFilterTest extends TestCase
 
     public function test_monitor_label_suggestions_are_distinct_sorted_and_unfiltered(): void
     {
-        $this->createMonitor(['name' => 'Zebra', 'label' => 'Beta']);
+        $this->createMonitor(['name' => 'Zebra', 'label' => 'Beta, Production']);
         $this->createMonitor(['name' => 'Alpha', 'label' => 'Alpha']);
         $this->createMonitor(['name' => 'Beta duplicate', 'label' => 'Beta']);
 
@@ -72,10 +72,51 @@ class MonitorLabelFilterTest extends TestCase
             ->assertSee('name="label"', false)
             ->assertSee('list="monitor-label-options"', false)
             ->assertSee('<option value="Alpha">Alpha</option>', false)
-            ->assertSee('<option value="Beta">Beta</option>', false);
+            ->assertSee('<option value="Beta">Beta</option>', false)
+            ->assertSee('<option value="Production">Production</option>', false);
 
-        $this->assertSame(['Alpha', 'Beta'], $response->viewData('labels')->all());
+        $this->assertSame(['Alpha', 'Beta', 'Production'], $response->viewData('labels')->all());
         $this->assertSame(1, $response->viewData('monitors')->total());
+    }
+
+    public function test_monitor_list_and_csv_export_filter_by_a_secondary_tag(): void
+    {
+        $targetMonitor = $this->createMonitor([
+            'name' => 'Production website',
+            'label' => 'Website, Production',
+        ]);
+        $otherMonitor = $this->createMonitor([
+            'name' => 'Production adjacent tag',
+            'label' => 'Production-Archive',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', ['label' => 'Production']))
+            ->assertOk()
+            ->assertSee($targetMonitor->name)
+            ->assertDontSee($otherMonitor->name);
+
+        $exportResponse = $this->get(route('monitors.export', ['label' => 'Production']))
+            ->assertOk();
+        $rows = $this->csvRows($exportResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Website, Production', $rows[0]['label']);
+    }
+
+    public function test_monitor_search_finds_partial_unicode_text_in_a_secondary_tag(): void
+    {
+        $monitor = $this->createMonitor([
+            'name' => 'Community post monitor',
+            'label' => 'Operations, 社群活動',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index', ['search' => '社群']))
+            ->assertOk()
+            ->assertSee($monitor->name);
+
+        $this->assertSame([$monitor->id], $response->viewData('monitors')->getCollection()->modelKeys());
     }
 
     public function test_monitor_search_finds_a_social_post_by_its_full_encrypted_url(): void

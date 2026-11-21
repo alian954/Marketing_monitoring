@@ -107,9 +107,10 @@
                         </div>
 
                         <div class="field-group">
-                            <label class="field-label" for="label">標籤</label>
-                            <input class="field-input @error('label') is-invalid @enderror" id="label" name="label" type="text" value="{{ old('label', $monitor->label) }}" maxlength="100" autocomplete="off" placeholder="正式環境、API、商店" aria-describedby="{{ $errors->has('label') ? 'label-error' : '' }}">
-                            @error('label')<p id="label-error" class="field-error">{{ $message }}</p>@enderror
+                            <label class="field-label" for="label">標籤（最多 10 個）</label>
+                            <input class="field-input @error('label') is-invalid @enderror" id="label" name="label" type="text" value="{{ old('label', $monitor->tagInputValue()) }}" maxlength="1200" autocomplete="off" placeholder="正式環境, API, 商店" aria-describedby="label-help{{ $errors->has('label') ? ' label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
+                            <p id="label-help" class="field-help">以逗號、分號或換行分隔；每個標籤最多 100 字，重複標籤會自動合併。</p>
+                            @error('label')<p id="label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
                         <div class="field-group field-group-full">

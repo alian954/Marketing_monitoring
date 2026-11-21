@@ -93,7 +93,7 @@
                             @enderror
                         </div>
                         <div class="field-group">
-                            <label class="field-label" for="incident-label">專案標籤</label>
+                            <label class="field-label" for="incident-label">標籤</label>
                             <select class="field-select @error('label') is-invalid @enderror" id="incident-label" name="label" @if ($errors->has('label')) aria-invalid="true" aria-describedby="incident-label-error" @endif>
                                 <option value="" @selected(old('label', $filters['label']) === '')>全部標籤</option>
                                 @foreach ($labels as $label)

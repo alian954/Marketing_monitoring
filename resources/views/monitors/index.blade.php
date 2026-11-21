@@ -193,9 +193,9 @@
                             @error('action')<p id="bulk-monitor-action-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
-                            <label class="field-label" for="bulk-monitor-label">新標籤</label>
-                            <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="100" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
-                            <p id="bulk-monitor-label-help" class="field-help">只有選擇「更新所選項目的標籤」時才會使用；留空會清除所選項目的標籤。</p>
+                            <label class="field-label" for="bulk-monitor-label">新標籤（最多 10 個）</label>
+                            <input class="field-input @error('label') is-invalid @enderror" id="bulk-monitor-label" name="label" type="text" value="{{ old('label') }}" maxlength="1200" autocomplete="off" aria-describedby="bulk-monitor-label-help{{ $errors->has('label') ? ' bulk-monitor-label-error' : '' }}" @if ($errors->has('label')) aria-invalid="true" @endif>
+                            <p id="bulk-monitor-label-help" class="field-help">以逗號、分號或換行分隔；每個標籤最多 100 字。只有選擇更新標籤時才會使用；留空會清除所選項目的標籤。</p>
                             @error('label')<p id="bulk-monitor-label-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
@@ -258,8 +258,8 @@
                                 </td>
                                 <td>
                                     <a class="monitor-name-link" href="{{ route('monitors.show', $monitor) }}">{{ $monitor->name }}</a>
-                                    @if ($monitor->label)
-                                        <span class="secondary-text">{{ $monitor->label }}</span>
+                                    @if ($monitor->tagNames() !== [])
+                                        <span class="secondary-text">{{ implode(' · ', $monitor->tagNames()) }}</span>
                                     @endif
                                     @if ($monitor->socialPlatform())
                                         <span class="secondary-text">{{ $monitor->socialPlatform() }} 公開貼文</span>

@@ -64,7 +64,7 @@ class IncidentHistoryTest extends TestCase
     {
         $user = User::factory()->create();
         $monitor = $this->createMonitor('Launch Campaign');
-        $monitor->forceFill(['label' => 'Spring Launch'])->save();
+        $monitor->forceFill(['label' => 'Launch, Spring Launch'])->save();
         $otherMonitor = $this->createMonitor('Other Campaign');
         $incidents = collect();
 

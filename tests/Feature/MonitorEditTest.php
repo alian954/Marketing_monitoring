@@ -86,6 +86,73 @@ class MonitorEditTest extends TestCase
         $this->assertSame(['cdn.example.com', 'media.example.com'], Monitor::query()->sole()->allowed_redirect_hosts);
     }
 
+    public function test_new_monitor_normalizes_and_deduplicates_multiple_tags(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+
+        $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), [
+                'name' => 'Tagged website',
+                'url' => 'https://fixture.test/tagged',
+                'label' => " Operations ; Production, operations\n ",
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $monitor = Monitor::query()->sole();
+
+        $this->assertSame(['Operations', 'Production'], $monitor->tags);
+        $this->assertSame('Operations', $monitor->label);
+        $this->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('Operations, Production');
+    }
+
+    public function test_unrelated_monitor_updates_preserve_all_tags(): void
+    {
+        $monitor = Monitor::factory()->create([
+            'label' => 'Operations, Production',
+        ]);
+
+        $monitor->forceFill(['last_checked_at' => now()])->save();
+
+        $this->assertSame(['Operations', 'Production'], $monitor->fresh()->tags);
+        $this->assertSame('Operations', $monitor->fresh()->label);
+    }
+
+    public function test_monitor_tag_input_rejects_more_than_ten_tags_and_tags_over_one_hundred_characters(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $user = User::factory()->create();
+        $basePayload = [
+            'name' => 'Tagged website',
+            'url' => 'https://fixture.test/tagged',
+        ];
+
+        $this->actingAs($user)
+            ->from(route('monitors.create'))
+            ->post(route('monitors.store'), [
+                ...$basePayload,
+                'label' => implode(', ', range(1, 11)),
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors([
+                'label' => '每個監測項目最多可設定 10 個標籤。',
+            ]);
+
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), [
+                ...$basePayload,
+                'label' => str_repeat('a', 101),
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors([
+                'label' => '每個標籤不得超過 100 個字元。',
+            ]);
+
+        $this->assertDatabaseCount('monitors', 0);
+    }
+
     public function test_monitor_detail_paginates_all_retained_check_runs(): void
     {
         $monitor = Monitor::factory()->create();

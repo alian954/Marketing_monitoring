@@ -112,6 +112,31 @@ class SocialPostImportTest extends TestCase
         $this->assertDatabaseCount('monitors', 0);
     }
 
+    public function test_csv_import_normalizes_multiple_tags_in_the_label_column(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $csv = $this->csvContent(
+            ['name', 'url', 'label'],
+            [['Tagged website', 'https://example.com/tagged', 'Operations; Production, QA']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertSee('Operations, Production, QA');
+
+        $this->post(route('monitors.import.commit'), [
+            'preview_token' => $preview->viewData('previewToken'),
+        ])->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+
+        $this->assertSame(['Operations', 'Production', 'QA'], $monitor->tags);
+        $this->assertSame('Operations', $monitor->label);
+    }
+
     public function test_csv_can_stage_social_monitors_as_paused_until_they_are_ready(): void
     {
         Queue::fake([RunMonitorCheck::class]);

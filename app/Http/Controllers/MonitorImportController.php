@@ -518,9 +518,25 @@ class MonitorImportController extends Controller
                 $errors[] = '網址為必填欄位，且長度不得超過 2048 個字元。';
             }
 
-            if (mb_strlen($label) > 100) {
-                $errors[] = '標籤長度不得超過 100 個字元。';
+            $tagNames = Monitor::parseTags($label);
+
+            if (mb_strlen($label) > 1200) {
+                $errors[] = '標籤欄位不得超過 1200 個字元。';
             }
+
+            if (count($tagNames) > 10) {
+                $errors[] = '每個監測項目最多可設定 10 個標籤。';
+            }
+
+            foreach ($tagNames as $tagName) {
+                if (mb_strlen($tagName) > 100) {
+                    $errors[] = '每個標籤不得超過 100 個字元。';
+
+                    break;
+                }
+            }
+
+            $label = implode(', ', $tagNames);
 
             if (mb_strlen($expectedText) > 500) {
                 $errors[] = '預期文字不得超過 500 個字元。';

@@ -38,8 +38,14 @@ class Monitor extends Model
     protected static function booted(): void
     {
         static::saving(static function (Monitor $monitor): void {
+            $tags = $monitor->isDirty('label') || ! is_array($monitor->tags)
+                ? self::parseTags(is_string($monitor->label) ? $monitor->label : null)
+                : $monitor->tagNames();
+
             $monitor->forceFill([
                 'social_platform' => self::socialPlatformKeyForUrl((string) $monitor->url),
+                'tags' => $tags,
+                'label' => $tags[0] ?? null,
             ]);
         });
     }
@@ -58,6 +64,7 @@ class Monitor extends Model
             'expected_response_header' => 'encrypted',
             'allowed_redirect_hosts' => 'array',
             'accepted_status_codes' => 'array',
+            'tags' => 'array',
             'enabled' => 'boolean',
             'alert_on_visible_text_change' => 'boolean',
             'alert_on_response_metadata_change' => 'boolean',
@@ -134,6 +141,52 @@ class Monitor extends Model
     public function socialPlatform(): ?string
     {
         return self::socialPlatformForUrl($this->url);
+    }
+
+    /** @return list<string> */
+    public static function parseTags(?string $input): array
+    {
+        $values = preg_split('/[,;\r\n]+/', $input ?? '', flags: PREG_SPLIT_NO_EMPTY) ?: [];
+        $tags = [];
+        $seen = [];
+
+        foreach ($values as $value) {
+            $tag = trim($value);
+
+            if ($tag === '') {
+                continue;
+            }
+
+            $normalizedTag = mb_strtolower($tag);
+
+            if (isset($seen[$normalizedTag])) {
+                continue;
+            }
+
+            $seen[$normalizedTag] = true;
+            $tags[] = $tag;
+        }
+
+        return $tags;
+    }
+
+    /** @return list<string> */
+    public function tagNames(): array
+    {
+        if (is_array($this->tags) && $this->tags !== []) {
+            $tags = array_values(array_filter($this->tags, static fn (mixed $tag): bool => is_string($tag) && trim($tag) !== ''));
+
+            if ($tags !== []) {
+                return $tags;
+            }
+        }
+
+        return self::parseTags($this->label);
+    }
+
+    public function tagInputValue(): string
+    {
+        return implode(', ', $this->tagNames());
     }
 
     public function expectedResponseHeaderName(): ?string
