@@ -35,6 +35,12 @@ class DashboardController extends Controller
 
     private const MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS = 50;
 
+    /** @var array<string, string> */
+    private const SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS = [
+        'tag' => '依標籤名稱',
+        'engagement_rate' => '觀看互動率由高到低',
+    ];
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
@@ -211,7 +217,12 @@ class DashboardController extends Controller
 
                 return $monitor;
             });
-        $socialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform);
+        $requestedSocialEngagementTagSort = $request->query('engagement_tag_sort');
+        $socialEngagementTagSort = is_string($requestedSocialEngagementTagSort)
+            && array_key_exists($requestedSocialEngagementTagSort, self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS)
+                ? $requestedSocialEngagementTagSort
+                : 'tag';
+        $socialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform, $socialEngagementTagSort);
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -310,6 +321,8 @@ class DashboardController extends Controller
             'socialEngagementPlatformOptions' => $socialEngagementPlatformOptions,
             'socialEngagementSelectedPlatform' => $socialEngagementSelectedPlatform,
             'socialEngagementSummaries' => $socialEngagementSummaries,
+            'socialEngagementTagSortOptions' => self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS,
+            'socialEngagementTagSort' => $socialEngagementTagSort,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
             'socialEngagementChangePeriodDays' => $socialEngagementChangePeriodDays,
             'socialEngagementChangePeriodOptions' => $socialEngagementChangePeriodOptions,
@@ -330,7 +343,7 @@ class DashboardController extends Controller
      *     latest_at: CarbonImmutable|null
      * }>
      */
-    private function socialEngagementSummaries(?string $platform): array
+    private function socialEngagementSummaries(?string $platform, string $sort): array
     {
         /**
          * @var array<string, array{
@@ -409,7 +422,34 @@ class DashboardController extends Controller
             });
 
         $results = array_values($summaries);
-        usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
+        usort($results, static function (array $first, array $second) use ($sort): int {
+            if ($sort === 'engagement_rate') {
+                $firstEngagementRate = $first['engagement_rate']['views'] > 0
+                    ? $first['engagement_rate']['interactions'] / $first['engagement_rate']['views']
+                    : null;
+                $secondEngagementRate = $second['engagement_rate']['views'] > 0
+                    ? $second['engagement_rate']['interactions'] / $second['engagement_rate']['views']
+                    : null;
+
+                if ($firstEngagementRate === null && $secondEngagementRate !== null) {
+                    return 1;
+                }
+
+                if ($firstEngagementRate !== null && $secondEngagementRate === null) {
+                    return -1;
+                }
+
+                if ($firstEngagementRate !== null && $secondEngagementRate !== null) {
+                    $rateComparison = $secondEngagementRate <=> $firstEngagementRate;
+
+                    if ($rateComparison !== 0) {
+                        return $rateComparison;
+                    }
+                }
+            }
+
+            return strnatcasecmp($first['tag'], $second['tag']);
+        });
 
         return $results;
     }

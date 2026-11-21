@@ -321,6 +321,47 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(now()->toIso8601String(), $summaries['summer']['latest_at']->toIso8601String());
     }
 
+    public function test_dashboard_sorts_tag_summaries_by_weighted_view_engagement_rate(): void
+    {
+        $highRatePost = $this->createSocialMonitor('RATEHIGH001', 'high rate');
+        $middleRatePost = $this->createSocialMonitor('RATEMID001', 'middle rate');
+        $lowRatePost = $this->createSocialMonitor('RATELOW001', 'low rate');
+        $incompletePost = $this->createSocialMonitor('RATEEMPTY001', 'unavailable rate');
+
+        $this->createMetricRun($highRatePost, now(), ['views' => 100, 'likes' => 15, 'comments' => 5, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($middleRatePost, now(), ['views' => 1000, 'likes' => 30, 'comments' => 15, 'shares' => 5, 'source' => 'json_ld']);
+        $this->createMetricRun($lowRatePost, now(), ['views' => 1000, 'likes' => 8, 'comments' => 1, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($incompletePost, now(), ['views' => 500, 'likes' => 30, 'comments' => null, 'shares' => 2, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_period' => 30,
+                'engagement_tag_sort' => 'engagement_rate',
+            ]))
+            ->assertOk()
+            ->assertSee('標籤成效排序')
+            ->assertSee('engagement_tag_sort=engagement_rate', false)
+            ->assertSee('engagement_platform=instagram', false)
+            ->assertSee('engagement_period=30', false);
+
+        $this->assertSame('engagement_rate', $response->viewData('socialEngagementTagSort'));
+        $this->assertSame(
+            ['high rate', 'middle rate', 'low rate', 'unavailable rate'],
+            array_column($response->viewData('socialEngagementSummaries'), 'tag'),
+        );
+
+        $invalidSortResponse = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_tag_sort' => 'unknown']))
+            ->assertOk();
+
+        $this->assertSame('tag', $invalidSortResponse->viewData('socialEngagementTagSort'));
+        $this->assertSame(
+            ['high rate', 'low rate', 'middle rate', 'unavailable rate'],
+            array_column($invalidSortResponse->viewData('socialEngagementSummaries'), 'tag'),
+        );
+    }
+
     public function test_dashboard_platform_filter_scopes_engagement_data_and_preserves_other_platform_health_counts(): void
     {
         $this->travelTo('2026-11-22 12:00:00');

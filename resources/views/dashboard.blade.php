@@ -123,6 +123,7 @@
                         </select>
                     </div>
                     <input type="hidden" name="engagement_period" value="{{ $socialEngagementChangePeriodDays }}">
+                    <input type="hidden" name="engagement_tag_sort" value="{{ $socialEngagementTagSort }}">
                     <div class="check-history-filter-actions">
                         <button class="button button-secondary" type="submit">套用</button>
                     </div>
@@ -200,6 +201,17 @@
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
                 <p class="panel-description">觀看互動率＝（讚＋留言＋分享）總和÷觀看總和；只計資料完整且觀看大於 0 的貼文。跨標籤可能重複計入。</p>
             </div>
+            @if ($socialEngagementSummaries !== [])
+                <nav class="heading-actions" aria-label="標籤成效排序">
+                    @foreach ($socialEngagementTagSortOptions as $sort => $sortLabel)
+                        <a
+                            class="button button-small {{ $socialEngagementTagSort === $sort ? 'button-primary' : 'button-secondary' }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort]) }}"
+                            @if ($socialEngagementTagSort === $sort) aria-current="page" @endif
+                        >{{ $sortLabel }}</a>
+                    @endforeach
+                </nav>
+            @endif
         </div>
         @if ($socialEngagementSummaries === [])
             <div class="empty-state">
@@ -209,7 +221,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">依標籤彙總的社群貼文公開互動數與資料覆蓋篇數</caption>
+                    <caption class="sr-only">依目前排序方式排列的標籤成效與資料覆蓋篇數</caption>
                     <thead>
                         <tr>
                             <th scope="col">標籤</th>
