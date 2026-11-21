@@ -451,6 +451,8 @@ class MonitorController extends Controller
             $publicEngagementRows = $publicEngagementRuns->map(function (CheckRun $run) use (&$previousMetricValues): array {
                 $metrics = is_array($run->response_public_engagement_metrics) ? $run->response_public_engagement_metrics : [];
                 $changes = [];
+                $changePercentages = [];
+                $previousValuesWereZero = [];
 
                 foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
                     $currentValue = isset($metrics[$metric]) ? (int) $metrics[$metric] : null;
@@ -458,13 +460,23 @@ class MonitorController extends Controller
                     $changes[$metric] = $currentValue !== null && $previousValue !== null
                         ? $currentValue - $previousValue
                         : null;
+                    $changePercentages[$metric] = $currentValue !== null && $previousValue !== null && $previousValue > 0
+                        ? round((($currentValue - $previousValue) / $previousValue) * 100, 2)
+                        : null;
+                    $previousValuesWereZero[$metric] = $currentValue !== null && $previousValue === 0 && $currentValue > 0;
 
                     if ($currentValue !== null) {
                         $previousMetricValues[$metric] = $currentValue;
                     }
                 }
 
-                return ['run' => $run, 'metrics' => $metrics, 'changes' => $changes];
+                return [
+                    'run' => $run,
+                    'metrics' => $metrics,
+                    'changes' => $changes,
+                    'change_percentages' => $changePercentages,
+                    'previous_values_were_zero' => $previousValuesWereZero,
+                ];
             })->values();
         }
 

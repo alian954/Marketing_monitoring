@@ -450,7 +450,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="public-engagement-history-title" class="panel-title">公開互動數</h2>
-                    <p class="panel-description">近 30 天原始回應可辨識的觀看、讚、留言與分享數。</p>
+                    <p class="panel-description">近 30 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。</p>
                 </div>
                 <span class="secondary-text">{{ $publicEngagementRows->count() }} 次觀測</span>
             </div>
@@ -475,13 +475,21 @@
                             @php
                                 $metricValue = $latestPublicEngagementRow['metrics'][$metric] ?? null;
                                 $metricChange = $latestPublicEngagementRow['changes'][$metric] ?? null;
+                                $metricChangePercentage = $latestPublicEngagementRow['change_percentages'][$metric] ?? null;
+                                $previousValueWasZero = $latestPublicEngagementRow['previous_values_were_zero'][$metric] ?? false;
                             @endphp
                             <article class="stat-card">
                                 <div class="stat-topline"><span class="stat-label">{{ $label }}</span></div>
                                 <strong class="stat-value">{{ $metricValue === null ? '未提供' : number_format((int) $metricValue) }}</strong>
                                 <p class="stat-hint">
                                     @if ($metricChange === null)
-                                        尚無前次數值可比較
+                                        {{ $metricValue === null ? '本次未提供數值，無法比較' : '尚無前次數值可比較' }}
+                                    @elseif ($metricChange === 0)
+                                        與前次相同{{ $metricChangePercentage === null ? '（前次為 0，無法計算比例）' : '（0.00%）' }}
+                                    @elseif ($metricChangePercentage !== null)
+                                        較前次 {{ $metricChange > 0 ? '+' : '' }}{{ number_format($metricChange) }}（{{ $metricChangePercentage > 0 ? '+' : '' }}{{ number_format($metricChangePercentage, 2) }}%）
+                                    @elseif ($previousValueWasZero)
+                                        較前次 +{{ number_format($metricChange) }}（前次為 0，無法計算比例）
                                     @elseif ($metricChange > 0)
                                         較前次 +{{ number_format($metricChange) }}
                                     @elseif ($metricChange < 0)

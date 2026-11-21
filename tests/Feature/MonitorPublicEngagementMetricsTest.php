@@ -64,10 +64,38 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('公開互動數')
-            ->assertSee('近 30 天原始回應可辨識的觀看、讚、留言與分享數。')
+            ->assertSee('近 30 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。')
             ->assertSee('5,320')
-            ->assertSee('較前次 +520')
+            ->assertSee('較前次 +520（+10.83%）')
+            ->assertSee('較前次 +24（+15.00%）')
             ->assertSee('4,800');
+    }
+
+    public function test_engagement_percentage_handles_a_zero_baseline_without_dividing_by_zero(): void
+    {
+        $monitor = $this->createSocialMonitor();
+        $this->createMetricRun($monitor, now()->subHour(), ['views' => 0, 'likes' => 0, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), ['views' => 125, 'likes' => 3, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('較前次 +125（前次為 0，無法計算比例）')
+            ->assertSee('較前次 +3（前次為 0，無法計算比例）')
+            ->assertSee('與前次相同（前次為 0，無法計算比例）');
+    }
+
+    public function test_missing_latest_metric_is_not_reported_as_missing_a_previous_value(): void
+    {
+        $monitor = $this->createSocialMonitor();
+        $this->createMetricRun($monitor, now()->subHour(), ['views' => 520, 'likes' => 20, 'comments' => 3, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), ['views' => null, 'likes' => 25, 'comments' => 4, 'shares' => 1, 'source' => 'json_ld']);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('本次未提供數值，無法比較')
+            ->assertSee('較前次 +5（+25.00%）');
     }
 
     public function test_dashboard_shows_the_latest_public_interaction_snapshot(): void
@@ -98,7 +126,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         ]);
     }
 
-    /** @param array{views: int, likes: int, comments: int, shares: int, source: string} $metrics */
+    /** @param array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string} $metrics */
     private function createMetricRun(Monitor $monitor, DateTimeInterface $finishedAt, array $metrics): CheckRun
     {
         return CheckRun::factory()->for($monitor)->create([
