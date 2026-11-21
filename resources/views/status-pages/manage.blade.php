@@ -110,30 +110,38 @@
                             <th scope="col"><span class="sr-only">管理</span></th>
                         </tr>
                     </thead>
-                    <tbody>
-                        @foreach ($monitors as $monitor)
-                            <tr>
-                                <td>{{ $monitor->name }}</td>
-                                <td><x-state-badge :state="$monitor->health_state" /></td>
-                                <td>
-                                    @if ($monitor->last_checked_at)
-                                        <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
-                                    @else
-                                        <span class="secondary-text">尚未檢查</span>
-                                    @endif
-                                </td>
-                                <td><x-state-badge :state="$monitor->public_status ? 'enabled' : 'disabled'" /></td>
-                                <td class="row-actions">
-                                    <form class="inline-form" action="{{ route('status-pages.monitors.toggle', $monitor) }}" method="POST">
-                                        @csrf
-                                        <button class="button button-secondary button-small" type="submit" aria-label="{{ $monitor->public_status ? '從公開狀態頁移除' : '加入公開狀態頁' }}：{{ $monitor->name }}">
-                                            {{ $monitor->public_status ? '移除' : '加入' }}
-                                        </button>
-                                    </form>
-                                </td>
+                    @foreach ($monitorGroups as $group)
+                        <tbody>
+                            <tr class="status-page-monitor-group">
+                                <th scope="rowgroup" colspan="5">
+                                    {{ $group['label'] }}
+                                    <span class="status-page-monitor-group-count">{{ $group['monitors']->count() }} 個項目</span>
+                                </th>
                             </tr>
-                        @endforeach
-                    </tbody>
+                            @foreach ($group['monitors'] as $monitor)
+                                <tr>
+                                    <td>{{ $monitor->name }}</td>
+                                    <td><x-state-badge :state="$monitor->health_state" /></td>
+                                    <td>
+                                        @if ($monitor->last_checked_at)
+                                            <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time>
+                                        @else
+                                            <span class="secondary-text">尚未檢查</span>
+                                        @endif
+                                    </td>
+                                    <td><x-state-badge :state="$monitor->public_status ? 'enabled' : 'disabled'" /></td>
+                                    <td class="row-actions">
+                                        <form class="inline-form" action="{{ route('status-pages.monitors.toggle', $monitor) }}" method="POST">
+                                            @csrf
+                                            <button class="button button-secondary button-small" type="submit" aria-label="{{ $monitor->public_status ? '從公開狀態頁移除' : '加入公開狀態頁' }}：{{ $monitor->name }}">
+                                                {{ $monitor->public_status ? '移除' : '加入' }}
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    @endforeach
                 </table>
             </div>
         @endif

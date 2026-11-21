@@ -28,6 +28,14 @@ class StatusPageController extends Controller
 
     private const MAINTENANCE_LOOKAHEAD_DAYS = 30;
 
+    /** @var array<string, string> */
+    private const MONITOR_PLATFORM_GROUP_LABELS = [
+        'website' => '網站服務',
+        'facebook' => 'Facebook 貼文',
+        'instagram' => 'Instagram 貼文',
+        'threads' => 'Threads 貼文',
+    ];
+
     public function __construct(private readonly MonitorAvailabilityCalculator $availabilityCalculator) {}
 
     public function edit(): View
@@ -42,13 +50,15 @@ class StatusPageController extends Controller
             $monitor->setAttribute('health_state', $monitor->healthState());
         }
 
+        $monitorGroups = $this->groupMonitorsByPlatform($monitors);
+
         $publicMonitorCount = $monitors->where('public_status', true)->count();
 
         $publicUrl = $statusPage?->is_published
             ? route('status-pages.public', ['token' => $statusPage->public_token])
             : null;
 
-        return view('status-pages.manage', compact('statusPage', 'monitors', 'publicMonitorCount', 'publicUrl'));
+        return view('status-pages.manage', compact('statusPage', 'monitors', 'monitorGroups', 'publicMonitorCount', 'publicUrl'));
     }
 
     public function update(Request $request): RedirectResponse
@@ -143,21 +153,7 @@ class StatusPageController extends Controller
             $monitor->setAttribute('health_state', $monitor->healthState());
         }
 
-        $monitorsByPlatform = $monitors->groupBy(static fn (Monitor $monitor): string => match ($monitor->socialPlatform()) {
-            'Facebook' => 'facebook',
-            'Instagram' => 'instagram',
-            'Threads' => 'threads',
-            default => 'website',
-        });
-        $monitorGroups = collect([
-            'website' => '網站服務',
-            'facebook' => 'Facebook 貼文',
-            'instagram' => 'Instagram 貼文',
-            'threads' => 'Threads 貼文',
-        ])->map(static fn (string $label, string $key): array => [
-            'label' => $label,
-            'monitors' => $monitorsByPlatform->get($key, collect()),
-        ])->filter(static fn (array $group): bool => $group['monitors']->isNotEmpty());
+        $monitorGroups = $this->groupMonitorsByPlatform($monitors);
 
         $asOf = now()->toImmutable();
         $this->attachPublicHistory($monitors, $asOf);
@@ -183,6 +179,27 @@ class StatusPageController extends Controller
             ->header('Cache-Control', 'no-store')
             ->header('X-Robots-Tag', 'noindex, nofollow')
             ->header('Referrer-Policy', 'no-referrer');
+    }
+
+    /**
+     * @param  EloquentCollection<int, Monitor>  $monitors
+     * @return Collection<string, array{label: string, monitors: EloquentCollection<int, Monitor>}>
+     */
+    private function groupMonitorsByPlatform(EloquentCollection $monitors): Collection
+    {
+        $monitorsByPlatform = $monitors->groupBy(static fn (Monitor $monitor): string => match ($monitor->socialPlatform()) {
+            'Facebook' => 'facebook',
+            'Instagram' => 'instagram',
+            'Threads' => 'threads',
+            default => 'website',
+        });
+
+        return collect(self::MONITOR_PLATFORM_GROUP_LABELS)
+            ->map(static fn (string $label, string $key): array => [
+                'label' => $label,
+                'monitors' => $monitorsByPlatform->get($key, new EloquentCollection),
+            ])
+            ->filter(static fn (array $group): bool => $group['monitors']->isNotEmpty());
     }
 
     /**

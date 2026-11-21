@@ -100,6 +100,54 @@ class StatusPageWorkflowTest extends TestCase
         }
     }
 
+    public function test_status_page_settings_group_monitors_and_keep_platform_toggle_actions_available(): void
+    {
+        $monitors = collect([
+            ['name' => 'Website settings service', 'url' => 'https://example.com/status'],
+            ['name' => 'Facebook settings post', 'url' => 'https://www.facebook.com/campaign/posts/123'],
+            ['name' => 'Instagram settings post', 'url' => 'https://www.instagram.com/p/abc123/'],
+            ['name' => 'Threads settings post', 'url' => 'https://www.threads.net/@campaign/post/xyz789'],
+        ])->map(fn (array $attributes): Monitor => Monitor::factory()->create([
+            ...$attributes,
+            'url_hash' => Monitor::fingerprintUrl($attributes['url']),
+        ]));
+        Monitor::factory()->create([
+            'name' => 'Website public service',
+            'url' => 'https://example.com/public',
+            'url_hash' => Monitor::fingerprintUrl('https://example.com/public'),
+            'public_status' => true,
+        ]);
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)
+            ->get(route('status-pages.edit'))
+            ->assertOk()
+            ->assertSeeTextInOrder([
+                '網站服務',
+                'Website public service',
+                'Website settings service',
+                'Facebook 貼文',
+                'Facebook settings post',
+                'Instagram 貼文',
+                'Instagram settings post',
+                'Threads 貼文',
+                'Threads settings post',
+            ])
+            ->assertSee('2 個項目')
+            ->assertSee(route('status-pages.monitors.toggle', $monitors[1]), false);
+
+        $monitorGroups = $response->viewData('monitorGroups');
+
+        $this->assertSame(['website', 'facebook', 'instagram', 'threads'], $monitorGroups->keys()->all());
+        $this->assertSame(2, $monitorGroups->get('website')['monitors']->count());
+        $this->assertSame($monitors[1]->id, $monitorGroups->get('facebook')['monitors']->sole()->id);
+
+        $this->post(route('status-pages.monitors.toggle', $monitors[1]))
+            ->assertRedirect(route('status-pages.edit'));
+
+        $this->assertDatabaseHas('monitors', ['id' => $monitors[1]->id, 'public_status' => true]);
+    }
+
     public function test_public_history_uses_response_body_size_thresholds_from_each_check(): void
     {
         $monitor = Monitor::factory()->create([
