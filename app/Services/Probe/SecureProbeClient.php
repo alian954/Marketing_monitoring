@@ -14,6 +14,7 @@ class SecureProbeClient implements ProbeClient
         private readonly UrlSafetyPolicy $policy,
         private readonly ProbeTransport $transport,
         private readonly UrlMasker $masker,
+        private readonly ?DcardBrowserRenderer $dcardBrowserRenderer = null,
     ) {}
 
     public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null, ?string $socialPlatform = null): ProbeResult
@@ -106,7 +107,17 @@ class SecureProbeClient implements ProbeClient
                 unset($attemptTarget['cnames'], $attemptTarget['dns_records']);
                 $attemptTarget['ips'] = [$ip];
                 $headersForHop = $this->sameOrigin($url, $target['url']) ? $requestHeaders : [];
-                $response = $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
+                $response = null;
+
+                if ($hop === 0
+                    && $index === 0
+                    && $socialPlatform === 'dcard'
+                    && $this->dcardBrowserRenderer !== null
+                    && (bool) config('monitoring.dcard_browser_enabled', true)) {
+                    $response = $this->dcardBrowserRenderer->render($target, $remainingMs);
+                }
+
+                $response ??= $this->transport instanceof HeaderAwareProbeTransport && ($headersForHop !== [] || $expectedResponseHeaderName !== null)
                     ? $this->transport->getWithHeaders($attemptTarget, $userAgent, $remainingMs, $headersForHop, $expectedResponseHeaderName)
                     : $this->transport->get($attemptTarget, $userAgent, $remainingMs);
                 $elapsedMs += $response->elapsedMs;
@@ -152,7 +163,10 @@ class SecureProbeClient implements ProbeClient
                 && $response->statusCode >= 200
                 && $response->statusCode < 300
                 && preg_match('/\A(?:text\/html|application\/xhtml\+xml)(?:\s*;|\z)/', mb_strtolower(trim((string) $responseContentType))) === 1
-                    ? ($responseInspection['public_engagement_metrics'] ?? null)
+                    ? (($responseInspection['public_engagement_metrics'] ?? null)
+                        ?? ($socialPlatform === 'dcard' && $response->visibleText !== null
+                            ? DcardPublicEngagementMetricExtractor::extract($response->visibleText)
+                            : null))
                     : null;
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
@@ -162,7 +176,7 @@ class SecureProbeClient implements ProbeClient
             $expectedTextTermMatches = null;
 
             if ($response->errorType === 'body_too_large' && $expectedText !== null && $expectedText !== '') {
-                $matchDetails = ExpectedTextMatcher::evaluate($response->body, $expectedText, $expectedTextMode, true);
+                $matchDetails = ExpectedTextMatcher::evaluate($response->visibleText ?? $response->body, $expectedText, $expectedTextMode, true);
                 $boundedPrefixMatch = $matchDetails['found'];
                 $expectedTextTermMatches = array_column($matchDetails['terms'], 'matched');
             }
@@ -261,7 +275,7 @@ class SecureProbeClient implements ProbeClient
             if (! $isRedirectResponse) {
                 $matchDetails = $expectedText === null || $expectedText === ''
                     ? null
-                    : ExpectedTextMatcher::evaluate($response->body, $expectedText, $expectedTextMode);
+                    : ExpectedTextMatcher::evaluate($response->visibleText ?? $response->body, $expectedText, $expectedTextMode);
                 $matchesExpectedText = $matchDetails['found'] ?? null;
                 $expectedTextTermMatches = $matchDetails === null
                     ? null
@@ -270,7 +284,10 @@ class SecureProbeClient implements ProbeClient
                 $cloudflareBlockDetected = $socialPlatform !== null
                     && $response->statusCode === 403
                     && SocialPostAccessGateDetector::detectsCloudflareBlock($response->body, $responseMetadata);
+                $dcardVerificationDetected = $socialPlatform === 'dcard'
+                    && SocialPostAccessGateDetector::detectsDcardVerification($response->visibleText ?? $response->body);
                 $accessGateDetected = $cloudflareBlockDetected
+                    || $dcardVerificationDetected
                     || ($socialPlatform !== null
                     && $response->statusCode !== null
                     && $response->statusCode >= 200
@@ -297,7 +314,9 @@ class SecureProbeClient implements ProbeClient
                     $accessGateDetected
                         ? ($cloudflareBlockDetected
                             ? '平台回傳 HTTP 403 Cloudflare 防護頁；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。'
-                            : '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。')
+                            : ($dcardVerificationDetected
+                                ? 'Dcard 要求人工驗證，這次無法讀取貼文內容或互動數；系統不會自動處理驗證。請稍後再試或手動開啟網址確認。'
+                                : '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。'))
                         : null,
                     $matchesExpectedText,
                     $response->tlsExpiresAt,

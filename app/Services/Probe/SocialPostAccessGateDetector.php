@@ -42,6 +42,13 @@ class SocialPostAccessGateDetector
         return preg_match('/\b(?:attention required|sorry,?\s+you have been blocked|you are unable to access|one more step|just a moment)\b|cf-error-details|cloudflare ray id|please enable (?:javascript|cookies)/iu', $visibleBody) === 1;
     }
 
+    public static function detectsDcardVerification(string $body): bool
+    {
+        $visibleBody = self::visibleText($body);
+
+        return preg_match('/dcard.{0,30}(?:確認|驗證).{0,30}(?:連線|人類|安全)|(?:請稍候|依據指示).{0,40}(?:驗證|點擊)|(?:人機驗證|驗證請求是真實的人類)/u', $visibleBody) === 1;
+    }
+
     private static function visibleText(string $body): string
     {
         $visibleBody = preg_replace('/<(script|style|template)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;

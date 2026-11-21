@@ -2,11 +2,47 @@
 
 namespace Tests\Unit;
 
+use App\Services\Probe\DcardPublicEngagementMetricExtractor;
 use App\Services\Probe\ResponseMetadataExtractor;
 use PHPUnit\Framework\TestCase;
 
 class SocialEngagementMetricExtractorTest extends TestCase
 {
+    public function test_it_extracts_dcard_like_and_comment_totals_from_the_rendered_public_page(): void
+    {
+        $visibleText = <<<'TEXT'
+            美妝
+            #開箱 #推薦 一罐搞定保養 男生或懶人都適合的凝露心得分享
+            Campaign headline
+            開箱
+            推薦
+            2026 化妝水心動榜 TOP 10
+            20
+            3
+            推薦商品
+            由舊至新
+            由新至舊
+            全部留言
+            留言內容
+            0
+            TEXT;
+
+        $this->assertSame([
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ], DcardPublicEngagementMetricExtractor::extract($visibleText));
+    }
+
+    public function test_it_does_not_use_comment_vote_counts_or_ambiguous_number_pairs_as_post_metrics(): void
+    {
+        $this->assertNull(DcardPublicEngagementMetricExtractor::extract("全部留言\n留言內容\n20\n3"));
+        $this->assertNull(DcardPublicEngagementMetricExtractor::extract("10\n20\n3\n全部留言"));
+        $this->assertNull(DcardPublicEngagementMetricExtractor::extract("貼文內容\n20\n全部留言"));
+    }
+
     public function test_it_extracts_explicit_schema_interaction_counts_for_the_current_post(): void
     {
         $html = <<<'HTML'

@@ -15,5 +15,6 @@ readonly class HopResponse
         public ?\DateTimeImmutable $tlsExpiresAt,
         public ?int $retryAfterSeconds = null,
         public array $responseHeaders = [],
+        public ?string $visibleText = null,
     ) {}
 }

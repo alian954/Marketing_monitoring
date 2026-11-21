@@ -63,6 +63,14 @@ class SocialPostAccessGateDetectorTest extends TestCase
         ]));
     }
 
+    public function test_detects_dcard_human_verification_pages_even_when_they_return_http_success(): void
+    {
+        $body = 'Dcard 需要確認您的連線是安全的。請稍候，並依據指示點擊下方驗證。';
+
+        $this->assertTrue(SocialPostAccessGateDetector::detectsDcardVerification($body));
+        $this->assertFalse(SocialPostAccessGateDetector::detectsDcardVerification('Dcard 貼文公開互動數：20 讚、3 則留言'));
+    }
+
     public function test_does_not_detect_cloudflare_branding_without_a_visible_block_notice(): void
     {
         $body = '<html><head><title>Cloudflare</title></head><body><main>Campaign post</main></body></html>';

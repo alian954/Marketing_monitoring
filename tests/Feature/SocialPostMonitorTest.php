@@ -11,6 +11,7 @@ use App\Models\NotificationOutbox;
 use App\Models\User;
 use App\Services\IncidentManager;
 use App\Services\NotificationDispatcher;
+use App\Services\Probe\DcardBrowserRenderer;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\ProbeClient;
@@ -759,6 +760,121 @@ class SocialPostMonitorTest extends TestCase
             ->assertOk()
             ->assertSee('平台回傳 HTTP 403 Cloudflare 防護頁')
             ->assertSee('這次無法讀取貼文內容或互動數');
+    }
+
+    public function test_dcard_browser_rendering_records_public_like_and_comment_totals(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944?cid=campaign';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+
+        $transport = new class implements ProbeTransport
+        {
+            public int $calls = 0;
+
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(403, null, '', 40, null, null, null);
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public int $calls = 0;
+
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $this->calls++;
+
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Campaign headline | Dcard</title></head><body><main>Campaign headline</main></body></html>',
+                    80,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                    visibleText: "美妝\nCampaign headline\n2026 化妝水心動榜 TOP 10\n20\n3\n推薦商品\n全部留言\n留言內容\n0",
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame(1, $renderer->calls);
+        $this->assertSame(0, $transport->calls);
+        $this->assertSame(200, $savedRun->normal_status);
+        $this->assertNull($savedRun->error_type);
+        $this->assertSame([
+            'views' => null,
+            'likes' => 20,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ], $savedRun->response_public_engagement_metrics);
+        $this->assertTrue($savedRun->expectedTextMatchResult());
+    }
+
+    public function test_dcard_browser_verification_response_is_reported_as_indeterminate(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(403, null, '', 40, null, null, null);
+            }
+        };
+        $renderer = new class implements DcardBrowserRenderer
+        {
+            public function render(array $target, int $timeoutMilliseconds): ?HopResponse
+            {
+                $challenge = 'Dcard 需要確認您的連線是安全的。請稍候，並依據指示點擊下方驗證。';
+
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>請稍候...</title></head><body>'.$challenge.'</body></html>',
+                    80,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                    visibleText: $challenge,
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker, $renderer);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame(200, $savedRun->normal_status);
+        $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertNull($savedRun->expectedTextMatchResult());
+        $this->assertNull($savedRun->response_public_engagement_metrics);
+        $this->assertStringContainsString('Dcard 要求人工驗證', (string) $savedRun->error_detail);
     }
 
     public function test_social_login_wall_does_not_establish_a_visible_text_baseline_without_expected_text(): void

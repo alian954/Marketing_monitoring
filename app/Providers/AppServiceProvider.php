@@ -3,9 +3,11 @@
 namespace App\Providers;
 
 use App\Services\Probe\CurlProbeTransport;
+use App\Services\Probe\DcardBrowserRenderer;
 use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\NativeHostResolver;
+use App\Services\Probe\PlaywrightDcardBrowserRenderer;
 use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeTransport;
 use App\Services\Probe\RobotsTxtProbe;
@@ -29,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(HostResolver::class, NativeHostResolver::class);
         $this->app->bind(ProbeTransport::class, CurlProbeTransport::class);
+        $this->app->bind(DcardBrowserRenderer::class, PlaywrightDcardBrowserRenderer::class);
         $this->app->bind(RobotsTxtProbe::class, SecureRobotsTxtProbe::class);
         $this->app->bind(TlsCertificateTransport::class, StreamTlsCertificateTransport::class);
         $this->app->bind(TlsCertificateProbe::class, SecureTlsCertificateProbe::class);
