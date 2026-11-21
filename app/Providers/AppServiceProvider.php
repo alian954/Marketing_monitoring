@@ -8,7 +8,9 @@ use App\Services\Probe\HostResolver;
 use App\Services\Probe\NativeHostResolver;
 use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeTransport;
+use App\Services\Probe\RobotsTxtProbe;
 use App\Services\Probe\SecureProbeClient;
+use App\Services\Probe\SecureRobotsTxtProbe;
 use App\Services\Probe\SecureTlsCertificateProbe;
 use App\Services\Probe\StreamTlsCertificateTransport;
 use App\Services\Probe\TlsCertificateProbe;
@@ -27,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(HostResolver::class, NativeHostResolver::class);
         $this->app->bind(ProbeTransport::class, CurlProbeTransport::class);
+        $this->app->bind(RobotsTxtProbe::class, SecureRobotsTxtProbe::class);
         $this->app->bind(TlsCertificateTransport::class, StreamTlsCertificateTransport::class);
         $this->app->bind(TlsCertificateProbe::class, SecureTlsCertificateProbe::class);
         $this->app->bind(ProbeClient::class, function ($app): ProbeClient {

@@ -113,6 +113,11 @@ class Monitor extends Model
         return $this->hasMany(DomainRegistrationObservation::class);
     }
 
+    public function robotsObservations(): HasMany
+    {
+        return $this->hasMany(RobotsObservation::class);
+    }
+
     public function activeIncidents(): HasMany
     {
         return $this->hasMany(Incident::class)->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN]);

@@ -17,7 +17,12 @@ class RobotsReviewController extends Controller
             ? $scheme.'://'.(str_contains($host, ':') ? '['.$host.']' : $host).$port
             : null;
         $robotsUrl = $origin === null ? null : $origin.'/robots.txt';
+        $isWebsiteMonitor = $monitor->socialPlatform() === null;
+        $observations = $isWebsiteMonitor
+            ? $monitor->robotsObservations()->orderByDesc('observed_on')->limit(30)->get()
+            : collect();
+        $latestObservation = $observations->first();
 
-        return view('monitors.robots-review', compact('monitor', 'origin', 'robotsUrl'));
+        return view('monitors.robots-review', compact('monitor', 'origin', 'robotsUrl', 'isWebsiteMonitor', 'observations', 'latestObservation'));
     }
 }

@@ -11,7 +11,7 @@ class RobotsReviewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_robots_review_provides_a_manual_root_link_without_fetching_or_saving_content(): void
+    public function test_robots_review_provides_a_manual_root_link_and_waits_for_the_daily_probe(): void
     {
         $url = 'https://www.example.com/campaign/page?token=must-stay-private';
         $monitor = Monitor::factory()->create([
@@ -26,8 +26,9 @@ class RobotsReviewTest extends TestCase
             ->assertSee('/robots.txt')
             ->assertSee('https://www.example.com/robots.txt', false)
             ->assertDontSee('must-stay-private')
-            ->assertSee('不會擷取或解析 robots.txt');
+            ->assertSee('下一次每日排程執行後');
 
         $this->assertDatabaseCount('check_runs', 0);
+        $this->assertDatabaseCount('robots_observations', 0);
     }
 }
