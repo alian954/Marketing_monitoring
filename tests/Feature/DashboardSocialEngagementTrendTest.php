@@ -186,7 +186,8 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->assertOk()
             ->assertSee('單篇互動變化排行')
             ->assertSee('+9')
-            ->assertSee('2/3 項');
+            ->assertSee('2/3 項')
+            ->assertSee('無雙期可比較指標');
 
         $growthPosts = $response->viewData('socialEngagementGrowthPosts');
 
@@ -196,6 +197,8 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertSame(2, $growthPosts[0]['available_metrics']);
         $this->assertSame(23, $growthPosts[0]['starting_interactions']);
         $this->assertSame(39.1, $growthPosts[0]['interaction_growth_rate']);
+        $this->assertSame(0, $growthPosts[0]['period_comparable_metrics']);
+        $this->assertNull($growthPosts[0]['period_interaction_change_difference']);
         $response->assertSee('39.1%');
     }
 
@@ -225,6 +228,34 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertNull($growthPosts[$zeroBaselinePost->id]['interaction_growth_rate']);
         $this->assertSame(13, $growthPosts[$decliningPost->id]['starting_interactions']);
         $this->assertSame(-38.5, $growthPosts[$decliningPost->id]['interaction_growth_rate']);
+    }
+
+    public function test_dashboard_compares_post_interaction_change_with_the_previous_period_for_matching_metrics(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $campaignPost = $this->createSocialMonitor('dcard', '262476944', 'campaign');
+
+        $this->createMetricRun($campaignPost, '2026-11-10 09:00:00', ['likes' => 20, 'comments' => 4, 'shares' => 5]);
+        $this->createMetricRun($campaignPost, '2026-11-14 09:00:00', ['likes' => 26, 'comments' => 8, 'shares' => null]);
+        $this->createMetricRun($campaignPost, '2026-11-16 09:00:00', ['likes' => 30, 'comments' => 10, 'shares' => 5]);
+        $this->createMetricRun($campaignPost, '2026-11-20 09:00:00', ['likes' => 33, 'comments' => 12, 'shares' => 15]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_tag' => 'tag:campaign',
+                'engagement_period' => 7,
+            ]))
+            ->assertOk()
+            ->assertSee('較前期變化差');
+
+        $growthPosts = $response->viewData('socialEngagementGrowthPosts');
+
+        $this->assertCount(1, $growthPosts);
+        $this->assertSame(15, $growthPosts[0]['interaction_change']);
+        $this->assertSame(5, $growthPosts[0]['comparable_current_interaction_change']);
+        $this->assertSame(10, $growthPosts[0]['previous_period_interaction_change']);
+        $this->assertSame(-5, $growthPosts[0]['period_interaction_change_difference']);
+        $this->assertSame(2, $growthPosts[0]['period_comparable_metrics']);
     }
 
     /** @param array{likes: int|null, comments: int|null, shares: int|null} $metrics */

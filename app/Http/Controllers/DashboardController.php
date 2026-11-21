@@ -846,6 +846,10 @@ class DashboardController extends Controller
      *         interaction_change: int,
      *         starting_interactions: int,
      *         interaction_growth_rate: float|null,
+     *         comparable_current_interaction_change: int|null,
+     *         previous_period_interaction_change: int|null,
+     *         period_interaction_change_difference: int|null,
+     *         period_comparable_metrics: int,
      *         metric_changes: array{likes: int|null, comments: int|null, shares: int|null},
      *         available_metrics: int,
      *         finished_at: CarbonImmutable
@@ -1041,10 +1045,18 @@ class DashboardController extends Controller
             $interactionChange = 0;
             $startingInteractions = 0;
             $availableMetrics = 0;
+            $comparableCurrentInteractionChange = 0;
+            $previousPeriodInteractionChange = 0;
+            $periodComparableMetrics = 0;
             $latestObservationAt = null;
 
             foreach (array_keys($metricChanges) as $metric) {
                 $currentObservation = $selectedMetricObservations[$metric]['current'] ?? null;
+                $previousObservation = $selectedMetricObservations[$metric]['previous'] ?? null;
+                $previousMetricChange = $previousObservation !== null
+                    && $previousObservation['first']['id'] !== $previousObservation['latest']['id']
+                        ? $previousObservation['latest']['value'] - $previousObservation['first']['value']
+                        : null;
 
                 if ($currentObservation === null || $currentObservation['first']['id'] === $currentObservation['latest']['id']) {
                     continue;
@@ -1055,6 +1067,12 @@ class DashboardController extends Controller
                 $interactionChange += $metricChange;
                 $startingInteractions += $currentObservation['first']['value'];
                 $availableMetrics++;
+
+                if ($previousMetricChange !== null) {
+                    $comparableCurrentInteractionChange += $metricChange;
+                    $previousPeriodInteractionChange += $previousMetricChange;
+                    $periodComparableMetrics++;
+                }
 
                 if ($latestObservationAt === null || $currentObservation['latest']['finished_at']->greaterThan($latestObservationAt)) {
                     $latestObservationAt = $currentObservation['latest']['finished_at'];
@@ -1080,6 +1098,12 @@ class DashboardController extends Controller
                 'interaction_growth_rate' => $startingInteractions > 0
                     ? round($interactionChange / $startingInteractions * 100, 1)
                     : null,
+                'comparable_current_interaction_change' => $periodComparableMetrics > 0 ? $comparableCurrentInteractionChange : null,
+                'previous_period_interaction_change' => $periodComparableMetrics > 0 ? $previousPeriodInteractionChange : null,
+                'period_interaction_change_difference' => $periodComparableMetrics > 0
+                    ? $comparableCurrentInteractionChange - $previousPeriodInteractionChange
+                    : null,
+                'period_comparable_metrics' => $periodComparableMetrics,
                 'metric_changes' => $metricChanges,
                 'available_metrics' => $availableMetrics,
                 'finished_at' => $latestObservationAt,

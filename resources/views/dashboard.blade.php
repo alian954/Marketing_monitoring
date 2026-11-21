@@ -516,6 +516,9 @@
             <div class="spaced-top" aria-labelledby="social-engagement-growth-title">
                 <h3 id="social-engagement-growth-title" class="panel-title">單篇互動變化排行</h3>
                 <p class="panel-description">依所選期間內互動淨變化排序。成長率＝淨變化÷期初互動量；期初為 0 時無法計算，缺少的指標不當成 0。</p>
+                @if ($socialEngagementChangeComparisonAvailable)
+                    <p class="panel-description">較前期變化差＝本期增量減前期增量，只計兩期都有讀值的相同指標。</p>
+                @endif
                 @if ($socialEngagementGrowthPosts === [])
                     <div class="empty-state">
                         <h4 class="empty-title">尚無單篇互動變化</h4>
@@ -531,6 +534,9 @@
                                     <th scope="col">平台</th>
                                     <th scope="col">互動淨變化</th>
                                     <th scope="col">互動成長率</th>
+                                    @if ($socialEngagementChangeComparisonAvailable)
+                                        <th scope="col">較前期變化差</th>
+                                    @endif
                                     <th scope="col">指標變化</th>
                                     <th scope="col">最後觀測</th>
                                 </tr>
@@ -549,6 +555,16 @@
                                                 <span class="secondary-text">(期初 {{ number_format($growthPost['starting_interactions']) }})</span>
                                             @endif
                                         </td>
+                                        @if ($socialEngagementChangeComparisonAvailable)
+                                            <td class="numeric">
+                                                @if ($growthPost['period_interaction_change_difference'] === null)
+                                                    — <span class="secondary-text">(無雙期可比較指標)</span>
+                                                @else
+                                                    {{ $growthPost['period_interaction_change_difference'] > 0 ? '+' : '' }}{{ number_format($growthPost['period_interaction_change_difference']) }}
+                                                    <span class="secondary-text">(本期 {{ $growthPost['comparable_current_interaction_change'] > 0 ? '+' : '' }}{{ number_format($growthPost['comparable_current_interaction_change']) }}／前期 {{ $growthPost['previous_period_interaction_change'] > 0 ? '+' : '' }}{{ number_format($growthPost['previous_period_interaction_change']) }}；{{ $growthPost['period_comparable_metrics'] }}/3 項)</span>
+                                                @endif
+                                            </td>
+                                        @endif
                                         <td>
                                             @foreach (['likes' => '讚', 'comments' => '留言', 'shares' => '分享'] as $metric => $metricLabel)
                                                 <span>{{ $metricLabel }} {{ $growthPost['metric_changes'][$metric] === null ? '—' : ($growthPost['metric_changes'][$metric] > 0 ? '+' : '').number_format($growthPost['metric_changes'][$metric]) }}</span>@if (! $loop->last) <span aria-hidden="true">・</span> @endif
