@@ -15,6 +15,7 @@ use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\View\View;
@@ -38,7 +39,7 @@ class DashboardController extends Controller
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
 
-    public function index(UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
+    public function index(Request $request, UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
     {
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
@@ -170,7 +171,18 @@ class DashboardController extends Controller
             );
         });
         $socialEngagementSummaries = $this->socialEngagementSummaries();
-        $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries($asOf, $socialEngagementSummaries);
+        $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions();
+        $requestedSocialEngagementPeriod = $request->query('engagement_period');
+        $socialEngagementChangePeriodDays = is_string($requestedSocialEngagementPeriod)
+            && ctype_digit($requestedSocialEngagementPeriod)
+            && array_key_exists((int) $requestedSocialEngagementPeriod, $socialEngagementChangePeriodOptions)
+                ? (int) $requestedSocialEngagementPeriod
+                : (int) array_key_first($socialEngagementChangePeriodOptions);
+        $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries(
+            $asOf,
+            $socialEngagementSummaries,
+            $socialEngagementChangePeriodDays,
+        );
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -252,6 +264,8 @@ class DashboardController extends Controller
             'socialEngagementMonitors' => $socialEngagementMonitors,
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
+            'socialEngagementChangePeriodDays' => $socialEngagementChangePeriodDays,
+            'socialEngagementChangePeriodOptions' => $socialEngagementChangePeriodOptions,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);
@@ -346,11 +360,27 @@ class DashboardController extends Controller
         return $results;
     }
 
+    /** @return array<int, string> */
+    private function socialEngagementChangePeriodOptions(): array
+    {
+        $retentionDays = max(1, (int) config('monitoring.retention_days'));
+        $standardPeriods = [7 => '近 7 天', 30 => '近 30 天', 90 => '近 90 天'];
+        $availablePeriods = array_filter(
+            $standardPeriods,
+            static fn (string $label, int $days): bool => $days <= $retentionDays,
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return $availablePeriods !== []
+            ? $availablePeriods
+            : [$retentionDays => '近 '.$retentionDays.' 天'];
+    }
+
     /**
      * @param  list<array{tag: string, filter_label: string|null}>  $tagSummaries
      * @return list<array{tag: string, filter_label: string|null, metrics: array<string, array{change: int, available: int}>}>
      */
-    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries): array
+    private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays): array
     {
         $changesByTag = [];
 
@@ -375,7 +405,7 @@ class DashboardController extends Controller
             ->select(['id', 'monitor_id', 'config_version', 'finished_at', 'response_public_engagement_metrics'])
             ->where('status', 'completed')
             ->whereNotNull('finished_at')
-            ->whereBetween('finished_at', [$asOf->subDays(7), $asOf])
+            ->whereBetween('finished_at', [$asOf->subDays($periodDays), $asOf])
             ->whereNotNull('response_public_engagement_metrics')
             ->whereNotIn('source', ['tls_daily', 'domain_daily'])
             ->whereHas('monitor', static function (Builder $query): void {

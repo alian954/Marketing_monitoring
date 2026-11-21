@@ -12,6 +12,7 @@ use App\Services\Probe\ProbeResult;
 use App\Services\RunScheduler;
 use DateTimeInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -241,6 +242,58 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(['change' => 6, 'available' => 2], $summaries['summer']['metrics']['shares']);
         $this->assertSame(['change' => 500, 'available' => 1], $summaries['brand']['metrics']['views']);
         $this->assertSame(['change' => 30, 'available' => 1], $summaries['brand']['metrics']['likes']);
+    }
+
+    public function test_dashboard_summarizes_engagement_changes_for_the_selected_period(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $postWithThirtyDayHistory = $this->createSocialMonitor('PERIOD03001', 'summer');
+        $postWithNinetyDayHistory = $this->createSocialMonitor('PERIOD09001', 'summer');
+        $postWithOlderHistory = $this->createSocialMonitor('PERIOD10001', 'summer');
+        $user = User::factory()->create();
+
+        $this->createMetricRun($postWithThirtyDayHistory, now()->subDays(20), ['views' => 100, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithThirtyDayHistory, now(), ['views' => 500, 'likes' => 40, 'comments' => 8, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithNinetyDayHistory, now()->subDays(60), ['views' => 200, 'likes' => 20, 'comments' => 4, 'shares' => 2, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithNinetyDayHistory, now(), ['views' => 350, 'likes' => 30, 'comments' => 6, 'shares' => 3, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithOlderHistory, now()->subDays(100), ['views' => 50, 'likes' => 5, 'comments' => 1, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($postWithOlderHistory, now(), ['views' => 600, 'likes' => 25, 'comments' => 4, 'shares' => 1, 'source' => 'json_ld']);
+
+        $thirtyDayResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_period' => 30]))
+            ->assertOk()
+            ->assertSee('近 30 天互動變化')
+            ->assertSee('aria-current="page"', false);
+        $thirtyDaySummaries = collect($thirtyDayResponse->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
+
+        $this->assertSame(['change' => 400, 'available' => 1], $thirtyDaySummaries['summer']['metrics']['views']);
+
+        $ninetyDayResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_period' => 90]))
+            ->assertOk()
+            ->assertSee('近 90 天互動變化');
+        $ninetyDaySummaries = collect($ninetyDayResponse->viewData('socialEngagementChangeSummaries'))->keyBy('tag');
+
+        $this->assertSame(['change' => 550, 'available' => 2], $ninetyDaySummaries['summer']['metrics']['views']);
+    }
+
+    public function test_dashboard_limits_engagement_period_options_to_the_data_retention_period(): void
+    {
+        Config::set('monitoring.retention_days', 30);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('近 7 天')
+            ->assertSee('近 30 天')
+            ->assertDontSee('近 90 天');
+
+        $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_period' => 90]))
+            ->assertOk()
+            ->assertSee('近 7 天互動變化')
+            ->assertDontSee('近 90 天');
     }
 
     public function test_social_engagement_csv_exports_latest_values_with_formula_protection(): void

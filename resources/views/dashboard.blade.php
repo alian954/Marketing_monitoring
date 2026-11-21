@@ -240,19 +240,28 @@
     <section class="panel spaced-top" aria-labelledby="tagged-engagement-change-title">
         <div class="panel-header">
             <div>
-                <h2 id="tagged-engagement-change-title" class="panel-title">近 7 天互動變化</h2>
-                <p class="panel-description">各貼文以區間內首次與最新讀數相減；只計有兩次讀值的貼文。跨標籤可能重複計入。</p>
+                <h2 id="tagged-engagement-change-title" class="panel-title">近 {{ $socialEngagementChangePeriodDays }} 天互動變化</h2>
+                <p class="panel-description">只計有兩次讀值的貼文，呈現所選期間的互動增量；跨標籤可能重複計入。</p>
             </div>
+            <nav class="heading-actions" aria-label="互動變化期間">
+                @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
+                    <a
+                        class="button button-small {{ $periodDays === $socialEngagementChangePeriodDays ? 'button-primary' : 'button-secondary' }}"
+                        href="{{ route('dashboard', ['engagement_period' => $periodDays]) }}"
+                        @if ($periodDays === $socialEngagementChangePeriodDays) aria-current="page" @endif
+                    >{{ $periodLabel }}</a>
+                @endforeach
+            </nav>
         </div>
         @if ($socialEngagementChangeSummaries === [])
             <div class="empty-state">
                 <h3 class="empty-title">尚無可比較的互動歷史</h3>
-                <p class="empty-copy">貼文累積至少兩次可讀取數值後，這裡會彙總近 7 天變化。</p>
+                <p class="empty-copy">貼文累積至少兩次可讀取數值後，這裡會彙總所選期間的變化。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-change-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">依標籤彙總的社群貼文近 7 天互動數變化與資料覆蓋篇數</caption>
+                    <caption class="sr-only">依標籤彙總的社群貼文近 {{ $socialEngagementChangePeriodDays }} 天互動數變化與資料覆蓋篇數</caption>
                     <thead>
                         <tr>
                             <th scope="col">標籤</th>

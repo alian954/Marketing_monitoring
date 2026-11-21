@@ -19,6 +19,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('監測範圍')
             ->assertSee('公開的互動數')
             ->assertSee('不提供帳號洞察')
+            ->assertSee('近 7／30／90 天變化')
             ->assertSee('文字與分享資訊比對')
             ->assertSee('可用率與 SLO')
             ->assertSee('CSV 匯入')
