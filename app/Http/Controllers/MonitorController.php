@@ -44,6 +44,13 @@ class MonitorController extends Controller
 {
     private const SOCIAL_ENGAGEMENT_PLATFORMS = ['facebook', 'instagram', 'threads', 'dcard'];
 
+    /** @var array<int, string> */
+    private const SOCIAL_ENGAGEMENT_HISTORY_PERIODS = [
+        7 => '近 7 天',
+        30 => '近 30 天',
+        90 => '近 90 天',
+    ];
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const DAILY_HISTORY_DAYS = 30;
@@ -437,6 +444,8 @@ class MonitorController extends Controller
         $latestDomainRegistrationObservation = $monitor->domainRegistrationObservations()->latest('observed_on')->first();
         $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
+        $publicEngagementHistoryPeriodOptions = $this->socialEngagementHistoryPeriodOptions();
+        $publicEngagementHistoryPeriodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
         $publicEngagementRows = collect();
 
         if ($monitor->socialPlatform() !== null) {
@@ -445,7 +454,10 @@ class MonitorController extends Controller
                 ->where('status', 'completed')
                 ->whereNotIn('source', ['tls_daily', 'domain_daily'])
                 ->whereNotNull('response_public_engagement_metrics')
-                ->where('finished_at', '>=', $asOf->copy()->subDays(30))
+                ->whereBetween('finished_at', [
+                    $asOf->copy()->subDays($publicEngagementHistoryPeriodDays),
+                    $asOf,
+                ])
                 ->orderBy('finished_at')
                 ->orderBy('id')
                 ->get(['id', 'config_version', 'finished_at', 'response_public_engagement_metrics']);
@@ -750,6 +762,8 @@ class MonitorController extends Controller
             'responseMetadataChanged',
             'responseMetadataChanges',
             'publicEngagementRows',
+            'publicEngagementHistoryPeriodDays',
+            'publicEngagementHistoryPeriodOptions',
             'redirectChanges',
             'responseContentChanges',
             'runs',
@@ -1343,11 +1357,27 @@ class MonitorController extends Controller
 
     public function exportSocialEngagementHistory(Request $request): StreamedResponse
     {
-        $platform = $this->socialEngagementPlatformFilter($request);
-        $asOf = now()->toImmutable();
-        $startsAt = $asOf->subDays(30);
+        return $this->streamSocialEngagementHistory($request);
+    }
 
-        return response()->streamDownload(function () use ($asOf, $startsAt, $platform): void {
+    public function exportMonitorSocialEngagementHistory(Request $request, Monitor $monitor): StreamedResponse
+    {
+        abort_if($monitor->socialPlatform() === null, 404);
+
+        return $this->streamSocialEngagementHistory($request, $monitor);
+    }
+
+    private function streamSocialEngagementHistory(Request $request, ?Monitor $monitor = null): StreamedResponse
+    {
+        $platform = $monitor?->social_platform ?? $this->socialEngagementPlatformFilter($request);
+        $periodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
+        $asOf = now()->toImmutable();
+        $startsAt = $asOf->subDays($periodDays);
+        $filename = $monitor === null
+            ? 'social-engagement-history-'.$periodDays.'-days-'.now()->format('Y-m-d').'.csv'
+            : 'social-engagement-history-monitor-'.$monitor->id.'-'.$periodDays.'-days-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($asOf, $startsAt, $platform, $monitor): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'check_run_id',
@@ -1371,12 +1401,16 @@ class MonitorController extends Controller
                 ->whereBetween('finished_at', [$startsAt, $asOf])
                 ->whereNotNull('response_public_engagement_metrics')
                 ->whereNotIn('source', ['tls_daily', 'domain_daily'])
-                ->whereHas('monitor', static function (Builder $query) use ($platform): void {
+                ->whereHas('monitor', static function (Builder $query) use ($platform, $monitor): void {
                     $query->whereNotNull('social_platform')
                         ->whereColumn('check_runs.config_version', 'monitors.config_version');
 
                     if ($platform !== null) {
                         $query->where('social_platform', $platform);
+                    }
+
+                    if ($monitor !== null) {
+                        $query->whereKey($monitor->getKey());
                     }
                 })
                 ->with('monitor')
@@ -1415,7 +1449,38 @@ class MonitorController extends Controller
                 });
 
             fclose($stream);
-        }, 'social-engagement-history-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** @return array<int, string> */
+    private function socialEngagementHistoryPeriodOptions(): array
+    {
+        $retentionDays = max(1, (int) config('monitoring.retention_days'));
+        $availablePeriods = array_filter(
+            self::SOCIAL_ENGAGEMENT_HISTORY_PERIODS,
+            static fn (string $label, int $days): bool => $days <= $retentionDays,
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return $availablePeriods !== []
+            ? $availablePeriods
+            : [$retentionDays => '近 '.$retentionDays.' 天'];
+    }
+
+    private function selectedSocialEngagementHistoryPeriodDays(Request $request): int
+    {
+        $periodOptions = $this->socialEngagementHistoryPeriodOptions();
+        $requestedPeriod = $request->query('engagement_period');
+
+        if (is_string($requestedPeriod)
+            && ctype_digit($requestedPeriod)
+            && array_key_exists((int) $requestedPeriod, $periodOptions)) {
+            return (int) $requestedPeriod;
+        }
+
+        return array_key_exists(30, $periodOptions)
+            ? 30
+            : (int) array_key_first($periodOptions);
     }
 
     private function socialEngagementPlatformFilter(Request $request): ?string

@@ -108,7 +108,7 @@
             </div>
             <div class="row-actions">
                 <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
-                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">30 天歷史 CSV <span aria-hidden="true">↓</span></a>
+                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_period' => $socialEngagementChangePeriodDays]) }}">{{ $socialEngagementChangePeriodDays }} 天歷史 CSV <span aria-hidden="true">↓</span></a>
             </div>
         </div>
         <div class="panel-body">

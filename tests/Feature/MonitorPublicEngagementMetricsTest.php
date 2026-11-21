@@ -73,6 +73,46 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('4,800');
     }
 
+    public function test_monitor_engagement_history_period_can_be_selected_and_exported_for_one_post(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Config::set('monitoring.retention_days', 90);
+
+        $monitor = $this->createSocialMonitor('PERIOD001', 'campaign');
+        $otherMonitor = $this->createSocialMonitor('PERIOD002', 'campaign');
+        $this->createMetricRun($monitor, now()->subDays(45), ['views' => 4500, 'likes' => 45, 'comments' => 4, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now()->subDays(20), ['views' => 2000, 'likes' => 20, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+        $recentRun = $this->createMetricRun($monitor, now()->subDays(5), ['views' => 500, 'likes' => 5, 'comments' => 1, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($otherMonitor, now()->subDay(), ['views' => 1000, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+
+        $user = User::factory()->create();
+        $detailResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'engagement_period' => 7]))
+            ->assertOk()
+            ->assertSee('公開互動數歷史期間')
+            ->assertSee(route('monitors.social-engagement.export.monitor-history', ['monitor' => $monitor, 'engagement_period' => 7]), false);
+
+        $this->assertSame(7, $detailResponse->viewData('publicEngagementHistoryPeriodDays'));
+        $this->assertSame([$recentRun->id], $detailResponse->viewData('publicEngagementRows')->pluck('run.id')->all());
+
+        $csvResponse = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.monitor-history', ['monitor' => $monitor, 'engagement_period' => 7]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-history-monitor-'.$monitor->id.'-7-days-2026-11-22.csv');
+        $rows = $this->csvRows($csvResponse->streamedContent());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame((string) $recentRun->id, $rows[0]['check_run_id']);
+        $this->assertSame($monitor->name, $rows[0]['monitor_name']);
+
+        $fallbackResponse = $this->actingAs($user)
+            ->get(route('monitors.show', ['monitor' => $monitor, 'engagement_period' => 14]))
+            ->assertOk();
+
+        $this->assertSame(30, $fallbackResponse->viewData('publicEngagementHistoryPeriodDays'));
+        $this->assertCount(2, $fallbackResponse->viewData('publicEngagementRows'));
+    }
+
     public function test_engagement_percentage_handles_a_zero_baseline_without_dividing_by_zero(): void
     {
         $monitor = $this->createSocialMonitor();
@@ -543,7 +583,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.social-engagement.export.history'))
             ->assertOk()
-            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-history-2026-11-22.csv');
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-history-30-days-2026-11-22.csv');
         $rows = $this->csvRows($response->streamedContent());
 
         $this->assertCount(2, $rows);
@@ -553,6 +593,16 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('campaign', $rows[1]['tags']);
         $this->assertSame('6.50', $rows[0]['public_engagement_rate_percent']);
         $this->assertSame('8.00', $rows[1]['public_engagement_rate_percent']);
+
+        $shortPeriodRows = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.social-engagement.export.history', ['engagement_period' => 7]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-history-7-days-2026-11-22.csv')
+            ->streamedContent();
+        $shortPeriodRows = $this->csvRows($shortPeriodRows);
+
+        $this->assertCount(1, $shortPeriodRows);
+        $this->assertSame((string) $latestRun->id, $shortPeriodRows[0]['check_run_id']);
     }
 
     private function createSocialMonitor(string $postId = 'POST123', ?string $label = null): Monitor

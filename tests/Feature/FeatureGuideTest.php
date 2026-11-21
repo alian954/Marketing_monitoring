@@ -23,6 +23,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('Dcard 以 Chrome 渲染公開頁面')
             ->assertSee('單篇與標籤觀看互動率')
             ->assertSee('近 7／30／90 天增量及前期同篇變化')
+            ->assertSee('單篇歷史可切換期間並匯出 CSV')
             ->assertSee('文字與分享資訊比對')
             ->assertSee('可用率與 SLO')
             ->assertSee('CSV 匯入')

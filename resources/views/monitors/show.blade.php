@@ -450,10 +450,22 @@
             <div class="panel-header">
                 <div>
                     <h2 id="public-engagement-history-title" class="panel-title">公開互動數</h2>
-                    <p class="panel-description">近 30 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。</p>
+                    <p class="panel-description">近 {{ $publicEngagementHistoryPeriodDays }} 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。</p>
                 </div>
-                <span class="secondary-text">{{ $publicEngagementRows->count() }} 次觀測</span>
+                <div class="heading-actions">
+                    <span class="secondary-text">{{ $publicEngagementRows->count() }} 次觀測</span>
+                    <a class="button button-secondary button-small" href="{{ route('monitors.social-engagement.export.monitor-history', ['monitor' => $monitor, 'engagement_period' => $publicEngagementHistoryPeriodDays]) }}">匯出 CSV</a>
+                </div>
             </div>
+            <nav class="heading-actions spaced-top" aria-label="公開互動數歷史期間">
+                @foreach ($publicEngagementHistoryPeriodOptions as $periodDays => $periodLabel)
+                    <a
+                        class="button button-small {{ $periodDays === $publicEngagementHistoryPeriodDays ? 'button-primary' : 'button-secondary' }}"
+                        href="{{ route('monitors.show', ['monitor' => $monitor, 'engagement_period' => $periodDays]) }}"
+                        @if ($periodDays === $publicEngagementHistoryPeriodDays) aria-current="page" @endif
+                    >{{ $periodLabel }}</a>
+                @endforeach
+            </nav>
             @if ($publicEngagementRows->isEmpty())
                 <div class="empty-state">
                     <h3 class="empty-title">尚無可讀取的公開互動數</h3>
@@ -504,7 +516,7 @@
                 </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-history-title" tabindex="0">
                     <table class="data-table">
-                        <caption class="sr-only">{{ $monitor->name }}近 30 天公開互動數歷史</caption>
+                        <caption class="sr-only">{{ $monitor->name }}近 {{ $publicEngagementHistoryPeriodDays }} 天公開互動數歷史</caption>
                         <thead>
                             <tr>
                                 <th scope="col">檢查時間</th>
