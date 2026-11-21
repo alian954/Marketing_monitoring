@@ -163,7 +163,16 @@ class Monitor extends Model
 
     public function socialContentExpectationMissing(): bool
     {
-        return $this->socialPlatform() !== null && trim((string) $this->expected_text) === '';
+        return $this->socialPlatform() !== null
+            && trim((string) $this->expected_text) === ''
+            && ! $this->usesSocialContentBaseline();
+    }
+
+    public function usesSocialContentBaseline(): bool
+    {
+        return $this->socialPlatform() !== null
+            && trim((string) $this->expected_text) === ''
+            && $this->alert_on_visible_text_change;
     }
 
     /** @return list<string> */

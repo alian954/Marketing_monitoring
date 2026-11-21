@@ -338,7 +338,7 @@ class StatusPageController extends Controller
             ->whereNotNull('finished_at')
             ->where('finished_at', '>=', $firstDay->copy()->utc())
             ->where('finished_at', '<=', $asOf->utc())
-            ->select(['id', 'monitor_id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'response_body_bytes', 'expected_text_found', 'expected_response_header_found'])
+            ->select(['id', 'monitor_id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'response_body_bytes', 'expected_text_found', 'response_visible_text_changed', 'expected_response_header_found'])
             ->chunkById(500, static function (EloquentCollection $runs) use (&$dailyHistory): void {
                 foreach ($runs as $run) {
                     if ($run->hasIndeterminateContentMatch()) {
@@ -383,7 +383,7 @@ class StatusPageController extends Controller
                 ->orderBy('monitor_id')
                 ->orderBy('finished_at')
                 ->orderBy('id')
-                ->select(['id', 'monitor_id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'response_body_bytes', 'expected_text_found', 'expected_response_header_found'])
+                ->select(['id', 'monitor_id', 'config_snapshot', 'status', 'finished_at', 'normal_status', 'error_type', 'response_body_bytes', 'expected_text_found', 'response_visible_text_changed', 'expected_response_header_found'])
                 ->lazy(500),
             (int) config('monitoring.stale_grace_seconds'),
             $asOf,

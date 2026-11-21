@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'monitor_host_cnames', 'monitor_host_dns_records', 'expected_text_found', 'expected_text_term_matches', 'expected_response_header_found', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at', 'response_visible_text_hash', 'response_robots_directives', 'response_content_type', 'response_body_bytes', 'tls_expires_at'])]
+#[Fillable(['monitor_id', 'run_key', 'config_version', 'config_snapshot', 'source', 'status', 'scheduled_at', 'started_at', 'finished_at', 'normal_status', 'adsbot_status', 'error_type', 'error_detail', 'adsbot_error_type', 'elapsed_ms', 'normal_elapsed_ms', 'final_url', 'redirects', 'resolved_public_ips', 'monitor_host_ips', 'monitor_host_cnames', 'monitor_host_dns_records', 'expected_text_found', 'expected_text_term_matches', 'expected_response_header_found', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at', 'response_visible_text_hash', 'response_visible_text_changed', 'response_robots_directives', 'response_content_type', 'response_body_bytes', 'tls_expires_at'])]
 #[Hidden(['config_snapshot', 'expected_text_term_matches', 'response_image_reference_hash', 'response_canonical_reference_hash', 'response_visible_text_hash'])]
 class CheckRun extends Model
 {
@@ -37,6 +37,7 @@ class CheckRun extends Model
             'monitor_host_cnames' => 'array',
             'monitor_host_dns_records' => 'array',
             'expected_text_found' => 'boolean',
+            'response_visible_text_changed' => 'boolean',
             'expected_text_term_matches' => 'encrypted:array',
             'expected_response_header_found' => 'boolean',
             'tls_expires_at' => 'immutable_datetime',
@@ -48,7 +49,10 @@ class CheckRun extends Model
 
     public function passesMonitorChecks(): bool
     {
-        if ($this->status !== 'completed' || $this->error_type !== null || $this->hasUnconfiguredSocialContentExpectation()) {
+        if ($this->status !== 'completed'
+            || $this->error_type !== null
+            || $this->hasUnconfiguredSocialContentExpectation()
+            || ($this->usesSocialContentBaseline() && $this->response_visible_text_changed !== false)) {
             return false;
         }
 
@@ -95,8 +99,16 @@ class CheckRun extends Model
 
     public function hasIndeterminateContentMatch(): bool
     {
+        $snapshot = $this->configurationSnapshot();
+
+        if ($this->usesSocialContentBaseline()) {
+            return $this->response_visible_text_changed === null
+                && $this->normalStatusIsAccepted($snapshot)
+                && in_array($this->error_type, [null, 'body_too_large', 'social_access_required'], true);
+        }
+
         if ($this->hasUnconfiguredSocialContentExpectation()) {
-            return $this->normalStatusIsAccepted($this->configurationSnapshot())
+            return $this->normalStatusIsAccepted($snapshot)
                 && in_array($this->error_type, [null, 'body_too_large', 'social_access_required'], true);
         }
 
@@ -120,7 +132,20 @@ class CheckRun extends Model
 
         return is_string($url)
             && Monitor::socialPlatformKeyForUrl($url) !== null
-            && (! is_string($expectedText) || trim($expectedText) === '');
+            && (! is_string($expectedText) || trim($expectedText) === '')
+            && ! (bool) ($snapshot['alert_on_visible_text_change'] ?? false);
+    }
+
+    public function usesSocialContentBaseline(): bool
+    {
+        $snapshot = $this->configurationSnapshot();
+        $url = $snapshot['url'] ?? null;
+        $expectedText = $snapshot['expected_text'] ?? null;
+
+        return is_string($url)
+            && Monitor::socialPlatformKeyForUrl($url) !== null
+            && (! is_string($expectedText) || trim($expectedText) === '')
+            && (bool) ($snapshot['alert_on_visible_text_change'] ?? false);
     }
 
     public function hasIndeterminateResponseSizeCheck(): bool

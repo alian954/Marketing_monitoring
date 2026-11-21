@@ -93,6 +93,49 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
         $this->assertDatabaseCount('incidents', 0);
     }
 
+    public function test_social_post_can_use_a_visible_text_baseline_without_an_expected_phrase(): void
+    {
+        $url = 'https://www.threads.com/share/BAGYFgPihu';
+        $monitor = $this->createMonitor(alertEnabled: true, url: $url);
+        $manager = app(IncidentManager::class);
+        $firstHash = hash('sha256', 'original public post text');
+        $firstRun = $this->createRun($monitor, $firstHash, now()->subMinutes(3));
+
+        $manager->record($monitor, $firstRun, $this->probe($monitor, $firstHash), null);
+
+        $firstRun->refresh();
+        $this->assertNull($firstRun->response_visible_text_changed);
+        $this->assertTrue($firstRun->hasIndeterminateContentMatch());
+        $this->assertFalse($firstRun->passesMonitorChecks());
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('已保存首次基準，等待下次檢查比較')
+            ->assertSee('首次可比較回應只建立基準');
+
+        $stableRun = $this->createRun($monitor, $firstHash, now()->subMinutes(2));
+        $manager->record($monitor, $stableRun, $this->probe($monitor, $firstHash), null);
+
+        $stableRun->refresh();
+        $this->assertFalse($stableRun->response_visible_text_changed);
+        $this->assertFalse($stableRun->hasIndeterminateContentMatch());
+        $this->assertTrue($stableRun->passesMonitorChecks());
+
+        $changedHash = hash('sha256', 'revised public post text');
+        $changedRun = $this->createRun($monitor, $changedHash, now()->subMinute());
+        $manager->record($monitor, $changedRun, $this->probe($monitor, $changedHash), null);
+
+        $changedRun->refresh();
+        $this->assertTrue($changedRun->response_visible_text_changed);
+        $this->assertFalse($changedRun->hasIndeterminateContentMatch());
+        $this->assertFalse($changedRun->passesMonitorChecks());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'response_content_change',
+            'state' => Incident::STATE_OPEN,
+        ]);
+    }
+
     public function test_previous_text_from_an_older_configuration_is_not_used_as_a_baseline(): void
     {
         $monitor = $this->createMonitor(alertEnabled: true);
@@ -203,8 +246,9 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
     private function createMonitor(
         bool $alertEnabled = false,
         ?string $notificationEmail = null,
+        ?string $url = null,
     ): Monitor {
-        $url = 'https://www.instagram.com/p/'.Str::upper(Str::random(12)).'/';
+        $url ??= 'https://www.instagram.com/p/'.Str::upper(Str::random(12)).'/';
 
         return Monitor::factory()->create([
             'url' => $url,
@@ -222,6 +266,13 @@ class MonitorVisibleTextChangeAlertTest extends TestCase
         ?int $configVersion = null,
     ): CheckRun {
         return CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => json_encode([
+                'url' => $monitor->url,
+                'accepted_status_codes' => $monitor->accepted_status_codes ?? [],
+                'expected_text' => $monitor->expected_text,
+                'expected_text_mode' => $monitor->expected_text_mode,
+                'alert_on_visible_text_change' => $monitor->alert_on_visible_text_change,
+            ], JSON_THROW_ON_ERROR),
             'config_version' => $configVersion ?? $monitor->config_version,
             'scheduled_at' => $scheduledAt,
             'finished_at' => $scheduledAt,

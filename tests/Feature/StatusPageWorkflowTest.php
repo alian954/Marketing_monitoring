@@ -469,6 +469,61 @@ class StatusPageWorkflowTest extends TestCase
         $this->assertSame(5.0, $publicHistory['availability']['observed_minutes']);
     }
 
+    public function test_public_history_counts_stable_social_baselines_but_excludes_first_sample(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        $monitor = Monitor::factory()->create([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'url_hash' => Monitor::fingerprintUrl('https://www.dcard.tw/f/makeup/p/262476944'),
+            'alert_on_visible_text_change' => true,
+            'public_status' => true,
+        ]);
+        $snapshot = json_encode([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+            'alert_on_visible_text_change' => true,
+            'interval_seconds' => 300,
+        ], JSON_THROW_ON_ERROR);
+        $initialAt = now()->subMinutes(10);
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'scheduled_at' => $initialAt,
+            'finished_at' => $initialAt,
+            'normal_status' => 200,
+            'response_visible_text_changed' => null,
+        ]);
+        $stableAt = now()->subMinutes(5);
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'scheduled_at' => $stableAt,
+            'finished_at' => $stableAt,
+            'normal_status' => 200,
+            'response_visible_text_changed' => false,
+        ]);
+        $token = Str::random(64);
+        StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'public_token' => $token,
+            'public_token_hash' => hash('sha256', $token),
+            'is_published' => true,
+        ]);
+
+        $response = $this->get(route('status-pages.public', ['token' => $token]))->assertOk();
+        $publicHistory = $response->viewData('monitors')->sole()->getAttribute('public_history');
+        $today = collect($publicHistory['days'])->firstWhere('date', '2026-11-21');
+
+        $this->assertSame(100.0, $publicHistory['success_rate']);
+        $this->assertSame(1, $publicHistory['successful_checks']);
+        $this->assertSame(1, $publicHistory['total_checks']);
+        $this->assertSame(1, $today['total_checks']);
+        $this->assertSame(1, $today['successful_checks']);
+        $this->assertSame(5.0, $publicHistory['availability']['observed_minutes']);
+    }
+
     public function test_public_page_includes_ninety_days_of_daily_check_history(): void
     {
         $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));

@@ -55,6 +55,7 @@ class MonitorCheckRunExportTest extends TestCase
             'final_url' => 'https://private.example/redirected?secret=private-redirect-value',
             'redirects' => ['https://private.example/redirected?secret=private-redirect-value'],
             'expected_text_found' => false,
+            'response_visible_text_changed' => true,
             'response_title' => '=HYPERLINK("https://evil.example")',
             'response_description' => 'Public campaign page summary.',
             'response_image_reference_hash' => str_repeat('c', 64),
@@ -114,6 +115,7 @@ class MonitorCheckRunExportTest extends TestCase
             'error_type',
             'adsbot_error_type',
             'expected_text_found',
+            'response_visible_text_changed',
             'expected_response_header_found',
             'response_title',
             'response_description',
@@ -146,6 +148,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame("'\u{00A0}＝HYPERLINK(\"https://evil.example\")", $row[$columns['error_type']]);
         $this->assertSame("'@SUM(1+1)", $row[$columns['adsbot_error_type']]);
         $this->assertSame('', $row[$columns['expected_text_found']]);
+        $this->assertSame('1', $row[$columns['response_visible_text_changed']]);
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_title']]);
         $this->assertSame('Public campaign page summary.', $row[$columns['response_description']]);

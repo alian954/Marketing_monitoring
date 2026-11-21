@@ -246,7 +246,7 @@
                         <div class="field-group field-group-full">
                             <label class="field-label" for="expected_text">預期貼文／回應文字片段</label>
                             <textarea class="field-textarea @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" rows="4" maxlength="500" autocomplete="off" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}" @if ($errors->has('expected_text')) aria-invalid="true" @endif>{{ old('expected_text', $monitor->expected_text) }}</textarea>
-                            <p id="expected-text-help" class="field-help">每行輸入一個文字片段，最多 500 字。「全部片段都需包含」要求每一行都找到；「至少包含一個片段」找到任一行即可；「不得出現」只要找到任一行就告警。任一片段模式適合原始回應只呈現部分貼文文字的情況；請使用具辨識度的片語降低誤符合。社群貼文需填文字並選擇前兩種條件之一。系統不保存整份回應或截圖；比對不區分大小寫。</p>
+                            <p id="expected-text-help" class="field-help">每行輸入一個文字片段，最多 500 字。「全部片段都需包含」要求每一行都找到；「至少包含一個片段」找到任一行即可；「不得出現」只要找到任一行就告警。任一片段模式適合原始回應只呈現部分貼文文字的情況；請使用具辨識度的片語降低誤符合。社群貼文可填入預期文字，或啟用下方可見文字變更警示，以首次完整回應建立基準。系統不保存整份回應或截圖；比對不區分大小寫。</p>
                             @error('expected_text')<p id="expected-text-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 

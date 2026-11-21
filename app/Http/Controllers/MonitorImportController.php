@@ -580,11 +580,11 @@ class MonitorImportController extends Controller
                 }
             }
 
-            if ($socialPlatform !== null && $expectedText === '') {
-                $errors[] = '社群貼文必須提供 expected_text 欄位中的預期文字。';
+            if ($socialPlatform !== null && $expectedText === '' && ! $alertOnVisibleTextChange) {
+                $errors[] = '社群貼文必須提供 expected_text 欄位中的預期文字，或啟用 alert_on_visible_text_change 建立內容基準。';
             }
 
-            if ($socialPlatform !== null && ! in_array($expectedTextMode, [
+            if ($socialPlatform !== null && $expectedText !== '' && ! in_array($expectedTextMode, [
                 ExpectedTextMatcher::MODE_PRESENT,
                 ExpectedTextMatcher::MODE_PRESENT_ANY,
             ], true)) {

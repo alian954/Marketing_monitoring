@@ -204,6 +204,59 @@ class MonitorCheckSuccessRateTest extends TestCase
         }
     }
 
+    public function test_social_baseline_checks_skip_initial_sample_and_fail_when_content_changes(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $snapshot = json_encode([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476944',
+            'accepted_status_codes' => [],
+            'expected_text' => null,
+            'expected_text_mode' => 'present',
+            'alert_on_visible_text_change' => true,
+        ], JSON_THROW_ON_ERROR);
+        $initialRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(15),
+            'finished_at' => now()->subMinutes(15),
+            'normal_status' => 200,
+            'response_visible_text_changed' => null,
+        ]);
+        $stableRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(10),
+            'finished_at' => now()->subMinutes(10),
+            'normal_status' => 200,
+            'response_visible_text_changed' => false,
+        ]);
+        $changedRun = CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'status' => 'completed',
+            'scheduled_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(5),
+            'normal_status' => 200,
+            'response_visible_text_changed' => true,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+
+        $this->assertTrue($initialRun->hasIndeterminateContentMatch());
+        $this->assertTrue($stableRun->passesMonitorChecks());
+        $this->assertFalse($changedRun->passesMonitorChecks());
+
+        foreach ($response->viewData('checkSuccessStats') as $period) {
+            $this->assertSame(50.0, $period['success_rate']);
+            $this->assertSame(1, $period['successful_checks']);
+            $this->assertSame(2, $period['ended_checks']);
+        }
+    }
+
     public function test_social_dns_failures_without_expected_text_lower_success_rate(): void
     {
         $monitor = Monitor::factory()->create();

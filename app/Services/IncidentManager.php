@@ -153,6 +153,7 @@ class IncidentManager
 
             if (($visibleTextChangeAlertEnabled || $responseMetadataChangeAlertEnabled) && $normalProbeSucceeded) {
                 $previousResponseRun = $this->previousSuccessfulResponseRun($lockedMonitor, $run);
+                $visibleTextChanged = null;
 
                 if ($previousResponseRun !== null) {
                     $changedComparisons = [];
@@ -167,8 +168,9 @@ class IncidentManager
 
                         if (is_string($previousVisibleTextHash) && is_string($currentVisibleTextHash)) {
                             $comparisonAvailable = true;
+                            $visibleTextChanged = ! hash_equals($previousVisibleTextHash, $currentVisibleTextHash);
 
-                            if (! hash_equals($previousVisibleTextHash, $currentVisibleTextHash)) {
+                            if ($visibleTextChanged) {
                                 $changedComparisons[] = 'visible_text_hash';
                             }
                         }
@@ -203,6 +205,10 @@ class IncidentManager
                             true,
                         ));
                     }
+                }
+
+                if ($visibleTextChangeAlertEnabled) {
+                    $run->forceFill(['response_visible_text_changed' => $visibleTextChanged])->save();
                 }
             }
 

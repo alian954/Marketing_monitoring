@@ -1547,11 +1547,37 @@ class SocialPostImportTest extends TestCase
                 'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
             ])
             ->assertOk()
-            ->assertSee('社群貼文必須提供 expected_text 欄位中的預期文字。');
+            ->assertSee('社群貼文必須提供 expected_text 欄位中的預期文字，或啟用 alert_on_visible_text_change 建立內容基準。');
 
         $this->assertSame(0, $preview->viewData('validCount'));
         $this->assertSame(1, $preview->viewData('invalidCount'));
         $this->assertDatabaseCount('monitors', 0);
+    }
+
+    public function test_csv_can_import_social_posts_with_a_visible_text_baseline_without_expected_text(): void
+    {
+        $csv = $this->csvContent(
+            ['name', 'url', 'label', 'alert_on_visible_text_change'],
+            [['Baseline post', 'https://www.threads.com/share/BAGYFgPihu', 'Campaign', 'true']],
+        );
+
+        $preview = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, $preview->viewData('validCount'));
+        $this->assertSame('', $preview->viewData('previewRows')[0]['expected_text']);
+        $this->assertTrue($preview->viewData('previewRows')[0]['alert_on_visible_text_change']);
+
+        $this->post(route('monitors.import.commit'), ['preview_token' => $preview->viewData('previewToken')])
+            ->assertRedirect(route('monitors.index'));
+
+        $monitor = Monitor::query()->sole();
+        $this->assertNull($monitor->expected_text);
+        $this->assertTrue($monitor->alert_on_visible_text_change);
+        $this->assertFalse($monitor->socialContentExpectationMissing());
     }
 
     public function test_csv_rejects_absent_text_mode_for_social_posts(): void

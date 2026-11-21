@@ -1108,6 +1108,7 @@ class MonitorController extends Controller
                 'error_type',
                 'adsbot_error_type',
                 'expected_text_found',
+                'response_visible_text_changed',
                 'expected_response_header_found',
                 'response_title',
                 'response_description',
@@ -1154,6 +1155,7 @@ class MonitorController extends Controller
                         (string) $run->error_type,
                         (string) $run->adsbot_error_type,
                         $expectedTextMatchResult === null ? '' : ($expectedTextMatchResult ? '1' : '0'),
+                        $run->response_visible_text_changed === null ? '' : ($run->response_visible_text_changed ? '1' : '0'),
                         $expectedResponseHeaderMatchResult === null ? '' : ($expectedResponseHeaderMatchResult ? '1' : '0'),
                         (string) $run->response_title,
                         (string) $run->response_description,
@@ -2188,13 +2190,16 @@ class MonitorController extends Controller
             return;
         }
 
-        if (trim((string) ($validated['expected_text'] ?? '')) === '') {
+        $hasExpectedText = trim((string) ($validated['expected_text'] ?? '')) !== '';
+        $usesVisibleTextBaseline = (bool) ($validated['alert_on_visible_text_change'] ?? false);
+
+        if (! $hasExpectedText && ! $usesVisibleTextBaseline) {
             throw ValidationException::withMessages([
-                'expected_text' => '監測 '.$platform.' 公開貼文時，請填入一段應出現在貼文中的文字。',
+                'expected_text' => '監測 '.$platform.' 公開貼文時，請填入預期文字，或啟用可見文字變更警示以建立內容基準。',
             ]);
         }
 
-        if (! in_array($validated['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT, [
+        if ($hasExpectedText && ! in_array($validated['expected_text_mode'] ?? ExpectedTextMatcher::MODE_PRESENT, [
             ExpectedTextMatcher::MODE_PRESENT,
             ExpectedTextMatcher::MODE_PRESENT_ANY,
         ], true)) {

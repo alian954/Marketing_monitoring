@@ -111,7 +111,11 @@
     @endif
     @if ($socialPlatform)
         <div class="form-note spaced-bottom">
-            {{ $socialPlatform }} 貼文以每行一個文字片段比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；可選擇要求全部片段出現，或只要求任一片段出現。每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
+            @if ($monitor->usesSocialContentBaseline())
+                {{ $socialPlatform }} 貼文以原始 HTTP 回應建立可見文字基準，不使用平台 API，也不執行 JavaScript。首次成功回應建立基準；後續文字變更會建立警告。系統不保存整份回應或截圖。
+            @else
+                {{ $socialPlatform }} 貼文以每行一個文字片段比對公開頁面的原始 HTTP 回應，不使用平台 API，也不執行 JavaScript；可選擇要求全部片段出現，或只要求任一片段出現。每次只送出一般 HTTP 請求，不額外模擬 AdsBot，以減少對平台的請求。若未找到文字，可能是平台未在初始回應提供貼文內容；請開啟貼文網址確認，這項結果本身不代表貼文未發布或已刪除。
+            @endif
         </div>
     @endif
     @if ($monitor->socialContentExpectationMissing())
@@ -308,6 +312,22 @@
                                 @endif
                             </dd>
                         </div>
+                        @if ($monitor->latestCheckRun->usesSocialContentBaseline())
+                            <div class="metadata-item">
+                                <dt>可見文字基準結果</dt>
+                                <dd>
+                                    @if ($monitor->latestCheckRun->response_visible_text_changed === true)
+                                        與前次成功回應不同，已建立警告
+                                    @elseif ($monitor->latestCheckRun->response_visible_text_changed === false)
+                                        與前次成功回應相同
+                                    @elseif ($monitor->latestCheckRun->error_type === null && $monitor->latestCheckRun->response_visible_text_hash !== null)
+                                        已保存首次基準，等待下次檢查比較
+                                    @else
+                                        尚未取得可比較的回應
+                                    @endif
+                                </dd>
+                            </div>
+                        @endif
                         @if ($monitor->expectedResponseHeaderName() !== null)
                             <div class="metadata-item">
                                 <dt>回應標頭比對結果</dt>
@@ -763,7 +783,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="check-success-rate-title" class="panel-title">歷史檢查成功率</h2>
-                <p class="panel-description">以可判定的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。社群貼文未設定預期文字時不計入成功率或可用率。</p>
+                <p class="panel-description">以可判定的排程檢查計算成功率，不估算檢查間隔內的時間；只有完成、沒有連線錯誤，且符合已設定 HTTP 狀態碼、文字與回應標頭條件的檢查才列為成功。社群貼文未設定預期文字且未啟用可見文字基準時不計入統計；啟用基準後，首次可比較回應只建立基準，之後依文字變更結果計算。</p>
             </div>
         </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的檢查成功率">

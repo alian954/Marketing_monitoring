@@ -237,6 +237,7 @@ class FleetAvailabilityReport
                 'normal_status',
                 'error_type',
                 'expected_text_found',
+                'response_visible_text_changed',
                 'expected_response_header_found',
             ])
             ->lazy(500);

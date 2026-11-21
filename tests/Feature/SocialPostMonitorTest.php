@@ -103,6 +103,21 @@ class SocialPostMonitorTest extends TestCase
         $this->assertSame('present_any', $monitor->expected_text_mode);
     }
 
+    public function test_social_post_can_use_a_visible_text_baseline_without_expected_text(): void
+    {
+        $url = 'https://www.threads.com/share/BAGYFgPihu';
+        $response = $this->actingAs(User::factory()->create())
+            ->post(route('monitors.store'), array_merge($this->socialPost($url), [
+                'alert_on_visible_text_change' => '1',
+            ]));
+        $monitor = Monitor::query()->sole();
+
+        $response->assertRedirect(route('monitors.show', $monitor));
+        $this->assertNull($monitor->expected_text);
+        $this->assertTrue($monitor->alert_on_visible_text_change);
+        $this->assertFalse($monitor->socialContentExpectationMissing());
+    }
+
     public function test_editing_a_social_post_cannot_remove_its_expected_text(): void
     {
         $url = 'https://www.instagram.com/p/ABC123/';
@@ -119,6 +134,27 @@ class SocialPostMonitorTest extends TestCase
             ->assertSessionHasErrors('expected_text');
 
         $this->assertSame('Existing phrase', $monitor->fresh()->expected_text);
+    }
+
+    public function test_social_post_can_switch_from_expected_text_to_a_visible_text_baseline(): void
+    {
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Existing phrase',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->put(route('monitors.update', $monitor), array_merge($this->socialPost($url), [
+                'alert_on_visible_text_change' => '1',
+            ]))
+            ->assertRedirect(route('monitors.show', $monitor));
+
+        $monitor->refresh();
+        $this->assertNull($monitor->expected_text);
+        $this->assertTrue($monitor->alert_on_visible_text_change);
+        $this->assertFalse($monitor->socialContentExpectationMissing());
     }
 
     public function test_social_post_can_be_monitored_with_expected_text_in_the_raw_response(): void
@@ -874,7 +910,7 @@ class SocialPostMonitorTest extends TestCase
 
         $this->assertSame(0, $response->viewData('validCount'));
         $this->assertSame(1, $response->viewData('invalidCount'));
-        $this->assertStringContainsString('社群貼文必須提供 expected_text 欄位中的預期文字', $response->viewData('previewRows')[0]['errors'][0]);
+        $this->assertStringContainsString('社群貼文必須提供 expected_text 欄位中的預期文字，或啟用 alert_on_visible_text_change 建立內容基準', $response->viewData('previewRows')[0]['errors'][0]);
         $this->assertDatabaseCount('monitors', 0);
     }
 
