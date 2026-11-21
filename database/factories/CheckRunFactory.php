@@ -42,6 +42,7 @@ class CheckRunFactory extends Factory
             'monitor_host_ips' => ['93.184.216.34'],
             'expected_text_found' => null,
             'response_visible_text_changed' => null,
+            'response_public_engagement_metrics' => null,
             'expected_response_header_found' => null,
             'response_robots_directives' => null,
             'tls_expires_at' => now()->addDays(90),

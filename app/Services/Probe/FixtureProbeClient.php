@@ -93,6 +93,9 @@ class FixtureProbeClient implements ProbeClient
             responseContentType: 'text/html; charset=UTF-8',
             responseBodyBytes: strlen($body),
             responseRobotsDirectives: $responseInspection['robots_directives'],
+            publicEngagementMetrics: $socialPlatform !== null
+                ? ($responseInspection['public_engagement_metrics'] ?? null)
+                : null,
         );
     }
 }

@@ -32,6 +32,8 @@ class DashboardController extends Controller
 
     private const MAX_DASHBOARD_MONITORS = 8;
 
+    private const MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS = 50;
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
@@ -143,6 +145,13 @@ class DashboardController extends Controller
         $monitors->each(function (Monitor $monitor) use ($urlMasker): void {
             $monitor->setAttribute('masked_url', $urlMasker->mask($monitor->url));
         });
+        $socialEngagementMonitors = Monitor::query()
+            ->whereNotNull('social_platform')
+            ->with('latestPublicEngagementCheckRun')
+            ->orderByDesc('last_checked_at')
+            ->orderBy('name')
+            ->limit(self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS)
+            ->get(['id', 'name', 'url', 'config_version', 'social_platform']);
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -221,6 +230,7 @@ class DashboardController extends Controller
             'failedQueueJobCount' => $failedQueueJobCount,
             'counts' => $counts,
             'platformCounts' => $platformCounts,
+            'socialEngagementMonitors' => $socialEngagementMonitors,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);

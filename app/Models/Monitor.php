@@ -146,6 +146,16 @@ class Monitor extends Model
             });
     }
 
+    public function latestPublicEngagementCheckRun(): HasOne
+    {
+        return $this->hasOne(CheckRun::class)->ofMany(['finished_at' => 'MAX', 'id' => 'MAX'], static function (Builder $query): void {
+            $query->where('status', 'completed')
+                ->whereNotNull('finished_at')
+                ->whereNotNull('response_public_engagement_metrics')
+                ->whereNotIn('source', ['tls_daily', 'domain_daily']);
+        });
+    }
+
     public function latestTlsObservation(): HasOne
     {
         return $this->hasOne(TlsObservation::class)->ofMany(['observed_on' => 'MAX']);

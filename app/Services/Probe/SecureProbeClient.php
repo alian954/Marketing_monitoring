@@ -146,6 +146,14 @@ class SecureProbeClient implements ProbeClient
                 : null;
             $responseContentType = $this->responseContentType($response->responseHeaders);
             $responseBodyBytes = $response->errorType === null ? strlen($response->body) : null;
+            $publicEngagementMetrics = $socialPlatform !== null
+                && $response->errorType === null
+                && $response->statusCode !== null
+                && $response->statusCode >= 200
+                && $response->statusCode < 300
+                && preg_match('/\A(?:text\/html|application\/xhtml\+xml)(?:\s*;|\z)/', mb_strtolower(trim((string) $responseContentType))) === 1
+                    ? ($responseInspection['public_engagement_metrics'] ?? null)
+                    : null;
             $expectedResponseHeaderFound = in_array($response->errorType, [null, 'body_too_large'], true)
                 ? ResponseHeaderCondition::matches($response->responseHeaders, $expectedResponseHeader)
                 : null;
@@ -302,6 +310,7 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostCnames,
                     $monitorHostDnsRecords,
                     $responseRobotsDirectives,
+                    publicEngagementMetrics: $accessGateDetected ? null : $publicEngagementMetrics,
                 );
             }
 

@@ -58,6 +58,7 @@ class MonitorCheckRunExportTest extends TestCase
             'response_visible_text_changed' => true,
             'response_title' => '=HYPERLINK("https://evil.example")',
             'response_description' => 'Public campaign page summary.',
+            'response_public_engagement_metrics' => ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld'],
             'response_image_reference_hash' => str_repeat('c', 64),
             'response_open_graph_type' => 'article',
             'response_canonical_reference_hash' => str_repeat('d', 64),
@@ -119,6 +120,11 @@ class MonitorCheckRunExportTest extends TestCase
             'expected_response_header_found',
             'response_title',
             'response_description',
+            'public_views',
+            'public_likes',
+            'public_comments',
+            'public_shares',
+            'public_metrics_source',
             'response_image_reference_present',
             'response_og_type',
             'response_canonical_reference_present',
@@ -152,6 +158,11 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('', $row[$columns['expected_response_header_found']]);
         $this->assertSame("'=HYPERLINK(\"https://evil.example\")", $row[$columns['response_title']]);
         $this->assertSame('Public campaign page summary.', $row[$columns['response_description']]);
+        $this->assertSame('5320', $row[$columns['public_views']]);
+        $this->assertSame('184', $row[$columns['public_likes']]);
+        $this->assertSame('19', $row[$columns['public_comments']]);
+        $this->assertSame('7', $row[$columns['public_shares']]);
+        $this->assertSame('json_ld', $row[$columns['public_metrics_source']]);
         $this->assertSame('1', $row[$columns['response_image_reference_present']]);
         $this->assertSame('article', $row[$columns['response_og_type']]);
         $this->assertSame('1', $row[$columns['response_canonical_reference_present']]);

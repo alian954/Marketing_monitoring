@@ -445,6 +445,82 @@
         </section>
     </div>
 
+    @if ($socialPlatform !== null)
+        <section class="panel spaced-top" aria-labelledby="public-engagement-history-title">
+            <div class="panel-header">
+                <div>
+                    <h2 id="public-engagement-history-title" class="panel-title">公開互動數</h2>
+                    <p class="panel-description">近 30 天原始回應可辨識的觀看、讚、留言與分享數。</p>
+                </div>
+                <span class="secondary-text">{{ $publicEngagementRows->count() }} 次觀測</span>
+            </div>
+            @if ($publicEngagementRows->isEmpty())
+                <div class="empty-state">
+                    <h3 class="empty-title">尚無可讀取的公開互動數</h3>
+                    <p class="empty-copy">平台未公開數字、動態載入或存取限制時，原始回應不會包含可辨識的互動數。</p>
+                </div>
+            @else
+                @php
+                    $latestPublicEngagementRow = $publicEngagementRows->last();
+                    $publicEngagementLabels = [
+                        'views' => '觀看',
+                        'likes' => '讚',
+                        'comments' => '留言',
+                        'shares' => '分享',
+                    ];
+                @endphp
+                <div class="panel-body">
+                    <div class="stat-grid" aria-label="最近一次公開互動數">
+                        @foreach ($publicEngagementLabels as $metric => $label)
+                            @php
+                                $metricValue = $latestPublicEngagementRow['metrics'][$metric] ?? null;
+                                $metricChange = $latestPublicEngagementRow['changes'][$metric] ?? null;
+                            @endphp
+                            <article class="stat-card">
+                                <div class="stat-topline"><span class="stat-label">{{ $label }}</span></div>
+                                <strong class="stat-value">{{ $metricValue === null ? '未提供' : number_format((int) $metricValue) }}</strong>
+                                <p class="stat-hint">
+                                    @if ($metricChange === null)
+                                        尚無前次數值可比較
+                                    @elseif ($metricChange > 0)
+                                        較前次 +{{ number_format($metricChange) }}
+                                    @elseif ($metricChange < 0)
+                                        較前次 {{ number_format($metricChange) }}
+                                    @else
+                                        與前次相同
+                                    @endif
+                                </p>
+                            </article>
+                        @endforeach
+                    </div>
+                </div>
+                <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-history-title" tabindex="0">
+                    <table class="data-table">
+                        <caption class="sr-only">{{ $monitor->name }}近 30 天公開互動數歷史</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">檢查時間</th>
+                                @foreach ($publicEngagementLabels as $label)
+                                    <th scope="col">{{ $label }}</th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($publicEngagementRows as $engagementRow)
+                                <tr>
+                                    <td><time class="timestamp" datetime="{{ $engagementRow['run']->finished_at->toIso8601String() }}">{{ $engagementRow['run']->finished_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
+                                    @foreach (array_keys($publicEngagementLabels) as $metric)
+                                        <td class="numeric">{{ ($engagementRow['metrics'][$metric] ?? null) === null ? '—' : number_format((int) $engagementRow['metrics'][$metric]) }}</td>
+                                    @endforeach
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </section>
+    @endif
+
     <section class="panel spaced-top" aria-labelledby="response-metadata-history-title">
         <div class="panel-header">
             <div>

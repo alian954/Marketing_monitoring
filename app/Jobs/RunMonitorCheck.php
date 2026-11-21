@@ -170,6 +170,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'expected_response_header_found' => $responseConditionStatusAccepted ? $normal->expectedResponseHeaderFound : null,
                 'response_title' => $normal->responseTitle,
                 'response_description' => $normal->responseDescription,
+                'response_public_engagement_metrics' => $normal->publicEngagementMetrics,
                 'response_image_reference_hash' => $normal->responseImageReferenceHash,
                 'response_open_graph_type' => $normal->responseOpenGraphType,
                 'response_canonical_reference_hash' => $normal->responseCanonicalReferenceHash,

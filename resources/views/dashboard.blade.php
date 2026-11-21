@@ -100,6 +100,64 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="public-engagement-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="public-engagement-title" class="panel-title">公開互動數</h2>
+                <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；數字依平台原始回應提供情形顯示。</p>
+            </div>
+        </div>
+        @if ($socialEngagementMonitors->isEmpty())
+            <div class="empty-state">
+                <h3 class="empty-title">尚無社群貼文監測</h3>
+                <p class="empty-copy">新增 Facebook、Instagram、Threads 或 Dcard 公開貼文網址後，這裡會記錄可讀取的互動數。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">社群貼文最近一次可讀取的公開互動數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">貼文</th>
+                            <th scope="col">平台</th>
+                            <th scope="col">觀看</th>
+                            <th scope="col">讚</th>
+                            <th scope="col">留言</th>
+                            <th scope="col">分享</th>
+                            <th scope="col">資料時間</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementMonitors as $socialEngagementMonitor)
+                            @php
+                                $engagementRun = $socialEngagementMonitor->latestPublicEngagementCheckRun;
+                                if ($engagementRun?->config_version !== $socialEngagementMonitor->config_version) {
+                                    $engagementRun = null;
+                                }
+                                $engagementMetrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                            @endphp
+                            <tr>
+                                <th scope="row"><a href="{{ route('monitors.show', $socialEngagementMonitor) }}">{{ $socialEngagementMonitor->name }}</a></th>
+                                <td>{{ $socialEngagementMonitor->socialPlatform() }}</td>
+                                @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
+                                    <td class="numeric">{{ isset($engagementMetrics[$metric]) ? number_format((int) $engagementMetrics[$metric]) : '—' }}</td>
+                                @endforeach
+                                <td>
+                                    @if ($engagementRun?->finished_at)
+                                        <time class="timestamp" datetime="{{ $engagementRun->finished_at->toIso8601String() }}">{{ $engagementRun->finished_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <p class="field-help spaced-top">— 表示目前沒有可辨識的公開數值；平台動態載入或存取限制可能讓原始回應不含互動數。</p>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="social-platform-availability-title">
         <div class="panel-header">
             <div>

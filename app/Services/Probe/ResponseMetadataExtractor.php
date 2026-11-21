@@ -38,7 +38,8 @@ class ResponseMetadataExtractor
      * @return array{
      *     metadata: array{title: ?string, description: ?string, image_reference_hash: ?string, open_graph_type: ?string, canonical_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable},
      *     visible_text_hash: ?string,
-     *     robots_directives: array{meta: array<string, list<string>>|null, meta_complete: ?bool, x_robots_tag: array<string, list<string>>}
+     *     robots_directives: array{meta: array<string, list<string>>|null, meta_complete: ?bool, x_robots_tag: array<string, list<string>>},
+     *     public_engagement_metrics: array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string}|null
      * }
      */
     public static function inspect(string $html, ?string $responseUrl = null, array $responseHeaders = [], bool $bodyComplete = true): array
@@ -50,6 +51,7 @@ class ResponseMetadataExtractor
                 'metadata' => ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null],
                 'visible_text_hash' => hash('sha256', ''),
                 'robots_directives' => $robotsDirectives,
+                'public_engagement_metrics' => null,
             ];
         }
 
@@ -71,6 +73,7 @@ class ResponseMetadataExtractor
                 'metadata' => ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null],
                 'visible_text_hash' => null,
                 'robots_directives' => $robotsDirectives,
+                'public_engagement_metrics' => null,
             ];
         }
 
@@ -152,6 +155,9 @@ class ResponseMetadataExtractor
             ],
             'visible_text_hash' => self::visibleTextHash($document),
             'robots_directives' => $robotsDirectives,
+            'public_engagement_metrics' => $bodyComplete
+                ? SocialEngagementMetricExtractor::extract($document, $responseUrl)
+                : null,
         ];
     }
 

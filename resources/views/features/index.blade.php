@@ -15,9 +15,10 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-monitoring-title" class="panel-title">監測範圍</h2>
-                <p class="panel-description">這是網站與貼文健康檢查，不是行銷成效分析；不提供觸及、曝光、互動、點擊或廣告花費數據。</p>
+                <p class="panel-description">這是網站與貼文健康檢查，也會追蹤頁面公開的互動數；不提供帳號洞察，例如觸及、曝光、點擊、轉換或廣告花費。</p>
                 <p class="panel-description">支援網站、Facebook、Instagram、Threads 與 Dcard 公開網址。系統定期讀取原始 HTTP 回應，不登入、不使用平台 API，也不執行 JavaScript；完整回應與截圖不會保存。</p>
                 <p class="panel-description">若平台只回傳登入頁或動態載入外殼，系統無法確認貼文內容。HTTP 檢查正常只代表收到回應，不代表貼文一定成功發布或仍對所有人可見。</p>
+                <p class="panel-description">若原始回應含明確的觀看、讚、留言或分享數，會記錄每次檢查並呈現近 30 天趨勢；未公開或無法辨識時顯示「未提供」。</p>
             </div>
         </div>
     </section>

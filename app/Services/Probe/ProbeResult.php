@@ -12,6 +12,7 @@ readonly class ProbeResult
      * @param  list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>|null  $monitorHostDnsRecords
      * @param  list<?bool>|null  $expectedTextTermMatches
      * @param  array{meta: array<string, list<string>>|null, meta_complete: ?bool, x_robots_tag: array<string, list<string>>}|null  $responseRobotsDirectives
+     * @param  array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string}|null  $publicEngagementMetrics
      */
     public function __construct(
         public ?int $statusCode,
@@ -40,6 +41,7 @@ readonly class ProbeResult
         public ?array $monitorHostCnames = null,
         public ?array $monitorHostDnsRecords = null,
         public ?array $responseRobotsDirectives = null,
+        public ?array $publicEngagementMetrics = null,
     ) {}
 
     public function succeeded(): bool

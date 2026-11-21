@@ -435,6 +435,39 @@ class MonitorController extends Controller
         $latestDomainRegistrationObservation = $monitor->domainRegistrationObservations()->latest('observed_on')->first();
         $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
+        $publicEngagementRows = collect();
+
+        if ($monitor->socialPlatform() !== null) {
+            $publicEngagementRuns = $monitor->checkRuns()
+                ->where('config_version', $monitor->config_version)
+                ->where('status', 'completed')
+                ->whereNotIn('source', ['tls_daily', 'domain_daily'])
+                ->whereNotNull('response_public_engagement_metrics')
+                ->where('finished_at', '>=', $asOf->copy()->subDays(30))
+                ->orderBy('finished_at')
+                ->orderBy('id')
+                ->get(['id', 'config_version', 'finished_at', 'response_public_engagement_metrics']);
+            $previousMetricValues = [];
+            $publicEngagementRows = $publicEngagementRuns->map(function (CheckRun $run) use (&$previousMetricValues): array {
+                $metrics = is_array($run->response_public_engagement_metrics) ? $run->response_public_engagement_metrics : [];
+                $changes = [];
+
+                foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+                    $currentValue = isset($metrics[$metric]) ? (int) $metrics[$metric] : null;
+                    $previousValue = $previousMetricValues[$metric] ?? null;
+                    $changes[$metric] = $currentValue !== null && $previousValue !== null
+                        ? $currentValue - $previousValue
+                        : null;
+
+                    if ($currentValue !== null) {
+                        $previousMetricValues[$metric] = $currentValue;
+                    }
+                }
+
+                return ['run' => $run, 'metrics' => $metrics, 'changes' => $changes];
+            })->values();
+        }
+
         $historyStart = $asOf->copy()->subDays(30);
         $dailyHistoryToday = $asOf->copy()->timezone(self::HISTORY_TIMEZONE)->startOfDay();
         $dailyHistoryFirstDay = $dailyHistoryToday->copy()->subDays(self::DAILY_HISTORY_DAYS - 1);
@@ -702,6 +735,7 @@ class MonitorController extends Controller
             'responseMetadataComparisonAvailable',
             'responseMetadataChanged',
             'responseMetadataChanges',
+            'publicEngagementRows',
             'redirectChanges',
             'responseContentChanges',
             'runs',
@@ -1144,6 +1178,11 @@ class MonitorController extends Controller
                 'expected_response_header_found',
                 'response_title',
                 'response_description',
+                'public_views',
+                'public_likes',
+                'public_comments',
+                'public_shares',
+                'public_metrics_source',
                 'response_image_reference_present',
                 'response_og_type',
                 'response_canonical_reference_present',
@@ -1169,6 +1208,9 @@ class MonitorController extends Controller
                     $expectedTextMatchResult = $run->expectedTextMatchResult();
                     $expectedResponseHeaderMatchResult = $run->expectedResponseHeaderMatchResult();
                     $redirectUrls = $this->maskedRedirectUrls($run->redirects);
+                    $publicMetrics = is_array($run->response_public_engagement_metrics)
+                        ? $run->response_public_engagement_metrics
+                        : [];
                     $fields = [
                         (string) $run->id,
                         $run->scheduled_at->utc()->toIso8601String(),
@@ -1191,6 +1233,11 @@ class MonitorController extends Controller
                         $expectedResponseHeaderMatchResult === null ? '' : ($expectedResponseHeaderMatchResult ? '1' : '0'),
                         (string) $run->response_title,
                         (string) $run->response_description,
+                        ...array_map(
+                            static fn (string $metric): string => isset($publicMetrics[$metric]) ? (string) $publicMetrics[$metric] : '',
+                            ['views', 'likes', 'comments', 'shares'],
+                        ),
+                        (string) ($publicMetrics['source'] ?? ''),
                         $run->response_image_reference_hash === null ? '0' : '1',
                         (string) $run->response_open_graph_type,
                         $run->response_canonical_reference_hash === null ? '0' : '1',
