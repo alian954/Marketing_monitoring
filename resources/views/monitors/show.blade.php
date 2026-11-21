@@ -514,6 +514,35 @@
                         @endforeach
                     </div>
                 </div>
+                <div class="panel-body">
+                    <h3 class="panel-title">期間淨變化</h3>
+                    <p class="field-help">比較所選期間內第一筆與最後一筆可讀數值；至少需要兩次讀值，期初為 0 時不計比例。</p>
+                    <div class="stat-grid" aria-label="期間淨變化">
+                        @foreach ($publicEngagementLabels as $metric => $label)
+                            @php
+                                $periodChange = $publicEngagementPeriodChanges[$metric];
+                            @endphp
+                            <article class="stat-card">
+                                <div class="stat-topline"><span class="stat-label">{{ $label }}</span></div>
+                                <strong class="stat-value">
+                                    {{ $periodChange['change'] === null ? '資料不足' : ($periodChange['change'] > 0 ? '+' : '').number_format($periodChange['change']) }}
+                                </strong>
+                                <p class="stat-hint">
+                                    @if ($periodChange['change'] === null)
+                                        {{ $periodChange['observations'] }} 次可讀值；至少需要 2 次
+                                    @elseif ($periodChange['change_percentage'] !== null)
+                                        {{ $periodChange['change_percentage'] > 0 ? '+' : '' }}{{ number_format($periodChange['change_percentage'], 2) }}%
+                                    @else
+                                        期初為 0，無法計算比例
+                                    @endif
+                                </p>
+                                @if ($periodChange['start_value'] !== null && $periodChange['end_value'] !== null)
+                                    <p class="stat-hint">期初 {{ number_format($periodChange['start_value']) }} · 期末 {{ number_format($periodChange['end_value']) }}</p>
+                                @endif
+                            </article>
+                        @endforeach
+                    </div>
+                </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-history-title" tabindex="0">
                     <table class="data-table">
                         <caption class="sr-only">{{ $monitor->name }}近 {{ $publicEngagementHistoryPeriodDays }} 天公開互動數歷史</caption>

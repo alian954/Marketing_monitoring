@@ -447,6 +447,7 @@ class MonitorController extends Controller
         $publicEngagementHistoryPeriodOptions = $this->socialEngagementHistoryPeriodOptions();
         $publicEngagementHistoryPeriodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
         $publicEngagementRows = collect();
+        $publicEngagementPeriodChanges = [];
 
         if ($monitor->socialPlatform() !== null) {
             $publicEngagementRuns = $monitor->checkRuns()
@@ -462,7 +463,15 @@ class MonitorController extends Controller
                 ->orderBy('id')
                 ->get(['id', 'config_version', 'finished_at', 'response_public_engagement_metrics']);
             $previousMetricValues = [];
-            $publicEngagementRows = $publicEngagementRuns->map(function (CheckRun $run) use (&$previousMetricValues): array {
+            $periodFirstValues = [];
+            $periodLatestValues = [];
+            $periodObservationCounts = array_fill_keys(['views', 'likes', 'comments', 'shares'], 0);
+            $publicEngagementRows = $publicEngagementRuns->map(function (CheckRun $run) use (
+                &$previousMetricValues,
+                &$periodFirstValues,
+                &$periodLatestValues,
+                &$periodObservationCounts,
+            ): array {
                 $metrics = is_array($run->response_public_engagement_metrics) ? $run->response_public_engagement_metrics : [];
                 $changes = [];
                 $changePercentages = [];
@@ -481,6 +490,9 @@ class MonitorController extends Controller
 
                     if ($currentValue !== null) {
                         $previousMetricValues[$metric] = $currentValue;
+                        $periodFirstValues[$metric] ??= $currentValue;
+                        $periodLatestValues[$metric] = $currentValue;
+                        $periodObservationCounts[$metric]++;
                     }
                 }
 
@@ -492,6 +504,25 @@ class MonitorController extends Controller
                     'previous_values_were_zero' => $previousValuesWereZero,
                 ];
             })->values();
+
+            foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+                $startValue = $periodFirstValues[$metric] ?? null;
+                $endValue = $periodLatestValues[$metric] ?? null;
+                $change = $periodObservationCounts[$metric] >= 2 && $startValue !== null && $endValue !== null
+                    ? $endValue - $startValue
+                    : null;
+
+                $publicEngagementPeriodChanges[$metric] = [
+                    'start_value' => $startValue,
+                    'end_value' => $endValue,
+                    'observations' => $periodObservationCounts[$metric],
+                    'change' => $change,
+                    'change_percentage' => $change !== null && $startValue > 0
+                        ? round($change / $startValue * 100, 2)
+                        : null,
+                    'start_value_was_zero' => $startValue === 0 && $endValue !== null && $endValue > 0,
+                ];
+            }
         }
 
         $historyStart = $asOf->copy()->subDays(30);
@@ -762,6 +793,7 @@ class MonitorController extends Controller
             'responseMetadataChanged',
             'responseMetadataChanges',
             'publicEngagementRows',
+            'publicEngagementPeriodChanges',
             'publicEngagementHistoryPeriodDays',
             'publicEngagementHistoryPeriodOptions',
             'redirectChanges',

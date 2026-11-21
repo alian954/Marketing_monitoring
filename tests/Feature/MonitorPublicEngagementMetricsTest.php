@@ -67,7 +67,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('公開互動數')
             ->assertSee('近 30 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。')
+            ->assertSee('期間淨變化')
             ->assertSee('5,320')
+            ->assertSee('+520')
+            ->assertSee('10.83%')
             ->assertSee('較前次 +520（+10.83%）')
             ->assertSee('較前次 +24（+15.00%）')
             ->assertSee('4,800');
@@ -94,6 +97,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
 
         $this->assertSame(7, $detailResponse->viewData('publicEngagementHistoryPeriodDays'));
         $this->assertSame([$recentRun->id], $detailResponse->viewData('publicEngagementRows')->pluck('run.id')->all());
+        $this->assertNull($detailResponse->viewData('publicEngagementPeriodChanges')['views']['change']);
 
         $csvResponse = $this->actingAs($user)
             ->get(route('monitors.social-engagement.export.monitor-history', ['monitor' => $monitor, 'engagement_period' => 7]))
@@ -111,6 +115,9 @@ class MonitorPublicEngagementMetricsTest extends TestCase
 
         $this->assertSame(30, $fallbackResponse->viewData('publicEngagementHistoryPeriodDays'));
         $this->assertCount(2, $fallbackResponse->viewData('publicEngagementRows'));
+        $fallbackPeriodChanges = $fallbackResponse->viewData('publicEngagementPeriodChanges');
+        $this->assertSame(-1500, $fallbackPeriodChanges['views']['change']);
+        $this->assertSame(-75.0, $fallbackPeriodChanges['views']['change_percentage']);
     }
 
     public function test_engagement_percentage_handles_a_zero_baseline_without_dividing_by_zero(): void
@@ -119,12 +126,17 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->createMetricRun($monitor, now()->subHour(), ['views' => 0, 'likes' => 0, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
         $this->createMetricRun($monitor, now(), ['views' => 125, 'likes' => 3, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
 
-        $this->actingAs(User::factory()->create())
+        $response = $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('較前次 +125（前次為 0，無法計算比例）')
             ->assertSee('較前次 +3（前次為 0，無法計算比例）')
             ->assertSee('與前次相同（前次為 0，無法計算比例）');
+
+        $periodChanges = $response->viewData('publicEngagementPeriodChanges');
+        $this->assertSame(125, $periodChanges['views']['change']);
+        $this->assertNull($periodChanges['views']['change_percentage']);
+        $this->assertTrue($periodChanges['views']['start_value_was_zero']);
     }
 
     public function test_missing_latest_metric_is_not_reported_as_missing_a_previous_value(): void
