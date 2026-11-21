@@ -92,7 +92,7 @@ class CheckRun extends Model
 
     public function hasIndeterminateContentMatch(): bool
     {
-        if ($this->error_type !== 'body_too_large'
+        if (! in_array($this->error_type, ['body_too_large', 'social_access_required'], true)
             || $this->expectedTextMatchResult() !== null
             || ! $this->normalStatusIsAccepted($this->configurationSnapshot())) {
             return false;

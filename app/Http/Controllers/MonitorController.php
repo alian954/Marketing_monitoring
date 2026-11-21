@@ -1906,6 +1906,14 @@ class MonitorController extends Controller
             $probeArguments[] = $validated['expected_response_header'];
         }
 
+        $socialPlatform = Monitor::socialPlatformKeyForUrl($url);
+
+        if ($socialPlatform !== null) {
+            $probeArguments[6] ??= $validated['request_headers'];
+            $probeArguments[7] ??= $validated['expected_response_header'];
+            $probeArguments[8] = $socialPlatform;
+        }
+
         $result = $probe->inspect(...$probeArguments);
         $statusAccepted = $result->statusCode !== null
             && (($result->statusCode >= 200 && $result->statusCode < 400)
@@ -1918,7 +1926,7 @@ class MonitorController extends Controller
         $expectedResponseHeaderChecked = $validated['expected_response_header'] !== null && $statusAccepted;
         $responseHeaderConditionPassed = ! $expectedResponseHeaderChecked
             || $result->expectedResponseHeaderFound === true;
-        $isIncomplete = $result->errorType === 'body_too_large'
+        $isIncomplete = in_array($result->errorType, ['body_too_large', 'social_access_required'], true)
             && $statusAccepted
             && $expectedText !== null
             && $result->expectedTextFound === null
@@ -1981,6 +1989,10 @@ class MonitorController extends Controller
         string $expectedTextMode,
     ): string {
         if ($isIncomplete) {
+            if ($errorType === 'social_access_required') {
+                return '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。';
+            }
+
             return '回應超過讀取上限，指定文字比對尚未完成。';
         }
 

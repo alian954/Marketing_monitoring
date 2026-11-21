@@ -107,6 +107,14 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 $probeArguments[] = $expectedResponseHeader;
             }
 
+            $socialPlatform = Monitor::socialPlatformKeyForUrl((string) $snapshot['url']);
+
+            if ($socialPlatform !== null) {
+                $probeArguments[6] ??= $requestHeaders;
+                $probeArguments[7] ??= $expectedResponseHeader;
+                $probeArguments[8] = $socialPlatform;
+            }
+
             $normal = $probe->inspect(...$probeArguments);
 
             if ($monitor->socialPlatform() === null) {

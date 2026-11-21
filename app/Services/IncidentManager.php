@@ -34,7 +34,7 @@ class IncidentManager
             $delay = null;
             $normalStatusAccepted = $lockedMonitor->acceptsHttpStatus($normal->statusCode);
             $normalProbeSucceeded = $this->probeSucceededForMonitor($lockedMonitor, $normal);
-            $contentMatchIncomplete = $normal->errorType === 'body_too_large'
+            $contentMatchIncomplete = in_array($normal->errorType, ['body_too_large', 'social_access_required'], true)
                 && $normalStatusAccepted
                 && is_string($lockedMonitor->expected_text)
                 && $lockedMonitor->expected_text !== '';

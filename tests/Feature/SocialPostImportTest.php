@@ -742,7 +742,7 @@ class SocialPostImportTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 15, 'present')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 15, 'present', [], null, 'instagram')
             ->andReturn(new ProbeResult(200, 1001, $url, [], ['93.184.216.34'], null, null, true, null));
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
@@ -798,7 +798,7 @@ class SocialPostImportTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', [], null, 'instagram')
             ->andReturn(new ProbeResult(429, 300, $url, [], ['93.184.216.34'], null, null, true, null));
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
@@ -885,7 +885,7 @@ class SocialPostImportTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', $expectedHeaders)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', $expectedHeaders, null, 'instagram')
             ->andReturn(new ProbeResult(200, 200, $url, [], ['93.184.216.34'], null, null, true, null));
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));

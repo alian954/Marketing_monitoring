@@ -55,7 +55,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', [], null, 'instagram')
             ->andReturn(new ProbeResult(
                 200,
                 245,
@@ -108,7 +108,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', $expectedText, 10, 'present_any')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', $expectedText, 10, 'present_any', [], null, 'threads')
             ->andReturn(new ProbeResult(200, 60, $url, [], ['93.184.216.34'], null, null, true, null, [], null, null, [true, false]));
 
         $this->actingAs(User::factory()->create())
@@ -338,7 +338,7 @@ class MonitorProbePreviewTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', [], null, 'instagram')
             ->andReturn(new ProbeResult(200, 30, $url, [], ['93.184.216.34'], null, null, true, null));
 
         $this->actingAs(User::factory()->create())
@@ -351,6 +351,37 @@ class MonitorProbePreviewTest extends TestCase
         $this->assertSame($url, $monitor->fresh()->url);
         $this->assertSame(1, $monitor->fresh()->config_version);
         $this->assertDatabaseCount('check_runs', 0);
+    }
+
+    public function test_social_post_preview_marks_a_public_login_wall_as_incomplete(): void
+    {
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')
+            ->once()
+            ->andReturn(new ProbeResult(
+                200,
+                70,
+                $url,
+                [],
+                ['93.184.216.34'],
+                'social_access_required',
+                '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。',
+                null,
+                null,
+            ));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->followingRedirects()
+            ->post(route('monitors.probe-preview'), $this->socialPost($url))
+            ->assertOk()
+            ->assertSee('無法完整判定')
+            ->assertSee('平台公開回應包含登入提示')
+            ->assertSee('文字比對：無法判定');
+
+        $this->assertDatabaseCount('monitors', 0);
+        $this->assertDatabaseCount('incidents', 0);
     }
 
     public function test_private_probe_target_is_rejected_before_a_request_is_sent(): void

@@ -117,7 +117,7 @@ class ResponseContentChangeHistoryTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Public post copy', 10, 'present')
+            ->with($monitor->url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Public post copy', 10, 'present', [], null, 'instagram')
             ->andReturn(new ProbeResult(
                 statusCode: 200,
                 elapsedMs: 20,

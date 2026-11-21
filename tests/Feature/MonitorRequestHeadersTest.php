@@ -212,7 +212,7 @@ class MonitorRequestHeadersTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', $headers)
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', $headers, null, 'instagram')
             ->andReturn(new ProbeResult(200, 20, $url, [], ['93.184.216.34'], null, null, true, null));
 
         (new RunMonitorCheck($run->id))->handle(

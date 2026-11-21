@@ -8,5 +8,5 @@ interface ProbeClient
      * @param  list<string>  $allowedRedirectHosts
      * @param  array<string, string>  $requestHeaders
      */
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null): ProbeResult;
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null, ?string $socialPlatform = null): ProbeResult;
 }

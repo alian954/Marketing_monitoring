@@ -306,7 +306,7 @@
                                 </td>
                                 <td>
                                     @if ($monitor->latestCheckRun?->error_type)
-                                        <span class="secondary-text">一般探測：{{ $monitor->latestCheckRun->error_type }}</span>
+                                        <span class="secondary-text">一般探測：{{ $monitor->latestCheckRun->error_type === 'social_access_required' ? '平台要求登入，文字比對無法判定' : $monitor->latestCheckRun->error_type }}</span>
                                     @endif
                                     @if ($monitor->latestCheckRun?->adsbot_error_type)
                                         <span class="secondary-text">AdsBot 模擬：{{ $monitor->latestCheckRun->adsbot_error_type }}</span>

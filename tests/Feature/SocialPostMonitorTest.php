@@ -403,7 +403,7 @@ class SocialPostMonitorTest extends TestCase
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')
             ->once()
-            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present')
+            ->with($url, [], 'MarketingMonitor/1.0 (+authorized landing page check)', 'Campaign headline', 10, 'present', [], null, 'facebook')
             ->andReturn($normal);
 
         (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
@@ -526,6 +526,63 @@ class SocialPostMonitorTest extends TestCase
         $this->assertStringNotContainsString('private-preview-value', $content);
         $this->assertStringNotContainsString('private-canonical-token', $content);
         $this->assertStringNotContainsString('59276114c24f898c899a925b37854497f2cb8a64e485d5eca8077a67a175ca16', $content);
+    }
+
+    public function test_public_social_login_wall_is_indeterminate_and_does_not_report_missing_post_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Instagram</title><meta name="description" content="Log in to see this post"></head><body><main>Log in to see this post</main></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame('completed', $savedRun->status);
+        $this->assertSame(200, $savedRun->normal_status);
+        $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertSame('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。', $savedRun->error_detail);
+        $this->assertNull($savedRun->expectedTextMatchResult());
+        $this->assertTrue($savedRun->hasIndeterminateContentMatch());
+        $this->assertFalse($savedRun->passesMonitorChecks());
+        $this->assertSame([['term' => 'Campaign headline', 'matched' => null]], $savedRun->expectedTextMatchDetails());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+            'state' => Incident::STATE_SUSPECT,
+        ]);
+        $this->assertDatabaseMissing('incidents', ['monitor_id' => $monitor->id, 'rule_key' => 'http']);
+        $this->assertDatabaseMissing('incidents', ['monitor_id' => $monitor->id, 'rule_key' => 'content']);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('平台要求登入，無法判定貼文文字')
+            ->assertSee('平台要求登入，無法判定')
+            ->assertSee('平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。');
     }
 
     public function test_configured_http_status_can_still_confirm_social_post_text(): void
@@ -652,7 +709,7 @@ class SocialPostMonitorTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
             ->assertOk()
-            ->assertSee('回應過大，驗證未完成')
+            ->assertSee('文字驗證未完成')
             ->assertSee('未檢查');
     }
 
@@ -899,6 +956,31 @@ class SocialPostMonitorTest extends TestCase
 
         $outbox = NotificationOutbox::query()->sole();
         $this->assertStringContainsString('原因：回應內容超過讀取上限，文字比對未完成', $outbox->body);
+    }
+
+    public function test_social_access_gate_notification_explains_why_text_was_not_verified(): void
+    {
+        Config::set('monitoring.notify_email', 'ops@example.test');
+        Queue::fake([SendNotificationOutbox::class]);
+        $url = 'https://www.instagram.com/p/ABC123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'Campaign headline',
+        ]);
+        $run = CheckRun::factory()->for($monitor)->create([
+            'normal_status' => 200,
+            'error_type' => 'social_access_required',
+        ]);
+        $incident = Incident::factory()->for($monitor)->create([
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+        ]);
+
+        app(NotificationDispatcher::class)->queue($incident, $monitor, $run, 'opened');
+
+        $outbox = NotificationOutbox::query()->sole();
+        $this->assertStringContainsString('原因：平台公開回應要求登入，文字比對無法判定', $outbox->body);
     }
 
     /** @return array{name: string, url: string, label: string, expected_text: string, expected_text_mode: string} */

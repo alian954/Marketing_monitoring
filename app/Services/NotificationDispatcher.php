@@ -71,7 +71,7 @@ class NotificationDispatcher
         }
 
         $url = $this->urlMasker->mask($monitor->url);
-        $reason = $this->reasonLabel($incident->rule_key, $monitor);
+        $reason = $this->reasonLabel($incident->rule_key, $monitor, $run);
         $code = $run === null
             ? null
             : ($incident->rule_key === 'adsbot_difference' ? $run->adsbot_status : $run->normal_status);
@@ -172,8 +172,16 @@ class NotificationDispatcher
         return $queued || $statusSubscribersQueued;
     }
 
-    private function reasonLabel(string $ruleKey, Monitor $monitor): string
+    private function reasonLabel(string $ruleKey, Monitor $monitor, ?CheckRun $run): string
     {
+        if ($ruleKey === 'probe_incomplete') {
+            return match ($run?->error_type) {
+                'body_too_large' => '回應內容超過讀取上限，文字比對未完成',
+                'social_access_required' => '平台公開回應要求登入，文字比對無法判定',
+                default => '原始回應無法完整驗證，文字比對未完成',
+            };
+        }
+
         return match ($ruleKey) {
             'http' => 'HTTP 連線異常',
             'content' => $monitor->socialPlatform() === null ? '缺少預期文字' : '原始回應未包含預期貼文文字',
@@ -193,7 +201,6 @@ class NotificationDispatcher
             'domain_14d' => '網域將於 14 天內到期',
             'domain_30d' => '網域將於 30 天內到期',
             'probe_restricted' => '檢查受到速率限制或封鎖',
-            'probe_incomplete' => '回應內容超過讀取上限，文字比對未完成',
             'adsbot_difference' => 'AdsBot User-Agent 模擬結果不同',
             default => $ruleKey,
         };

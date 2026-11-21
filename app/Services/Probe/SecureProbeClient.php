@@ -16,7 +16,7 @@ class SecureProbeClient implements ProbeClient
         private readonly UrlMasker $masker,
     ) {}
 
-    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null): ProbeResult
+    public function inspect(string $url, array $allowedRedirectHosts, string $userAgent, ?string $expectedText = null, ?int $timeoutSeconds = null, string $expectedTextMode = 'present', array $requestHeaders = [], ?string $expectedResponseHeader = null, ?string $socialPlatform = null): ProbeResult
     {
         $startedAt = hrtime(true);
 
@@ -228,6 +228,21 @@ class SecureProbeClient implements ProbeClient
                 $expectedTextTermMatches = $matchDetails === null
                     ? null
                     : array_column($matchDetails['terms'], 'matched');
+                $accessGateDetected = $socialPlatform !== null
+                    && $response->statusCode !== null
+                    && $response->statusCode >= 200
+                    && $response->statusCode < 400
+                    && $expectedText !== null
+                    && $expectedText !== ''
+                    && $matchesExpectedText === false
+                    && $expectedTextMode !== ExpectedTextMatcher::MODE_ABSENT
+                    && $expectedResponseHeaderFound !== false
+                    && SocialPostAccessGateDetector::detects($socialPlatform, $response->body, $responseMetadata);
+
+                if ($accessGateDetected) {
+                    $matchesExpectedText = null;
+                    $expectedTextTermMatches = array_fill(0, count(ExpectedTextMatcher::terms($expectedText)), null);
+                }
 
                 return new ProbeResult(
                     $response->statusCode,
@@ -235,8 +250,8 @@ class SecureProbeClient implements ProbeClient
                     $this->masker->mask($target['url']),
                     $redirects,
                     $resolvedIps,
-                    null,
-                    null,
+                    $accessGateDetected ? 'social_access_required' : null,
+                    $accessGateDetected ? '平台公開回應包含登入提示，這次無法判定預期貼文文字；請手動開啟網址核對。' : null,
                     $matchesExpectedText,
                     $response->tlsExpiresAt,
                     $monitorHostIps,
