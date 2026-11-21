@@ -837,6 +837,17 @@ class SocialPostMonitorTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($url),
             'expected_text' => 'Campaign headline',
         ]);
+        $siblingDcardMonitor = Monitor::factory()->create([
+            'url' => 'https://www.dcard.tw/f/makeup/p/262476945',
+            'url_hash' => Monitor::fingerprintUrl('https://www.dcard.tw/f/makeup/p/262476945'),
+            'next_check_at' => now()->addMinutes(5),
+        ]);
+        $instagramNextCheckAt = now()->addMinutes(5);
+        $instagramMonitor = Monitor::factory()->create([
+            'url' => 'https://www.instagram.com/p/ACCESSGATE123/',
+            'url_hash' => Monitor::fingerprintUrl('https://www.instagram.com/p/ACCESSGATE123/'),
+            'next_check_at' => $instagramNextCheckAt,
+        ]);
         $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
         $this->assertNotNull($run);
 
@@ -878,6 +889,8 @@ class SocialPostMonitorTest extends TestCase
         $this->assertNull($savedRun->response_public_engagement_metrics);
         $this->assertStringContainsString('Dcard 要求人工驗證', (string) $savedRun->error_detail);
         $this->assertSame('2026-11-22 18:00:00', $monitor->fresh()->next_check_at?->toDateTimeString());
+        $this->assertSame('2026-11-22 18:00:00', $siblingDcardMonitor->fresh()->next_check_at?->toDateTimeString());
+        $this->assertEquals($instagramNextCheckAt, $instagramMonitor->fresh()->next_check_at);
     }
 
     public function test_access_gate_on_another_social_platform_does_not_apply_the_dcard_cooldown(): void

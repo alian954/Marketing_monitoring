@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\SendNotificationOutbox;
+use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\SchedulerHeartbeat;
@@ -25,25 +26,38 @@ class ScheduleDueMonitors extends Command
 
         try {
             $queued = 0;
-
-            Monitor::query()
+            $dueMonitors = Monitor::query()
                 ->where('enabled', true)
                 ->whereNotNull('next_check_at')
                 ->where('next_check_at', '<=', now())
                 ->orderBy('next_check_at')
                 ->orderBy('id')
                 ->limit(100)
-                ->get()
-                ->each(function (Monitor $monitor) use ($scheduler, &$queued): void {
-                    $configuredJitterSeconds = max(0, (int) config('monitoring.schedule_jitter_max_seconds'));
-                    $intervalJitterCapSeconds = max(1, intdiv(max(1, $monitor->interval_seconds), 4));
-                    $maximumJitterSeconds = min($configuredJitterSeconds, $intervalJitterCapSeconds);
-                    $jitterSeconds = $maximumJitterSeconds === 0 ? 0 : random_int(0, $maximumJitterSeconds);
+                ->get();
+            $dcardCheckInFlight = $dueMonitors->contains(static fn (Monitor $monitor): bool => $monitor->social_platform === 'dcard')
+                && CheckRun::query()
+                    ->whereIn('status', ['queued', 'running'])
+                    ->whereHas('monitor', static fn (Builder $query): Builder => $query->where('social_platform', 'dcard'))
+                    ->exists();
 
-                    if ($scheduler->enqueue($monitor, 'scheduled', delaySeconds: $jitterSeconds) !== null) {
-                        $queued++;
+            $dueMonitors->each(function (Monitor $monitor) use ($scheduler, &$queued, &$dcardCheckInFlight): void {
+                if ($monitor->social_platform === 'dcard' && $dcardCheckInFlight) {
+                    return;
+                }
+
+                $configuredJitterSeconds = max(0, (int) config('monitoring.schedule_jitter_max_seconds'));
+                $intervalJitterCapSeconds = max(1, intdiv(max(1, $monitor->interval_seconds), 4));
+                $maximumJitterSeconds = min($configuredJitterSeconds, $intervalJitterCapSeconds);
+                $jitterSeconds = $maximumJitterSeconds === 0 ? 0 : random_int(0, $maximumJitterSeconds);
+
+                if ($scheduler->enqueue($monitor, 'scheduled', delaySeconds: $jitterSeconds) !== null) {
+                    $queued++;
+
+                    if ($monitor->social_platform === 'dcard') {
+                        $dcardCheckInFlight = true;
                     }
-                });
+                }
+            });
 
             NotificationOutbox::query()
                 ->where('status', 'pending')

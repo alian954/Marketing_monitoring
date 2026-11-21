@@ -12,6 +12,7 @@ use App\Services\Probe\RetryAfterParser;
 use App\Services\RunScheduler;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\DB;
@@ -206,12 +207,18 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                     ? $retryAfterSeconds
                     : $followUpDelaySeconds + $currentMonitor->interval_seconds)
                 : 0;
+            $dcardCooldownUntil = null;
 
             if ($normal->errorType === 'social_access_required' && $currentMonitor->socialPlatform() === 'Dcard') {
+                $dcardCooldownSeconds = max(0, (int) config('monitoring.dcard_access_gate_cooldown_seconds'));
                 $nextCheckDelaySeconds = max(
                     $nextCheckDelaySeconds,
-                    max(0, (int) config('monitoring.dcard_access_gate_cooldown_seconds')),
+                    $dcardCooldownSeconds,
                 );
+
+                if ($dcardCooldownSeconds > 0) {
+                    $dcardCooldownUntil = $finishedAt->copy()->addSeconds($dcardCooldownSeconds);
+                }
             }
 
             if ($nextCheckDelaySeconds > 0) {
@@ -221,6 +228,25 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                     $currentMonitor->next_check_at = $nextScheduledCheckAt;
                     $currentMonitor->save();
                 }
+            }
+
+            if ($dcardCooldownUntil !== null) {
+                if ($currentMonitor->next_check_at !== null && $currentMonitor->next_check_at->greaterThan($dcardCooldownUntil)) {
+                    $dcardCooldownUntil = $currentMonitor->next_check_at;
+                }
+
+                Monitor::query()
+                    ->where('social_platform', 'dcard')
+                    ->where('enabled', true)
+                    ->where('id', '!=', $currentMonitor->id)
+                    ->where(static function (Builder $query) use ($dcardCooldownUntil): void {
+                        $query->whereNull('next_check_at')
+                            ->orWhere('next_check_at', '<', $dcardCooldownUntil);
+                    })
+                    ->update([
+                        'next_check_at' => $dcardCooldownUntil,
+                        'updated_at' => $finishedAt,
+                    ]);
             }
 
             if ($followUpDelaySeconds !== null && $followUpDelaySeconds > 0) {
