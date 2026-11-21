@@ -39,6 +39,16 @@ class DashboardController extends Controller
         $monitorCount = 0;
         $dashboardMonitorCandidates = [];
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
+        $platformCounts = [];
+
+        foreach (['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads'] as $platform => $label) {
+            $platformCounts[$platform] = [
+                'label' => $label,
+                'total' => 0,
+                'states' => array_fill_keys(['healthy', 'issue', 'warning', 'stale', 'paused', 'pending'], 0),
+            ];
+        }
+
         $expiringCertificateCount = 0;
         $expiringCertificates = [];
         $expiringDomainCount = 0;
@@ -51,6 +61,7 @@ class DashboardController extends Controller
                 &$monitorCount,
                 &$dashboardMonitorCandidates,
                 &$counts,
+                &$platformCounts,
                 &$expiringCertificates,
                 &$expiringCertificateCount,
                 &$expiringDomains,
@@ -83,6 +94,16 @@ class DashboardController extends Controller
                         $counts['issue']++;
                     } elseif (array_key_exists($healthState, $counts)) {
                         $counts[$healthState]++;
+                    }
+
+                    $platform = $monitor->social_platform;
+                    if (isset($platformCounts[$platform])) {
+                        $platformCounts[$platform]['total']++;
+                        $platformState = $healthState === 'suspect' ? 'issue' : $healthState;
+
+                        if (array_key_exists($platformState, $platformCounts[$platform]['states'])) {
+                            $platformCounts[$platform]['states'][$platformState]++;
+                        }
                     }
 
                     $certificateObservation = $monitor->latestTlsObservation;
@@ -192,6 +213,7 @@ class DashboardController extends Controller
             'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
             'failedQueueJobCount' => $failedQueueJobCount,
             'counts' => $counts,
+            'platformCounts' => $platformCounts,
             'fleetAvailability' => $fleetAvailability,
             'maintenanceSummary' => $maintenanceSummary,
         ]);

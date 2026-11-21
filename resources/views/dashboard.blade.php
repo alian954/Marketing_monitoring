@@ -48,6 +48,53 @@
         </article>
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="social-platform-summary-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
+                <p class="panel-description">依最近一次檢查列出 Facebook、Instagram 與 Threads 貼文狀態；「需留意」包含待確認或已成立的異常。</p>
+            </div>
+        </div>
+        @if (collect($platformCounts)->sum('total') === 0)
+            <div class="empty-state">
+                <h3 class="empty-title">尚無社群貼文監測項目</h3>
+                <p class="empty-copy">新增 Facebook、Instagram 或 Threads 公開貼文網址後，這裡會顯示各平台的檢查狀態。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="social-platform-summary-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">Facebook、Instagram 與 Threads 公開貼文健康狀態統計</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">平台</th>
+                            <th scope="col">監測貼文</th>
+                            <th scope="col">正常</th>
+                            <th scope="col">需留意</th>
+                            <th scope="col">警告</th>
+                            <th scope="col">逾時</th>
+                            <th scope="col">已暫停</th>
+                            <th scope="col">待檢查</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($platformCounts as $platform => $platformCount)
+                            <tr>
+                                <th scope="row"><a class="strong-link" href="{{ route('monitors.index', ['platform' => $platform]) }}">{{ $platformCount['label'] }}</a></th>
+                                <td class="numeric">{{ $platformCount['total'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['healthy'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['issue'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['warning'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['stale'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['paused'] }}</td>
+                                <td class="numeric">{{ $platformCount['states']['pending'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
         <div class="panel-header">
             <div>
