@@ -1513,6 +1513,31 @@ a.platform-chip:hover {
     stroke-width: 1;
 }
 
+.engagement-trend-figure {
+    margin: 12px 0 0;
+}
+
+.engagement-trend-svg {
+    overflow: visible;
+}
+
+.engagement-trend-caption {
+    margin-top: 2px;
+    color: var(--subtle);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.engagement-trend-period {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
 .metric-trend-bar--positive {
     fill: var(--teal);
 }

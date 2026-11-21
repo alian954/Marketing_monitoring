@@ -66,7 +66,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('公開互動數')
-            ->assertSee('近 30 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。')
+            ->assertSee('近 30 天可讀取的公開互動數與前次變化；趨勢線最多取樣 60 點，各指標獨立縮放。')
             ->assertSee('期間淨變化')
             ->assertSee('5,320')
             ->assertSee('+520')
@@ -74,6 +74,83 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('較前次 +520（+10.83%）')
             ->assertSee('較前次 +24（+15.00%）')
             ->assertSee('4,800');
+    }
+
+    public function test_monitor_details_show_accessible_engagement_trend_lines_for_readable_values(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $monitor = $this->createSocialMonitor();
+        $this->createMetricRun($monitor, now()->subHours(2), ['views' => 4800, 'likes' => 160, 'comments' => 13, 'shares' => 4, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now()->subHour(), ['views' => 5100, 'likes' => null, 'comments' => 17, 'shares' => null, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), ['views' => 5320, 'likes' => 160, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('觀看數走勢')
+            ->assertSee('aria-labelledby="public-engagement-views-chart-title public-engagement-views-chart-description"', false)
+            ->assertSee('期間最低 4,800 · 最高 5,320 · 3 次讀值');
+
+        $trendSeries = $response->viewData('publicEngagementTrendSeries');
+
+        $this->assertSame(3, $trendSeries['views']['observation_count']);
+        $this->assertSame(4800, $trendSeries['views']['minimum']);
+        $this->assertSame(5320, $trendSeries['views']['maximum']);
+        $this->assertCount(3, $trendSeries['views']['points']);
+        $this->assertCount(2, $trendSeries['likes']['points']);
+        $this->assertSame(160, $trendSeries['likes']['minimum']);
+        $this->assertSame(160, $trendSeries['likes']['maximum']);
+        $this->assertSame(26.0, $trendSeries['likes']['points'][0]['y']);
+        $this->assertSame('11/22 18:00', $trendSeries['views']['first_label']);
+        $this->assertSame('11/22 20:00', $trendSeries['views']['last_label']);
+        $this->assertSame($trendSeries['views']['first_at'], $trendSeries['likes']['first_at']);
+        $this->assertSame('4.00,46.00', explode(' ', $trendSeries['views']['polyline_points'])[0]);
+        $this->assertSame('176.00,6.00', substr($trendSeries['views']['polyline_points'], strrpos($trendSeries['views']['polyline_points'], ' ') + 1));
+    }
+
+    public function test_monitor_details_hide_engagement_trend_lines_until_two_values_are_readable(): void
+    {
+        $monitor = $this->createSocialMonitor();
+        $this->createMetricRun($monitor, now(), ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('尚無前次數值可比較')
+            ->assertDontSee('public-engagement-views-chart-title');
+
+        $trendSeries = $response->viewData('publicEngagementTrendSeries');
+
+        $this->assertSame(1, $trendSeries['views']['observation_count']);
+        $this->assertCount(1, $trendSeries['views']['points']);
+    }
+
+    public function test_monitor_details_limit_trend_charts_to_sixty_points_and_keep_period_extremes(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $monitor = $this->createSocialMonitor();
+
+        for ($index = 0; $index < 70; $index++) {
+            $this->createMetricRun($monitor, now()->subMinutes(69 - $index), [
+                'views' => 100 + $index,
+                'likes' => 10 + $index,
+                'comments' => 1 + $index,
+                'shares' => $index,
+                'source' => 'json_ld',
+            ]);
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk();
+        $trendSeries = $response->viewData('publicEngagementTrendSeries');
+
+        $this->assertSame(70, $trendSeries['views']['observation_count']);
+        $this->assertCount(58, $trendSeries['views']['points']);
+        $this->assertSame(100, $trendSeries['views']['minimum']);
+        $this->assertSame(169, $trendSeries['views']['maximum']);
+        $this->assertSame(100, $trendSeries['views']['points'][0]['value']);
+        $this->assertSame(169, $trendSeries['views']['points'][array_key_last($trendSeries['views']['points'])]['value']);
     }
 
     public function test_monitor_engagement_history_period_can_be_selected_and_exported_for_one_post(): void

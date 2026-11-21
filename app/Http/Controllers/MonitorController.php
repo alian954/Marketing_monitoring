@@ -55,6 +55,8 @@ class MonitorController extends Controller
 
     private const DAILY_HISTORY_DAYS = 30;
 
+    private const MAX_PUBLIC_ENGAGEMENT_TREND_POINTS = 60;
+
     /** @var array<int, string> */
     private const INTERVAL_OPTIONS = [
         60 => '每 1 分鐘',
@@ -448,6 +450,7 @@ class MonitorController extends Controller
         $publicEngagementHistoryPeriodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
         $publicEngagementRows = collect();
         $publicEngagementPeriodChanges = [];
+        $publicEngagementTrendSeries = [];
 
         if ($monitor->socialPlatform() !== null) {
             $publicEngagementRuns = $monitor->checkRuns()
@@ -523,6 +526,8 @@ class MonitorController extends Controller
                     'start_value_was_zero' => $startValue === 0 && $endValue !== null && $endValue > 0,
                 ];
             }
+
+            $publicEngagementTrendSeries = $this->buildPublicEngagementTrendSeries($publicEngagementRows->all());
         }
 
         $historyStart = $asOf->copy()->subDays(30);
@@ -794,6 +799,7 @@ class MonitorController extends Controller
             'responseMetadataChanges',
             'publicEngagementRows',
             'publicEngagementPeriodChanges',
+            'publicEngagementTrendSeries',
             'publicEngagementHistoryPeriodDays',
             'publicEngagementHistoryPeriodOptions',
             'redirectChanges',
@@ -1519,6 +1525,106 @@ class MonitorController extends Controller
         return array_key_exists(30, $periodOptions)
             ? 30
             : (int) array_key_first($periodOptions);
+    }
+
+    /**
+     * @param  list<array{run: CheckRun, metrics: array<string, mixed>, changes: array<string, int|null>, change_percentages: array<string, float|null>, previous_values_were_zero: array<string, bool>}>  $engagementRows
+     * @return array<string, array{points: list<array{x: float, y: float, value: int, timestamp: int}>, polyline_points: string, observation_count: int, minimum: int|null, maximum: int|null, first_value: int|null, last_value: int|null, first_at: string|null, last_at: string|null, first_label: string|null, last_label: string|null}>
+     */
+    private function buildPublicEngagementTrendSeries(array $engagementRows): array
+    {
+        $seriesByMetric = [];
+
+        foreach (['views', 'likes', 'comments', 'shares'] as $metric) {
+            $observations = [];
+
+            foreach ($engagementRows as $engagementRow) {
+                $value = $engagementRow['metrics'][$metric] ?? null;
+
+                if ($value === null) {
+                    continue;
+                }
+
+                $observations[] = [
+                    'value' => (int) $value,
+                    'timestamp' => $engagementRow['run']->finished_at->getTimestamp(),
+                    'finished_at' => $engagementRow['run']->finished_at,
+                ];
+            }
+
+            $observationCount = count($observations);
+            $values = array_column($observations, 'value');
+            $minimum = $values === [] ? null : min($values);
+            $maximum = $values === [] ? null : max($values);
+            $sampledObservations = $observations;
+
+            if ($observationCount > self::MAX_PUBLIC_ENGAGEMENT_TREND_POINTS) {
+                $sampledIndexes = [];
+                $regularPointCount = self::MAX_PUBLIC_ENGAGEMENT_TREND_POINTS - 2;
+
+                for ($sampleIndex = 0; $sampleIndex < $regularPointCount; $sampleIndex++) {
+                    $observationIndex = (int) round($sampleIndex * ($observationCount - 1) / ($regularPointCount - 1));
+                    $sampledIndexes[$observationIndex] = true;
+                }
+
+                $sampledIndexes[array_search($minimum, $values, true)] = true;
+                $sampledIndexes[array_search($maximum, $values, true)] = true;
+                ksort($sampledIndexes);
+                $sampledObservations = [];
+
+                foreach (array_keys($sampledIndexes) as $observationIndex) {
+                    $sampledObservations[] = $observations[$observationIndex];
+                }
+            }
+
+            $sampledPointCount = count($sampledObservations);
+            $firstTimestamp = $sampledObservations[0]['timestamp'] ?? null;
+            $lastTimestamp = $sampledObservations[$sampledPointCount - 1]['timestamp'] ?? null;
+            $timeSpan = $firstTimestamp !== null && $lastTimestamp !== null
+                ? $lastTimestamp - $firstTimestamp
+                : 0;
+            $valueSpan = $minimum !== null && $maximum !== null ? $maximum - $minimum : 0;
+            $points = [];
+
+            foreach ($sampledObservations as $pointIndex => $observation) {
+                $xRatio = $timeSpan > 0
+                    ? ($observation['timestamp'] - $firstTimestamp) / $timeSpan
+                    : ($sampledPointCount > 1 ? $pointIndex / ($sampledPointCount - 1) : 0.5);
+                $yRatio = $valueSpan > 0
+                    ? ($observation['value'] - $minimum) / $valueSpan
+                    : 0.5;
+
+                $points[] = [
+                    'x' => round(4 + ($xRatio * 172), 2),
+                    'y' => round(46 - ($yRatio * 40), 2),
+                    'value' => $observation['value'],
+                    'timestamp' => $observation['timestamp'],
+                ];
+            }
+
+            $firstObservation = $observations[0] ?? null;
+            $lastObservation = $observations[$observationCount - 1] ?? null;
+            $polylinePoints = implode(' ', array_map(
+                static fn (array $point): string => number_format($point['x'], 2, '.', '').','.number_format($point['y'], 2, '.', ''),
+                $points,
+            ));
+
+            $seriesByMetric[$metric] = [
+                'points' => $points,
+                'polyline_points' => $polylinePoints,
+                'observation_count' => $observationCount,
+                'minimum' => $minimum,
+                'maximum' => $maximum,
+                'first_value' => $firstObservation['value'] ?? null,
+                'last_value' => $lastObservation['value'] ?? null,
+                'first_at' => ($firstObservation['finished_at'] ?? null)?->toIso8601String(),
+                'last_at' => ($lastObservation['finished_at'] ?? null)?->toIso8601String(),
+                'first_label' => ($firstObservation['finished_at'] ?? null)?->copy()->timezone(self::HISTORY_TIMEZONE)->format('n/j H:i'),
+                'last_label' => ($lastObservation['finished_at'] ?? null)?->copy()->timezone(self::HISTORY_TIMEZONE)->format('n/j H:i'),
+            ];
+        }
+
+        return $seriesByMetric;
     }
 
     private function socialEngagementPlatformFilter(Request $request): ?string

@@ -450,7 +450,7 @@
             <div class="panel-header">
                 <div>
                     <h2 id="public-engagement-history-title" class="panel-title">公開互動數</h2>
-                    <p class="panel-description">近 {{ $publicEngagementHistoryPeriodDays }} 天原始回應可辨識的觀看、讚、留言與分享數，並顯示相較上次可讀取數值的變化比例。</p>
+                    <p class="panel-description">近 {{ $publicEngagementHistoryPeriodDays }} 天可讀取的公開互動數與前次變化；趨勢線最多取樣 60 點，各指標獨立縮放。</p>
                 </div>
                 <div class="heading-actions">
                     <span class="secondary-text">{{ $publicEngagementRows->count() }} 次觀測</span>
@@ -510,6 +510,26 @@
                                         與前次相同
                                     @endif
                                 </p>
+                                @php
+                                    $metricTrendSeries = $publicEngagementTrendSeries[$metric] ?? null;
+                                @endphp
+                                @if (($metricTrendSeries['observation_count'] ?? 0) >= 2)
+                                    <figure class="engagement-trend-figure">
+                                        <svg class="metric-trend-svg engagement-trend-svg" viewBox="0 0 180 52" role="img" aria-labelledby="public-engagement-{{ $metric }}-chart-title public-engagement-{{ $metric }}-chart-description">
+                                            <title id="public-engagement-{{ $metric }}-chart-title">{{ $label }}數走勢</title>
+                                            <desc id="public-engagement-{{ $metric }}-chart-description">近 {{ $publicEngagementHistoryPeriodDays }} 天共 {{ $metricTrendSeries['observation_count'] }} 次可讀值；最早 {{ $metricTrendSeries['first_label'] }} 為 {{ number_format($metricTrendSeries['first_value']) }}，最近 {{ $metricTrendSeries['last_label'] }} 為 {{ number_format($metricTrendSeries['last_value']) }}，最低 {{ number_format($metricTrendSeries['minimum']) }}，最高 {{ number_format($metricTrendSeries['maximum']) }}。完整時間與數值列於下方歷史表格。</desc>
+                                            <polyline class="metric-trend-line" points="{{ $metricTrendSeries['polyline_points'] }}" />
+                                            @foreach ($metricTrendSeries['points'] as $trendPoint)
+                                                <circle class="metric-trend-point" cx="{{ number_format($trendPoint['x'], 2, '.', '') }}" cy="{{ number_format($trendPoint['y'], 2, '.', '') }}" r="2.2" />
+                                            @endforeach
+                                        </svg>
+                                        <figcaption class="engagement-trend-caption">期間最低 {{ number_format($metricTrendSeries['minimum']) }} · 最高 {{ number_format($metricTrendSeries['maximum']) }} · {{ $metricTrendSeries['observation_count'] }} 次讀值@if ($metricTrendSeries['observation_count'] > count($metricTrendSeries['points']))（折線顯示 {{ count($metricTrendSeries['points']) }} 個代表點）@endif</figcaption>
+                                        <div class="engagement-trend-period">
+                                            <time datetime="{{ $metricTrendSeries['first_at'] }}">{{ $metricTrendSeries['first_label'] }}</time>
+                                            <time datetime="{{ $metricTrendSeries['last_at'] }}">{{ $metricTrendSeries['last_label'] }}</time>
+                                        </div>
+                                    </figure>
+                                @endif
                             </article>
                         @endforeach
                     </div>
