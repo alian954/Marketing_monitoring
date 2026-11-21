@@ -6,6 +6,7 @@ use App\Models\Monitor;
 use App\Models\User;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\ProbeClient;
+use App\Services\Probe\ProbeException;
 use App\Services\Probe\ProbeResult;
 use App\Services\Probe\UrlSafetyPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,7 +38,8 @@ class MonitorProbePreviewTest extends TestCase
             ->assertOk()
             ->assertSee('預檢網址')
             ->assertSee('formaction="'.route('monitors.probe-preview').'"', false)
-            ->assertSee('完整原始回應不會保存');
+            ->assertSee('完整原始回應不會保存')
+            ->assertSee('仍可先建立監測、記錄後續檢查結果');
     }
 
     public function test_probe_preview_requires_authentication(): void
@@ -177,6 +179,65 @@ class MonitorProbePreviewTest extends TestCase
 
         $this->assertDatabaseCount('monitors', 0);
         $this->assertDatabaseCount('check_runs', 0);
+    }
+
+    public function test_monitor_can_be_created_when_dns_has_no_address_or_times_out(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public string $errorType = 'dns_timeout';
+
+            public function resolve(string $hostname): array
+            {
+                if ($this->errorType === 'dns_no_address') {
+                    return [];
+                }
+
+                throw new ProbeException('dns_timeout', 'DNS 查詢失敗或逾時。');
+            }
+        };
+        $this->app->instance(UrlSafetyPolicy::class, new UrlSafetyPolicy($resolver));
+
+        foreach (['dns_timeout', 'dns_no_address'] as $errorType) {
+            $resolver->errorType = $errorType;
+            $host = $errorType === 'dns_timeout' ? 'dns-timeout.example' : 'no-address.example';
+            $url = 'https://'.$host.'/post/123';
+
+            $response = $this->actingAs(User::factory()->create())
+                ->post(route('monitors.store'), [
+                    ...$this->socialPost($url, ''),
+                    'name' => 'DNS recovery '.$errorType,
+                ]);
+            $response->assertSessionDoesntHaveErrors()->assertRedirect();
+
+            $monitor = Monitor::query()->where('url_hash', Monitor::fingerprintUrl($url))->firstOrFail();
+
+            $this->assertSame($url, $monitor->url);
+            $this->assertTrue($monitor->enabled);
+            $this->assertNotNull($monitor->next_check_at);
+        }
+
+        $this->assertDatabaseCount('monitors', 2);
+    }
+
+    public function test_monitor_creation_still_rejects_a_hostname_that_resolves_to_a_private_ip(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['10.10.0.5'];
+            }
+        };
+        $this->app->instance(UrlSafetyPolicy::class, new UrlSafetyPolicy($resolver));
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('monitors.create'))
+            ->post(route('monitors.store'), $this->socialPost('https://private.example/health', ''))
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors('url');
+
+        $this->assertDatabaseCount('monitors', 0);
     }
 
     public function test_social_post_preview_reports_missing_text_without_creating_an_incident(): void

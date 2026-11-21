@@ -19,6 +19,56 @@ class UrlSafetyPolicy
      */
     public function validateAndResolve(string $url, array $allowedRedirectHosts = [], ?string $originHost = null, ?int $dnsTimeoutMilliseconds = null): array
     {
+        $target = $this->normalizeTarget($url, $allowedRedirectHosts, $originHost);
+        $host = $target['host'];
+
+        $cnames = null;
+        $dnsRecords = null;
+
+        if ($target['is_literal_ip']) {
+            $ips = [$host];
+        } elseif ($this->resolver instanceof DetailedHostResolver) {
+            $resolution = $this->resolver->resolveDetails($host, $dnsTimeoutMilliseconds);
+            $ips = $resolution['ips'];
+            $cnames = $resolution['cnames'];
+            $dnsRecords = $resolution['records'];
+        } else {
+            $ips = $this->resolver->resolve($host);
+        }
+
+        if ($ips === []) {
+            throw new ProbeException('dns_no_address', 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
+        }
+
+        $ips = array_values(array_unique($ips));
+
+        foreach ($ips as $ip) {
+            if (! $this->isPublicIp($ip)) {
+                throw new ProbeException('blocked_ssrf', '主機名稱解析到私有、保留或特殊用途 IP 位址，已封鎖檢查。');
+            }
+        }
+
+        return [
+            'url' => $target['url'],
+            'host' => $host,
+            'port' => $target['port'],
+            'ips' => $ips,
+            'cnames' => $cnames,
+            'dns_records' => $dnsRecords,
+        ];
+    }
+
+    public function normalizeUrl(string $url, array $allowedRedirectHosts = [], ?string $originHost = null): string
+    {
+        return $this->normalizeTarget($url, $allowedRedirectHosts, $originHost)['url'];
+    }
+
+    /**
+     * @param  list<string>  $allowedRedirectHosts
+     * @return array{url: string, host: string, port: int, is_literal_ip: bool}
+     */
+    private function normalizeTarget(string $url, array $allowedRedirectHosts, ?string $originHost): array
+    {
         $parts = parse_url(trim($url));
 
         if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
@@ -47,32 +97,6 @@ class UrlSafetyPolicy
             }
         }
 
-        $cnames = null;
-        $dnsRecords = null;
-
-        if ($isLiteralIp) {
-            $ips = [$host];
-        } elseif ($this->resolver instanceof DetailedHostResolver) {
-            $resolution = $this->resolver->resolveDetails($host, $dnsTimeoutMilliseconds);
-            $ips = $resolution['ips'];
-            $cnames = $resolution['cnames'];
-            $dnsRecords = $resolution['records'];
-        } else {
-            $ips = $this->resolver->resolve($host);
-        }
-
-        if ($ips === []) {
-            throw new ProbeException('dns_no_address', 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
-        }
-
-        $ips = array_values(array_unique($ips));
-
-        foreach ($ips as $ip) {
-            if (! $this->isPublicIp($ip)) {
-                throw new ProbeException('blocked_ssrf', '主機名稱解析到私有、保留或特殊用途 IP 位址，已封鎖檢查。');
-            }
-        }
-
         $path = (string) ($parts['path'] ?? '/');
         $normalizedUrl = $scheme.'://'.$this->formatHostForUrl($host).($path === '' ? '/' : $path);
 
@@ -80,7 +104,7 @@ class UrlSafetyPolicy
             $normalizedUrl .= '?'.$parts['query'];
         }
 
-        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'ips' => $ips, 'cnames' => $cnames, 'dns_records' => $dnsRecords];
+        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'is_literal_ip' => $isLiteralIp];
     }
 
     public function normalizeHost(string $host): string

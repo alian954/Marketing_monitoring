@@ -2005,6 +2005,14 @@ class MonitorController extends Controller
         try {
             return $this->urlPolicy->validateAndResolve($url, $allowedHosts)['url'];
         } catch (ProbeException $exception) {
+            if (in_array($exception->type, ['dns_no_address', 'dns_timeout'], true)) {
+                try {
+                    return $this->urlPolicy->normalizeUrl($url, $allowedHosts);
+                } catch (ProbeException $normalizationException) {
+                    $exception = $normalizationException;
+                }
+            }
+
             throw ValidationException::withMessages(['url' => $exception->getMessage()]);
         }
     }
