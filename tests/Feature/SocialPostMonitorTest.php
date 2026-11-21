@@ -828,6 +828,8 @@ class SocialPostMonitorTest extends TestCase
 
     public function test_dcard_browser_verification_response_is_reported_as_indeterminate(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
+        Config::set('monitoring.dcard_access_gate_cooldown_seconds', 21600);
         Queue::fake([RunMonitorCheck::class]);
         $url = 'https://www.dcard.tw/f/makeup/p/262476944';
         $monitor = Monitor::factory()->create([
@@ -875,6 +877,42 @@ class SocialPostMonitorTest extends TestCase
         $this->assertNull($savedRun->expectedTextMatchResult());
         $this->assertNull($savedRun->response_public_engagement_metrics);
         $this->assertStringContainsString('Dcard 要求人工驗證', (string) $savedRun->error_detail);
+        $this->assertSame('2026-11-22 18:00:00', $monitor->fresh()->next_check_at?->toDateTimeString());
+    }
+
+    public function test_access_gate_on_another_social_platform_does_not_apply_the_dcard_cooldown(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Queue::fake([RunMonitorCheck::class]);
+        $nextCheckAt = now()->addMinutes(5);
+        $url = 'https://www.instagram.com/p/ACCESSGATE123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'next_check_at' => $nextCheckAt,
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')->once()->andReturn(new ProbeResult(
+            200,
+            80,
+            $url,
+            [],
+            ['93.184.216.34'],
+            'social_access_required',
+            '平台要求驗證。',
+            null,
+            null,
+        ));
+
+        (new RunMonitorCheck($run->id))->handle(
+            $probe,
+            app(IncidentManager::class),
+            app(RunScheduler::class),
+        );
+
+        $this->assertSame($nextCheckAt->toDateTimeString(), $monitor->fresh()->next_check_at?->toDateTimeString());
     }
 
     public function test_social_login_wall_does_not_establish_a_visible_text_baseline_without_expected_text(): void

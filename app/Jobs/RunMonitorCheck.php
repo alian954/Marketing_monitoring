@@ -201,11 +201,20 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             $followUpDelaySeconds = $confirmationDelay === null
                 ? null
                 : max($confirmationDelay, $retryAfterSeconds);
-
-            if ($retryAfterSeconds > 0) {
-                $nextCheckDelaySeconds = $followUpDelaySeconds === null
+            $nextCheckDelaySeconds = $retryAfterSeconds > 0
+                ? ($followUpDelaySeconds === null
                     ? $retryAfterSeconds
-                    : $followUpDelaySeconds + $currentMonitor->interval_seconds;
+                    : $followUpDelaySeconds + $currentMonitor->interval_seconds)
+                : 0;
+
+            if ($normal->errorType === 'social_access_required' && $currentMonitor->socialPlatform() === 'Dcard') {
+                $nextCheckDelaySeconds = max(
+                    $nextCheckDelaySeconds,
+                    max(0, (int) config('monitoring.dcard_access_gate_cooldown_seconds')),
+                );
+            }
+
+            if ($nextCheckDelaySeconds > 0) {
                 $nextScheduledCheckAt = $finishedAt->copy()->addSeconds($nextCheckDelaySeconds);
 
                 if ($currentMonitor->next_check_at === null || $currentMonitor->next_check_at->lessThan($nextScheduledCheckAt)) {
