@@ -746,6 +746,46 @@ class SocialPostMonitorTest extends TestCase
         ]);
     }
 
+    public function test_rejected_http_status_does_not_establish_a_social_visible_text_baseline(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => null,
+            'alert_on_visible_text_change' => true,
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    403,
+                    null,
+                    '<html><head><title>Dcard</title></head><body><main>Request blocked</main></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame(403, $savedRun->normal_status);
+        $this->assertNull($savedRun->response_visible_text_hash);
+        $this->assertNull($savedRun->response_visible_text_changed);
+        $this->assertTrue($savedRun->usesSocialContentBaseline());
+        $this->assertFalse($savedRun->passesMonitorChecks());
+    }
+
     public function test_social_security_challenge_page_is_indeterminate_and_does_not_report_missing_post_text(): void
     {
         Queue::fake([RunMonitorCheck::class]);
