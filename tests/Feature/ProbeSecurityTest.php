@@ -8,6 +8,7 @@ use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
 use App\Services\Probe\NativeHostResolver;
+use App\Services\Probe\ProbeException;
 use App\Services\Probe\ProbeTransport;
 use App\Services\Probe\SecureProbeClient;
 use App\Services\Probe\UrlSafetyPolicy;
@@ -26,7 +27,7 @@ class ProbeSecurityTest extends TestCase
                 return ['93.184.216.34'];
             }
 
-            public function resolveDetails(string $hostname): array
+            public function resolveDetails(string $hostname, ?int $timeoutMilliseconds = null): array
             {
                 return [
                     'ips' => ['93.184.216.34'],
@@ -98,6 +99,110 @@ class ProbeSecurityTest extends TestCase
             ['type' => 'TXT', 'value' => 'base64:/w=='],
             ['type' => 'TXT', 'value' => 'v=spf1 include:example.net -all'],
         ], $resolution['records']);
+    }
+
+    public function test_native_resolver_stops_a_blocked_lookup_at_its_timeout(): void
+    {
+        if (! function_exists('pcntl_alarm') || ! function_exists('pcntl_signal')) {
+            $this->markTestSkipped('This test requires PCNTL signal support.');
+        }
+
+        $resolver = new NativeHostResolver(static function (): array {
+            usleep(2_000_000);
+
+            return [['type' => 'A', 'ip' => '93.184.216.34']];
+        });
+        $startedAt = hrtime(true);
+
+        try {
+            $resolver->resolveDetails('landing.example', 1000);
+            $this->fail('A blocked DNS lookup should time out.');
+        } catch (ProbeException $exception) {
+            $this->assertSame('dns_timeout', $exception->type);
+        }
+
+        $elapsedMilliseconds = (hrtime(true) - $startedAt) / 1_000_000;
+
+        $this->assertLessThan(1500, $elapsedMilliseconds);
+    }
+
+    public function test_native_resolver_preserves_an_existing_queue_timeout_alarm(): void
+    {
+        if (! function_exists('pcntl_alarm') || ! function_exists('pcntl_signal_get_handler')) {
+            $this->markTestSkipped('This test requires PCNTL signal support.');
+        }
+
+        $previousAsyncSignals = pcntl_async_signals();
+        $previousHandler = pcntl_signal_get_handler(SIGALRM);
+        $previousAlarm = pcntl_alarm(0);
+        $queueTimeoutHandler = static function (): void {};
+        pcntl_signal(SIGALRM, $queueTimeoutHandler);
+        pcntl_alarm(10);
+
+        try {
+            $resolver = new NativeHostResolver(static function (): array {
+                usleep(2_000_000);
+
+                return [['type' => 'A', 'ip' => '93.184.216.34']];
+            });
+
+            try {
+                $resolver->resolveDetails('landing.example', 1000);
+                $this->fail('A blocked DNS lookup should time out.');
+            } catch (ProbeException $exception) {
+                $this->assertSame('dns_timeout', $exception->type);
+            }
+
+            $this->assertSame($queueTimeoutHandler, pcntl_signal_get_handler(SIGALRM));
+            $this->assertGreaterThan(0, pcntl_alarm(0));
+        } finally {
+            pcntl_alarm(0);
+            pcntl_signal(SIGALRM, $previousHandler);
+            pcntl_async_signals($previousAsyncSignals);
+
+            if ($previousAlarm > 0) {
+                pcntl_alarm($previousAlarm);
+            }
+        }
+    }
+
+    public function test_secure_probe_passes_remaining_request_time_to_detailed_dns_resolution(): void
+    {
+        $resolver = new class implements DetailedHostResolver
+        {
+            public ?int $receivedTimeoutMilliseconds = null;
+
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+
+            public function resolveDetails(string $hostname, ?int $timeoutMilliseconds = null): array
+            {
+                $this->receivedTimeoutMilliseconds = $timeoutMilliseconds;
+
+                return [
+                    'ips' => ['93.184.216.34'],
+                    'cnames' => [],
+                    'records' => [],
+                ];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<p>healthy</p>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0', timeoutSeconds: 1);
+
+        $this->assertSame(200, $result->statusCode);
+        $this->assertNotNull($resolver->receivedTimeoutMilliseconds);
+        $this->assertGreaterThan(0, $resolver->receivedTimeoutMilliseconds);
+        $this->assertLessThanOrEqual(1000, $resolver->receivedTimeoutMilliseconds);
     }
 
     public function test_secure_probe_does_not_call_an_empty_dns_answer_nxdomain(): void

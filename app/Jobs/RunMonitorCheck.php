@@ -117,7 +117,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
 
             $normal = $probe->inspect(...$probeArguments);
 
-            if ($monitor->socialPlatform() === null) {
+            if ($monitor->socialPlatform() === null && ! in_array($normal->errorType, ['dns_no_address', 'dns_timeout'], true)) {
                 $adsbot = $probe->inspect(
                     (string) $snapshot['url'],
                     (array) ($snapshot['allowed_redirect_hosts'] ?? []),

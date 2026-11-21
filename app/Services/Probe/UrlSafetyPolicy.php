@@ -17,7 +17,7 @@ class UrlSafetyPolicy
      * @param  list<string>  $allowedRedirectHosts
      * @return array{url: string, host: string, port: int, ips: list<string>, cnames: list<string>|null, dns_records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>|null}
      */
-    public function validateAndResolve(string $url, array $allowedRedirectHosts = [], ?string $originHost = null): array
+    public function validateAndResolve(string $url, array $allowedRedirectHosts = [], ?string $originHost = null, ?int $dnsTimeoutMilliseconds = null): array
     {
         $parts = parse_url(trim($url));
 
@@ -53,7 +53,7 @@ class UrlSafetyPolicy
         if ($isLiteralIp) {
             $ips = [$host];
         } elseif ($this->resolver instanceof DetailedHostResolver) {
-            $resolution = $this->resolver->resolveDetails($host);
+            $resolution = $this->resolver->resolveDetails($host, $dnsTimeoutMilliseconds);
             $ips = $resolution['ips'];
             $cnames = $resolution['cnames'];
             $dnsRecords = $resolution['records'];

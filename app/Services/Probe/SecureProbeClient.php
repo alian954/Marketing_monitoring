@@ -68,7 +68,7 @@ class SecureProbeClient implements ProbeClient
             }
 
             try {
-                $target = $this->policy->validateAndResolve($currentUrl, $allowedRedirectHosts, $originHost);
+                $target = $this->policy->validateAndResolve($currentUrl, $allowedRedirectHosts, $originHost, $remainingMs);
                 $originHost ??= $target['host'];
 
                 if ($hop === 0) {
