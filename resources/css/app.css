@@ -288,6 +288,19 @@ textarea {
     padding: 0 20px;
 }
 
+.public-status-service-group + .public-status-service-group {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+
+.public-status-service-group-title {
+    margin: 0 20px 4px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .public-status-service {
     padding: 20px 0;
     border-bottom: 1px solid var(--line);
@@ -305,7 +318,7 @@ textarea {
     gap: 16px;
 }
 
-.public-status-service-name h3 {
+.public-status-service-name h4 {
     margin: 0;
     color: var(--ink);
     font-size: 14px;

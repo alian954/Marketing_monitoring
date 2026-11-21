@@ -51,6 +51,55 @@ class StatusPageWorkflowTest extends TestCase
         $this->assertDatabaseHas('monitors', ['id' => $monitor->id, 'public_status' => true]);
     }
 
+    public function test_public_page_groups_services_by_platform_without_exposing_private_monitors_or_labels(): void
+    {
+        $monitors = collect([
+            ['name' => 'Website service', 'url' => 'https://example.com/status'],
+            ['name' => 'Facebook post', 'url' => 'https://www.facebook.com/campaign/posts/123'],
+            ['name' => 'Instagram post', 'url' => 'https://www.instagram.com/p/abc123/'],
+            ['name' => 'Threads post', 'url' => 'https://www.threads.net/@campaign/post/xyz789'],
+        ])->map(fn (array $attributes): Monitor => Monitor::factory()->create([
+            ...$attributes,
+            'url_hash' => Monitor::fingerprintUrl($attributes['url']),
+            'public_status' => true,
+        ]));
+        Monitor::factory()->create([
+            'name' => 'Private campaign monitor',
+            'label' => 'INTERNAL_LABEL_SECRET',
+            'public_status' => false,
+        ]);
+        $token = Str::random(64);
+        StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'public_token' => $token,
+            'public_token_hash' => hash('sha256', $token),
+            'is_published' => true,
+        ]);
+
+        $response = $this->get(route('status-pages.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSeeTextInOrder([
+                '網站服務',
+                'Website service',
+                'Facebook 貼文',
+                'Facebook post',
+                'Instagram 貼文',
+                'Instagram post',
+                'Threads 貼文',
+                'Threads post',
+            ])
+            ->assertDontSee('Private campaign monitor')
+            ->assertDontSee('INTERNAL_LABEL_SECRET');
+
+        $monitorGroups = $response->viewData('monitorGroups');
+
+        $this->assertSame(['website', 'facebook', 'instagram', 'threads'], $monitorGroups->keys()->all());
+        $this->assertSame([1, 1, 1, 1], $monitorGroups->pluck('monitors')->map->count()->values()->all());
+        foreach (['website', 'facebook', 'instagram', 'threads'] as $index => $platform) {
+            $this->assertSame($monitors[$index]->id, $monitorGroups->get($platform)['monitors']->sole()->id);
+        }
+    }
+
     public function test_public_history_uses_response_body_size_thresholds_from_each_check(): void
     {
         $monitor = Monitor::factory()->create([

@@ -143,6 +143,22 @@ class StatusPageController extends Controller
             $monitor->setAttribute('health_state', $monitor->healthState());
         }
 
+        $monitorsByPlatform = $monitors->groupBy(static fn (Monitor $monitor): string => match ($monitor->socialPlatform()) {
+            'Facebook' => 'facebook',
+            'Instagram' => 'instagram',
+            'Threads' => 'threads',
+            default => 'website',
+        });
+        $monitorGroups = collect([
+            'website' => '網站服務',
+            'facebook' => 'Facebook 貼文',
+            'instagram' => 'Instagram 貼文',
+            'threads' => 'Threads 貼文',
+        ])->map(static fn (string $label, string $key): array => [
+            'label' => $label,
+            'monitors' => $monitorsByPlatform->get($key, collect()),
+        ])->filter(static fn (array $group): bool => $group['monitors']->isNotEmpty());
+
         $asOf = now()->toImmutable();
         $this->attachPublicHistory($monitors, $asOf);
         [$activePublicIncidents, $recentResolvedPublicIncidents] = $this->publicIncidents($monitors);
@@ -157,6 +173,7 @@ class StatusPageController extends Controller
             ->view('status-pages.public', compact(
                 'statusPage',
                 'monitors',
+                'monitorGroups',
                 'pageState',
                 'lastCheckedAt',
                 'activePublicIncidents',

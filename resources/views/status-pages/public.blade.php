@@ -43,76 +43,81 @@
                 <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 30 天檢查成功率、估算可用率與事件狀態時間；不會公開網址、比對文字或事件備註。</p>
             </div>
         </div>
-        <div class="public-status-service-list">
-            @foreach ($monitors as $monitor)
-                <article class="public-status-service">
-                    <div class="public-status-service-header">
-                        <div class="public-status-service-name">
-                            <h3>{{ $monitor->name }}</h3>
-                            @if ($monitor->last_checked_at)
-                                <p>最近檢查 <time datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></p>
-                            @else
-                                <p>尚未完成第一次檢查</p>
-                            @endif
-                        </div>
-                        <x-state-badge :state="$monitor->health_state" />
-                    </div>
-
-                    <div class="public-status-history">
-                        <div class="public-status-history-summary">
-                            <span>近 30 天檢查成功率</span>
-                            <strong>{{ $monitor->public_history['success_rate'] === null ? '—' : number_format($monitor->public_history['success_rate'], 2).'%' }}</strong>
-                            <span class="secondary-text">成功 {{ $monitor->public_history['successful_checks'] }} / 已結束 {{ $monitor->public_history['total_checks'] }} 次</span>
-                        </div>
-                        <div class="public-status-history-summary">
-                            <span>近 30 天估算時間可用率</span>
-                            <strong>{{ $monitor->public_history['availability']['availability_rate'] === null ? '—' : number_format($monitor->public_history['availability']['availability_rate'], 2).'%' }}</strong>
-                            <span class="secondary-text">
-                                資料涵蓋 {{ $monitor->public_history['availability']['coverage_rate'] === null ? '—' : number_format($monitor->public_history['availability']['coverage_rate'], 2).'%' }}
-                                （{{ number_format($monitor->public_history['availability']['observed_minutes'], 1) }} / {{ number_format($monitor->public_history['availability']['eligible_minutes'], 1) }} 分鐘）
-                            </span>
-                        </div>
-                        <ol class="public-status-history-bars" role="list" aria-label="{{ $monitor->name }}近 30 天每日檢查狀態">
-                            @foreach ($monitor->public_history['days'] as $day)
-                                <li>
-                                    <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
-                                </li>
-                            @endforeach
-                        </ol>
-                        <div class="public-status-history-axis" aria-hidden="true">
-                            <span>{{ $monitor->public_history['days'][0]['display_date'] }}</span>
-                            <span>今天</span>
-                        </div>
-                        <details class="public-status-history-details">
-                            <summary>查看每日檢查明細</summary>
-                            <div class="data-table-wrap">
-                                <table class="data-table">
-                                    <caption class="sr-only">{{ $monitor->name }}近 30 天每日檢查成功率</caption>
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">日期（台灣時間）</th>
-                                            <th scope="col">成功率</th>
-                                            <th scope="col">成功次數</th>
-                                            <th scope="col">已結束檢查</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach ($monitor->public_history['days'] as $day)
-                                            <tr>
-                                                <th scope="row"><time datetime="{{ $day['date'] }}">{{ $day['date'] }}</time></th>
-                                                <td>{{ $day['success_rate'] === null ? '無檢查資料' : number_format($day['success_rate'], 2).'%' }}</td>
-                                                <td>{{ $day['successful_checks'] }}</td>
-                                                <td>{{ $day['total_checks'] }}</td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
+        @foreach ($monitorGroups as $groupKey => $group)
+            <section class="public-status-service-group" aria-labelledby="public-status-services-{{ $groupKey }}-title">
+                <h3 class="public-status-service-group-title" id="public-status-services-{{ $groupKey }}-title">{{ $group['label'] }}</h3>
+                <div class="public-status-service-list">
+                    @foreach ($group['monitors'] as $monitor)
+                        <article class="public-status-service">
+                            <div class="public-status-service-header">
+                                <div class="public-status-service-name">
+                                    <h4>{{ $monitor->name }}</h4>
+                                    @if ($monitor->last_checked_at)
+                                        <p>最近檢查 <time datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></p>
+                                    @else
+                                        <p>尚未完成第一次檢查</p>
+                                    @endif
+                                </div>
+                                <x-state-badge :state="$monitor->health_state" />
                             </div>
-                        </details>
-                    </div>
-                </article>
-            @endforeach
-        </div>
+
+                            <div class="public-status-history">
+                                <div class="public-status-history-summary">
+                                    <span>近 30 天檢查成功率</span>
+                                    <strong>{{ $monitor->public_history['success_rate'] === null ? '—' : number_format($monitor->public_history['success_rate'], 2).'%' }}</strong>
+                                    <span class="secondary-text">成功 {{ $monitor->public_history['successful_checks'] }} / 已結束 {{ $monitor->public_history['total_checks'] }} 次</span>
+                                </div>
+                                <div class="public-status-history-summary">
+                                    <span>近 30 天估算時間可用率</span>
+                                    <strong>{{ $monitor->public_history['availability']['availability_rate'] === null ? '—' : number_format($monitor->public_history['availability']['availability_rate'], 2).'%' }}</strong>
+                                    <span class="secondary-text">
+                                        資料涵蓋 {{ $monitor->public_history['availability']['coverage_rate'] === null ? '—' : number_format($monitor->public_history['availability']['coverage_rate'], 2).'%' }}
+                                        （{{ number_format($monitor->public_history['availability']['observed_minutes'], 1) }} / {{ number_format($monitor->public_history['availability']['eligible_minutes'], 1) }} 分鐘）
+                                    </span>
+                                </div>
+                                <ol class="public-status-history-bars" role="list" aria-label="{{ $monitor->name }}近 30 天每日檢查狀態">
+                                    @foreach ($monitor->public_history['days'] as $day)
+                                        <li>
+                                            <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
+                                        </li>
+                                    @endforeach
+                                </ol>
+                                <div class="public-status-history-axis" aria-hidden="true">
+                                    <span>{{ $monitor->public_history['days'][0]['display_date'] }}</span>
+                                    <span>今天</span>
+                                </div>
+                                <details class="public-status-history-details">
+                                    <summary>查看每日檢查明細</summary>
+                                    <div class="data-table-wrap">
+                                        <table class="data-table">
+                                            <caption class="sr-only">{{ $monitor->name }}近 30 天每日檢查成功率</caption>
+                                            <thead>
+                                                <tr>
+                                                    <th scope="col">日期（台灣時間）</th>
+                                                    <th scope="col">成功率</th>
+                                                    <th scope="col">成功次數</th>
+                                                    <th scope="col">已結束檢查</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach ($monitor->public_history['days'] as $day)
+                                                    <tr>
+                                                        <th scope="row"><time datetime="{{ $day['date'] }}">{{ $day['date'] }}</time></th>
+                                                        <td>{{ $day['success_rate'] === null ? '無檢查資料' : number_format($day['success_rate'], 2).'%' }}</td>
+                                                        <td>{{ $day['successful_checks'] }}</td>
+                                                        <td>{{ $day['total_checks'] }}</td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </details>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+        @endforeach
     </section>
 
     <section class="panel public-status-panel" aria-labelledby="public-status-maintenance-title">
