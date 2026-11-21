@@ -363,6 +363,21 @@ textarea {
     list-style: none;
 }
 
+.public-status-history-chart-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+}
+
+.public-status-history-bars--90-day {
+    grid-template-columns: repeat(90, minmax(0, 1fr));
+    min-width: 650px;
+}
+
+.public-status-history-axis--90-day {
+    min-width: 650px;
+}
+
 .public-status-history-bar {
     display: block;
     min-height: 12px;

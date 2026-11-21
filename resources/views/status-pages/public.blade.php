@@ -40,7 +40,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="public-status-services-title" class="panel-title">監測服務</h2>
-                <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 30 天檢查成功率、估算可用率與事件狀態時間；不會公開網址、比對文字或事件備註。</p>
+                <p class="panel-description">此頁只公開所選服務的名稱、狀態、檢查時間、近 90 天檢查成功率與估算時間可用率，以及目前事件與近 30 天已恢復事件；不會公開網址、比對文字或事件備註。</p>
             </div>
         </div>
         @foreach ($monitorGroups as $groupKey => $group)
@@ -63,34 +63,36 @@
 
                             <div class="public-status-history">
                                 <div class="public-status-history-summary">
-                                    <span>近 30 天檢查成功率</span>
+                                    <span>近 90 天檢查成功率</span>
                                     <strong>{{ $monitor->public_history['success_rate'] === null ? '—' : number_format($monitor->public_history['success_rate'], 2).'%' }}</strong>
                                     <span class="secondary-text">成功 {{ $monitor->public_history['successful_checks'] }} / 已結束 {{ $monitor->public_history['total_checks'] }} 次</span>
                                 </div>
                                 <div class="public-status-history-summary">
-                                    <span>近 30 天估算時間可用率</span>
+                                    <span>近 90 天估算時間可用率</span>
                                     <strong>{{ $monitor->public_history['availability']['availability_rate'] === null ? '—' : number_format($monitor->public_history['availability']['availability_rate'], 2).'%' }}</strong>
                                     <span class="secondary-text">
                                         資料涵蓋 {{ $monitor->public_history['availability']['coverage_rate'] === null ? '—' : number_format($monitor->public_history['availability']['coverage_rate'], 2).'%' }}
                                         （{{ number_format($monitor->public_history['availability']['observed_minutes'], 1) }} / {{ number_format($monitor->public_history['availability']['eligible_minutes'], 1) }} 分鐘）
                                     </span>
                                 </div>
-                                <ol class="public-status-history-bars" role="list" aria-label="{{ $monitor->name }}近 30 天每日檢查狀態">
-                                    @foreach ($monitor->public_history['days'] as $day)
-                                        <li>
-                                            <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
-                                        </li>
-                                    @endforeach
-                                </ol>
-                                <div class="public-status-history-axis" aria-hidden="true">
-                                    <span>{{ $monitor->public_history['days'][0]['display_date'] }}</span>
-                                    <span>今天</span>
+                                <div class="public-status-history-chart-scroll" role="region" aria-label="{{ $monitor->name }}近 90 天每日檢查狀態圖，向左右捲動查看" tabindex="0">
+                                    <ol class="public-status-history-bars public-status-history-bars--90-day" role="list" aria-label="{{ $monitor->name }}近 90 天每日檢查狀態">
+                                        @foreach ($monitor->public_history['days'] as $day)
+                                            <li>
+                                                <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                    <div class="public-status-history-axis public-status-history-axis--90-day" aria-hidden="true">
+                                        <span>{{ $monitor->public_history['days'][0]['display_date'] }}</span>
+                                        <span>今天</span>
+                                    </div>
                                 </div>
                                 <details class="public-status-history-details">
                                     <summary>查看每日檢查明細</summary>
                                     <div class="data-table-wrap">
                                         <table class="data-table">
-                                            <caption class="sr-only">{{ $monitor->name }}近 30 天每日檢查成功率</caption>
+                                            <caption class="sr-only">{{ $monitor->name }}近 90 天每日檢查成功率</caption>
                                             <thead>
                                                 <tr>
                                                     <th scope="col">日期（台灣時間）</th>
@@ -242,5 +244,5 @@
         </div>
     </section>
 
-    <p class="public-status-disclaimer">此頁只顯示已選取服務的即時狀態、近 30 天彙總檢查結果、估算時間可用率、公開事件時間及預定維護時段，不包含網站網址、比對文字或內部事件備註。</p>
+    <p class="public-status-disclaimer">此頁只顯示已選取服務的即時狀態、近 90 天彙總檢查結果與估算時間可用率、公開事件時間及預定維護時段，不包含網站網址、比對文字或內部事件備註。</p>
 @endsection

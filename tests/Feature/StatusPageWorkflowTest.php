@@ -364,8 +364,8 @@ class StatusPageWorkflowTest extends TestCase
         CheckRun::factory()->for($monitor)->create([
             'config_snapshot' => $snapshot,
             'source' => 'scheduled',
-            'scheduled_at' => Carbon::parse('2026-10-20 10:00:00', 'Asia/Taipei')->utc(),
-            'finished_at' => Carbon::parse('2026-10-20 10:00:00', 'Asia/Taipei')->utc(),
+            'scheduled_at' => Carbon::parse('2026-08-20 10:00:00', 'Asia/Taipei')->utc(),
+            'finished_at' => Carbon::parse('2026-08-20 10:00:00', 'Asia/Taipei')->utc(),
             'normal_status' => 500,
             'expected_text_found' => false,
         ]);
@@ -389,7 +389,7 @@ class StatusPageWorkflowTest extends TestCase
 
         $response = $this->get(route('status-pages.public', ['token' => $token]))
             ->assertOk()
-            ->assertSee('近 30 天檢查成功率')
+            ->assertSee('近 90 天檢查成功率')
             ->assertSee('66.67%')
             ->assertSee('50.00%')
             ->assertSee('100.00%')
@@ -403,6 +403,45 @@ class StatusPageWorkflowTest extends TestCase
         $this->assertSame(66.67, $publicHistory['success_rate']);
         $this->assertSame(2, $publicHistory['successful_checks']);
         $this->assertSame(3, $publicHistory['total_checks']);
+    }
+
+    public function test_public_page_includes_ninety_days_of_daily_check_history(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        $monitor = Monitor::factory()->create(['public_status' => true]);
+        $snapshot = $this->configSnapshot(null);
+        $firstIncludedRun = Carbon::parse('2026-08-24 00:10:00', 'Asia/Taipei')->utc();
+        $olderRun = Carbon::parse('2026-08-23 23:59:00', 'Asia/Taipei')->utc();
+
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'scheduled_at' => $firstIncludedRun,
+            'finished_at' => $firstIncludedRun,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'scheduled_at' => $olderRun,
+            'finished_at' => $olderRun,
+        ]);
+        $token = Str::random(64);
+        StatusPage::factory()->create([
+            'setting_key' => 'default',
+            'public_token' => $token,
+            'public_token_hash' => hash('sha256', $token),
+            'is_published' => true,
+        ]);
+
+        $response = $this->get(route('status-pages.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('近 90 天每日檢查狀態')
+            ->assertSee('2026-08-24')
+            ->assertDontSee('2026-08-23');
+        $publicHistory = $response->viewData('monitors')->sole()->getAttribute('public_history');
+
+        $this->assertCount(90, $publicHistory['days']);
+        $this->assertSame('2026-08-24', $publicHistory['days'][0]['date']);
+        $this->assertSame('2026-11-21', $publicHistory['days'][89]['date']);
+        $this->assertSame(1, $publicHistory['total_checks']);
     }
 
     public function test_public_page_marks_history_unknown_when_no_scheduled_checks_have_ended(): void
@@ -422,7 +461,7 @@ class StatusPageWorkflowTest extends TestCase
 
         $response = $this->get(route('status-pages.public', ['token' => $token]))
             ->assertOk()
-            ->assertSee('近 30 天檢查成功率')
+            ->assertSee('近 90 天檢查成功率')
             ->assertSee('無檢查資料')
             ->assertSee('查看每日檢查明細');
 
@@ -430,8 +469,8 @@ class StatusPageWorkflowTest extends TestCase
 
         $this->assertNull($publicHistory['success_rate']);
         $this->assertSame(0, $publicHistory['total_checks']);
-        $this->assertCount(30, $publicHistory['days']);
-        $this->assertSame(30, collect($publicHistory['days'])->where('state', 'unknown')->count());
+        $this->assertCount(90, $publicHistory['days']);
+        $this->assertSame(90, collect($publicHistory['days'])->where('state', 'unknown')->count());
     }
 
     public function test_public_page_shows_time_weighted_availability_and_coverage_without_private_monitor_data(): void
@@ -447,9 +486,17 @@ class StatusPageWorkflowTest extends TestCase
             'interval_seconds' => 3600,
         ]);
         $snapshot = $this->configSnapshot(null, 3600);
+        $olderFailureFinishedAt = now()->subDays(60);
         $firstFinishedAt = now()->subHours(2);
         $secondFinishedAt = now()->subHour();
 
+        CheckRun::factory()->for($monitor)->create([
+            'config_snapshot' => $snapshot,
+            'source' => 'scheduled',
+            'scheduled_at' => $olderFailureFinishedAt,
+            'finished_at' => $olderFailureFinishedAt,
+            'normal_status' => 503,
+        ]);
         CheckRun::factory()->for($monitor)->create([
             'config_snapshot' => $snapshot,
             'source' => 'scheduled',
@@ -484,21 +531,21 @@ class StatusPageWorkflowTest extends TestCase
 
         $response = $this->get(route('status-pages.public', ['token' => $token]))
             ->assertOk()
-            ->assertSee('近 30 天估算時間可用率')
-            ->assertSee('50.00%')
-            ->assertSee('0.28%')
-            ->assertSee('120.0 / 43,200.0 分鐘')
+            ->assertSee('近 90 天估算時間可用率')
+            ->assertSee('33.33%')
+            ->assertSee('0.14%')
+            ->assertSee('180.0 / 129,600.0 分鐘')
             ->assertDontSee('private.example')
             ->assertDontSee('Sensitive campaign phrase');
 
         $publicHistory = $response->viewData('monitors')->sole()->getAttribute('public_history');
         $availability = $publicHistory['availability'];
 
-        $this->assertSame(50.0, $availability['availability_rate']);
-        $this->assertSame(0.28, $availability['coverage_rate']);
+        $this->assertSame(33.33, $availability['availability_rate']);
+        $this->assertSame(0.14, $availability['coverage_rate']);
         $this->assertSame(60.0, $availability['up_minutes']);
-        $this->assertSame(120.0, $availability['observed_minutes']);
-        $this->assertSame(43200.0, $availability['eligible_minutes']);
+        $this->assertSame(180.0, $availability['observed_minutes']);
+        $this->assertSame(129600.0, $availability['eligible_minutes']);
     }
 
     public function test_public_page_shows_current_and_recent_incidents_without_exposing_private_details(): void
@@ -554,7 +601,7 @@ class StatusPageWorkflowTest extends TestCase
 
         $response = $this->get(route('status-pages.public', ['token' => $token]))
             ->assertOk()
-            ->assertSee('事件狀態時間')
+            ->assertSee('開始時間')
             ->assertSee('近期事件')
             ->assertSee('進行中')
             ->assertSee('已恢復')

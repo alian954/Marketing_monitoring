@@ -18,6 +18,7 @@ class PruneMonitoringDataTest extends TestCase
 
     public function test_prune_removes_expired_finished_runs_and_keeps_active_runs_and_incident_history(): void
     {
+        Config::set('monitoring.retention_days', 30);
         $monitor = Monitor::factory()->create();
         $oldRun = CheckRun::factory()->for($monitor)->create([
             'scheduled_at' => now()->subDays(31),
@@ -81,6 +82,7 @@ class PruneMonitoringDataTest extends TestCase
 
     public function test_prune_removes_expired_robots_observations_but_keeps_recent_observations(): void
     {
+        Config::set('monitoring.retention_days', 30);
         $monitor = Monitor::factory()->create();
         $expiredObservation = RobotsObservation::factory()->for($monitor)->create([
             'observed_on' => today()->subDays(31),

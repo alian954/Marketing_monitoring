@@ -24,7 +24,9 @@ class StatusPageController extends Controller
 {
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
-    private const HISTORY_DAYS = 30;
+    private const PUBLIC_HISTORY_DAYS = 90;
+
+    private const INCIDENT_HISTORY_DAYS = 30;
 
     private const MAINTENANCE_LOOKAHEAD_DAYS = 30;
 
@@ -271,7 +273,7 @@ class StatusPageController extends Controller
             ->where('state', Incident::STATE_RESOLVED)
             ->whereNotNull('opened_at')
             ->whereNotNull('resolved_at')
-            ->where('resolved_at', '>=', now()->subDays(self::HISTORY_DAYS)->utc())
+            ->where('resolved_at', '>=', now()->subDays(self::INCIDENT_HISTORY_DAYS)->utc())
             ->where('resolved_at', '<=', now()->utc())
             ->where(function (Builder $query): void {
                 $query->whereNull('classification')
@@ -303,15 +305,15 @@ class StatusPageController extends Controller
     private function attachPublicHistory(EloquentCollection $monitors, CarbonImmutable $asOf): void
     {
         $today = $asOf->timezone(self::HISTORY_TIMEZONE)->startOfDay();
-        $firstDay = $today->copy()->subDays(self::HISTORY_DAYS - 1);
-        $availabilityStartsAt = $asOf->copy()->subDays(self::HISTORY_DAYS);
+        $firstDay = $today->copy()->subDays(self::PUBLIC_HISTORY_DAYS - 1);
+        $availabilityStartsAt = $asOf->copy()->subDays(self::PUBLIC_HISTORY_DAYS);
         $availabilityQueryStartsAt = $availabilityStartsAt->copy()->subSeconds(
             Monitor::MAX_INTERVAL_SECONDS + max(0, (int) config('monitoring.stale_grace_seconds')),
         );
         $monitorIds = $monitors->modelKeys();
         $historyDays = [];
 
-        for ($dayOffset = 0; $dayOffset < self::HISTORY_DAYS; $dayOffset++) {
+        for ($dayOffset = 0; $dayOffset < self::PUBLIC_HISTORY_DAYS; $dayOffset++) {
             $day = $firstDay->copy()->addDays($dayOffset);
             $historyDays[] = ['date' => $day->toDateString(), 'display_date' => $day->format('n/j')];
         }
@@ -379,6 +381,11 @@ class StatusPageController extends Controller
                 ->lazy(500),
             (int) config('monitoring.stale_grace_seconds'),
             $asOf,
+            [[
+                'label' => '90 天',
+                'starts_at' => $availabilityStartsAt->getTimestamp(),
+                'ends_at' => $asOf->getTimestamp(),
+            ]],
         );
 
         foreach ($monitors as $monitor) {
@@ -413,7 +420,7 @@ class StatusPageController extends Controller
                 'success_rate' => $totalChecks === 0 ? null : round(($successfulChecks / $totalChecks) * 100, 2),
                 'successful_checks' => $successfulChecks,
                 'total_checks' => $totalChecks,
-                'availability' => collect($availabilityByMonitorId[$monitor->id] ?? [])->firstWhere('label', '30 天'),
+                'availability' => collect($availabilityByMonitorId[$monitor->id] ?? [])->firstWhere('label', '90 天'),
                 'days' => $dailyChecks,
             ]);
         }
