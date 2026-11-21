@@ -1320,8 +1320,9 @@ class MonitorController extends Controller
     public function exportSocialEngagement(Request $request): StreamedResponse
     {
         $platform = $this->socialEngagementPlatformFilter($request);
+        $tagFilter = $this->socialEngagementTagFilter($request);
 
-        return response()->streamDownload(function () use ($platform): void {
+        return response()->streamDownload(function () use ($platform, $tagFilter): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'monitor_name',
@@ -1342,6 +1343,8 @@ class MonitorController extends Controller
             if ($platform !== null) {
                 $monitorsQuery->where('social_platform', $platform);
             }
+
+            $this->applySocialEngagementTagFilter($monitorsQuery, $tagFilter);
 
             $monitorsQuery
                 ->with('latestPublicEngagementCheckRun')
@@ -1402,6 +1405,7 @@ class MonitorController extends Controller
     private function streamSocialEngagementHistory(Request $request, ?Monitor $monitor = null): StreamedResponse
     {
         $platform = $monitor?->social_platform ?? $this->socialEngagementPlatformFilter($request);
+        $tagFilter = $this->socialEngagementTagFilter($request);
         $periodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
         $asOf = now()->toImmutable();
         $startsAt = $asOf->subDays($periodDays);
@@ -1409,7 +1413,7 @@ class MonitorController extends Controller
             ? 'social-engagement-history-'.$periodDays.'-days-'.now()->format('Y-m-d').'.csv'
             : 'social-engagement-history-monitor-'.$monitor->id.'-'.$periodDays.'-days-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($asOf, $startsAt, $platform, $monitor): void {
+        return response()->streamDownload(function () use ($asOf, $startsAt, $platform, $monitor, $tagFilter): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'check_run_id',
@@ -1433,7 +1437,7 @@ class MonitorController extends Controller
                 ->whereBetween('finished_at', [$startsAt, $asOf])
                 ->whereNotNull('response_public_engagement_metrics')
                 ->whereNotIn('source', ['tls_daily', 'domain_daily'])
-                ->whereHas('monitor', static function (Builder $query) use ($platform, $monitor): void {
+                ->whereHas('monitor', function (Builder $query) use ($platform, $monitor, $tagFilter): void {
                     $query->whereNotNull('social_platform')
                         ->whereColumn('check_runs.config_version', 'monitors.config_version');
 
@@ -1444,6 +1448,8 @@ class MonitorController extends Controller
                     if ($monitor !== null) {
                         $query->whereKey($monitor->getKey());
                     }
+
+                    $this->applySocialEngagementTagFilter($query, $tagFilter);
                 })
                 ->with('monitor')
                 ->orderBy('id')
@@ -1522,6 +1528,43 @@ class MonitorController extends Controller
         return is_string($platform) && in_array($platform, self::SOCIAL_ENGAGEMENT_PLATFORMS, true)
             ? $platform
             : null;
+    }
+
+    /** @return array{tag: string|null, untagged: bool} */
+    private function socialEngagementTagFilter(Request $request): array
+    {
+        $tagToken = $request->query('engagement_tag');
+
+        if ($tagToken === 'unlabeled') {
+            return ['tag' => null, 'untagged' => true];
+        }
+
+        if (is_string($tagToken) && str_starts_with($tagToken, 'tag:')) {
+            $tag = substr($tagToken, 4);
+
+            if ($tag !== '' && mb_strlen($tag) <= 100) {
+                return ['tag' => $tag, 'untagged' => false];
+            }
+        }
+
+        return ['tag' => null, 'untagged' => false];
+    }
+
+    /** @param array{tag: string|null, untagged: bool} $tagFilter */
+    private function applySocialEngagementTagFilter(Builder $query, array $tagFilter): void
+    {
+        if ($tagFilter['tag'] !== null) {
+            $query->where(function (Builder $tagQuery) use ($tagFilter): void {
+                $tagQuery->whereJsonContains('tags', $tagFilter['tag'])
+                    ->orWhere('label', $tagFilter['tag']);
+            });
+
+            return;
+        }
+
+        if ($tagFilter['untagged']) {
+            $query->whereNull('label');
+        }
     }
 
     public function exportAvailability(Monitor $monitor): StreamedResponse

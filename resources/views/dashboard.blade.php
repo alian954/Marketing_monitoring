@@ -107,8 +107,8 @@
                 <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；依最近檢查時間排序，每頁 50 篇。</p>
             </div>
             <div class="row-actions">
-                <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
-                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_period' => $socialEngagementChangePeriodDays]) }}">{{ $socialEngagementChangePeriodDays }} 天歷史 CSV <span aria-hidden="true">↓</span></a>
+                <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
+                <a class="strong-link" href="{{ route('monitors.social-engagement.export.history', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays]) }}">{{ $socialEngagementChangePeriodDays }} 天歷史 CSV <span aria-hidden="true">↓</span></a>
             </div>
         </div>
         <div class="panel-body">
@@ -122,12 +122,20 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="field-group">
+                        <label class="field-label" for="dashboard-engagement-tag">活動標籤</label>
+                        <select class="field-select" id="dashboard-engagement-tag" name="engagement_tag">
+                            @foreach ($socialEngagementTagFilterOptions as $tag => $tagLabel)
+                                <option value="{{ $tag }}" @selected($socialEngagementSelectedTag === $tag)>{{ $tagLabel }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <input type="hidden" name="engagement_period" value="{{ $socialEngagementChangePeriodDays }}">
                     <input type="hidden" name="engagement_tag_sort" value="{{ $socialEngagementTagSort }}">
                     <div class="check-history-filter-actions">
                         <button class="button button-secondary" type="submit">套用</button>
                     </div>
-                    <p class="field-help">套用於互動清單、標籤彙總、期間變化與 CSV；平台健康狀態不受影響。</p>
+                    <p class="field-help">平台與標籤篩選會同步更新貼文清單、成效彙總及 CSV。</p>
                 </form>
             </search>
         </div>
@@ -206,7 +214,7 @@
                     @foreach ($socialEngagementTagSortOptions as $sort => $sortLabel)
                         <a
                             class="button button-small {{ $socialEngagementTagSort === $sort ? 'button-primary' : 'button-secondary' }}"
-                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort]) }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort]) }}"
                             @if ($socialEngagementTagSort === $sort) aria-current="page" @endif
                         >{{ $sortLabel }}</a>
                     @endforeach
@@ -238,7 +246,7 @@
                             <tr>
                                 <th scope="row">
                                     @if ($socialEngagementSummary['filter_label'] !== null)
-                                        <a href="{{ route('monitors.index', ['label' => $socialEngagementSummary['filter_label']]) }}">{{ $socialEngagementSummary['tag'] }}</a>
+                                        <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => 'tag:'.$socialEngagementSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort]) }}">{{ $socialEngagementSummary['tag'] }}</a>
                                     @else
                                         {{ $socialEngagementSummary['tag'] }}
                                     @endif
@@ -292,7 +300,7 @@
                 @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
                     <a
                         class="button button-small {{ $periodDays === $socialEngagementChangePeriodDays ? 'button-primary' : 'button-secondary' }}"
-                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform]) }}"
+                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_tag_sort' => $socialEngagementTagSort]) }}"
                         @if ($periodDays === $socialEngagementChangePeriodDays) aria-current="page" @endif
                     >{{ $periodLabel }}</a>
                 @endforeach

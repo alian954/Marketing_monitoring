@@ -167,11 +167,58 @@ class DashboardController extends Controller
         $socialEngagementPlatform = $socialEngagementSelectedPlatform === 'all'
             ? null
             : $socialEngagementSelectedPlatform;
+        $requestedSocialEngagementTagSort = $request->query('engagement_tag_sort');
+        $socialEngagementTagSort = is_string($requestedSocialEngagementTagSort)
+            && array_key_exists($requestedSocialEngagementTagSort, self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS)
+                ? $requestedSocialEngagementTagSort
+                : 'tag';
+        $allSocialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform, $socialEngagementTagSort);
+        $socialEngagementTagFilterOptions = ['all' => '所有標籤'];
+        $availableSocialEngagementTags = [];
+        $hasUntaggedSocialEngagementPosts = false;
+
+        foreach ($allSocialEngagementSummaries as $summary) {
+            if ($summary['filter_label'] === null) {
+                $hasUntaggedSocialEngagementPosts = true;
+
+                continue;
+            }
+
+            $availableSocialEngagementTags[$summary['filter_label']] = $summary['filter_label'];
+        }
+
+        asort($availableSocialEngagementTags, SORT_NATURAL | SORT_FLAG_CASE);
+
+        foreach ($availableSocialEngagementTags as $tag => $tagLabel) {
+            $socialEngagementTagFilterOptions['tag:'.$tag] = $tagLabel;
+        }
+
+        if ($hasUntaggedSocialEngagementPosts) {
+            $socialEngagementTagFilterOptions['unlabeled'] = '未標籤';
+        }
+
+        $requestedSocialEngagementTag = $request->query('engagement_tag');
+        $socialEngagementSelectedTag = is_string($requestedSocialEngagementTag)
+            && array_key_exists($requestedSocialEngagementTag, $socialEngagementTagFilterOptions)
+                ? $requestedSocialEngagementTag
+                : 'all';
+        $socialEngagementSelectedTagValue = str_starts_with($socialEngagementSelectedTag, 'tag:')
+            ? substr($socialEngagementSelectedTag, 4)
+            : null;
         $socialEngagementMonitorsQuery = Monitor::query()
             ->whereNotNull('social_platform');
 
         if ($socialEngagementPlatform !== null) {
             $socialEngagementMonitorsQuery->where('social_platform', $socialEngagementPlatform);
+        }
+
+        if ($socialEngagementSelectedTagValue !== null) {
+            $socialEngagementMonitorsQuery->where(function (Builder $query) use ($socialEngagementSelectedTagValue): void {
+                $query->whereJsonContains('tags', $socialEngagementSelectedTagValue)
+                    ->orWhere('label', $socialEngagementSelectedTagValue);
+            });
+        } elseif ($socialEngagementSelectedTag === 'unlabeled') {
+            $socialEngagementMonitorsQuery->whereNull('label');
         }
 
         $socialEngagementMonitors = $socialEngagementMonitorsQuery
@@ -217,12 +264,14 @@ class DashboardController extends Controller
 
                 return $monitor;
             });
-        $requestedSocialEngagementTagSort = $request->query('engagement_tag_sort');
-        $socialEngagementTagSort = is_string($requestedSocialEngagementTagSort)
-            && array_key_exists($requestedSocialEngagementTagSort, self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS)
-                ? $requestedSocialEngagementTagSort
-                : 'tag';
-        $socialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform, $socialEngagementTagSort);
+        $socialEngagementSummaries = array_values(array_filter(
+            $allSocialEngagementSummaries,
+            static fn (array $summary): bool => match (true) {
+                $socialEngagementSelectedTag === 'unlabeled' => $summary['filter_label'] === null,
+                $socialEngagementSelectedTagValue !== null => $summary['filter_label'] === $socialEngagementSelectedTagValue,
+                default => true,
+            },
+        ));
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -320,6 +369,8 @@ class DashboardController extends Controller
             'socialEngagementMonitors' => $socialEngagementMonitors,
             'socialEngagementPlatformOptions' => $socialEngagementPlatformOptions,
             'socialEngagementSelectedPlatform' => $socialEngagementSelectedPlatform,
+            'socialEngagementTagFilterOptions' => $socialEngagementTagFilterOptions,
+            'socialEngagementSelectedTag' => $socialEngagementSelectedTag,
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementTagSortOptions' => self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS,
             'socialEngagementTagSort' => $socialEngagementTagSort,

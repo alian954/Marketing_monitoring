@@ -297,7 +297,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('標籤成效比較')
             ->assertSee('跨標籤可能重複計入')
             ->assertSee('觀看互動率＝（讚＋留言＋分享）總和÷觀看總和')
-            ->assertSee(route('monitors.index', ['label' => 'summer']), false)
+            ->assertSee('engagement_tag=tag%3Asummer', false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')
             ->assertSee('(1/2 篇)')
@@ -360,6 +360,98 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ['high rate', 'low rate', 'middle rate', 'unavailable rate'],
             array_column($invalidSortResponse->viewData('socialEngagementSummaries'), 'tag'),
         );
+    }
+
+    public function test_dashboard_tag_filter_scopes_posts_summaries_and_engagement_csv_exports(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Config::set('monitoring.retention_days', 90);
+        $facebookSummerPost = $this->createSocialMonitorForPlatform('facebook', 'TAGFB001', 'summer');
+        $instagramSummerPost = $this->createSocialMonitor('TAGIG001', 'summer');
+        $instagramWinterPost = $this->createSocialMonitor('TAGWINTER001', 'winter');
+        $threadsUntaggedPost = $this->createSocialMonitorForPlatform('threads', 'TAGNONE001');
+
+        foreach ([$facebookSummerPost, $instagramSummerPost, $instagramWinterPost, $threadsUntaggedPost] as $monitor) {
+            $this->createMetricRun($monitor, now()->subDays(2), ['views' => 100, 'likes' => 10, 'comments' => 2, 'shares' => 1, 'source' => 'json_ld']);
+            $this->createMetricRun($monitor, now(), ['views' => 150, 'likes' => 15, 'comments' => 3, 'shares' => 2, 'source' => 'json_ld']);
+        }
+
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:summer',
+                'engagement_period' => 7,
+            ]))
+            ->assertOk()
+            ->assertSee('<option value="tag:summer" selected>summer</option>', false)
+            ->assertSee('engagement_tag=tag%3Asummer', false);
+
+        $this->assertEqualsCanonicalizing(
+            [$facebookSummerPost->id, $instagramSummerPost->id],
+            $response->viewData('socialEngagementMonitors')->getCollection()->modelKeys(),
+        );
+        $this->assertSame(['summer'], array_column($response->viewData('socialEngagementSummaries'), 'tag'));
+        $this->assertSame(2, $response->viewData('socialEngagementSummaries')[0]['monitor_count']);
+
+        $latestRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:summer',
+            ]))
+            ->assertOk()
+            ->streamedContent();
+        $latestRows = $this->csvRows($latestRows);
+        $this->assertCount(2, $latestRows);
+        $this->assertSame(['summer', 'summer'], array_column($latestRows, 'tags'));
+
+        $historyRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.history', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:summer',
+                'engagement_period' => 7,
+            ]))
+            ->assertOk()
+            ->streamedContent();
+        $historyRows = $this->csvRows($historyRows);
+        $this->assertCount(4, $historyRows);
+        $this->assertSame(['summer', 'summer', 'summer', 'summer'], array_column($historyRows, 'tags'));
+
+        $facebookOnlyResponse = $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:summer',
+                'engagement_period' => 7,
+            ]))
+            ->assertOk();
+        $this->assertSame([$facebookSummerPost->id], $facebookOnlyResponse->viewData('socialEngagementMonitors')->getCollection()->modelKeys());
+
+        $untaggedLatestRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export', ['engagement_tag' => 'unlabeled']))
+            ->assertOk()
+            ->streamedContent();
+        $untaggedLatestRows = $this->csvRows($untaggedLatestRows);
+        $this->assertCount(1, $untaggedLatestRows);
+        $this->assertSame('', $untaggedLatestRows[0]['tags']);
+
+        $untaggedHistoryRows = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.history', [
+                'engagement_tag' => 'unlabeled',
+                'engagement_period' => 7,
+            ]))
+            ->assertOk()
+            ->streamedContent();
+        $untaggedHistoryRows = $this->csvRows($untaggedHistoryRows);
+        $this->assertCount(2, $untaggedHistoryRows);
+        $this->assertSame(['', ''], array_column($untaggedHistoryRows, 'tags'));
+
+        $untaggedResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_tag' => 'unlabeled']))
+            ->assertOk()
+            ->assertSee('<option value="unlabeled" selected>未標籤</option>', false);
+
+        $this->assertSame([$threadsUntaggedPost->id], $untaggedResponse->viewData('socialEngagementMonitors')->getCollection()->modelKeys());
+        $this->assertSame(['未標籤'], array_column($untaggedResponse->viewData('socialEngagementSummaries'), 'tag'));
     }
 
     public function test_dashboard_platform_filter_scopes_engagement_data_and_preserves_other_platform_health_counts(): void
