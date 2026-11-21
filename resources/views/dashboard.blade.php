@@ -132,6 +132,7 @@
                     </div>
                     <input type="hidden" name="engagement_period" value="{{ $socialEngagementChangePeriodDays }}">
                     <input type="hidden" name="engagement_tag_sort" value="{{ $socialEngagementTagSort }}">
+                    <input type="hidden" name="engagement_post_sort" value="{{ $socialEngagementTopPostSort }}">
                     <div class="check-history-filter-actions">
                         <button class="button button-secondary" type="submit">套用</button>
                     </div>
@@ -207,8 +208,19 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">依目前篩選列出互動量最高的前五篇；只計讚、留言與分享數完整的貼文。</p>
+                <p class="panel-description">可依總互動或觀看互動率排序前五篇；只計讚、留言與分享完整的貼文，沒有觀看數的貼文在互動率排序中排最後。</p>
             </div>
+            @if ($socialEngagementTopPosts !== [])
+                <nav class="heading-actions" aria-label="互動量排行排序">
+                    @foreach ($socialEngagementTopPostSortOptions as $sort => $sortLabel)
+                        <a
+                            class="button button-small {{ $socialEngagementTopPostSort === $sort ? 'button-primary' : 'button-secondary' }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $sort]) }}"
+                            @if ($socialEngagementTopPostSort === $sort) aria-current="page" @endif
+                        >{{ $sortLabel }}</a>
+                    @endforeach
+                </nav>
+            @endif
         </div>
         @if ($socialEngagementTopPosts === [])
             <div class="empty-state">
@@ -218,7 +230,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="top-engagement-posts-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">依讚、留言與分享總數排序的前五篇社群貼文</caption>
+                    <caption class="sr-only">{{ $socialEngagementTopPostSort === 'engagement_rate' ? '依觀看互動率' : '依讚、留言與分享總數' }}排序的前五篇社群貼文</caption>
                     <thead>
                         <tr>
                             <th scope="col">排名</th>
@@ -273,7 +285,7 @@
                     @foreach ($socialEngagementTagSortOptions as $sort => $sortLabel)
                         <a
                             class="button button-small {{ $socialEngagementTagSort === $sort ? 'button-primary' : 'button-secondary' }}"
-                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort]) }}"
+                            href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $sort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}"
                             @if ($socialEngagementTagSort === $sort) aria-current="page" @endif
                         >{{ $sortLabel }}</a>
                     @endforeach
@@ -306,7 +318,7 @@
                             <tr>
                                 <th scope="row">
                                     @if ($socialEngagementSummary['filter_label'] !== null)
-                                        <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => 'tag:'.$socialEngagementSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort]) }}">{{ $socialEngagementSummary['tag'] }}</a>
+                                        <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => 'tag:'.$socialEngagementSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}">{{ $socialEngagementSummary['tag'] }}</a>
                                     @else
                                         {{ $socialEngagementSummary['tag'] }}
                                     @endif
@@ -379,7 +391,7 @@
                         @foreach ($socialEngagementComparisonSummaries as $comparisonSummary)
                             <tr>
                                 <th scope="row">
-                                    <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $comparisonSummary['filter_label'] === null ? 'unlabeled' : 'tag:'.$comparisonSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort]) }}">{{ $comparisonSummary['tag'] }}</a>
+                                    <a href="{{ route('dashboard', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $comparisonSummary['filter_label'] === null ? 'unlabeled' : 'tag:'.$comparisonSummary['filter_label'], 'engagement_period' => $socialEngagementChangePeriodDays, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}">{{ $comparisonSummary['tag'] }}</a>
                                 </th>
                                 @foreach ($socialEngagementComparisonPlatformOptions as $platform => $platformLabel)
                                     @php
@@ -426,7 +438,7 @@
                 @foreach ($socialEngagementChangePeriodOptions as $periodDays => $periodLabel)
                     <a
                         class="button button-small {{ $periodDays === $socialEngagementChangePeriodDays ? 'button-primary' : 'button-secondary' }}"
-                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_tag_sort' => $socialEngagementTagSort]) }}"
+                        href="{{ route('dashboard', ['engagement_period' => $periodDays, 'engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag, 'engagement_tag_sort' => $socialEngagementTagSort, 'engagement_post_sort' => $socialEngagementTopPostSort]) }}"
                         @if ($periodDays === $socialEngagementChangePeriodDays) aria-current="page" @endif
                     >{{ $periodLabel }}</a>
                 @endforeach

@@ -24,7 +24,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('並列比較 Facebook、Instagram、Threads 與 Dcard 的公開互動數')
             ->assertSee('公開互動數、每篇平均互動與觀看互動率')
             ->assertSee('標籤可依平均互動或觀看互動率排序')
-            ->assertSee('排行榜列出互動總數最高的前五篇')
+            ->assertSee('排行榜前五篇可依總互動或觀看互動率排序')
             ->assertSee('近 7／30／90 天增量及前期同篇變化')
             ->assertSee('首頁圖表顯示每日互動淨變化')
             ->assertSee('貼文清單每頁 50 篇並可分頁')

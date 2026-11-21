@@ -44,6 +44,12 @@ class DashboardController extends Controller
         'engagement_rate' => '觀看互動率由高到低',
     ];
 
+    /** @var array<string, string> */
+    private const SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS = [
+        'interactions' => '總互動由高到低',
+        'engagement_rate' => '觀看互動率由高到低',
+    ];
+
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
@@ -175,6 +181,11 @@ class DashboardController extends Controller
             && array_key_exists($requestedSocialEngagementTagSort, self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS)
                 ? $requestedSocialEngagementTagSort
                 : 'tag';
+        $requestedSocialEngagementTopPostSort = $request->query('engagement_post_sort');
+        $socialEngagementTopPostSort = is_string($requestedSocialEngagementTopPostSort)
+            && array_key_exists($requestedSocialEngagementTopPostSort, self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS)
+                ? $requestedSocialEngagementTopPostSort
+                : 'interactions';
         $allSocialEngagementSummaries = $this->socialEngagementSummaries($socialEngagementPlatform, $socialEngagementTagSort);
         $socialEngagementTagFilterOptions = ['all' => '所有標籤'];
         $availableSocialEngagementTags = [];
@@ -279,6 +290,7 @@ class DashboardController extends Controller
             $socialEngagementPlatform,
             $socialEngagementSelectedTag,
             $socialEngagementSelectedTagValue,
+            $socialEngagementTopPostSort,
         );
         $socialEngagementComparisonSummaries = array_values(array_filter(
             $socialEngagementDashboardData['summaries'],
@@ -392,6 +404,8 @@ class DashboardController extends Controller
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
+            'socialEngagementTopPostSortOptions' => self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS,
+            'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
             'socialEngagementComparisonPlatformOptions' => [
                 'facebook' => 'Facebook',
                 'instagram' => 'Instagram',
@@ -607,36 +621,59 @@ class DashboardController extends Controller
      *     }>
      * }
      */
-    private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue): array
+    private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue, string $topPostSort): array
     {
         /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}}}> $summaries */
         $summaries = [];
         $topPosts = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
         $platformLabels = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'];
-        $sortTopPosts = static function (array $first, array $second): int {
+        $sortTopPosts = static function (array $first, array $second) use ($topPostSort): int {
+            if ($topPostSort === 'engagement_rate') {
+                $firstRate = $first['engagement_rate_percent'];
+                $secondRate = $second['engagement_rate_percent'];
+
+                if ($firstRate === null && $secondRate !== null) {
+                    return 1;
+                }
+
+                if ($firstRate !== null && $secondRate === null) {
+                    return -1;
+                }
+
+                if ($firstRate !== null && $secondRate !== null) {
+                    $rateComparison = $secondRate <=> $firstRate;
+
+                    if ($rateComparison !== 0) {
+                        return $rateComparison;
+                    }
+                }
+            }
+
             $interactionComparison = $second['interaction_total'] <=> $first['interaction_total'];
 
             if ($interactionComparison !== 0) {
                 return $interactionComparison;
             }
 
-            $firstRate = $first['engagement_rate_percent'];
-            $secondRate = $second['engagement_rate_percent'];
+            if ($topPostSort !== 'engagement_rate') {
+                $firstRate = $first['engagement_rate_percent'];
+                $secondRate = $second['engagement_rate_percent'];
 
-            if ($firstRate === null && $secondRate !== null) {
-                return 1;
-            }
+                if ($firstRate === null && $secondRate !== null) {
+                    return 1;
+                }
 
-            if ($firstRate !== null && $secondRate === null) {
-                return -1;
-            }
+                if ($firstRate !== null && $secondRate === null) {
+                    return -1;
+                }
 
-            if ($firstRate !== null && $secondRate !== null) {
-                $rateComparison = $secondRate <=> $firstRate;
+                if ($firstRate !== null && $secondRate !== null) {
+                    $rateComparison = $secondRate <=> $firstRate;
 
-                if ($rateComparison !== 0) {
-                    return $rateComparison;
+                    if ($rateComparison !== 0) {
+                        return $rateComparison;
+                    }
                 }
             }
 

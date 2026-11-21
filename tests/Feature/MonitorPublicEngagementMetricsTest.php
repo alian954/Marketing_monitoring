@@ -424,11 +424,13 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('dashboard', ['engagement_tag' => 'tag:summer']))
             ->assertOk()
             ->assertSee('互動量排行')
+            ->assertSee('總互動由高到低')
             ->assertSee('10.00%')
             ->assertSee('0.40%');
         $topPosts = $allPlatformsResponse->viewData('socialEngagementTopPosts');
         $firstPageMonitorIds = $allPlatformsResponse->viewData('socialEngagementMonitors')->getCollection()->modelKeys();
 
+        $this->assertSame('interactions', $allPlatformsResponse->viewData('socialEngagementTopPostSort'));
         $this->assertCount(5, $topPosts);
         $this->assertSame([
             $instagramPost->id,
@@ -453,6 +455,62 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertCount(5, $facebookOnlyTopPosts);
         $this->assertSame($facebookPost->id, $facebookOnlyTopPosts[0]['id']);
         $this->assertSame('Facebook', $facebookOnlyTopPosts[0]['platform']);
+    }
+
+    public function test_dashboard_ranks_top_posts_by_view_engagement_rate_with_unavailable_rates_last(): void
+    {
+        $highRatePost = $this->createSocialMonitorForPlatform('instagram', 'RATEHIGH001', 'summer');
+        $mediumRatePost = $this->createSocialMonitorForPlatform('facebook', 'RATEMID001', 'summer');
+        $lowRatePost = $this->createSocialMonitorForPlatform('threads', 'RATELOW001', 'summer');
+        $unavailableRatePost = $this->createSocialMonitorForPlatform('facebook', 'RATENOVIEW001', 'summer');
+        $incompleteInteractionPost = $this->createSocialMonitorForPlatform('facebook', 'RATEINCOMPLETE001', 'summer');
+
+        $this->createMetricRun($highRatePost, now(), ['views' => 100, 'likes' => 15, 'comments' => 3, 'shares' => 2, 'source' => 'json_ld']);
+        $this->createMetricRun($mediumRatePost, now(), ['views' => 1000, 'likes' => 80, 'comments' => 10, 'shares' => 10, 'source' => 'json_ld']);
+        $this->createMetricRun($lowRatePost, now(), ['views' => 10000, 'likes' => 80, 'comments' => 10, 'shares' => 10, 'source' => 'json_ld']);
+        $this->createMetricRun($unavailableRatePost, now(), ['views' => null, 'likes' => 200, 'comments' => 0, 'shares' => 0, 'source' => 'json_ld']);
+        $this->createMetricRun($incompleteInteractionPost, now(), ['views' => 100, 'likes' => 100, 'comments' => null, 'shares' => 0, 'source' => 'json_ld']);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:summer',
+                'engagement_period' => 30,
+                'engagement_post_sort' => 'engagement_rate',
+            ]))
+            ->assertOk()
+            ->assertSee('觀看互動率由高到低')
+            ->assertSee('engagement_post_sort=engagement_rate', false)
+            ->assertSee('name="engagement_post_sort" value="engagement_rate"', false)
+            ->assertSee('engagement_tag=tag%3Asummer', false)
+            ->assertSee('engagement_period=30', false)
+            ->assertSee(htmlspecialchars(route('dashboard', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:summer',
+                'engagement_period' => 30,
+                'engagement_tag_sort' => 'tag',
+                'engagement_post_sort' => 'interactions',
+            ]), ENT_QUOTES), false);
+
+        $topPosts = $response->viewData('socialEngagementTopPosts');
+
+        $this->assertSame([
+            $highRatePost->id,
+            $mediumRatePost->id,
+            $lowRatePost->id,
+            $unavailableRatePost->id,
+        ], array_column($topPosts, 'id'));
+        $this->assertSame([20.0, 10.0, 1.0, null], array_column($topPosts, 'engagement_rate_percent'));
+        $this->assertNotContains($incompleteInteractionPost->id, array_column($topPosts, 'id'));
+    }
+
+    public function test_dashboard_defaults_an_unknown_top_post_sort_to_total_interactions(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_post_sort' => 'unknown']))
+            ->assertOk();
+
+        $this->assertSame('interactions', $response->viewData('socialEngagementTopPostSort'));
     }
 
     public function test_dashboard_compares_engagement_for_the_same_tag_across_platforms(): void
