@@ -701,6 +701,51 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('平台限制或要求登入，文字比對無法判定');
     }
 
+    public function test_social_login_wall_does_not_establish_a_visible_text_baseline_without_expected_text(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/BASELINE123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => null,
+            'alert_on_visible_text_change' => true,
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><title>Instagram</title><meta name="description" content="Log in to see this post"></head><body><main>Log in to see this post</main></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertNull($savedRun->response_visible_text_hash);
+        $this->assertNull($savedRun->response_visible_text_changed);
+        $this->assertTrue($savedRun->usesSocialContentBaseline());
+        $this->assertTrue($savedRun->hasIndeterminateContentMatch());
+        $this->assertFalse($savedRun->passesMonitorChecks());
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'response_content_change',
+        ]);
+    }
+
     public function test_social_security_challenge_page_is_indeterminate_and_does_not_report_missing_post_text(): void
     {
         Queue::fake([RunMonitorCheck::class]);

@@ -258,20 +258,21 @@ class SecureProbeClient implements ProbeClient
                 $expectedTextTermMatches = $matchDetails === null
                     ? null
                     : array_column($matchDetails['terms'], 'matched');
+                $hasExpectedText = $expectedText !== null && $expectedText !== '';
                 $accessGateDetected = $socialPlatform !== null
                     && $response->statusCode !== null
                     && $response->statusCode >= 200
                     && $response->statusCode < 400
-                    && $expectedText !== null
-                    && $expectedText !== ''
-                    && $matchesExpectedText === false
-                    && $expectedTextMode !== ExpectedTextMatcher::MODE_ABSENT
                     && $expectedResponseHeaderFound !== false
+                    && (! $hasExpectedText || ($matchesExpectedText === false && $expectedTextMode !== ExpectedTextMatcher::MODE_ABSENT))
                     && SocialPostAccessGateDetector::detects($socialPlatform, $response->body, $responseMetadata);
 
                 if ($accessGateDetected) {
                     $matchesExpectedText = null;
-                    $expectedTextTermMatches = array_fill(0, count(ExpectedTextMatcher::terms($expectedText)), null);
+                    $expectedTextTermMatches = $hasExpectedText
+                        ? array_fill(0, count(ExpectedTextMatcher::terms((string) $expectedText)), null)
+                        : null;
+                    $responseVisibleTextHash = null;
                 }
 
                 return new ProbeResult(
