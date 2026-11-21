@@ -89,6 +89,33 @@ class MonitorIncidentFilterTest extends TestCase
         $this->assertSame(['search' => 'Campaign', 'label' => '', 'platform' => 'all', 'state' => 'incidents', 'content_match' => 'all', 'http_status' => '', 'signal' => '', 'sort' => 'name'], $response->viewData('filters'));
     }
 
+    public function test_monitor_list_explains_active_incident_reasons_and_ignores_old_configuration_incidents(): void
+    {
+        $monitor = $this->createMonitor(['name' => 'Post with changed preview', 'config_version' => 2]);
+        $monitor->forceFill(['last_checked_at' => now()])->save();
+
+        Incident::factory()->for($monitor)->create([
+            'config_version' => 2,
+            'rule_key' => 'response_content_change',
+            'severity' => 'warning',
+            'state' => Incident::STATE_OPEN,
+        ]);
+        Incident::factory()->for($monitor)->create([
+            'config_version' => 1,
+            'rule_key' => 'http',
+            'severity' => 'critical',
+            'state' => Incident::STATE_OPEN,
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee('Post with changed preview')
+            ->assertSee('警告')
+            ->assertSee('未結束事件：原始回應文字或分享預覽資訊已變更')
+            ->assertDontSee('未結束事件：HTTP 回應異常');
+    }
+
     public function test_monitor_list_rejects_unknown_status_filter(): void
     {
         $this->actingAs(User::factory()->create())

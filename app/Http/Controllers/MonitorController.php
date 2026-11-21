@@ -144,6 +144,12 @@ class MonitorController extends Controller
         $monitors->getCollection()->each(function (Monitor $monitor): void {
             $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
             $monitor->setAttribute('health_state', $monitor->healthState());
+            $activeIncidentReasonLabels = $monitor->activeIncidents
+                ->where('config_version', $monitor->config_version)
+                ->map(static fn (Incident $incident): string => $incident->ruleLabel())
+                ->unique()
+                ->values();
+            $monitor->setAttribute('active_incident_reason_labels', $activeIncidentReasonLabels->all());
         });
 
         $labels = Monitor::query()

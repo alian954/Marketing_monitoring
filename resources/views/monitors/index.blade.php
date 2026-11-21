@@ -306,7 +306,12 @@
                                     @endif
                                 </td>
                                 <td><span class="masked-url">{{ $monitor->masked_url }}</span></td>
-                                <td><x-state-badge :state="$monitor->health_state" /></td>
+                                <td>
+                                    <x-state-badge :state="$monitor->health_state" />
+                                    @if ($monitor->active_incident_reason_labels !== [])
+                                        <span class="secondary-text">未結束事件：{{ implode('、', $monitor->active_incident_reason_labels) }}</span>
+                                    @endif
+                                </td>
                                 <td>
                                     @if ($monitor->last_checked_at)
                                         <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
