@@ -267,13 +267,17 @@ class SecureProbeClient implements ProbeClient
                     ? null
                     : array_column($matchDetails['terms'], 'matched');
                 $hasExpectedText = $expectedText !== null && $expectedText !== '';
-                $accessGateDetected = $socialPlatform !== null
+                $cloudflareBlockDetected = $socialPlatform !== null
+                    && $response->statusCode === 403
+                    && SocialPostAccessGateDetector::detectsCloudflareBlock($response->body, $responseMetadata);
+                $accessGateDetected = $cloudflareBlockDetected
+                    || ($socialPlatform !== null
                     && $response->statusCode !== null
                     && $response->statusCode >= 200
                     && $response->statusCode < 400
                     && $expectedResponseHeaderFound !== false
                     && (! $hasExpectedText || ($matchesExpectedText === false && $expectedTextMode !== ExpectedTextMatcher::MODE_ABSENT))
-                    && SocialPostAccessGateDetector::detects($socialPlatform, $response->body, $responseMetadata);
+                    && SocialPostAccessGateDetector::detects($socialPlatform, $response->body, $responseMetadata));
 
                 if ($accessGateDetected) {
                     $matchesExpectedText = null;
@@ -290,7 +294,11 @@ class SecureProbeClient implements ProbeClient
                     $redirects,
                     $resolvedIps,
                     $accessGateDetected ? 'social_access_required' : null,
-                    $accessGateDetected ? '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。' : null,
+                    $accessGateDetected
+                        ? ($cloudflareBlockDetected
+                            ? '平台回傳 HTTP 403 Cloudflare 防護頁；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。'
+                            : '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。')
+                        : null,
                     $matchesExpectedText,
                     $response->tlsExpiresAt,
                     $monitorHostIps,

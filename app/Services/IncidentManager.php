@@ -36,16 +36,17 @@ class IncidentManager
             $normalProbeSucceeded = $this->probeSucceededForMonitor($lockedMonitor, $normal);
             $hasConfiguredContentExpectation = (is_string($lockedMonitor->expected_text) && trim($lockedMonitor->expected_text) !== '')
                 || $lockedMonitor->usesSocialContentBaseline();
-            $contentCheckUnavailable = in_array($normal->errorType, ['body_too_large', 'social_access_required'], true)
-                && $normalStatusAccepted;
+            $accessRestricted = $normal->errorType === 'social_access_required';
+            $contentCheckUnavailable = $accessRestricted
+                || ($normal->errorType === 'body_too_large' && $normalStatusAccepted);
             $visibleTextBaselineUnavailable = $lockedMonitor->usesSocialContentBaseline()
                 && $normalStatusAccepted
                 && $run->response_visible_text_hash === null;
-            $contentMatchIncomplete = $hasConfiguredContentExpectation
-                && ($contentCheckUnavailable || $visibleTextBaselineUnavailable);
+            $contentMatchIncomplete = $accessRestricted
+                || ($hasConfiguredContentExpectation && ($contentCheckUnavailable || $visibleTextBaselineUnavailable));
             $httpFailure = ($normal->errorType !== null && ! $contentMatchIncomplete)
                 || $normal->statusCode === null
-                || (! $normalStatusAccepted && $normal->statusCode !== 429);
+                || (! $normalStatusAccepted && $normal->statusCode !== 429 && ! $accessRestricted);
             $delay = $this->earlierDelay($delay, $this->recordRule($lockedMonitor, $run, 'http', 'critical', $httpFailure, $normal, true));
 
             if ($normal->statusCode === 429 && ! $normalStatusAccepted) {

@@ -22,13 +22,33 @@ class SocialPostAccessGateDetector
         }
 
         $description = mb_strtolower((string) $metadata['description']);
-        $visibleBody = preg_replace('/<(script|style|template)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;
-        $visibleBody = preg_replace('/<[^>]*>/u', ' ', $visibleBody) ?? $visibleBody;
-        $visibleBody = html_entity_decode($visibleBody, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $visibleBody = mb_strtolower(preg_replace('/\s+/u', ' ', trim($visibleBody)) ?? trim($visibleBody));
+        $visibleBody = self::visibleText($body);
 
         return self::containsAccessRestriction($description)
             && self::containsAccessRestriction($visibleBody);
+    }
+
+    /**
+     * @param  array{title: ?string, description: ?string}  $metadata
+     */
+    public static function detectsCloudflareBlock(string $body, array $metadata): bool
+    {
+        if (! str_contains(mb_strtolower((string) $metadata['title']), 'cloudflare')) {
+            return false;
+        }
+
+        $visibleBody = self::visibleText($body);
+
+        return preg_match('/\b(?:attention required|sorry,?\s+you have been blocked|you are unable to access|one more step|just a moment)\b|cf-error-details|cloudflare ray id|please enable (?:javascript|cookies)/iu', $visibleBody) === 1;
+    }
+
+    private static function visibleText(string $body): string
+    {
+        $visibleBody = preg_replace('/<(script|style|template)\b[^>]*>.*?<\/\1>/is', ' ', $body) ?? $body;
+        $visibleBody = preg_replace('/<[^>]*>/u', ' ', $visibleBody) ?? $visibleBody;
+        $visibleBody = html_entity_decode($visibleBody, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return mb_strtolower(preg_replace('/\s+/u', ' ', trim($visibleBody)) ?? trim($visibleBody));
     }
 
     private static function containsAccessRestriction(string $text): bool

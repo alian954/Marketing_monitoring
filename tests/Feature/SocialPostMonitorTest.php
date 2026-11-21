@@ -701,6 +701,66 @@ class SocialPostMonitorTest extends TestCase
             ->assertSee('平台限制或要求登入，文字比對無法判定');
     }
 
+    public function test_dcard_cloudflare_403_is_reported_as_blocked_probe_without_false_page_down_or_metrics(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.dcard.tw/f/makeup/p/262476944?cid=41eda507-f928-4d63-8285-a03f21820110';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => 'obge 凝露心得分享',
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    403,
+                    null,
+                    '<html><head><title>Attention Required! | Cloudflare</title></head><body><div class="cf-error-details"><h1>Sorry, you have been blocked</h1><p>You are unable to access dcard.tw</p><p>Cloudflare Ray ID: abc123</p></div></body></html>',
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame(403, $savedRun->normal_status);
+        $this->assertSame('social_access_required', $savedRun->error_type);
+        $this->assertSame('Attention Required! | Cloudflare', $savedRun->response_title);
+        $this->assertSame('obge 凝露心得分享', $monitor->expected_text);
+        $this->assertNull($savedRun->expectedTextMatchResult());
+        $this->assertNull($savedRun->response_public_engagement_metrics);
+        $this->assertSame(
+            '平台回傳 HTTP 403 Cloudflare 防護頁；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。',
+            $savedRun->error_detail,
+        );
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('平台回傳 HTTP 403 Cloudflare 防護頁')
+            ->assertSee('這次無法讀取貼文內容或互動數');
+    }
+
     public function test_social_login_wall_does_not_establish_a_visible_text_baseline_without_expected_text(): void
     {
         Queue::fake([RunMonitorCheck::class]);

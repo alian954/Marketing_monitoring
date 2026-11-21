@@ -53,6 +53,30 @@ class SocialPostAccessGateDetectorTest extends TestCase
         }
     }
 
+    public function test_detects_a_cloudflare_block_page_from_its_title_and_visible_challenge_text(): void
+    {
+        $body = '<html><head><title>Attention Required! | Cloudflare</title></head><body><div class="cf-error-details"><h1>Sorry, you have been blocked</h1><p>Cloudflare Ray ID: abc123</p></div></body></html>';
+
+        $this->assertTrue(SocialPostAccessGateDetector::detectsCloudflareBlock($body, [
+            'title' => 'Attention Required! | Cloudflare',
+            'description' => null,
+        ]));
+    }
+
+    public function test_does_not_detect_cloudflare_branding_without_a_visible_block_notice(): void
+    {
+        $body = '<html><head><title>Cloudflare</title></head><body><main>Campaign post</main></body></html>';
+
+        $this->assertFalse(SocialPostAccessGateDetector::detectsCloudflareBlock($body, [
+            'title' => 'Cloudflare',
+            'description' => 'Campaign post',
+        ]));
+        $this->assertFalse(SocialPostAccessGateDetector::detectsCloudflareBlock(
+            '<html><body><main>Sorry, you have been blocked</main></body></html>',
+            ['title' => 'Dcard', 'description' => null],
+        ));
+    }
+
     public function test_does_not_detect_a_login_prompt_when_platform_metadata_or_description_does_not_support_it(): void
     {
         $body = '<html><body>Log in to see this post</body></html>';
