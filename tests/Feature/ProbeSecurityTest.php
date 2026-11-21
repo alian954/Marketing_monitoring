@@ -270,6 +270,45 @@ class ProbeSecurityTest extends TestCase
         $this->assertNull($result->responseVisibleTextHash);
     }
 
+    public function test_secure_probe_returns_normalized_robots_directives_from_final_response(): void
+    {
+        $resolver = new class implements HostResolver
+        {
+            public function resolve(string $hostname): array
+            {
+                return ['93.184.216.34'];
+            }
+        };
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    '<html><head><meta name="robots" content="noindex"></head><body>post</body></html>',
+                    1,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: [
+                        'content-type' => ['text/html; charset=UTF-8'],
+                        'x-robots-tag' => ['googlebot: nofollow'],
+                    ],
+                );
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example/post', [], 'MonitorTest/1.0');
+
+        $this->assertSame([
+            'meta' => ['*' => ['noindex']],
+            'meta_complete' => true,
+            'x_robots_tag' => ['googlebot' => ['nofollow']],
+        ], $result->responseRobotsDirectives);
+    }
+
     public function test_secure_probe_returns_diagnostics_from_the_final_response(): void
     {
         $resolver = new class implements HostResolver

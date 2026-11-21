@@ -86,6 +86,65 @@ class MonitorWorkflowTest extends TestCase
             ->assertSee('查看逐項片段結果');
     }
 
+    public function test_check_run_stores_and_displays_response_robots_directives(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $monitor = Monitor::factory()->create();
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+
+        $this->assertNotNull($run);
+        $directives = [
+            'meta' => ['*' => ['noindex', 'nofollow']],
+            'meta_complete' => true,
+            'x_robots_tag' => [],
+        ];
+        $normal = new ProbeResult(
+            200,
+            31,
+            'https://example.com/landing',
+            [],
+            ['93.184.216.34'],
+            null,
+            null,
+            null,
+            null,
+            responseRobotsDirectives: $directives,
+        );
+        $adsbot = new ProbeResult(200, 29, 'https://example.com/landing', [], ['93.184.216.34'], null, null, null, null);
+        $probe = $this->mock(ProbeClient::class);
+        $probe->shouldReceive('inspect')->twice()->andReturn($normal, $adsbot);
+
+        (new RunMonitorCheck($run->id))->handle(
+            $probe,
+            app(IncidentManager::class),
+            app(RunScheduler::class),
+        );
+
+        $completedRun = $run->fresh();
+
+        $this->assertSame($directives, $completedRun->response_robots_directives);
+        $this->assertTrue($completedRun->hasResponseNoIndexDirective());
+        $this->assertSame([
+            ['source' => 'HTML meta', 'agent' => '全部爬蟲', 'directives' => ['noindex', 'nofollow']],
+        ], $completedRun->responseRobotsDirectiveRows());
+        $socialPreviewRun = new CheckRun([
+            'response_robots_directives' => [
+                'meta' => ['twitterbot' => ['noindex']],
+                'meta_complete' => true,
+                'x_robots_tag' => [],
+            ],
+        ]);
+        $this->assertFalse($socialPreviewRun->hasResponseNoIndexDirective());
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('搜尋索引指令')
+            ->assertSee('HTTP 回應中的搜尋索引指令')
+            ->assertSee('noindex／none 指令')
+            ->assertSee('noindex, nofollow');
+    }
+
     public function test_scheduled_run_persists_two_user_agent_results_once(): void
     {
         Queue::fake([RunMonitorCheck::class]);

@@ -34,7 +34,7 @@ class CurlProbeTransport implements HeaderAwareProbeTransport
         $responseHeaders = [];
         $responseHeaderValueBytes = 0;
         $retryAfterParser = $this->retryAfterParser;
-        $responseHeaderNamesToCapture = ['content-type'];
+        $responseHeaderNamesToCapture = ['content-type', 'x-robots-tag'];
 
         if ($responseHeaderName !== null) {
             $responseHeaderNamesToCapture[] = mb_strtolower($responseHeaderName);

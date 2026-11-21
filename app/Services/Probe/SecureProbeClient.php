@@ -132,9 +132,15 @@ class SecureProbeClient implements ProbeClient
                 && $response->location !== null
                 && trim($response->location) !== '';
             $responseInspection = ! $isRedirectResponse
-                ? ResponseMetadataExtractor::inspect($response->body, $target['url'])
+                ? ResponseMetadataExtractor::inspect(
+                    $response->body,
+                    $target['url'],
+                    $response->responseHeaders,
+                    $response->errorType !== 'body_too_large',
+                )
                 : null;
             $responseMetadata = $responseInspection['metadata'] ?? ['title' => null, 'description' => null, 'image_reference_hash' => null, 'open_graph_type' => null, 'canonical_reference_hash' => null, 'published_at' => null, 'modified_at' => null];
+            $responseRobotsDirectives = $responseInspection['robots_directives'] ?? null;
             $responseVisibleTextHash = $response->errorType === null
                 ? ($responseInspection['visible_text_hash'] ?? null)
                 : null;
@@ -178,6 +184,7 @@ class SecureProbeClient implements ProbeClient
                     responseContentType: $responseContentType,
                     monitorHostCnames: $monitorHostCnames,
                     monitorHostDnsRecords: $monitorHostDnsRecords,
+                    responseRobotsDirectives: $responseRobotsDirectives,
                 );
             }
 
@@ -210,6 +217,7 @@ class SecureProbeClient implements ProbeClient
                     responseContentType: $responseContentType,
                     monitorHostCnames: $monitorHostCnames,
                     monitorHostDnsRecords: $monitorHostDnsRecords,
+                    responseRobotsDirectives: $responseRobotsDirectives,
                 );
             }
 
@@ -238,6 +246,7 @@ class SecureProbeClient implements ProbeClient
                     responseContentType: $responseContentType,
                     monitorHostCnames: $monitorHostCnames,
                     monitorHostDnsRecords: $monitorHostDnsRecords,
+                    responseRobotsDirectives: $responseRobotsDirectives,
                 );
             }
 
@@ -291,6 +300,7 @@ class SecureProbeClient implements ProbeClient
                     $responseBodyBytes,
                     $monitorHostCnames,
                     $monitorHostDnsRecords,
+                    $responseRobotsDirectives,
                 );
             }
 

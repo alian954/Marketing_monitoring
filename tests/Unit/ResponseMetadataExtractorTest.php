@@ -22,6 +22,66 @@ class ResponseMetadataExtractorTest extends TestCase
         $this->assertNotSame($first['visible_text_hash'], $changedText['visible_text_hash']);
     }
 
+    public function test_it_extracts_global_and_agent_specific_robots_directives_from_html_and_headers(): void
+    {
+        $inspection = ResponseMetadataExtractor::inspect(<<<'HTML'
+            <html><head>
+                <meta name="robots" content="noindex, nofollow, max-snippet:50">
+                <meta name="googlebot" content="noimageindex, unsupported-directive">
+            </head><body>Post</body></html>
+            HTML, 'https://landing.example/post', [
+            'content-type' => ['text/html; charset=UTF-8'],
+            'x-robots-tag' => ['nosnippet, max-image-preview:large', 'googlebot: noindex, nofollow'],
+        ]);
+
+        $this->assertSame([
+            'meta' => [
+                '*' => ['max-snippet:50', 'nofollow', 'noindex'],
+                'googlebot' => ['noimageindex'],
+            ],
+            'meta_complete' => true,
+            'x_robots_tag' => [
+                '*' => ['max-image-preview:large', 'nosnippet'],
+                'googlebot' => ['nofollow', 'noindex'],
+            ],
+        ], $inspection['robots_directives']);
+    }
+
+    public function test_it_marks_partial_html_as_incomplete_and_non_html_as_not_applicable(): void
+    {
+        $partial = ResponseMetadataExtractor::inspect(
+            '<html><head><meta name="robots" content="noindex"></head>',
+            responseHeaders: ['content-type' => ['text/html']],
+            bodyComplete: false,
+        );
+        $nonHtml = ResponseMetadataExtractor::inspect(
+            '<html><head><meta name="robots" content="noindex"></head></html>',
+            responseHeaders: ['content-type' => ['image/png']],
+        );
+
+        $this->assertFalse($partial['robots_directives']['meta_complete']);
+        $this->assertSame(['*' => ['noindex']], $partial['robots_directives']['meta']);
+        $this->assertNull($nonHtml['robots_directives']['meta']);
+        $this->assertNull($nonHtml['robots_directives']['meta_complete']);
+    }
+
+    public function test_it_does_not_keep_raw_or_unsupported_robot_directive_values(): void
+    {
+        $inspection = ResponseMetadataExtractor::inspect(<<<'HTML'
+            <html><head>
+                <meta name="robots" content="noindex, secret-private-directive, max-snippet:private-value">
+            </head></html>
+            HTML, responseHeaders: ['x-robots-tag' => ['noindex, private-header-value']]);
+
+        $directivesJson = json_encode($inspection['robots_directives'], JSON_THROW_ON_ERROR);
+
+        $this->assertSame(['*' => ['noindex']], $inspection['robots_directives']['meta']);
+        $this->assertSame(['*' => ['noindex']], $inspection['robots_directives']['x_robots_tag']);
+        $this->assertStringNotContainsString('secret-private-directive', $directivesJson);
+        $this->assertStringNotContainsString('private-value', $directivesJson);
+        $this->assertStringNotContainsString('private-header-value', $directivesJson);
+    }
+
     public function test_it_prefers_open_graph_metadata_and_normalizes_the_values(): void
     {
         $metadata = ResponseMetadataExtractor::extract(<<<'HTML'

@@ -328,6 +328,36 @@
                                 @endif
                             </dd>
                         </div>
+                        <div class="metadata-item field-group-full">
+                            <dt>搜尋索引指令</dt>
+                            <dd>
+                                @php
+                                    $responseRobotsDirectiveRows = $monitor->latestCheckRun->responseRobotsDirectiveRows();
+                                @endphp
+                                @if ($monitor->latestCheckRun->response_robots_directives === null)
+                                    <span class="secondary-text">此回應無法判定索引指令。</span>
+                                @else
+                                    @if ($monitor->latestCheckRun->hasResponseNoIndexDirective())
+                                        <div class="alert alert-warning" role="status">偵測到 noindex／none 指令；受影響的搜尋爬蟲可能不會在搜尋結果中顯示此頁。</div>
+                                    @endif
+                                    @if ($responseRobotsDirectiveRows !== [])
+                                        <ul aria-label="HTTP 回應中的搜尋索引指令">
+                                            @foreach ($responseRobotsDirectiveRows as $directiveRow)
+                                                <li>{{ $directiveRow['source'] }} · {{ $directiveRow['agent'] }}：<code>{{ implode(', ', $directiveRow['directives']) }}</code></li>
+                                            @endforeach
+                                        </ul>
+                                    @elseif ($monitor->latestCheckRun->responseRobotsMetaComplete() === true)
+                                        <span class="secondary-text">未偵測到常見搜尋索引指令。</span>
+                                    @endif
+                                    @if ($monitor->latestCheckRun->responseRobotsMetaComplete() === false)
+                                        <p class="secondary-text">HTML 回應不完整或無法解析，meta 指令可能不完整；HTTP 標頭仍會獨立檢查。</p>
+                                    @elseif ($monitor->latestCheckRun->responseRobotsMetaComplete() === null)
+                                        <p class="secondary-text">此回應未提供可檢查的 HTML meta 指令；HTTP 標頭仍會獨立檢查。</p>
+                                    @endif
+                                @endif
+                                <p class="field-help">來源為 HTTP X-Robots-Tag 與原始 HTML meta robots／爬蟲專屬標籤；此結果不是搜尋引擎收錄狀態，也不代表爬蟲實際造訪。</p>
+                            </dd>
+                        </div>
                         @if ($responseMetadataComparisonAvailable)
                             <div class="metadata-item field-group-full">
                                 <dt>分享預覽變化</dt>

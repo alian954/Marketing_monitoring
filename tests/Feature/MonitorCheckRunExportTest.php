@@ -62,6 +62,11 @@ class MonitorCheckRunExportTest extends TestCase
             'response_canonical_reference_hash' => str_repeat('d', 64),
             'response_published_at' => '2026-11-19 01:02:03',
             'response_modified_at' => '2026-11-19 05:02:03',
+            'response_robots_directives' => [
+                'meta' => ['*' => ['noindex', 'nofollow']],
+                'meta_complete' => true,
+                'x_robots_tag' => ['googlebot' => ['noindex']],
+            ],
             'response_content_type' => '=HYPERLINK("https://evil.example")',
             'response_body_bytes' => 768,
             'tls_expires_at' => '2027-01-01 00:00:00',
@@ -117,6 +122,7 @@ class MonitorCheckRunExportTest extends TestCase
             'response_canonical_reference_present',
             'response_published_at_utc',
             'response_modified_at_utc',
+            'response_robots_directives_json',
             'expected_text_mode',
             'tls_expires_at_utc',
             'final_url',
@@ -148,6 +154,7 @@ class MonitorCheckRunExportTest extends TestCase
         $this->assertSame('1', $row[$columns['response_canonical_reference_present']]);
         $this->assertSame('2026-11-19T01:02:03+00:00', $row[$columns['response_published_at_utc']]);
         $this->assertSame('2026-11-19T05:02:03+00:00', $row[$columns['response_modified_at_utc']]);
+        $this->assertSame(json_encode($run->response_robots_directives, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $row[$columns['response_robots_directives_json']]);
         $this->assertSame('present_any', $row[$columns['expected_text_mode']]);
         $this->assertSame('2027-01-01T00:00:00+00:00', $row[$columns['tls_expires_at_utc']]);
         $this->assertSame('https://private.example/redirected?secret=REDACTED', $row[$columns['final_url']]);
