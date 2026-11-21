@@ -55,6 +55,63 @@ class MonitorAvailabilityTest extends TestCase
         $this->assertSame(2.0, $dailyStat['maintenance_excluded_minutes']);
     }
 
+    public function test_daily_availability_splits_observation_intervals_at_taiwan_midnight(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create(['interval_seconds' => 600]);
+        $this->createScheduledRun($monitor, Carbon::parse('2026-11-20 15:45:00', 'UTC'), 200, intervalSeconds: 600);
+        $this->createScheduledRun($monitor, Carbon::parse('2026-11-20 15:55:00', 'UTC'), 503, intervalSeconds: 600);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('每日估算時間可用率')
+            ->assertSee('66.67%')
+            ->assertSee('資料不足');
+        $dailyAvailability = collect($response->viewData('dailyAvailabilityHistory'));
+        $previousDay = $dailyAvailability->firstWhere('date', '2026-11-20');
+        $currentDay = $dailyAvailability->firstWhere('date', '2026-11-21');
+
+        $this->assertSame('warning', $previousDay['state']);
+        $this->assertSame(66.67, $previousDay['availability_rate']);
+        $this->assertSame(15.0, $previousDay['observed_minutes']);
+        $this->assertSame(10.0, $previousDay['up_minutes']);
+        $this->assertSame(5.0, $previousDay['unavailable_minutes']);
+        $this->assertSame('issue', $currentDay['state']);
+        $this->assertSame(0.0, $currentDay['availability_rate']);
+        $this->assertSame(5.0, $currentDay['unavailable_minutes']);
+    }
+
+    public function test_daily_availability_marks_unobserved_and_low_coverage_days_as_unknown(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-21 12:00:00', 'UTC'));
+        Config::set('monitoring.stale_grace_seconds', 0);
+        $monitor = Monitor::factory()->create(['interval_seconds' => 300]);
+        $this->createScheduledRun($monitor, now()->subMinutes(5), 200);
+        MaintenanceWindow::factory()->for($monitor)->create([
+            'starts_at' => Carbon::parse('2026-11-19 16:00:00', 'UTC'),
+            'ends_at' => Carbon::parse('2026-11-20 16:00:00', 'UTC'),
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('每日估算時間可用率')
+            ->assertSee('資料不足');
+        $dailyAvailability = collect($response->viewData('dailyAvailabilityHistory'));
+        $maintenanceDay = $dailyAvailability->firstWhere('date', '2026-11-20');
+        $lowCoverageDay = $dailyAvailability->firstWhere('date', '2026-11-21');
+
+        $this->assertSame('unknown', $maintenanceDay['state']);
+        $this->assertNull($maintenanceDay['availability_rate']);
+        $this->assertSame(0.0, $maintenanceDay['eligible_minutes']);
+        $this->assertSame(1440.0, $maintenanceDay['maintenance_excluded_minutes']);
+        $this->assertSame('unknown', $lowCoverageDay['state']);
+        $this->assertSame(100.0, $lowCoverageDay['availability_rate']);
+        $this->assertSame(0.42, $lowCoverageDay['coverage_rate']);
+    }
+
     public function test_detail_does_not_count_job_failures_or_stale_gaps_as_available_or_down(): void
     {
         $this->travelTo(Carbon::parse('2026-11-19 12:00:00', 'UTC'));

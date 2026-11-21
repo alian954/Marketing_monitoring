@@ -811,6 +811,14 @@ textarea {
     text-align: left;
 }
 
+.data-table.daily-availability-table {
+    min-width: 960px;
+}
+
+.data-table.daily-availability-table td:nth-child(2) {
+    white-space: nowrap;
+}
+
 .data-table th {
     padding: 12px 17px;
     border-bottom: 1px solid var(--line);

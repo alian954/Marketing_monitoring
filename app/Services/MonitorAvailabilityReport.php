@@ -14,13 +14,15 @@ class MonitorAvailabilityReport
     public function __construct(private readonly MonitorAvailabilityCalculator $calculator) {}
 
     /**
+     * @param  list<array{label: string, starts_at: int, ends_at: int}>|null  $dailyPeriods
      * @return array{
      *     history_runs: Collection<int, CheckRun>,
      *     maintenance_windows: Collection<int, MaintenanceWindow>,
-     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
+     *     statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>,
+     *     daily_statistics: list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      * }
      */
-    public function build(Monitor $monitor, CarbonImmutable $asOf): array
+    public function build(Monitor $monitor, CarbonImmutable $asOf, ?array $dailyPeriods = null): array
     {
         $historyStart = $asOf->copy()->subDays(30);
         $historyQueryStart = $historyStart->copy()->subSeconds(
@@ -45,15 +47,25 @@ class MonitorAvailabilityReport
             })
             ->get();
 
+        $statistics = $this->calculator->calculate(
+            $historyRuns,
+            $maintenanceWindows,
+            $monitor->interval_seconds,
+            (int) config('monitoring.stale_grace_seconds'),
+            $asOf,
+        );
+
         return [
             'history_runs' => $historyRuns,
             'maintenance_windows' => $maintenanceWindows,
-            'statistics' => $this->calculator->calculate(
+            'statistics' => $statistics,
+            'daily_statistics' => $dailyPeriods === null || $dailyPeriods === [] ? [] : $this->calculator->calculate(
                 $historyRuns,
                 $maintenanceWindows,
                 $monitor->interval_seconds,
                 (int) config('monitoring.stale_grace_seconds'),
                 $asOf,
+                $dailyPeriods,
             ),
         ];
     }

@@ -14,6 +14,7 @@ class MonitorAvailabilityCalculator
     /**
      * @param  Collection<int, CheckRun>  $runs
      * @param  Collection<int, MaintenanceWindow>  $maintenanceWindows
+     * @param  list<array{label: string, duration_seconds?: int, starts_at?: int, ends_at?: int}>|null  $periods
      * @return list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      */
     public function calculate(
@@ -22,11 +23,14 @@ class MonitorAvailabilityCalculator
         int $currentIntervalSeconds,
         int $staleGraceSeconds,
         DateTimeImmutable $asOf,
+        ?array $periods = null,
     ): array {
         $asOfTimestamp = $asOf->getTimestamp();
-        $periods = $this->periods();
-        $maintenanceIntervals = $this->maintenanceIntervals($maintenanceWindows, $asOfTimestamp - 2_592_000, $asOfTimestamp);
-        $statistics = $this->newStatistics($periods, $maintenanceIntervals, $asOfTimestamp);
+        $periods = $this->resolvePeriods($periods ?? $this->periods(), $asOfTimestamp);
+        $periodStartsAt = $periods === [] ? $asOfTimestamp : min(array_column($periods, 'starts_at'));
+        $periodEndsAt = $periods === [] ? $asOfTimestamp : max(array_column($periods, 'ends_at'));
+        $maintenanceIntervals = $this->maintenanceIntervals($maintenanceWindows, $periodStartsAt, $periodEndsAt);
+        $statistics = $this->newStatistics($periods, $maintenanceIntervals);
         $orderedRuns = $runs
             ->sortBy(static fn (CheckRun $run): int => $run->finished_at?->getTimestamp() ?? 0)
             ->values();
@@ -69,7 +73,7 @@ class MonitorAvailabilityCalculator
      * @param  EloquentCollection<int, Monitor>  $monitors
      * @param  Collection<int, MaintenanceWindow>  $maintenanceWindows
      * @param  iterable<CheckRun>  $orderedRuns  Runs must be ordered by monitor ID, then finished time.
-     * @param  list<array{label: string, duration_seconds: int}>|null  $periods
+     * @param  list<array{label: string, duration_seconds?: int, starts_at?: int, ends_at?: int}>|null  $periods
      * @return array<int, list<array{label: string, availability_rate: ?float, coverage_rate: ?float, up_minutes: float, unavailable_minutes: float, observed_minutes: float, eligible_minutes: float, maintenance_excluded_minutes: float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>>
      */
     public function calculateForMonitors(
@@ -81,7 +85,7 @@ class MonitorAvailabilityCalculator
         ?array $periods = null,
     ): array {
         $asOfTimestamp = $asOf->getTimestamp();
-        $periods ??= $this->periods();
+        $periods = $this->resolvePeriods($periods ?? $this->periods(), $asOfTimestamp);
         $statisticsByMonitor = [];
         $maintenanceIntervalsByMonitor = [];
         $currentIntervalsByMonitor = [];
@@ -89,9 +93,13 @@ class MonitorAvailabilityCalculator
         foreach ($monitors as $monitor) {
             $monitorId = (int) $monitor->id;
             $monitorWindows = $maintenanceWindows->where('monitor_id', $monitorId);
-            $maintenanceIntervals = $this->maintenanceIntervals($monitorWindows, $asOfTimestamp - 2_592_000, $asOfTimestamp);
+            $maintenanceIntervals = $this->maintenanceIntervals(
+                $monitorWindows,
+                $periods === [] ? $asOfTimestamp : min(array_column($periods, 'starts_at')),
+                $periods === [] ? $asOfTimestamp : max(array_column($periods, 'ends_at')),
+            );
 
-            $statisticsByMonitor[$monitorId] = $this->newStatistics($periods, $maintenanceIntervals, $asOfTimestamp);
+            $statisticsByMonitor[$monitorId] = $this->newStatistics($periods, $maintenanceIntervals);
             $maintenanceIntervalsByMonitor[$monitorId] = $maintenanceIntervals;
             $currentIntervalsByMonitor[$monitorId] = $monitor->interval_seconds;
         }
@@ -150,18 +158,39 @@ class MonitorAvailabilityCalculator
     }
 
     /**
-     * @param  list<array{label: string, duration_seconds: int}>  $periods
+     * @param  list<array{label: string, duration_seconds?: int, starts_at?: int, ends_at?: int}>  $periods
+     * @return list<array{label: string, starts_at: int, ends_at: int}>
+     */
+    private function resolvePeriods(array $periods, int $asOfTimestamp): array
+    {
+        return array_map(static function (array $period) use ($asOfTimestamp): array {
+            $endsAt = min($period['ends_at'] ?? $asOfTimestamp, $asOfTimestamp);
+            $startsAt = min(
+                $period['starts_at'] ?? ($asOfTimestamp - ($period['duration_seconds'] ?? 0)),
+                $endsAt,
+            );
+
+            return [
+                'label' => $period['label'],
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+            ];
+        }, $periods);
+    }
+
+    /**
+     * @param  list<array{label: string, starts_at: int, ends_at: int}>  $periods
      * @param  list<array{starts_at: int, ends_at: int}>  $maintenanceIntervals
      * @return array<string, array{label: string, availability_rate: ?float, coverage_rate: ?float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>
      */
-    private function newStatistics(array $periods, array $maintenanceIntervals, int $asOfTimestamp): array
+    private function newStatistics(array $periods, array $maintenanceIntervals): array
     {
         $statistics = [];
 
         foreach ($periods as $period) {
-            $startsAt = $asOfTimestamp - $period['duration_seconds'];
-            $maintenanceSeconds = $this->overlapSeconds($startsAt, $asOfTimestamp, $maintenanceIntervals);
-            $eligibleSeconds = $period['duration_seconds'] - $maintenanceSeconds;
+            $durationSeconds = $period['ends_at'] - $period['starts_at'];
+            $maintenanceSeconds = $this->overlapSeconds($period['starts_at'], $period['ends_at'], $maintenanceIntervals);
+            $eligibleSeconds = $durationSeconds - $maintenanceSeconds;
             $statistics[$period['label']] = [
                 'label' => $period['label'],
                 'availability_rate' => null,
@@ -179,7 +208,7 @@ class MonitorAvailabilityCalculator
 
     /**
      * @param  array<string, array{label: string, availability_rate: ?float, coverage_rate: ?float, up_seconds: int, observed_seconds: int, eligible_seconds: int, maintenance_excluded_seconds: int, legacy_interval_fallback: bool}>  $statistics
-     * @param  list<array{label: string, duration_seconds: int}>  $periods
+     * @param  list<array{label: string, starts_at: int, ends_at: int}>  $periods
      * @param  list<array{starts_at: int, ends_at: int}>  $maintenanceIntervals
      */
     private function addRunInterval(
@@ -217,16 +246,16 @@ class MonitorAvailabilityCalculator
         $isAvailable = $run->passesMonitorChecks();
 
         foreach ($periods as $period) {
-            $periodStartsAt = $asOfTimestamp - $period['duration_seconds'];
-            $observationStartsAt = max($finishedAt, $periodStartsAt);
+            $observationStartsAt = max($finishedAt, $period['starts_at']);
+            $observedEndsAt = min($observationEndsAt, $period['ends_at']);
 
-            if ($observationEndsAt <= $observationStartsAt) {
+            if ($observedEndsAt <= $observationStartsAt) {
                 continue;
             }
 
             $observedSeconds = $this->secondsExcludingMaintenance(
                 $observationStartsAt,
-                $observationEndsAt,
+                $observedEndsAt,
                 $maintenanceIntervals,
             );
 

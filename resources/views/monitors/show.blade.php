@@ -813,6 +813,62 @@
         </div>
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="daily-availability-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="daily-availability-title" class="panel-title">每日估算時間可用率</h2>
+                <p class="panel-description">依台灣曆日切分排程檢查的實際觀測時間；資料空窗與維護時段不計入。若整日觀測可用率為 100% 但覆蓋率低於 90%，會標示資料不足，避免把少量觀測當成整日正常。</p>
+            </div>
+        </div>
+        <div class="panel-body public-status-history">
+            <ol class="public-status-history-bars" role="list" aria-label="{{ $monitor->name }}近 30 個台灣日期每日估算時間可用率">
+                @foreach ($dailyAvailabilityHistory as $day)
+                    <li>
+                        <span class="public-status-history-bar public-status-history-bar--{{ $day['state'] }}" role="img" aria-label="{{ $day['accessible_label'] }}"></span>
+                    </li>
+                @endforeach
+            </ol>
+            <div class="public-status-history-axis" aria-hidden="true">
+                <span>{{ $dailyAvailabilityHistory[0]['display_date'] }}</span>
+                <span>今天</span>
+            </div>
+            <details class="public-status-history-details">
+                <summary>查看每日估算可用率明細</summary>
+                <div class="data-table-wrap" role="region" aria-label="{{ $monitor->name }}每日估算時間可用率明細" tabindex="0">
+                    <table class="data-table daily-availability-table">
+                        <caption class="sr-only">{{ $monitor->name }}近 30 個台灣日期每日估算時間可用率與資料覆蓋度</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">日期（台灣時間）</th>
+                                <th scope="col">狀態</th>
+                                <th scope="col">估算可用率</th>
+                                <th scope="col">資料覆蓋率</th>
+                                <th scope="col">觀測／非維護分鐘</th>
+                                <th scope="col">可用分鐘</th>
+                                <th scope="col">不可用分鐘</th>
+                                <th scope="col">維護排除分鐘</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($dailyAvailabilityHistory as $day)
+                                <tr>
+                                    <th scope="row"><time datetime="{{ $day['date'] }}">{{ $day['date'] }}</time></th>
+                                    <td>{{ ['healthy' => '正常', 'warning' => '部分不可用', 'issue' => '估算不可用', 'unknown' => '資料不足'][$day['state']] }}</td>
+                                    <td class="numeric">{{ $day['availability_rate'] === null ? '—' : number_format($day['availability_rate'], 2).'%' }}</td>
+                                    <td class="numeric">{{ $day['coverage_rate'] === null ? '—' : number_format($day['coverage_rate'], 2).'%' }}</td>
+                                    <td class="numeric">{{ number_format($day['observed_minutes'], 1) }} / {{ number_format($day['eligible_minutes'], 1) }}</td>
+                                    <td class="numeric">{{ number_format($day['up_minutes'], 1) }}</td>
+                                    <td class="numeric">{{ number_format($day['unavailable_minutes'], 1) }}</td>
+                                    <td class="numeric">{{ number_format($day['maintenance_excluded_minutes'], 1) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </div>
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="availability-title">
         <div class="panel-header">
             <div>

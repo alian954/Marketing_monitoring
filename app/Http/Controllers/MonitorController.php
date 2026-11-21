@@ -404,10 +404,24 @@ class MonitorController extends Controller
         $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
         $asOf = now();
         $historyStart = $asOf->copy()->subDays(30);
-        $availabilityData = $this->availabilityReport->build($monitor, $asOf->toImmutable());
+        $dailyHistoryToday = $asOf->copy()->timezone(self::HISTORY_TIMEZONE)->startOfDay();
+        $dailyHistoryFirstDay = $dailyHistoryToday->copy()->subDays(self::DAILY_HISTORY_DAYS - 1);
+        $dailyAvailabilityPeriods = [];
+
+        for ($dayOffset = 0; $dayOffset < self::DAILY_HISTORY_DAYS; $dayOffset++) {
+            $day = $dailyHistoryFirstDay->copy()->addDays($dayOffset);
+            $dailyAvailabilityPeriods[] = [
+                'label' => $day->toDateString(),
+                'starts_at' => $day->copy()->utc()->getTimestamp(),
+                'ends_at' => min($day->copy()->addDay()->utc()->getTimestamp(), $asOf->getTimestamp()),
+            ];
+        }
+
+        $availabilityData = $this->availabilityReport->build($monitor, $asOf->toImmutable(), $dailyAvailabilityPeriods);
         $historyRuns = $availabilityData['history_runs'];
         $maintenanceWindows = $availabilityData['maintenance_windows'];
         $availabilityStats = $availabilityData['statistics'];
+        $dailyAvailabilityStats = collect($availabilityData['daily_statistics'])->keyBy('label');
         $sloBudget = $this->sloBudgetCalculator->calculate(
             collect($availabilityStats)->firstWhere('label', '30 天'),
             $monitor->slo_target_basis_points,
@@ -432,8 +446,6 @@ class MonitorController extends Controller
             ];
         })->all();
 
-        $dailyHistoryToday = $asOf->copy()->timezone(self::HISTORY_TIMEZONE)->startOfDay();
-        $dailyHistoryFirstDay = $dailyHistoryToday->copy()->subDays(self::DAILY_HISTORY_DAYS - 1);
         $dailyHistoryStartsAt = $dailyHistoryFirstDay->copy()->utc();
         $dailyHistoryCounts = [];
 
@@ -452,10 +464,12 @@ class MonitorController extends Controller
         }
 
         $dailyCheckHistory = [];
+        $dailyAvailabilityHistory = [];
 
         for ($dayOffset = 0; $dayOffset < self::DAILY_HISTORY_DAYS; $dayOffset++) {
             $day = $dailyHistoryFirstDay->copy()->addDays($dayOffset);
-            $counts = $dailyHistoryCounts[$day->toDateString()] ?? ['total_checks' => 0, 'successful_checks' => 0];
+            $date = $day->toDateString();
+            $counts = $dailyHistoryCounts[$date] ?? ['total_checks' => 0, 'successful_checks' => 0];
             $successRate = $counts['total_checks'] === 0
                 ? null
                 : round(($counts['successful_checks'] / $counts['total_checks']) * 100, 2);
@@ -467,12 +481,45 @@ class MonitorController extends Controller
                 : $day->toDateString().' 台灣時間：成功 '.$counts['successful_checks'].'／'.$counts['total_checks'].' 次，成功率 '.number_format($successRate, 2).'%。';
 
             $dailyCheckHistory[] = [
-                'date' => $day->toDateString(),
+                'date' => $date,
                 'display_date' => $day->format('n/j'),
                 ...$counts,
                 'success_rate' => $successRate,
                 'state' => $state,
                 'accessible_label' => $accessibleLabel,
+            ];
+
+            $availability = $dailyAvailabilityStats->get($date);
+            $availabilityRate = $availability['availability_rate'] ?? null;
+            $coverageRate = $availability['coverage_rate'] ?? null;
+            $availabilityState = match (true) {
+                $availabilityRate === null => 'unknown',
+                $availabilityRate <= 0.0 => 'issue',
+                $availabilityRate < 100.0 => 'warning',
+                $coverageRate === null || $coverageRate < 90.0 => 'unknown',
+                default => 'healthy',
+            };
+            $availabilityAccessibleLabel = $availabilityRate === null
+                ? $date.' 台灣時間：沒有可用的時間觀測。'
+                : $date.' 台灣時間：估算可用率 '.number_format($availabilityRate, 2).'%，資料覆蓋率 '
+                    .($coverageRate === null ? '無' : number_format($coverageRate, 2).'%')
+                    .'；觀測 '.number_format($availability['observed_minutes'], 1)
+                    .' 分鐘，可用 '.number_format($availability['up_minutes'], 1)
+                    .' 分鐘，不可用 '.number_format($availability['unavailable_minutes'], 1)
+                    .' 分鐘，維護排除 '.number_format($availability['maintenance_excluded_minutes'], 1).' 分鐘。';
+
+            $dailyAvailabilityHistory[] = [
+                'date' => $date,
+                'display_date' => $day->format('n/j'),
+                'availability_rate' => $availabilityRate,
+                'coverage_rate' => $coverageRate,
+                'up_minutes' => $availability['up_minutes'] ?? 0.0,
+                'unavailable_minutes' => $availability['unavailable_minutes'] ?? 0.0,
+                'observed_minutes' => $availability['observed_minutes'] ?? 0.0,
+                'eligible_minutes' => $availability['eligible_minutes'] ?? 0.0,
+                'maintenance_excluded_minutes' => $availability['maintenance_excluded_minutes'] ?? 0.0,
+                'state' => $availabilityState,
+                'accessible_label' => $availabilityAccessibleLabel,
             ];
         }
 
@@ -630,6 +677,7 @@ class MonitorController extends Controller
             'incidents',
             'checkSuccessStats',
             'dailyCheckHistory',
+            'dailyAvailabilityHistory',
             'availabilityStats',
             'sloBudget',
             'httpRecoveryStats',
