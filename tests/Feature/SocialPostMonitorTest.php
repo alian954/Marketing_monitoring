@@ -740,6 +740,15 @@ class SocialPostMonitorTest extends TestCase
         $this->assertTrue($savedRun->usesSocialContentBaseline());
         $this->assertTrue($savedRun->hasIndeterminateContentMatch());
         $this->assertFalse($savedRun->passesMonitorChecks());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+        ]);
         $this->assertDatabaseMissing('incidents', [
             'monitor_id' => $monitor->id,
             'rule_key' => 'response_content_change',
@@ -784,6 +793,62 @@ class SocialPostMonitorTest extends TestCase
         $this->assertNull($savedRun->response_visible_text_changed);
         $this->assertTrue($savedRun->usesSocialContentBaseline());
         $this->assertFalse($savedRun->passesMonitorChecks());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+            'severity' => 'critical',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+        ]);
+    }
+
+    public function test_large_social_post_baseline_response_opens_an_incomplete_check_warning(): void
+    {
+        Queue::fake([RunMonitorCheck::class]);
+        $url = 'https://www.instagram.com/p/BASELINELARGE123/';
+        $monitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'expected_text' => null,
+            'alert_on_visible_text_change' => true,
+        ]);
+        $run = app(RunScheduler::class)->enqueue($monitor, 'manual');
+        $this->assertNotNull($run);
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<article>Partial content</article>', 40, 'body_too_large', '回應超過讀取上限。', null);
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        (new RunMonitorCheck($run->id))->handle($probe, app(IncidentManager::class), app(RunScheduler::class));
+
+        $savedRun = $run->fresh();
+        $this->assertNotNull($savedRun);
+        $this->assertSame('completed', $savedRun->status);
+        $this->assertSame(200, $savedRun->normal_status);
+        $this->assertNull($savedRun->error_type);
+        $this->assertNull($savedRun->response_visible_text_hash);
+        $this->assertNull($savedRun->response_visible_text_changed);
+        $this->assertTrue($savedRun->hasIndeterminateContentMatch());
+        $this->assertDatabaseHas('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'probe_incomplete',
+            'severity' => 'warning',
+        ]);
+        $this->assertDatabaseMissing('incidents', [
+            'monitor_id' => $monitor->id,
+            'rule_key' => 'http',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('monitors.show', $monitor))
+            ->assertOk()
+            ->assertSee('文字驗證未完成');
     }
 
     public function test_social_security_challenge_page_is_indeterminate_and_does_not_report_missing_post_text(): void

@@ -34,10 +34,15 @@ class IncidentManager
             $delay = null;
             $normalStatusAccepted = $lockedMonitor->acceptsHttpStatus($normal->statusCode);
             $normalProbeSucceeded = $this->probeSucceededForMonitor($lockedMonitor, $normal);
-            $contentMatchIncomplete = in_array($normal->errorType, ['body_too_large', 'social_access_required'], true)
+            $hasConfiguredContentExpectation = (is_string($lockedMonitor->expected_text) && trim($lockedMonitor->expected_text) !== '')
+                || $lockedMonitor->usesSocialContentBaseline();
+            $contentCheckUnavailable = in_array($normal->errorType, ['body_too_large', 'social_access_required'], true)
+                && $normalStatusAccepted;
+            $visibleTextBaselineUnavailable = $lockedMonitor->usesSocialContentBaseline()
                 && $normalStatusAccepted
-                && is_string($lockedMonitor->expected_text)
-                && $lockedMonitor->expected_text !== '';
+                && $run->response_visible_text_hash === null;
+            $contentMatchIncomplete = $hasConfiguredContentExpectation
+                && ($contentCheckUnavailable || $visibleTextBaselineUnavailable);
             $httpFailure = ($normal->errorType !== null && ! $contentMatchIncomplete)
                 || $normal->statusCode === null
                 || (! $normalStatusAccepted && $normal->statusCode !== 429);

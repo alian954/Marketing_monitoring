@@ -114,7 +114,7 @@ class CheckRun extends Model
 
         if (! in_array($this->error_type, ['body_too_large', 'social_access_required'], true)
             || $this->expectedTextMatchResult() !== null
-            || ! $this->normalStatusIsAccepted($this->configurationSnapshot())) {
+            || ! $this->normalStatusIsAccepted($snapshot)) {
             return false;
         }
 
