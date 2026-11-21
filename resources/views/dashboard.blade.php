@@ -410,7 +410,8 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-change-title" class="panel-title">近 {{ $socialEngagementChangePeriodDays }} 天互動變化</h2>
-                <p class="panel-description">只計有兩次讀值的貼文；前期比較限同時有兩期讀值的貼文，跨標籤可能重複計入。</p>
+                <p class="panel-description">圖表逐篇比較每個可讀取指標與前次數值；兩次都有讀值的讚、留言或分享會分別計入，首筆不計，下降保留。</p>
+                <p class="secondary-text">下表只計有兩次讀值的貼文；前期比較限同時有兩期讀值的貼文。</p>
                 @if (! $socialEngagementChangeComparisonAvailable)
                     <p class="secondary-text">前期比較需保留 {{ $socialEngagementChangePeriodDays * 2 }} 天；目前設定保留 {{ $socialEngagementRetentionDays }} 天。</p>
                 @endif
@@ -431,6 +432,69 @@
                 <p class="empty-copy">貼文累積至少兩次可讀取數值後，這裡會彙總所選期間的變化。</p>
             </div>
         @else
+            <div class="metric-trend-chart">
+                @if ($socialEngagementTrendAvailable)
+                    <figure class="metric-trend-figure">
+                        <svg class="metric-trend-svg" viewBox="0 0 600 196" role="img" aria-labelledby="social-engagement-trend-chart-title social-engagement-trend-chart-description">
+                            <title id="social-engagement-trend-chart-title">近 {{ $socialEngagementChangePeriodDays }} 天依觀測日彙總的互動淨變化</title>
+                            <desc id="social-engagement-trend-chart-description">各指標只在前後兩次均可讀取時比較；正值向上，負值向下，資料不足時略過該指標。</desc>
+                            <line class="metric-trend-grid-line" x1="52" x2="576" y1="31" y2="31" />
+                            <line class="metric-trend-grid-line" x1="52" x2="576" y1="95" y2="95" />
+                            <line class="metric-trend-grid-line" x1="52" x2="576" y1="159" y2="159" />
+                            <text class="metric-trend-axis-label" x="46" y="35" text-anchor="end">+{{ number_format($socialEngagementTrendScale) }}</text>
+                            <text class="metric-trend-axis-label" x="46" y="99" text-anchor="end">0</text>
+                            <text class="metric-trend-axis-label" x="46" y="163" text-anchor="end">−{{ number_format($socialEngagementTrendScale) }}</text>
+                            @foreach ($socialEngagementTrend as $trendPoint)
+                                @if ($trendPoint['change'] !== null)
+                                    <rect
+                                        class="metric-trend-bar {{ $trendPoint['change'] < 0 ? 'metric-trend-bar--negative' : 'metric-trend-bar--positive' }}"
+                                        x="{{ number_format($trendPoint['x'] - $trendPoint['width'] / 2, 2, '.', '') }}"
+                                        y="{{ number_format($trendPoint['y'], 2, '.', '') }}"
+                                        width="{{ number_format($trendPoint['width'], 2, '.', '') }}"
+                                        height="{{ number_format($trendPoint['height'], 2, '.', '') }}"
+                                        rx="2"
+                                    >
+                                        <title>{{ $trendPoint['label'] }}：{{ $trendPoint['change'] > 0 ? '+' : '' }}{{ number_format($trendPoint['change']) }}（{{ number_format($trendPoint['posts']) }} 篇有可比較數據）</title>
+                                    </rect>
+                                @endif
+                                @if ($trendPoint['axis_label'])
+                                    <text class="metric-trend-axis-label" x="{{ number_format($trendPoint['x'], 2, '.', '') }}" y="188" text-anchor="middle">{{ $trendPoint['label'] }}</text>
+                                @endif
+                            @endforeach
+                        </svg>
+                        <figcaption class="metric-trend-caption">互動淨變化為可比較的讚、留言與分享差額；每日納入篇數可能不同，缺資料日不代表 0，間隔期間的變化列在下一個觀測日。</figcaption>
+                    </figure>
+                    <details class="metric-trend-data">
+                        <summary>查看每日數值</summary>
+                        <div class="data-table-wrap" role="region" aria-label="每日社群互動淨變化數值" tabindex="0">
+                            <table class="data-table">
+                                <caption class="sr-only">依所選平台與標籤篩選的每日互動淨變化</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">日期</th>
+                                        <th scope="col">互動淨變化</th>
+                                        <th scope="col">貼文數</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($socialEngagementTrend as $trendPoint)
+                                        <tr>
+                                            <th scope="row">{{ $trendPoint['date'] }}</th>
+                                            <td class="numeric">{{ $trendPoint['change'] === null ? '—' : ($trendPoint['change'] > 0 ? '+' : '').number_format($trendPoint['change']) }}</td>
+                                            <td class="numeric">{{ number_format($trendPoint['posts']) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
+                @else
+                    <div class="empty-state">
+                        <h3 class="empty-title">尚無每日互動增量</h3>
+                        <p class="empty-copy">貼文需至少兩次讀到同一項互動數，才能計算淨變化。</p>
+                    </div>
+                @endif
+            </div>
             <div class="data-table-wrap" role="region" aria-labelledby="tagged-engagement-change-title" tabindex="0">
                 <table class="data-table">
                     <caption class="sr-only">依標籤彙總的社群貼文近 {{ $socialEngagementChangePeriodDays }} 天互動增量、前期比較與資料覆蓋篇數</caption>

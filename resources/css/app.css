@@ -1513,6 +1513,14 @@ a.platform-chip:hover {
     stroke-width: 1;
 }
 
+.metric-trend-bar--positive {
+    fill: var(--teal);
+}
+
+.metric-trend-bar--negative {
+    fill: var(--red);
+}
+
 .metric-trend-caption {
     margin-top: 8px;
     color: var(--muted);

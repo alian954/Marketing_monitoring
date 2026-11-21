@@ -297,13 +297,14 @@ class DashboardController extends Controller
                 ? (int) $requestedSocialEngagementPeriod
                 : (int) array_key_first($socialEngagementChangePeriodOptions);
         $socialEngagementChangeComparisonAvailable = $socialEngagementRetentionDays >= $socialEngagementChangePeriodDays * 2;
-        $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries(
+        $socialEngagementChangeData = $this->socialEngagementChangeSummaries(
             $asOf,
             $socialEngagementSummaries,
             $socialEngagementChangePeriodDays,
             $socialEngagementChangeComparisonAvailable,
             $socialEngagementPlatform,
         );
+        $socialEngagementChangeSummaries = $socialEngagementChangeData['summaries'];
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -399,6 +400,9 @@ class DashboardController extends Controller
             'socialEngagementTagSortOptions' => self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS,
             'socialEngagementTagSort' => $socialEngagementTagSort,
             'socialEngagementChangeSummaries' => $socialEngagementChangeSummaries,
+            'socialEngagementTrend' => $socialEngagementChangeData['trend'],
+            'socialEngagementTrendScale' => $socialEngagementChangeData['trend_scale'],
+            'socialEngagementTrendAvailable' => $socialEngagementChangeData['trend_available'],
             'socialEngagementChangePeriodDays' => $socialEngagementChangePeriodDays,
             'socialEngagementChangePeriodOptions' => $socialEngagementChangePeriodOptions,
             'socialEngagementChangeComparisonAvailable' => $socialEngagementChangeComparisonAvailable,
@@ -732,15 +736,20 @@ class DashboardController extends Controller
 
     /**
      * @param  list<array{tag: string, filter_label: string|null}>  $tagSummaries
-     * @return list<array{
-     *     tag: string,
-     *     filter_label: string|null,
-     *     metrics: array<string, array{
-     *         change: int,
-     *         available: int,
-     *         comparison: array{current_change: int, previous_change: int, difference: int, available: int}
-     *     }>
-     * }>
+     * @return array{
+     *     summaries: list<array{
+     *         tag: string,
+     *         filter_label: string|null,
+     *         metrics: array<string, array{
+     *             change: int,
+     *             available: int,
+     *             comparison: array{current_change: int, previous_change: int, difference: int, available: int}
+     *         }>
+     *     }>,
+     *     trend: list<array{date: string, label: string, change: int|null, posts: int, x: float, y: float, width: float, height: float, axis_label: bool}>,
+     *     trend_scale: int,
+     *     trend_available: bool
+     * }
      */
     private function socialEngagementChangeSummaries(CarbonImmutable $asOf, array $tagSummaries, int $periodDays, bool $includePreviousPeriod, ?string $platform): array
     {
@@ -766,6 +775,8 @@ class DashboardController extends Controller
          * }>>>> $observationsByMonitor
          */
         $observationsByMonitor = [];
+        /** @var array<int, array<string, array<string, array{id: int, finished_at: CarbonImmutable, value: int}>>> $trendObservationsByMonitor */
+        $trendObservationsByMonitor = [];
         $currentPeriodStartsAt = $asOf->subDays($periodDays);
         $observationsStartAt = $includePreviousPeriod
             ? $currentPeriodStartsAt->subDays($periodDays)
@@ -788,7 +799,7 @@ class DashboardController extends Controller
             })
             ->with('monitor:id,social_platform,config_version,tags,label')
             ->lazyById(500)
-            ->each(function (CheckRun $run) use (&$observationsByMonitor, $currentPeriodStartsAt, $includePreviousPeriod): void {
+            ->each(function (CheckRun $run) use (&$observationsByMonitor, &$trendObservationsByMonitor, $changesByTag, $currentPeriodStartsAt, $includePreviousPeriod): void {
                 $monitor = $run->monitor;
                 $metrics = $run->response_public_engagement_metrics ?? [];
                 $tags = $monitor->tagNames();
@@ -796,6 +807,38 @@ class DashboardController extends Controller
                 $period = $includePreviousPeriod && $run->finished_at->lessThan($currentPeriodStartsAt)
                     ? 'previous'
                     : 'current';
+                $matchesSelectedTag = false;
+
+                foreach ($tagEntries as $tag) {
+                    if (isset($changesByTag[$tag ?? "\0untagged"])) {
+                        $matchesSelectedTag = true;
+
+                        break;
+                    }
+                }
+
+                if ($run->finished_at->greaterThanOrEqualTo($currentPeriodStartsAt) && $matchesSelectedTag) {
+                    $date = $run->finished_at->timezone(self::HISTORY_TIMEZONE)->toDateString();
+
+                    foreach (['likes', 'comments', 'shares'] as $metric) {
+                        if (! is_numeric($metrics[$metric] ?? null)) {
+                            continue;
+                        }
+
+                        $sample = [
+                            'id' => (int) $run->id,
+                            'finished_at' => $run->finished_at,
+                            'value' => (int) $metrics[$metric],
+                        ];
+                        $dailyObservation = $trendObservationsByMonitor[$monitor->id][$date][$metric] ?? null;
+
+                        if ($dailyObservation === null
+                            || $sample['finished_at']->greaterThan($dailyObservation['finished_at'])
+                            || ($sample['finished_at']->equalTo($dailyObservation['finished_at']) && $sample['id'] > $dailyObservation['id'])) {
+                            $trendObservationsByMonitor[$monitor->id][$date][$metric] = $sample;
+                        }
+                    }
+                }
 
                 foreach ($tagEntries as $tag) {
                     $tagKey = $tag ?? "\0untagged";
@@ -873,7 +916,81 @@ class DashboardController extends Controller
         $results = array_values($changesByTag);
         usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
-        return $results;
+        $trendChangesByDate = [];
+
+        foreach ($trendObservationsByMonitor as $dailyObservations) {
+            ksort($dailyObservations);
+            $previousMetricValues = array_fill_keys(['likes', 'comments', 'shares'], null);
+
+            foreach ($dailyObservations as $date => $metricObservations) {
+                $dailyChange = 0;
+                $hasMetricComparison = false;
+
+                foreach (['likes', 'comments', 'shares'] as $metric) {
+                    $observation = $metricObservations[$metric] ?? null;
+
+                    if ($observation === null) {
+                        continue;
+                    }
+
+                    if ($previousMetricValues[$metric] !== null) {
+                        $dailyChange += $observation['value'] - $previousMetricValues[$metric];
+                        $hasMetricComparison = true;
+                    }
+
+                    $previousMetricValues[$metric] = $observation['value'];
+                }
+
+                if ($hasMetricComparison) {
+                    $trendChangesByDate[$date]['change'] = ($trendChangesByDate[$date]['change'] ?? 0) + $dailyChange;
+                    $trendChangesByDate[$date]['posts'] = ($trendChangesByDate[$date]['posts'] ?? 0) + 1;
+                }
+            }
+        }
+
+        $firstTrendDay = $currentPeriodStartsAt->timezone(self::HISTORY_TIMEZONE)->startOfDay();
+        $lastTrendDay = $asOf->timezone(self::HISTORY_TIMEZONE)->startOfDay();
+        $trendDates = [];
+
+        for ($day = $firstTrendDay; $day->lessThanOrEqualTo($lastTrendDay); $day = $day->addDay()) {
+            $date = $day->toDateString();
+            $trendDates[] = [
+                'date' => $date,
+                'label' => $day->format('n/j'),
+                'change' => $trendChangesByDate[$date]['change'] ?? null,
+                'posts' => $trendChangesByDate[$date]['posts'] ?? 0,
+            ];
+        }
+
+        $observedChanges = array_values(array_filter(
+            array_column($trendDates, 'change'),
+            static fn (?int $change): bool => $change !== null,
+        ));
+        $trendScale = max([1, ...array_map(static fn (int $change): int => abs($change), $observedChanges)]);
+        $trendDateCount = count($trendDates);
+        $trendPlotStartX = 54.0;
+        $trendPlotWidth = 516.0;
+        $trendBaselineY = 95.0;
+        $trendPlotHeight = 64.0;
+
+        foreach ($trendDates as $index => &$trendDate) {
+            $slotWidth = $trendDateCount > 0 ? $trendPlotWidth / $trendDateCount : $trendPlotWidth;
+            $change = $trendDate['change'];
+            $height = $change === null ? 0.0 : max(1.0, abs($change) / $trendScale * $trendPlotHeight);
+            $trendDate['x'] = round($trendPlotStartX + ($slotWidth * $index) + ($slotWidth / 2), 2);
+            $trendDate['y'] = round($change !== null && $change < 0 ? $trendBaselineY : $trendBaselineY - $height, 2);
+            $trendDate['width'] = round(max(2.0, min(14.0, $slotWidth * 0.68)), 2);
+            $trendDate['height'] = round($height, 2);
+            $trendDate['axis_label'] = in_array($index, [0, intdiv(max(0, $trendDateCount - 1), 2), max(0, $trendDateCount - 1)], true);
+        }
+        unset($trendDate);
+
+        return [
+            'summaries' => $results,
+            'trend' => $trendDates,
+            'trend_scale' => $trendScale,
+            'trend_available' => $observedChanges !== [],
+        ];
     }
 
     /**
