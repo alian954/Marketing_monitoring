@@ -6,6 +6,7 @@ use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
+use App\Models\RobotsObservation;
 use App\Models\StatusPageSubscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -78,6 +79,24 @@ class PruneMonitoringDataTest extends TestCase
         $this->assertDatabaseHas('status_page_subscriptions', ['id' => $confirmed->id]);
     }
 
+    public function test_prune_removes_expired_robots_observations_but_keeps_recent_observations(): void
+    {
+        $monitor = Monitor::factory()->create();
+        $expiredObservation = RobotsObservation::factory()->for($monitor)->create([
+            'observed_on' => today()->subDays(31),
+        ]);
+        $recentObservation = RobotsObservation::factory()->for($monitor)->create([
+            'observed_on' => today()->subDays(29),
+        ]);
+
+        $this->artisan('monitors:prune')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('robots.txt');
+
+        $this->assertDatabaseMissing('robots_observations', ['id' => $expiredObservation->id]);
+        $this->assertDatabaseHas('robots_observations', ['id' => $recentObservation->id]);
+    }
+
     public function test_prune_uses_the_configured_check_history_retention_days(): void
     {
         Config::set('monitoring.retention_days', 90);
@@ -90,10 +109,18 @@ class PruneMonitoringDataTest extends TestCase
             'scheduled_at' => now()->subDays(91),
             'finished_at' => now()->subDays(91),
         ]);
+        $retainedObservation = RobotsObservation::factory()->for($monitor)->create([
+            'observed_on' => today()->subDays(89),
+        ]);
+        $expiredObservation = RobotsObservation::factory()->for($monitor)->create([
+            'observed_on' => today()->subDays(91),
+        ]);
 
         $this->artisan('monitors:prune')->assertExitCode(0);
 
         $this->assertDatabaseHas('check_runs', ['id' => $retainedRun->id]);
         $this->assertDatabaseMissing('check_runs', ['id' => $expiredRun->id]);
+        $this->assertDatabaseHas('robots_observations', ['id' => $retainedObservation->id]);
+        $this->assertDatabaseMissing('robots_observations', ['id' => $expiredObservation->id]);
     }
 }
