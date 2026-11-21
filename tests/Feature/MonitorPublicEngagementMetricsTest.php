@@ -136,11 +136,13 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('標籤成效比較')
-            ->assertSee('跨標籤的數字會重複計入')
+            ->assertSee('跨標籤可能重複計入')
             ->assertSee(route('monitors.index', ['label' => 'summer']), false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')
             ->assertSee('(1/2 篇)')
+            ->assertSee('觀看互動率')
+            ->assertSee('2.73%')
             ->assertSee('未標籤');
 
         $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
@@ -151,6 +153,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(['total' => 30, 'available' => 1], $summaries['summer']['metrics']['likes']);
         $this->assertSame(['total' => 12, 'available' => 2], $summaries['summer']['metrics']['comments']);
         $this->assertSame(['total' => 3, 'available' => 2], $summaries['summer']['metrics']['shares']);
+        $this->assertSame(['interactions' => 41, 'views' => 1500, 'available' => 1], $summaries['summer']['engagement_rate']);
         $this->assertSame(1, $summaries['brand']['monitor_count']);
         $this->assertSame(1, $summaries['未標籤']['monitor_count']);
         $this->assertSame(['total' => 0, 'available' => 0], $summaries['未標籤']['metrics']['views']);
@@ -164,6 +167,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $monitor = $this->createSocialMonitor('CSVPOST001', '=1+1,summer');
         $monitor->forceFill(['name' => '=SUM(1,1)'])->save();
         $monitorWithoutMetrics = $this->createSocialMonitor('CSVPOST002');
+        $monitorWithRate = $this->createSocialMonitor('CSVPOST003');
         $websiteUrl = 'https://example.test/not-a-social-post';
         Monitor::factory()->create([
             'url' => $websiteUrl,
@@ -171,6 +175,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         ]);
         $this->createMetricRun($monitor, now()->subHour(), ['views' => 900, 'likes' => 90, 'comments' => 9, 'shares' => 3, 'source' => 'json_ld']);
         $this->createMetricRun($monitor, now(), ['views' => 0, 'likes' => null, 'comments' => 5, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($monitorWithRate, now(), ['views' => 10, 'likes' => 1, 'comments' => 2, 'shares' => 3, 'source' => 'json_ld']);
 
         $this->get(route('monitors.social-engagement.export'))->assertRedirect(route('login'));
 
@@ -181,7 +186,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-2026-11-22.csv');
         $rows = $this->csvRows($response->streamedContent());
 
-        $this->assertCount(2, $rows);
+        $this->assertCount(3, $rows);
         $this->assertSame("'=SUM(1,1)", $rows[0]['monitor_name']);
         $this->assertSame('Instagram', $rows[0]['platform']);
         $this->assertSame("'=1+1, summer", $rows[0]['tags']);
@@ -189,11 +194,15 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('', $rows[0]['public_likes']);
         $this->assertSame('5', $rows[0]['public_comments']);
         $this->assertSame('1', $rows[0]['public_shares']);
+        $this->assertSame('', $rows[0]['public_engagement_rate_percent']);
         $this->assertSame('json_ld', $rows[0]['metrics_source']);
         $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
         $this->assertSame($monitorWithoutMetrics->name, $rows[1]['monitor_name']);
         $this->assertSame('', $rows[1]['public_views']);
+        $this->assertSame('', $rows[1]['public_engagement_rate_percent']);
         $this->assertSame('', $rows[1]['collected_at_utc']);
+        $this->assertSame($monitorWithRate->name, $rows[2]['monitor_name']);
+        $this->assertSame('60.00', $rows[2]['public_engagement_rate_percent']);
     }
 
     private function createSocialMonitor(string $postId = 'POST123', ?string $label = null): Monitor

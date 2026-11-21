@@ -163,7 +163,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">彙總貼文最近一次可讀取的數值；每篇可有多個標籤，跨標籤的數字會重複計入。</p>
+                <p class="panel-description">觀看互動率＝（讚＋留言＋分享）/觀看，只計資料完整且觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
         </div>
         @if ($socialEngagementSummaries === [])
@@ -182,6 +182,7 @@
                             @foreach (['views' => '觀看', 'likes' => '讚', 'comments' => '留言', 'shares' => '分享'] as $metricLabel)
                                 <th scope="col">{{ $metricLabel }}</th>
                             @endforeach
+                            <th scope="col">觀看互動率</th>
                             <th scope="col">最近資料</th>
                         </tr>
                     </thead>
@@ -205,6 +206,17 @@
                                         <span class="secondary-text">({{ number_format($metricSummary['available']) }}/{{ number_format($socialEngagementSummary['monitor_count']) }} 篇)</span>
                                     </td>
                                 @endforeach
+                                @php
+                                    $engagementRate = $socialEngagementSummary['engagement_rate'];
+                                @endphp
+                                <td class="numeric">
+                                    @if ($engagementRate['views'] > 0)
+                                        {{ number_format($engagementRate['interactions'] / $engagementRate['views'] * 100, 2) }}%
+                                    @else
+                                        —
+                                    @endif
+                                    <span class="secondary-text">({{ number_format($engagementRate['available']) }}/{{ number_format($socialEngagementSummary['monitor_count']) }} 篇)</span>
+                                </td>
                                 <td>
                                     @if ($socialEngagementSummary['latest_at'])
                                         <time class="timestamp" datetime="{{ $socialEngagementSummary['latest_at']->toIso8601String() }}">{{ $socialEngagementSummary['latest_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>

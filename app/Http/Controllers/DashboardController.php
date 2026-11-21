@@ -244,6 +244,7 @@ class DashboardController extends Controller
      *     filter_label: string|null,
      *     monitor_count: int,
      *     metrics: array<string, array{total: int, available: int}>,
+     *     engagement_rate: array{interactions: int, views: int, available: int},
      *     latest_at: CarbonImmutable|null
      * }>
      */
@@ -255,6 +256,7 @@ class DashboardController extends Controller
          *     filter_label: string|null,
          *     monitor_count: int,
          *     metrics: array<string, array{total: int, available: int}>,
+         *     engagement_rate: array{interactions: int, views: int, available: int},
          *     latest_at: CarbonImmutable|null
          * }> $summaries
          */
@@ -285,6 +287,7 @@ class DashboardController extends Controller
                                 'filter_label' => $tag,
                                 'monitor_count' => 0,
                                 'metrics' => array_fill_keys(['views', 'likes', 'comments', 'shares'], ['total' => 0, 'available' => 0]),
+                                'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
                                 'latest_at' => null,
                             ];
                         }
@@ -296,6 +299,16 @@ class DashboardController extends Controller
                                 $summaries[$tagKey]['metrics'][$metric]['total'] += (int) $metrics[$metric];
                                 $summaries[$tagKey]['metrics'][$metric]['available']++;
                             }
+                        }
+
+                        if (is_numeric($metrics['views'] ?? null)
+                            && is_numeric($metrics['likes'] ?? null)
+                            && is_numeric($metrics['comments'] ?? null)
+                            && is_numeric($metrics['shares'] ?? null)
+                            && (int) $metrics['views'] > 0) {
+                            $summaries[$tagKey]['engagement_rate']['views'] += (int) $metrics['views'];
+                            $summaries[$tagKey]['engagement_rate']['interactions'] += (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                            $summaries[$tagKey]['engagement_rate']['available']++;
                         }
 
                         $finishedAt = $engagementRun?->finished_at;

@@ -1282,6 +1282,7 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_engagement_rate_percent',
                 'metrics_source',
                 'collected_at_utc',
             ], ',', '"', '');
@@ -1299,6 +1300,17 @@ class MonitorController extends Controller
                     }
 
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $engagementRate = null;
+
+                    if (is_numeric($metrics['views'] ?? null)
+                        && is_numeric($metrics['likes'] ?? null)
+                        && is_numeric($metrics['comments'] ?? null)
+                        && is_numeric($metrics['shares'] ?? null)
+                        && (int) $metrics['views'] > 0) {
+                        $engagementRate = ((int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'])
+                            / (int) $metrics['views'] * 100;
+                    }
+
                     $fields = [
                         $monitor->name,
                         $monitor->socialPlatform() ?? '',
@@ -1308,6 +1320,7 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
                         (string) ($metrics['source'] ?? ''),
                         $engagementRun?->finished_at?->utc()->toIso8601String() ?? '',
                     ];
