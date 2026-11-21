@@ -171,6 +171,30 @@ class Monitor extends Model
         return self::socialPlatformForUrl($this->url);
     }
 
+    /** @return list<string> */
+    public static function publicEngagementInteractionMetricKeys(?string $platform): array
+    {
+        return $platform === 'dcard'
+            ? ['likes', 'comments']
+            : ['likes', 'comments', 'shares'];
+    }
+
+    /** @param array<string, mixed> $metrics */
+    public static function publicEngagementInteractionTotal(array $metrics, ?string $platform): ?int
+    {
+        $total = 0;
+
+        foreach (self::publicEngagementInteractionMetricKeys($platform) as $metric) {
+            if (! is_numeric($metrics[$metric] ?? null)) {
+                return null;
+            }
+
+            $total += (int) $metrics[$metric];
+        }
+
+        return $total;
+    }
+
     public function socialContentExpectationMissing(): bool
     {
         return $this->socialPlatform() !== null

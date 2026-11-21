@@ -203,7 +203,7 @@
             @if ($socialEngagementMonitors->hasPages())
                 <div class="panel-body pagination-wrap">{{ $socialEngagementMonitors->links('vendor.pagination.monitor') }}</div>
             @endif
-            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。總互動與觀看互動率只在三項互動數完整時計算，觀看為 0 時不計比例。</p>
+            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次資料。互動合計依平台可讀項目計算，Dcard 以讚＋留言計；讀不到的數值不當成 0。觀看為 0 時不計比例。</p>
         @endif
     </section>
 
@@ -211,7 +211,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">可依總互動或觀看互動率排序前五篇；排行會標示數字是本次讀取或前次資料。</p>
+                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示數字是本次讀取或前次資料。Dcard 以讚＋留言計；未限定平台時，排行只納入讚、留言、分享都有數字的貼文。</p>
             </div>
             @if ($socialEngagementTopPosts !== [])
                 <nav class="heading-actions" aria-label="互動量排行排序">
@@ -227,13 +227,13 @@
         </div>
         @if ($socialEngagementTopPosts === [])
             <div class="empty-state">
-                <h3 class="empty-title">尚無完整互動數可排名</h3>
-                <p class="empty-copy">貼文至少要有讚、留言及分享數，才會列入排行。</p>
+                <h3 class="empty-title">尚無符合條件的貼文可排名</h3>
+                <p class="empty-copy">Dcard 需讀到讚與留言；其他平台需讀到讚、留言與分享。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="top-engagement-posts-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $socialEngagementTopPostSort === 'engagement_rate' ? '依觀看互動率' : '依讚、留言與分享總數' }}排序的前五篇社群貼文</caption>
+                    <caption class="sr-only">{{ $socialEngagementTopPostSort === 'engagement_rate' ? '依觀看互動率' : ($socialEngagementSelectedPlatform === 'dcard' ? '依 Dcard 讚與留言合計' : '依讚、留言與分享總數') }}排序的前五篇社群貼文</caption>
                     <thead>
                         <tr>
                             <th scope="col">排名</th>
@@ -244,7 +244,7 @@
                             <th scope="col">讚</th>
                             <th scope="col">留言</th>
                             <th scope="col">分享</th>
-                            <th scope="col">總互動</th>
+                            <th scope="col">{{ $socialEngagementSelectedPlatform === 'dcard' ? '互動合計（讚＋留言）' : '互動合計' }}</th>
                             <th scope="col">觀看互動率</th>
                             <th scope="col">數據新鮮度</th>
                             <th scope="col">資料時間</th>
@@ -260,8 +260,11 @@
                                 <td class="numeric">{{ $topPost['views'] !== null ? number_format($topPost['views']) : '—' }}</td>
                                 <td class="numeric">{{ number_format($topPost['likes']) }}</td>
                                 <td class="numeric">{{ number_format($topPost['comments']) }}</td>
-                                <td class="numeric">{{ number_format($topPost['shares']) }}</td>
-                                <td class="numeric">{{ number_format($topPost['interaction_total']) }}</td>
+                                <td class="numeric">{{ $topPost['shares'] !== null ? number_format($topPost['shares']) : '—' }}</td>
+                                <td class="numeric">
+                                    {{ number_format($topPost['interaction_total']) }}
+                                    <span class="secondary-text">依 {{ $topPost['interaction_scope_label'] }} 計</span>
+                                </td>
                                 <td class="numeric">{{ $topPost['engagement_rate_percent'] !== null ? number_format($topPost['engagement_rate_percent'], 2).'%' : '—' }}</td>
                                 <td>{{ $topPost['metrics_freshness'] }}</td>
                                 <td>
@@ -283,7 +286,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">本次／前次擷取篇數另列。平均互動／篇需有完整互動數；觀看互動率＝完整互動數÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
+                <p class="panel-description">本次／前次擷取篇數另列。篩選 Dcard 時，平均互動以讚＋留言計；未篩選平台時只計讚、留言、分享完整的貼文。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
             @if ($socialEngagementSummaries !== [])
                 <nav class="heading-actions" aria-label="標籤成效排序">
@@ -332,7 +335,7 @@
                                 <td class="numeric">{{ number_format($socialEngagementSummary['monitor_count']) }}</td>
                                 <td class="numeric">
                                     {{ $socialEngagementSummary['average_interactions_per_post'] !== null ? number_format($socialEngagementSummary['average_interactions_per_post'], 1) : '—' }}
-                                    <span class="secondary-text">({{ number_format($socialEngagementSummary['interaction_count']) }} 篇完整數據)</span>
+                                    <span class="secondary-text">({{ number_format($socialEngagementSummary['interaction_count']) }} 篇符合口徑)</span>
                                 </td>
                                 <td class="numeric">
                                     {{ number_format($socialEngagementSummary['capture_counts']['current']) }} 本次
@@ -412,7 +415,7 @@
                                             <strong>{{ number_format($platformSummary['monitor_count']) }} 篇</strong><br>
                                             <span class="secondary-text">本次讀取 {{ number_format($platformSummary['capture_counts']['current']) }} 篇；前次資料 {{ number_format($platformSummary['capture_counts']['previous']) }} 篇</span><br>
                                             <span class="secondary-text">觀看 {{ $platformSummary['metrics']['views']['available'] > 0 ? number_format($platformSummary['metrics']['views']['total']) : '—' }}（{{ number_format($platformSummary['metrics']['views']['available']) }} 篇）</span><br>
-                                            <span class="secondary-text">總互動 {{ $platformSummary['interaction_count'] > 0 ? number_format($platformSummary['interaction_total']) : '—' }}（{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>
+                                            <span class="secondary-text">互動合計 {{ $platformSummary['interaction_count'] > 0 ? number_format($platformSummary['interaction_total']) : '—' }}（{{ $platformSummary['interaction_scope_label'] }}，{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>
                                             <span class="secondary-text">平均互動／篇 {{ $platformSummary['average_interactions_per_post'] !== null ? number_format($platformSummary['average_interactions_per_post'], 1) : '—' }}（{{ number_format($platformSummary['interaction_count']) }} 篇）</span><br>
                                             <span class="secondary-text">觀看互動率
                                                 @if ($platformSummary['engagement_rate']['views'] > 0)

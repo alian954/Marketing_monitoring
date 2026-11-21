@@ -202,6 +202,82 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $response->assertSee('39.1%');
     }
 
+    public function test_dcard_platform_totals_use_public_likes_and_comments_without_shares(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $campaignPost = $this->createSocialMonitor('dcard', '262476944', 'campaign');
+        $metricRun = $this->createMetricRun($campaignPost, '2026-11-20 09:00:00', [
+            'likes' => 28,
+            'comments' => 4,
+            'shares' => null,
+        ]);
+        $metricRun->forceFill([
+            'response_public_engagement_metrics' => [
+                ...$metricRun->response_public_engagement_metrics,
+                'views' => 100,
+            ],
+        ])->save();
+        $user = User::factory()->create();
+
+        $dcardResponse = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_platform' => 'dcard']))
+            ->assertOk()
+            ->assertSee('讚＋留言合計由高到低')
+            ->assertSee('互動合計（讚＋留言）')
+            ->assertSee('依 讚＋留言 計');
+        $dcardTopPosts = $dcardResponse->viewData('socialEngagementTopPosts');
+        $dcardTagSummary = collect($dcardResponse->viewData('socialEngagementSummaries'))->keyBy('tag')['campaign'];
+        $dcardComparison = collect($dcardResponse->viewData('socialEngagementComparisonSummaries'))
+            ->keyBy('tag')['campaign']['platforms']['dcard'];
+        $dcardMonitor = $dcardResponse->viewData('socialEngagementMonitors')->first();
+
+        $this->assertCount(1, $dcardTopPosts);
+        $this->assertSame($campaignPost->id, $dcardTopPosts[0]['id']);
+        $this->assertSame(32, $dcardTopPosts[0]['interaction_total']);
+        $this->assertNull($dcardTopPosts[0]['shares']);
+        $this->assertSame(['likes', 'comments'], $dcardTopPosts[0]['interaction_metric_keys']);
+        $this->assertSame(32.0, $dcardTopPosts[0]['engagement_rate_percent']);
+        $this->assertSame(32, $dcardTagSummary['interaction_total']);
+        $this->assertSame(1, $dcardTagSummary['interaction_count']);
+        $this->assertSame(32.0, $dcardTagSummary['average_interactions_per_post']);
+        $this->assertSame('讚＋留言', $dcardComparison['interaction_scope_label']);
+        $this->assertSame(32, $dcardComparison['interaction_total']);
+        $this->assertSame(1, $dcardComparison['engagement_rate']['available']);
+        $this->assertSame(32, $dcardMonitor->getAttribute('social_engagement_interaction_total'));
+        $this->assertSame(32.0, $dcardMonitor->getAttribute('social_engagement_rate_percent'));
+
+        $allPlatformsResponse = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk();
+        $allPlatformsTagSummary = collect($allPlatformsResponse->viewData('socialEngagementSummaries'))
+            ->keyBy('tag')['campaign'];
+        $allPlatformsComparison = collect($allPlatformsResponse->viewData('socialEngagementComparisonSummaries'))
+            ->keyBy('tag')['campaign']['platforms']['dcard'];
+
+        $this->assertSame([], $allPlatformsResponse->viewData('socialEngagementTopPosts'));
+        $this->assertSame(0, $allPlatformsTagSummary['interaction_count']);
+        $this->assertNull($allPlatformsTagSummary['average_interactions_per_post']);
+        $this->assertSame(32, $allPlatformsComparison['interaction_total']);
+
+        $latestExport = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export', ['engagement_platform' => 'dcard']))
+            ->assertOk();
+        $latestRows = $this->csvRows($latestExport->streamedContent());
+
+        $this->assertSame('32', $latestRows[0]['public_interaction_total']);
+        $this->assertSame('likes+comments', $latestRows[0]['interaction_metric_scope']);
+        $this->assertSame('32.00', $latestRows[0]['public_engagement_rate_percent']);
+
+        $historyExport = $this->actingAs($user)
+            ->get(route('monitors.social-engagement.export.history', ['engagement_platform' => 'dcard', 'engagement_period' => 7]))
+            ->assertOk();
+        $historyRows = $this->csvRows($historyExport->streamedContent());
+
+        $this->assertSame('32', $historyRows[0]['public_interaction_total']);
+        $this->assertSame('likes+comments', $historyRows[0]['interaction_metric_scope']);
+        $this->assertSame('32.00', $historyRows[0]['public_engagement_rate_percent']);
+    }
+
     public function test_growth_rate_is_unavailable_for_zero_baselines_and_negative_for_declining_interactions(): void
     {
         $this->travelTo('2026-11-22 12:00:00');

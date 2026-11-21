@@ -410,7 +410,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('標籤成效比較')
             ->assertSee('本次／前次擷取篇數另列')
             ->assertSee('跨標籤可能重複計入')
-            ->assertSee('觀看互動率＝完整互動數÷觀看數')
+            ->assertSee('觀看互動率＝同口徑互動合計÷觀看數')
             ->assertSee('engagement_tag=tag%3Asummer', false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')

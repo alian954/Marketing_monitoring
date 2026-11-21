@@ -208,6 +208,12 @@ class DashboardController extends Controller
         $socialEngagementPlatform = $socialEngagementSelectedPlatform === 'all'
             ? null
             : $socialEngagementSelectedPlatform;
+        $socialEngagementTopPostSortOptions = self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS;
+
+        if ($socialEngagementPlatform === 'dcard') {
+            $socialEngagementTopPostSortOptions['interactions'] = '讚＋留言合計由高到低';
+        }
+
         $requestedSocialEngagementTagSort = $request->query('engagement_tag_sort');
         $socialEngagementTagSort = is_string($requestedSocialEngagementTagSort)
             && array_key_exists($requestedSocialEngagementTagSort, self::SOCIAL_ENGAGEMENT_TAG_SORT_OPTIONS)
@@ -295,12 +301,10 @@ class DashboardController extends Controller
                 }
 
                 $engagementMetrics = $engagementRun?->response_public_engagement_metrics ?? [];
-                $hasCompleteInteractionCounts = is_numeric($engagementMetrics['likes'] ?? null)
-                    && is_numeric($engagementMetrics['comments'] ?? null)
-                    && is_numeric($engagementMetrics['shares'] ?? null);
-                $interactionTotal = $hasCompleteInteractionCounts
-                    ? (int) $engagementMetrics['likes'] + (int) $engagementMetrics['comments'] + (int) $engagementMetrics['shares']
-                    : null;
+                $interactionTotal = Monitor::publicEngagementInteractionTotal(
+                    $engagementMetrics,
+                    $monitor->social_platform,
+                );
                 $views = $engagementMetrics['views'] ?? null;
                 $engagementRate = $interactionTotal !== null && is_numeric($views) && (int) $views > 0
                     ? round($interactionTotal / (int) $views * 100, 2)
@@ -443,7 +447,7 @@ class DashboardController extends Controller
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
-            'socialEngagementTopPostSortOptions' => self::SOCIAL_ENGAGEMENT_TOP_POST_SORT_OPTIONS,
+            'socialEngagementTopPostSortOptions' => $socialEngagementTopPostSortOptions,
             'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
             'socialEngagementComparisonPlatformOptions' => [
                 'facebook' => 'Facebook',
@@ -601,6 +605,7 @@ class DashboardController extends Controller
      *     interaction_count: int,
      *     average_interactions_per_post: float|null,
      *     engagement_rate: array{interactions: int, views: int, available: int},
+     *     interaction_scope_label: string,
      *     capture_counts: array{current: int, previous: int},
      *     latest_at: CarbonImmutable|null
      * }>
@@ -617,6 +622,7 @@ class DashboardController extends Controller
          *     interaction_count: int,
          *     average_interactions_per_post: float|null,
          *     engagement_rate: array{interactions: int, views: int, available: int},
+         *     interaction_scope_label: string,
          *     capture_counts: array{current: int, previous: int},
          *     latest_at: CarbonImmutable|null
          * }> $summaries
@@ -632,7 +638,7 @@ class DashboardController extends Controller
         $monitorsQuery
             ->select(['id', 'social_platform', 'config_version', 'tags', 'label'])
             ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
-            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries): void {
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, $platform): void {
                 foreach ($monitorBatch as $monitor) {
                     $engagementRun = $monitor->latestPublicEngagementCheckRun;
 
@@ -660,6 +666,7 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
+                                'interaction_scope_label' => $platform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
                                 'capture_counts' => ['current' => 0, 'previous' => 0],
                                 'latest_at' => null,
                             ];
@@ -679,12 +686,9 @@ class DashboardController extends Controller
                             }
                         }
 
-                        $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
-                            && is_numeric($metrics['comments'] ?? null)
-                            && is_numeric($metrics['shares'] ?? null);
+                        $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
 
-                        if ($hasCompleteInteractionCounts) {
-                            $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                        if ($interactionTotal !== null) {
                             $summaries[$tagKey]['interaction_total'] += $interactionTotal;
                             $summaries[$tagKey]['interaction_count']++;
                             $summaries[$tagKey]['average_interactions_per_post'] = round(
@@ -693,13 +697,11 @@ class DashboardController extends Controller
                             );
                         }
 
-                        if (is_numeric($metrics['views'] ?? null)
-                            && is_numeric($metrics['likes'] ?? null)
-                            && is_numeric($metrics['comments'] ?? null)
-                            && is_numeric($metrics['shares'] ?? null)
+                        if ($interactionTotal !== null
+                            && is_numeric($metrics['views'] ?? null)
                             && (int) $metrics['views'] > 0) {
                             $summaries[$tagKey]['engagement_rate']['views'] += (int) $metrics['views'];
-                            $summaries[$tagKey]['engagement_rate']['interactions'] += (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                            $summaries[$tagKey]['engagement_rate']['interactions'] += $interactionTotal;
                             $summaries[$tagKey]['engagement_rate']['available']++;
                         }
 
@@ -779,6 +781,7 @@ class DashboardController extends Controller
      *             interaction_count: int,
      *             average_interactions_per_post: float|null,
      *             engagement_rate: array{interactions: int, views: int, available: int},
+     *             interaction_scope_label: string,
      *             capture_counts: array{current: int, previous: int}
      *         }>
      *     }>,
@@ -790,8 +793,10 @@ class DashboardController extends Controller
      *         views: int|null,
      *         likes: int,
      *         comments: int,
-     *         shares: int,
+     *         shares: int|null,
      *         interaction_total: int,
+     *         interaction_metric_keys: list<string>,
+     *         interaction_scope_label: string,
      *         metrics_freshness: string,
      *         engagement_rate_percent: float|null,
      *         finished_at: CarbonImmutable|null
@@ -800,7 +805,7 @@ class DashboardController extends Controller
      */
     private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue, string $topPostSort): array
     {
-        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, capture_counts: array{current: int, previous: int}}>}> $summaries */
+        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, interaction_scope_label: string, capture_counts: array{current: int, previous: int}}>}> $summaries */
         $summaries = [];
         $topPosts = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
@@ -892,12 +897,10 @@ class DashboardController extends Controller
                         $selectedTagValue !== null => in_array($selectedTagValue, $tags, true),
                         default => true,
                     };
-                    $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
-                        && is_numeric($metrics['comments'] ?? null)
-                        && is_numeric($metrics['shares'] ?? null);
+                    $interactionScopePlatform = $selectedPlatform;
+                    $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $interactionScopePlatform);
 
-                    if ($matchesSelectedPlatform && $matchesSelectedTag && $hasCompleteInteractionCounts) {
-                        $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                    if ($matchesSelectedPlatform && $matchesSelectedTag && $interactionTotal !== null) {
                         $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
                         $finishedAt = $engagementRun?->finished_at?->toImmutable();
 
@@ -909,8 +912,10 @@ class DashboardController extends Controller
                             'views' => $views,
                             'likes' => (int) $metrics['likes'],
                             'comments' => (int) $metrics['comments'],
-                            'shares' => (int) $metrics['shares'],
+                            'shares' => is_numeric($metrics['shares'] ?? null) ? (int) $metrics['shares'] : null,
                             'interaction_total' => $interactionTotal,
+                            'interaction_metric_keys' => Monitor::publicEngagementInteractionMetricKeys($interactionScopePlatform),
+                            'interaction_scope_label' => $interactionScopePlatform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
                             'metrics_freshness' => $captureIsCurrent ? '最新檢查讀取' : '沿用前次數據',
                             'engagement_rate_percent' => $views !== null && $views > 0
                                 ? round($interactionTotal / $views * 100, 2)
@@ -944,6 +949,7 @@ class DashboardController extends Controller
                                 'interaction_count' => 0,
                                 'average_interactions_per_post' => null,
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
+                                'interaction_scope_label' => $platform === 'dcard' ? '讚＋留言' : '讚＋留言＋分享',
                                 'capture_counts' => ['current' => 0, 'previous' => 0],
                             ];
                         }
@@ -963,12 +969,9 @@ class DashboardController extends Controller
                             }
                         }
 
-                        $hasCompleteInteractionCounts = is_numeric($metrics['likes'] ?? null)
-                            && is_numeric($metrics['comments'] ?? null)
-                            && is_numeric($metrics['shares'] ?? null);
+                        $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
 
-                        if ($hasCompleteInteractionCounts) {
-                            $interactionTotal = (int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'];
+                        if ($interactionTotal !== null) {
                             $platformSummary['interaction_total'] += $interactionTotal;
                             $platformSummary['interaction_count']++;
                             $platformSummary['average_interactions_per_post'] = round(

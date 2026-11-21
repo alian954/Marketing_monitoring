@@ -1339,6 +1339,8 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_interaction_total',
+                'interaction_metric_scope',
                 'public_engagement_rate_percent',
                 'metrics_source',
                 'collected_at_utc',
@@ -1369,6 +1371,7 @@ class MonitorController extends Controller
 
                     $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $monitor->social_platform);
                     $metricsCaptureStatus = match (true) {
                         $engagementRun === null => 'unavailable',
                         $latestCheckRun?->id === $engagementRun->id => 'current',
@@ -1376,13 +1379,10 @@ class MonitorController extends Controller
                     };
                     $engagementRate = null;
 
-                    if (is_numeric($metrics['views'] ?? null)
-                        && is_numeric($metrics['likes'] ?? null)
-                        && is_numeric($metrics['comments'] ?? null)
-                        && is_numeric($metrics['shares'] ?? null)
+                    if ($interactionTotal !== null
+                        && is_numeric($metrics['views'] ?? null)
                         && (int) $metrics['views'] > 0) {
-                        $engagementRate = ((int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'])
-                            / (int) $metrics['views'] * 100;
+                        $engagementRate = $interactionTotal / (int) $metrics['views'] * 100;
                     }
 
                     $fields = [
@@ -1394,6 +1394,8 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        $interactionTotal === null ? '' : (string) $interactionTotal,
+                        implode('+', Monitor::publicEngagementInteractionMetricKeys($monitor->social_platform)),
                         $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
                         (string) ($metrics['source'] ?? ''),
                         $engagementRun?->finished_at?->utc()->toIso8601String() ?? '',
@@ -1446,6 +1448,8 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_interaction_total',
+                'interaction_metric_scope',
                 'public_engagement_rate_percent',
                 'metrics_source',
             ], ',', '"', '');
@@ -1477,15 +1481,13 @@ class MonitorController extends Controller
                 ->each(function (CheckRun $run) use ($stream): void {
                     $monitor = $run->monitor;
                     $metrics = $run->response_public_engagement_metrics ?? [];
+                    $interactionTotal = Monitor::publicEngagementInteractionTotal($metrics, $monitor->social_platform);
                     $engagementRate = null;
 
-                    if (is_numeric($metrics['views'] ?? null)
-                        && is_numeric($metrics['likes'] ?? null)
-                        && is_numeric($metrics['comments'] ?? null)
-                        && is_numeric($metrics['shares'] ?? null)
+                    if ($interactionTotal !== null
+                        && is_numeric($metrics['views'] ?? null)
                         && (int) $metrics['views'] > 0) {
-                        $engagementRate = ((int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'])
-                            / (int) $metrics['views'] * 100;
+                        $engagementRate = $interactionTotal / (int) $metrics['views'] * 100;
                     }
 
                     $fields = [
@@ -1499,6 +1501,8 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        $interactionTotal === null ? '' : (string) $interactionTotal,
+                        implode('+', Monitor::publicEngagementInteractionMetricKeys($monitor->social_platform)),
                         $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
                         (string) ($metrics['source'] ?? ''),
                     ];
