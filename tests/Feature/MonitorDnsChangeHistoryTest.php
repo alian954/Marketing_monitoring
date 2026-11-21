@@ -31,6 +31,8 @@ class MonitorDnsChangeHistoryTest extends TestCase
                 'current_ips' => $index === 1 ? [] : ['198.51.100.'.$index],
                 'previous_cnames' => ['old-'.$index.'.example.net'],
                 'current_cnames' => ['new-'.$index.'.example.net'],
+                'previous_records' => [['type' => 'TXT', 'value' => $index === 0 ? '<script>alert(3)</script>' : 'old-record-'.$index]],
+                'current_records' => [['type' => 'MX', 'value' => '10 new-mail-'.$index.'.example.net']],
                 'detected_at' => now()->subMinutes($index),
             ]);
 
@@ -56,6 +58,9 @@ class MonitorDnsChangeHistoryTest extends TestCase
             ->assertSee('主機目前 DNS 回答')
             ->assertSee('198.51.100.0')
             ->assertSee('new-0.example.net')
+            ->assertSee('&lt;script&gt;alert(3)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(3)</script>', false)
+            ->assertSee('10 new-mail-0.example.net')
             ->assertSee('無公開 IP 回答')
             ->assertDontSee('198.51.100.50')
             ->assertDontSee('192.0.2.99')

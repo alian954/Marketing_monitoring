@@ -381,7 +381,7 @@ class MonitorController extends Controller
             ->orderByDesc('detected_at')
             ->orderByDesc('id')
             ->limit(50)
-            ->get(['id', 'monitor_id', 'previous_ips', 'current_ips', 'previous_cnames', 'current_cnames', 'monitor_host_only', 'detected_at']);
+            ->get(['id', 'monitor_id', 'previous_ips', 'current_ips', 'previous_cnames', 'current_cnames', 'previous_records', 'current_records', 'monitor_host_only', 'detected_at']);
         $latestTlsObservation = $monitor->tlsObservations()->latest('observed_on')->first();
         $latestDomainRegistrationObservation = $monitor->domainRegistrationObservations()->latest('observed_on')->first();
         $incidents = $monitor->incidents()->with(['events.checkRun', 'outboxMessages', 'acknowledgedBy:id,name'])->latest('last_seen_at')->limit(50)->get();
@@ -1201,6 +1201,8 @@ class MonitorController extends Controller
                 'current_ips',
                 'previous_cnames',
                 'current_cnames',
+                'previous_records',
+                'current_records',
                 'monitor_host_only',
             ], ',', '"', '');
 
@@ -1216,6 +1218,8 @@ class MonitorController extends Controller
                         $event->currentIpsLabel(),
                         $event->previousCnamesLabel(),
                         $event->currentCnamesLabel(),
+                        $event->previousRecordsLabel(),
+                        $event->currentRecordsLabel(),
                         $event->monitor_host_only ? '1' : '0',
                     ];
 

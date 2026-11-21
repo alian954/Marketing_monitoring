@@ -16,6 +16,7 @@ class DnsChangeRecorder
 
         $currentIps = $this->normalizeIps($run->monitor_host_ips);
         $currentCnames = $this->normalizeCnames($run->monitor_host_cnames);
+        $currentRecords = $this->normalizeRecords($run->monitor_host_dns_records);
 
         if ($run->monitor_host_ips === null || ($currentIps === [] && $run->error_type !== 'dns_nxdomain')) {
             return;
@@ -35,7 +36,7 @@ class DnsChangeRecorder
             ->where('id', '<>', $run->id)
             ->orderByDesc('finished_at')
             ->orderByDesc('id')
-            ->first(['id', 'monitor_host_ips', 'monitor_host_cnames', 'error_type']);
+            ->first(['id', 'monitor_host_ips', 'monitor_host_cnames', 'monitor_host_dns_records', 'error_type']);
 
         if ($previousRun === null || $previousRun->monitor_host_ips === null) {
             return;
@@ -47,8 +48,11 @@ class DnsChangeRecorder
         $cnameAnswerChanged = $previousRun->monitor_host_cnames !== null
             && $run->monitor_host_cnames !== null
             && $previousCnames !== $currentCnames;
+        $dnsRecordsChanged = $previousRun->monitor_host_dns_records !== null
+            && $run->monitor_host_dns_records !== null
+            && $this->normalizeRecords($previousRun->monitor_host_dns_records) !== $currentRecords;
 
-        if (! $ipAnswerChanged && ! $cnameAnswerChanged) {
+        if (! $ipAnswerChanged && ! $cnameAnswerChanged && ! $dnsRecordsChanged) {
             return;
         }
 
@@ -60,6 +64,8 @@ class DnsChangeRecorder
                 'current_ips' => $currentIps,
                 'previous_cnames' => $previousRun->monitor_host_cnames === null ? null : $previousCnames,
                 'current_cnames' => $run->monitor_host_cnames === null ? null : $currentCnames,
+                'previous_records' => $previousRun->monitor_host_dns_records === null ? null : $this->normalizeRecords($previousRun->monitor_host_dns_records),
+                'current_records' => $run->monitor_host_dns_records === null ? null : $currentRecords,
                 'monitor_host_only' => true,
                 'detected_at' => $run->finished_at,
             ],
@@ -103,5 +109,37 @@ class DnsChangeRecorder
         sort($normalizedCnames, SORT_STRING);
 
         return $normalizedCnames;
+    }
+
+    /**
+     * @param  list<array{type: mixed, value: mixed}>|null  $records
+     * @return list<array{type: 'CAA'|'MX'|'NS'|'TXT', value: string}>
+     */
+    private function normalizeRecords(?array $records): array
+    {
+        if ($records === null) {
+            return [];
+        }
+
+        $normalizedRecords = [];
+
+        foreach ($records as $record) {
+            if (! is_array($record) || ! is_string($record['type'] ?? null) || ! is_string($record['value'] ?? null)) {
+                continue;
+            }
+
+            $type = strtoupper(trim($record['type']));
+
+            if (! in_array($type, ['CAA', 'MX', 'NS', 'TXT'], true)) {
+                continue;
+            }
+
+            $normalizedRecords[] = ['type' => $type, 'value' => $record['value']];
+        }
+
+        $normalizedRecords = array_values(array_unique($normalizedRecords, SORT_REGULAR));
+        usort($normalizedRecords, static fn (array $left, array $right): int => strcmp($left['type']."\0".$left['value'], $right['type']."\0".$right['value']));
+
+        return $normalizedRecords;
     }
 }

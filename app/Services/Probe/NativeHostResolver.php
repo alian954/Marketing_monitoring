@@ -2,17 +2,34 @@
 
 namespace App\Services\Probe;
 
+use Closure;
+
 class NativeHostResolver implements DetailedHostResolver
 {
-    public function resolve(string $hostname): array
+    /** @var Closure(string, int): array<int, array<string, mixed>>|false */
+    private readonly Closure $recordLookup;
+
+    /** @param Closure(string, int): array<int, array<string, mixed>>|false|null $recordLookup */
+    public function __construct(?Closure $recordLookup = null)
     {
-        return $this->resolveWithCnames($hostname)['ips'];
+        $this->recordLookup = $recordLookup ?? static fn (string $hostname, int $type): array|false => @dns_get_record($hostname, $type);
     }
 
-    /** @return array{ips: list<string>, cnames: list<string>} */
-    public function resolveWithCnames(string $hostname): array
+    public function resolve(string $hostname): array
     {
-        $records = @dns_get_record($hostname, DNS_A | DNS_AAAA | DNS_CNAME);
+        return $this->resolveDetails($hostname)['ips'];
+    }
+
+    /** @return array{ips: list<string>, cnames: list<string>, records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>} */
+    public function resolveDetails(string $hostname): array
+    {
+        $recordType = DNS_A | DNS_AAAA | DNS_CNAME | DNS_MX | DNS_NS | DNS_TXT;
+
+        if (defined('DNS_CAA')) {
+            $recordType |= DNS_CAA;
+        }
+
+        $records = ($this->recordLookup)($hostname, $recordType);
 
         if ($records === false) {
             throw new ProbeException('dns_timeout', 'DNS 查詢失敗或逾時。');
@@ -20,6 +37,7 @@ class NativeHostResolver implements DetailedHostResolver
 
         $addresses = [];
         $cnames = [];
+        $dnsRecords = [];
 
         foreach ($records as $record) {
             $address = $record['ip'] ?? $record['ipv6'] ?? null;
@@ -29,11 +47,17 @@ class NativeHostResolver implements DetailedHostResolver
             }
 
             if (strtoupper((string) ($record['type'] ?? '')) === 'CNAME' && is_string($record['target'] ?? null)) {
-                $cname = mb_strtolower(rtrim(trim($record['target']), '.'));
+                $cname = $this->normalizeTarget($record['target']);
 
-                if ($cname !== '') {
+                if ($cname !== null && $cname !== '.') {
                     $cnames[] = $cname;
                 }
+            }
+
+            $dnsRecord = $this->normalizeDnsRecord($record);
+
+            if ($dnsRecord !== null) {
+                $dnsRecords[] = $dnsRecord;
             }
         }
 
@@ -41,9 +65,72 @@ class NativeHostResolver implements DetailedHostResolver
             throw new ProbeException('dns_nxdomain', '主機名稱未解析到任何 IP 位址。');
         }
 
+        $dnsRecords = array_values(array_unique($dnsRecords, SORT_REGULAR));
+        usort($dnsRecords, static fn (array $left, array $right): int => strcmp($left['type']."\0".$left['value'], $right['type']."\0".$right['value']));
+
         return [
             'ips' => array_values(array_unique($addresses)),
             'cnames' => array_values(array_unique($cnames)),
+            'records' => $dnsRecords,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}|null
+     */
+    private function normalizeDnsRecord(array $record): ?array
+    {
+        $type = strtoupper((string) ($record['type'] ?? ''));
+
+        if ($type === 'MX' && is_numeric($record['pri'] ?? null) && is_string($record['target'] ?? null)) {
+            $target = $this->normalizeTarget($record['target']);
+
+            return $target === null ? null : ['type' => 'MX', 'value' => (int) $record['pri'].' '.$target];
+        }
+
+        if ($type === 'NS' && is_string($record['target'] ?? null)) {
+            $target = $this->normalizeTarget($record['target']);
+
+            return $target === null ? null : ['type' => 'NS', 'value' => $target];
+        }
+
+        if ($type === 'TXT' && is_string($record['txt'] ?? null)) {
+            $value = $record['txt'];
+
+            if (! mb_check_encoding($value, 'UTF-8')) {
+                $value = 'base64:'.base64_encode($value);
+            }
+
+            return ['type' => 'TXT', 'value' => $value];
+        }
+
+        if ($type === 'CAA'
+            && is_numeric($record['flags'] ?? null)
+            && is_string($record['tag'] ?? null)
+            && is_string($record['value'] ?? null)) {
+            $value = $record['value'];
+
+            if (! mb_check_encoding($value, 'UTF-8')) {
+                $value = 'base64:'.base64_encode($value);
+            }
+
+            return ['type' => 'CAA', 'value' => (int) $record['flags'].' '.mb_strtolower(trim($record['tag'])).' '.$value];
+        }
+
+        return null;
+    }
+
+    private function normalizeTarget(string $target): ?string
+    {
+        $target = trim($target);
+
+        if ($target === '.') {
+            return '.';
+        }
+
+        $normalizedTarget = mb_strtolower(rtrim($target, '.'));
+
+        return $normalizedTarget === '' ? null : $normalizedTarget;
     }
 }

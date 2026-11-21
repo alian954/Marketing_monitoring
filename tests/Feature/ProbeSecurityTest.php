@@ -7,6 +7,7 @@ use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\FixtureProbeClient;
 use App\Services\Probe\HopResponse;
 use App\Services\Probe\HostResolver;
+use App\Services\Probe\NativeHostResolver;
 use App\Services\Probe\ProbeTransport;
 use App\Services\Probe\SecureProbeClient;
 use App\Services\Probe\UrlSafetyPolicy;
@@ -25,11 +26,12 @@ class ProbeSecurityTest extends TestCase
                 return ['93.184.216.34'];
             }
 
-            public function resolveWithCnames(string $hostname): array
+            public function resolveDetails(string $hostname): array
             {
                 return [
                     'ips' => ['93.184.216.34'],
                     'cnames' => ['edge.example.net'],
+                    'records' => [['type' => 'MX', 'value' => '10 mail.example.net']],
                 ];
             }
         };
@@ -50,12 +52,52 @@ class ProbeSecurityTest extends TestCase
         $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
 
         $this->assertSame(['edge.example.net'], $result->monitorHostCnames);
+        $this->assertSame([['type' => 'MX', 'value' => '10 mail.example.net']], $result->monitorHostDnsRecords);
         $this->assertSame([
             'url' => 'https://landing.example/',
             'host' => 'landing.example',
             'port' => 443,
             'ips' => ['93.184.216.34'],
         ], $transport->target);
+    }
+
+    public function test_native_resolver_extracts_and_normalizes_common_dns_record_types(): void
+    {
+        $queryType = null;
+        $queryHostname = null;
+        $resolver = new NativeHostResolver(function (string $hostname, int $type) use (&$queryHostname, &$queryType): array|false {
+            $queryHostname = $hostname;
+            $queryType = $type;
+
+            return [
+                ['type' => 'A', 'ip' => '93.184.216.34'],
+                ['type' => 'CNAME', 'target' => 'EDGE.example.net.'],
+                ['type' => 'MX', 'pri' => 10, 'target' => 'Mail.example.net.'],
+                ['type' => 'NS', 'target' => 'NS1.example.net.'],
+                ['type' => 'TXT', 'txt' => 'v=spf1 include:example.net -all'],
+                ['type' => 'TXT', 'txt' => "\xFF"],
+                ['type' => 'CAA', 'flags' => 0, 'tag' => 'issue', 'value' => 'ca.example'],
+            ];
+        });
+
+        $resolution = $resolver->resolveDetails('landing.example');
+        $expectedRecordType = DNS_A | DNS_AAAA | DNS_CNAME | DNS_MX | DNS_NS | DNS_TXT;
+
+        if (defined('DNS_CAA')) {
+            $expectedRecordType |= DNS_CAA;
+        }
+
+        $this->assertSame('landing.example', $queryHostname);
+        $this->assertSame($expectedRecordType, $queryType);
+        $this->assertSame(['93.184.216.34'], $resolution['ips']);
+        $this->assertSame(['edge.example.net'], $resolution['cnames']);
+        $this->assertSame([
+            ['type' => 'CAA', 'value' => '0 issue ca.example'],
+            ['type' => 'MX', 'value' => '10 mail.example.net'],
+            ['type' => 'NS', 'value' => 'ns1.example.net'],
+            ['type' => 'TXT', 'value' => 'base64:/w=='],
+            ['type' => 'TXT', 'value' => 'v=spf1 include:example.net -all'],
+        ], $resolution['records']);
     }
 
     public function test_mixed_public_and_private_dns_answers_are_blocked_before_any_dial(): void

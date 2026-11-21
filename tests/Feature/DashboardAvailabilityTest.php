@@ -120,6 +120,8 @@ class DashboardAvailabilityTest extends TestCase
             'current_ips' => ['93.184.216.34'],
             'previous_cnames' => ['old-edge.example.net'],
             'current_cnames' => ['new-edge.example.net'],
+            'previous_records' => [['type' => 'MX', 'value' => '10 mail-old.example.net']],
+            'current_records' => [['type' => 'MX', 'value' => '10 mail-new.example.net']],
         ]);
 
         $response = $this->actingAs(User::factory()->create())
@@ -128,6 +130,8 @@ class DashboardAvailabilityTest extends TestCase
             ->assertSee('DNS 記錄變更')
             ->assertSee('old-edge.example.net')
             ->assertSee('new-edge.example.net')
+            ->assertSee('10 mail-old.example.net')
+            ->assertSee('10 mail-new.example.net')
             ->assertSee('aria-labelledby="dns-changes-title"', false)
             ->assertSee('tabindex="0"', false);
 

@@ -211,7 +211,7 @@ class DomainExpiryProbe
             return new HopResponse(null, null, '', 0, 'rdap_insecure_endpoint', 'RDAP 查詢只允許使用 HTTPS。', null);
         }
 
-        unset($target['cnames']);
+        unset($target['cnames'], $target['dns_records']);
 
         if ($this->transport instanceof HeaderAwareProbeTransport) {
             return $this->transport->getWithHeaders($target, self::USER_AGENT, 5000, ['Accept' => $accept]);

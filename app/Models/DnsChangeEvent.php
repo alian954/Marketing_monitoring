@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['monitor_id', 'check_run_id', 'previous_ips', 'current_ips', 'previous_cnames', 'current_cnames', 'monitor_host_only', 'detected_at'])]
+#[Fillable(['monitor_id', 'check_run_id', 'previous_ips', 'current_ips', 'previous_cnames', 'current_cnames', 'previous_records', 'current_records', 'monitor_host_only', 'detected_at'])]
 class DnsChangeEvent extends Model
 {
     /** @use HasFactory<DnsChangeEventFactory> */
@@ -21,6 +21,8 @@ class DnsChangeEvent extends Model
             'current_ips' => 'array',
             'previous_cnames' => 'array',
             'current_cnames' => 'array',
+            'previous_records' => 'array',
+            'current_records' => 'array',
             'monitor_host_only' => 'boolean',
             'detected_at' => 'immutable_datetime',
         ];
@@ -56,6 +58,16 @@ class DnsChangeEvent extends Model
         return $this->cnameSetLabel($this->current_cnames);
     }
 
+    public function previousRecordsLabel(): string
+    {
+        return $this->dnsRecordsLabel($this->previous_records);
+    }
+
+    public function currentRecordsLabel(): string
+    {
+        return $this->dnsRecordsLabel($this->current_records);
+    }
+
     /** @param list<string> $ips */
     private function ipSetLabel(array $ips): string
     {
@@ -70,5 +82,22 @@ class DnsChangeEvent extends Model
         }
 
         return $cnames === [] ? '無 CNAME 記錄' : implode(', ', $cnames);
+    }
+
+    /** @param list<array{type: string, value: string}>|null $records */
+    private function dnsRecordsLabel(?array $records): string
+    {
+        if ($records === null) {
+            return '未記錄';
+        }
+
+        if ($records === []) {
+            return '無其他 DNS 記錄';
+        }
+
+        return implode('; ', array_map(
+            static fn (array $record): string => $record['type'].': '.$record['value'],
+            $records,
+        ));
     }
 }

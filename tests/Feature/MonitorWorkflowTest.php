@@ -105,7 +105,19 @@ class MonitorWorkflowTest extends TestCase
         $this->assertSame($url, json_decode($run->fresh()->config_snapshot, true, flags: JSON_THROW_ON_ERROR)['url']);
         Queue::assertPushed(RunMonitorCheck::class, 1);
 
-        $normal = new ProbeResult(200, 31, 'https://example.com/landing', [], ['93.184.216.34'], null, null, null, null, monitorHostCnames: ['edge.example.net']);
+        $normal = new ProbeResult(
+            200,
+            31,
+            'https://example.com/landing',
+            [],
+            ['93.184.216.34'],
+            null,
+            null,
+            null,
+            null,
+            monitorHostCnames: ['edge.example.net'],
+            monitorHostDnsRecords: [['type' => 'MX', 'value' => '10 mail.example.net']],
+        );
         $adsbot = new ProbeResult(200, 29, 'https://example.com/landing', [], ['93.184.216.34'], null, null, null, null);
         $probe = $this->mock(ProbeClient::class);
         $probe->shouldReceive('inspect')->twice()->andReturn($normal, $adsbot);
@@ -121,6 +133,7 @@ class MonitorWorkflowTest extends TestCase
             'elapsed_ms' => 60,
         ]);
         $this->assertSame(['edge.example.net'], $run->fresh()->monitor_host_cnames);
+        $this->assertSame([['type' => 'MX', 'value' => '10 mail.example.net']], $run->fresh()->monitor_host_dns_records);
         $this->assertDatabaseCount('check_runs', 1);
         $this->assertDatabaseMissing('incidents', ['monitor_id' => $monitor->id]);
     }

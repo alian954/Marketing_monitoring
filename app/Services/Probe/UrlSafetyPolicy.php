@@ -15,7 +15,7 @@ class UrlSafetyPolicy
 
     /**
      * @param  list<string>  $allowedRedirectHosts
-     * @return array{url: string, host: string, port: int, ips: list<string>, cnames: list<string>|null}
+     * @return array{url: string, host: string, port: int, ips: list<string>, cnames: list<string>|null, dns_records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>|null}
      */
     public function validateAndResolve(string $url, array $allowedRedirectHosts = [], ?string $originHost = null): array
     {
@@ -48,13 +48,15 @@ class UrlSafetyPolicy
         }
 
         $cnames = null;
+        $dnsRecords = null;
 
         if ($isLiteralIp) {
             $ips = [$host];
         } elseif ($this->resolver instanceof DetailedHostResolver) {
-            $resolution = $this->resolver->resolveWithCnames($host);
+            $resolution = $this->resolver->resolveDetails($host);
             $ips = $resolution['ips'];
             $cnames = $resolution['cnames'];
+            $dnsRecords = $resolution['records'];
         } else {
             $ips = $this->resolver->resolve($host);
         }
@@ -78,7 +80,7 @@ class UrlSafetyPolicy
             $normalizedUrl .= '?'.$parts['query'];
         }
 
-        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'ips' => $ips, 'cnames' => $cnames];
+        return ['url' => $normalizedUrl, 'host' => $host, 'port' => $port, 'ips' => $ips, 'cnames' => $cnames, 'dns_records' => $dnsRecords];
     }
 
     public function normalizeHost(string $host): string

@@ -579,18 +579,18 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-changes-title" class="panel-title">DNS 記錄變更</h2>
-                <p class="panel-description">追蹤監測網址主機的公開 A/AAAA IP 與 CNAME 回答；舊版紀錄可能包含重新導向目的主機。</p>
+                <p class="panel-description">追蹤監測網址主機的 A/AAAA、CNAME、MX、NS、TXT 與 CAA 回答；舊版紀錄可能包含重新導向目的主機。</p>
             </div>
         </div>
         @if ($dnsChanges->isEmpty())
             <div class="empty-state">
                 <h3 class="empty-title">尚未偵測到 DNS 記錄變更</h3>
-                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 或 CNAME 回答改變，變更紀錄會顯示於此處。</p>
+                <p class="empty-copy">累積至少兩次排程檢查後，若主機 IP、別名、郵件、名稱伺服器或文字政策記錄改變，變更紀錄會顯示於此處。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="dns-changes-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">最近偵測到的監測主機公開 A/AAAA IP 與 CNAME 回答變更</caption>
+                    <caption class="sr-only">最近偵測到的監測主機 A/AAAA、CNAME、MX、NS、TXT 與 CAA 回答變更</caption>
                     <thead>
                         <tr>
                             <th scope="col">監測項目</th>
@@ -613,11 +613,13 @@
                                 <td class="masked-url">
                                     <div>IP：{{ $dnsChange->previousIpsLabel() }}</div>
                                     <div class="secondary-text">CNAME：{{ $dnsChange->previousCnamesLabel() }}</div>
+                                    <div class="secondary-text">MX／NS／TXT／CAA：{{ $dnsChange->previousRecordsLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                                 <td class="masked-url">
                                     <div>IP：{{ $dnsChange->currentIpsLabel() }}</div>
                                     <div class="secondary-text">CNAME：{{ $dnsChange->currentCnamesLabel() }}</div>
+                                    <div class="secondary-text">MX／NS／TXT／CAA：{{ $dnsChange->currentRecordsLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                             </tr>

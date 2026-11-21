@@ -983,7 +983,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-change-history-title" class="panel-title">DNS 記錄變更</h2>
-                <p class="panel-description">顯示最近 50 筆已完成排程檢查偵測到的公開 A/AAAA IP 或 CNAME 回答變更，也包含主機暫時沒有公開 IP 回答的中斷。</p>
+                <p class="panel-description">顯示最近 50 筆已完成排程檢查偵測到的 A/AAAA、CNAME、MX、NS、TXT 與 CAA 記錄變更，也包含主機暫時沒有公開 IP 回答的中斷。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.dns-changes.export', $monitor) }}">匯出 DNS 變更 CSV</a>
         </div>
@@ -991,12 +991,12 @@
         @if ($dnsChanges->isEmpty())
             <div class="empty-state">
                 <h3 class="empty-title">尚無 DNS 記錄變更</h3>
-                <p class="empty-copy">累積至少兩次排程檢查後，若主機公開 IP 或 CNAME 回答改變，變更紀錄會顯示於此處。</p>
+                <p class="empty-copy">累積至少兩次排程檢查後，若主機 IP、別名、郵件、名稱伺服器或文字政策記錄改變，變更紀錄會顯示於此處。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="dns-change-history-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $monitor->name }}最近 50 筆主機 DNS 公開 A/AAAA IP 與 CNAME 回答變更</caption>
+                    <caption class="sr-only">{{ $monitor->name }}最近 50 筆主機 A/AAAA、CNAME、MX、NS、TXT 與 CAA 回答變更</caption>
                     <thead>
                         <tr>
                             <th scope="col">偵測時間</th>
@@ -1011,11 +1011,13 @@
                                 <td class="numeric">
                                     <div>IP：{{ $dnsChange->previousIpsLabel() }}</div>
                                     <div class="secondary-text">CNAME：{{ $dnsChange->previousCnamesLabel() }}</div>
+                                    <div class="secondary-text">MX／NS／TXT／CAA：{{ $dnsChange->previousRecordsLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                                 <td class="numeric">
                                     <div>IP：{{ $dnsChange->currentIpsLabel() }}</div>
                                     <div class="secondary-text">CNAME：{{ $dnsChange->currentCnamesLabel() }}</div>
+                                    <div class="secondary-text">MX／NS／TXT／CAA：{{ $dnsChange->currentRecordsLabel() }}</div>
                                     @unless ($dnsChange->monitor_host_only)<span class="secondary-text">舊版紀錄，未區分重新導向主機</span>@endunless
                                 </td>
                             </tr>

@@ -33,6 +33,14 @@ class MonitorDnsChangeExportTest extends TestCase
             'current_ips' => ['93.184.216.35'],
             'previous_cnames' => ['old.example.net'],
             'current_cnames' => ['new.example.net'],
+            'previous_records' => [
+                ['type' => 'MX', 'value' => '10 mail-old.example.net'],
+                ['type' => 'TXT', 'value' => 'v=spf1 include:old.example.net -all'],
+            ],
+            'current_records' => [
+                ['type' => 'MX', 'value' => '10 mail-new.example.net'],
+                ['type' => 'TXT', 'value' => 'v=spf1 include:new.example.net -all'],
+            ],
             'detected_at' => '2026-11-18 02:03:04',
             'monitor_host_only' => false,
         ]);
@@ -41,6 +49,8 @@ class MonitorDnsChangeExportTest extends TestCase
             'current_ips' => ['93.184.216.36'],
             'previous_cnames' => [],
             'current_cnames' => ['edge.example.net'],
+            'previous_records' => [],
+            'current_records' => [['type' => 'CAA', 'value' => '0 issue ca.example']],
             'detected_at' => '2026-11-18 01:02:03',
             'monitor_host_only' => true,
         ]);
@@ -75,6 +85,8 @@ class MonitorDnsChangeExportTest extends TestCase
             'current_ips',
             'previous_cnames',
             'current_cnames',
+            'previous_records',
+            'current_records',
             'monitor_host_only',
         ], $headers);
         $this->assertCount(2, $rows);
@@ -84,6 +96,8 @@ class MonitorDnsChangeExportTest extends TestCase
         $this->assertSame('93.184.216.36', $rows[0][$columns['current_ips']]);
         $this->assertSame('無 CNAME 記錄', $rows[0][$columns['previous_cnames']]);
         $this->assertSame('edge.example.net', $rows[0][$columns['current_cnames']]);
+        $this->assertSame('無其他 DNS 記錄', $rows[0][$columns['previous_records']]);
+        $this->assertSame('CAA: 0 issue ca.example', $rows[0][$columns['current_records']]);
         $this->assertSame('1', $rows[0][$columns['monitor_host_only']]);
         $this->assertSame((string) $laterEvent->id, $rows[1][$columns['dns_change_id']]);
         $this->assertSame('2026-11-18T02:03:04+00:00', $rows[1][$columns['detected_at_utc']]);
@@ -91,6 +105,8 @@ class MonitorDnsChangeExportTest extends TestCase
         $this->assertSame('93.184.216.35', $rows[1][$columns['current_ips']]);
         $this->assertSame('old.example.net', $rows[1][$columns['previous_cnames']]);
         $this->assertSame('new.example.net', $rows[1][$columns['current_cnames']]);
+        $this->assertSame('MX: 10 mail-old.example.net; TXT: v=spf1 include:old.example.net -all', $rows[1][$columns['previous_records']]);
+        $this->assertSame('MX: 10 mail-new.example.net; TXT: v=spf1 include:new.example.net -all', $rows[1][$columns['current_records']]);
         $this->assertSame('0', $rows[1][$columns['monitor_host_only']]);
         $this->assertStringNotContainsString('other-monitor-private-ip', $content);
     }

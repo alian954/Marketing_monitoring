@@ -26,7 +26,7 @@ class SecureTlsCertificateProbe implements TlsCertificateProbe
             (int) config('monitoring.connect_timeout_seconds'),
         ));
 
-        unset($target['cnames']);
+        unset($target['cnames'], $target['dns_records']);
 
         return $this->transport->inspect($target, $timeoutSeconds);
     }
