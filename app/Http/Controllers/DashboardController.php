@@ -147,11 +147,28 @@ class DashboardController extends Controller
         });
         $socialEngagementMonitors = Monitor::query()
             ->whereNotNull('social_platform')
-            ->with('latestPublicEngagementCheckRun')
+            ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
             ->orderByDesc('last_checked_at')
             ->orderBy('name')
             ->limit(self::MAX_DASHBOARD_SOCIAL_ENGAGEMENT_MONITORS)
             ->get(['id', 'name', 'url', 'config_version', 'social_platform']);
+        $socialEngagementMonitors->each(function (Monitor $monitor): void {
+            $latestCheckRun = $monitor->latestCheckRun;
+            $engagementRun = $monitor->latestPublicEngagementCheckRun;
+
+            if ($latestCheckRun?->config_version !== $monitor->config_version) {
+                $latestCheckRun = null;
+            }
+
+            if ($engagementRun?->config_version !== $monitor->config_version) {
+                $engagementRun = null;
+            }
+
+            $monitor->setAttribute(
+                'social_engagement_capture_status',
+                $this->socialEngagementCaptureStatus($latestCheckRun, $engagementRun),
+            );
+        });
         $socialEngagementSummaries = $this->socialEngagementSummaries();
         $socialEngagementChangeSummaries = $this->socialEngagementChangeSummaries($asOf, $socialEngagementSummaries);
 
@@ -583,6 +600,43 @@ class DashboardController extends Controller
                 ? null
                 : (int) ceil($secondsUntilExpiry / 86_400),
         ];
+    }
+
+    private function socialEngagementCaptureStatus(?CheckRun $latestCheckRun, ?CheckRun $engagementRun): string
+    {
+        if ($latestCheckRun === null) {
+            return '等待首次檢查';
+        }
+
+        if ($latestCheckRun->error_type === 'social_access_required') {
+            return '平台限制存取'.($latestCheckRun->normal_status === null ? '' : ' · HTTP '.$latestCheckRun->normal_status);
+        }
+
+        if ($latestCheckRun->error_type === 'body_too_large') {
+            return '回應過大，無法完整讀取';
+        }
+
+        if ($latestCheckRun->error_type !== null) {
+            return '檢查失敗 · '.$latestCheckRun->error_type;
+        }
+
+        if ($latestCheckRun->normal_status === null) {
+            return '尚無 HTTP 回應';
+        }
+
+        if ($latestCheckRun->normal_status < 200 || $latestCheckRun->normal_status >= 300) {
+            return 'HTTP '.$latestCheckRun->normal_status.' · 未擷取互動數';
+        }
+
+        if ($engagementRun === null) {
+            return 'HTTP '.$latestCheckRun->normal_status.' · 未辨識互動數';
+        }
+
+        if ($engagementRun->id !== $latestCheckRun->id) {
+            return '本次未讀到互動數，顯示前次資料';
+        }
+
+        return '已擷取';
     }
 
     /** @param list<array{monitor: Monitor, expires_at: CarbonImmutable}> $summaries */

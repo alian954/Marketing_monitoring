@@ -124,6 +124,7 @@
                         <tr>
                             <th scope="col">貼文</th>
                             <th scope="col">平台</th>
+                            <th scope="col">擷取狀態</th>
                             <th scope="col">觀看</th>
                             <th scope="col">讚</th>
                             <th scope="col">留言</th>
@@ -143,6 +144,7 @@
                             <tr>
                                 <th scope="row"><a href="{{ route('monitors.show', $socialEngagementMonitor) }}">{{ $socialEngagementMonitor->name }}</a></th>
                                 <td>{{ $socialEngagementMonitor->socialPlatform() }}</td>
+                                <td>{{ $socialEngagementMonitor->getAttribute('social_engagement_capture_status') }}</td>
                                 @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
                                     <td class="numeric">{{ isset($engagementMetrics[$metric]) ? number_format((int) $engagementMetrics[$metric]) : '—' }}</td>
                                 @endforeach
@@ -158,7 +160,7 @@
                     </tbody>
                 </table>
             </div>
-            <p class="field-help spaced-top">— 表示目前沒有可辨識的公開數值；平台動態載入或存取限制可能讓原始回應不含互動數。</p>
+            <p class="field-help spaced-top">擷取狀態顯示最近一次 HTTP 檢查；若本次沒有互動數，表格仍會標示前次數值的資料時間。</p>
         @endif
     </section>
 

@@ -114,6 +114,47 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('7');
     }
 
+    public function test_dashboard_distinguishes_public_engagement_capture_statuses(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+
+        $restrictedPost = $this->createSocialMonitor('RESTRICTED001');
+        CheckRun::factory()->for($restrictedPost)->create([
+            'config_version' => $restrictedPost->config_version,
+            'finished_at' => now(),
+            'normal_status' => 403,
+            'error_type' => 'social_access_required',
+        ]);
+
+        $postWithPreviousMetrics = $this->createSocialMonitor('PREVIOUS001');
+        $this->createMetricRun($postWithPreviousMetrics, now()->subHour(), ['views' => 4800, 'likes' => 160, 'comments' => 13, 'shares' => 4, 'source' => 'json_ld']);
+        CheckRun::factory()->for($postWithPreviousMetrics)->create([
+            'config_version' => $postWithPreviousMetrics->config_version,
+            'finished_at' => now(),
+            'normal_status' => 200,
+        ]);
+
+        $postWithoutMetrics = $this->createSocialMonitor('UNREADABLE001');
+        CheckRun::factory()->for($postWithoutMetrics)->create([
+            'config_version' => $postWithoutMetrics->config_version,
+            'finished_at' => now(),
+            'normal_status' => 200,
+        ]);
+
+        $postWithCurrentMetrics = $this->createSocialMonitor('CURRENT001');
+        $this->createMetricRun($postWithCurrentMetrics, now(), ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('<th scope="col">擷取狀態</th>', false)
+            ->assertSee('平台限制存取 · HTTP 403')
+            ->assertSee('本次未讀到互動數，顯示前次資料')
+            ->assertSee('HTTP 200 · 未辨識互動數')
+            ->assertSee('已擷取')
+            ->assertSee('4,800');
+    }
+
     public function test_dashboard_summarizes_latest_public_engagement_by_tag_with_metric_coverage(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
