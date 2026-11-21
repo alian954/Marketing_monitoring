@@ -91,7 +91,7 @@ class FleetAvailabilityReport
 
         foreach (Monitor::query()
             ->where('enabled', true)
-            ->select(['id', 'name', 'interval_seconds', 'social_platform'])
+            ->select(['id', 'name', 'interval_seconds', 'social_platform', 'slo_target_basis_points'])
             ->lazyById(500) as $monitor) {
             $monitorBatch[] = $monitor;
 

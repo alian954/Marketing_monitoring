@@ -90,6 +90,7 @@ class SocialPostImportTest extends TestCase
             'alert_on_response_metadata_change',
             'expected_response_header',
             'interval_seconds',
+            'slo_target_basis_points',
             'timeout_seconds',
             'response_time_threshold_ms',
             'min_response_body_bytes',

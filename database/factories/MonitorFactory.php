@@ -41,6 +41,7 @@ class MonitorFactory extends Factory
             'confirmation_delay_seconds' => (int) config('monitoring.confirmation_delay_seconds'),
             'public_status' => false,
             'interval_seconds' => 900,
+            'slo_target_basis_points' => Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS,
             'next_check_at' => now(),
             'last_checked_at' => null,
         ];

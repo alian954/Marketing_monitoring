@@ -14,6 +14,7 @@ use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\FleetAvailabilityReport;
 use App\Services\IncidentManager;
 use App\Services\MonitorAvailabilityReport;
+use App\Services\MonitorSloBudgetCalculator;
 use App\Services\NotificationEmailRecipientParser;
 use App\Services\Probe\ExpectedTextMatcher;
 use App\Services\Probe\ProbeClient;
@@ -110,6 +111,7 @@ class MonitorController extends Controller
         private readonly UrlSafetyPolicy $urlPolicy,
         private readonly UrlMasker $urlMasker,
         private readonly MonitorAvailabilityReport $availabilityReport,
+        private readonly MonitorSloBudgetCalculator $sloBudgetCalculator,
     ) {}
 
     public function index(Request $request): View|RedirectResponse
@@ -277,6 +279,7 @@ class MonitorController extends Controller
             'formMethod' => 'POST',
             'previewAction' => route('monitors.probe-preview'),
             'intervalOptions' => self::INTERVAL_OPTIONS,
+            'sloTargetOptions' => Monitor::SLO_TARGET_OPTIONS,
         ]);
     }
 
@@ -330,6 +333,7 @@ class MonitorController extends Controller
             'timeout_seconds' => $validated['timeout_seconds'],
             'confirmation_delay_seconds' => $validated['confirmation_delay_seconds'],
             'interval_seconds' => $validated['interval_seconds'],
+            'slo_target_basis_points' => $validated['slo_target_basis_points'],
             'next_check_at' => now(),
         ]);
 
@@ -404,6 +408,10 @@ class MonitorController extends Controller
         $historyRuns = $availabilityData['history_runs'];
         $maintenanceWindows = $availabilityData['maintenance_windows'];
         $availabilityStats = $availabilityData['statistics'];
+        $sloBudget = $this->sloBudgetCalculator->calculate(
+            collect($availabilityStats)->firstWhere('label', '30 天'),
+            $monitor->slo_target_basis_points,
+        );
 
         $checkSuccessStats = collect([
             ['label' => '24 小時', 'starts_at' => $asOf->copy()->subDay()],
@@ -623,6 +631,7 @@ class MonitorController extends Controller
             'checkSuccessStats',
             'dailyCheckHistory',
             'availabilityStats',
+            'sloBudget',
             'httpRecoveryStats',
             'responseTime',
             'responseBodySize',
@@ -669,6 +678,7 @@ class MonitorController extends Controller
             'formMethod' => 'PUT',
             'previewAction' => route('monitors.probe-preview.update', $monitor),
             'intervalOptions' => self::INTERVAL_OPTIONS,
+            'sloTargetOptions' => Monitor::SLO_TARGET_OPTIONS,
         ]);
     }
 
@@ -712,6 +722,7 @@ class MonitorController extends Controller
                 'timeout_seconds' => $validated['timeout_seconds'],
                 'confirmation_delay_seconds' => $validated['confirmation_delay_seconds'],
                 'interval_seconds' => $validated['interval_seconds'],
+                'slo_target_basis_points' => $validated['slo_target_basis_points'],
                 'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
             ]);
 
@@ -1127,6 +1138,11 @@ class MonitorController extends Controller
                 'period',
                 'as_of_utc',
                 'availability_percent',
+                'slo_target_percent',
+                'slo_allowed_downtime_minutes',
+                'slo_observed_downtime_minutes',
+                'slo_remaining_error_budget_minutes',
+                'slo_error_budget_used_percent',
                 'coverage_percent',
                 'estimated_up_minutes',
                 'estimated_down_minutes',
@@ -1143,6 +1159,7 @@ class MonitorController extends Controller
                     $statistic['label'],
                     $asOf->utc()->toIso8601String(),
                     $statistic['availability_rate'] === null ? '' : number_format($statistic['availability_rate'], 2, '.', ''),
+                    ...$this->sloBudgetCsvFields($statistic, $monitor),
                     $statistic['coverage_rate'] === null ? '' : number_format($statistic['coverage_rate'], 2, '.', ''),
                     number_format($statistic['up_minutes'], 2, '.', ''),
                     number_format($unavailableSeconds / 60, 2, '.', ''),
@@ -1159,6 +1176,23 @@ class MonitorController extends Controller
         }, 'availability-report-'.$monitor->id.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    /**
+     * @param  array{eligible_minutes: float, observed_minutes: float, unavailable_minutes: float, coverage_rate: ?float, eligible_seconds?: int, observed_seconds?: int, up_seconds?: int}  $statistic
+     * @return list<string>
+     */
+    private function sloBudgetCsvFields(array $statistic, Monitor $monitor): array
+    {
+        $budget = $this->sloBudgetCalculator->calculate($statistic, $monitor->slo_target_basis_points);
+
+        return [
+            number_format($budget['target_percent'], 2, '.', ''),
+            number_format($budget['allowed_downtime_minutes'], 2, '.', ''),
+            $budget['observed_downtime_minutes'] === null ? '' : number_format($budget['observed_downtime_minutes'], 2, '.', ''),
+            $budget['remaining_error_budget_minutes'] === null ? '' : number_format($budget['remaining_error_budget_minutes'], 2, '.', ''),
+            $budget['error_budget_used_percent'] === null ? '' : number_format($budget['error_budget_used_percent'], 2, '.', ''),
+        ];
+    }
+
     public function exportFleetAvailability(FleetAvailabilityReport $fleetAvailabilityReport): StreamedResponse
     {
         $asOf = now()->toImmutable();
@@ -1171,6 +1205,11 @@ class MonitorController extends Controller
                 'period',
                 'as_of_utc',
                 'availability_percent',
+                'slo_target_percent',
+                'slo_allowed_downtime_minutes',
+                'slo_observed_downtime_minutes',
+                'slo_remaining_error_budget_minutes',
+                'slo_error_budget_used_percent',
                 'coverage_percent',
                 'estimated_up_minutes',
                 'estimated_down_minutes',
@@ -1189,6 +1228,7 @@ class MonitorController extends Controller
                         $statistic['label'],
                         $asOf->utc()->toIso8601String(),
                         $statistic['availability_rate'] === null ? '' : number_format($statistic['availability_rate'], 2, '.', ''),
+                        ...$this->sloBudgetCsvFields($statistic, $monitorStatistics['monitor']),
                         $statistic['coverage_rate'] === null ? '' : number_format($statistic['coverage_rate'], 2, '.', ''),
                         number_format($statistic['up_seconds'] / 60, 2, '.', ''),
                         number_format($unavailableSeconds / 60, 2, '.', ''),
@@ -1478,7 +1518,7 @@ class MonitorController extends Controller
     {
         return response()->streamDownload(function () use ($query): void {
             $stream = fopen('php://output', 'w');
-            fputcsv($stream, ['name', 'url', 'label', 'enabled', 'last_checked_at_utc', 'http_status', 'error_type', 'adsbot_error_type']);
+            fputcsv($stream, ['name', 'url', 'label', 'enabled', 'slo_target_basis_points', 'last_checked_at_utc', 'http_status', 'error_type', 'adsbot_error_type']);
 
             $query
                 ->with('latestCheckRun')
@@ -1491,6 +1531,7 @@ class MonitorController extends Controller
                         $this->urlMasker->mask($monitor->url),
                         $monitor->tagInputValue(),
                         $monitor->enabled ? '1' : '0',
+                        (string) $monitor->slo_target_basis_points,
                         $monitor->last_checked_at?->utc()->toIso8601String() ?? '',
                         $run?->normal_status === null ? '' : (string) $run->normal_status,
                         (string) $run?->error_type,
@@ -1504,7 +1545,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, slo_target_basis_points: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -1596,6 +1637,7 @@ class MonitorController extends Controller
             'timeout_seconds' => ['sometimes', 'integer', 'min:1', 'max:15'],
             'confirmation_delay_seconds' => ['sometimes', 'integer', 'min:30', 'max:300'],
             'interval_seconds' => ['sometimes', 'integer', 'in:'.implode(',', Monitor::SUPPORTED_INTERVAL_SECONDS)],
+            'slo_target_basis_points' => ['sometimes', 'integer', 'in:'.implode(',', array_keys(Monitor::SLO_TARGET_OPTIONS))],
             'redirect_hosts' => ['nullable', 'string', 'max:2000'],
         ], [
             'response_time_threshold_ms.integer' => '回應時間門檻必須是整數。',
@@ -1636,6 +1678,7 @@ class MonitorController extends Controller
             'notification_teams_webhook.max' => 'Microsoft Teams webhook 網址不得超過 2048 個字元。',
             'interval_seconds.integer' => '檢查頻率格式不正確。',
             'interval_seconds.in' => '請選擇支援的檢查頻率。',
+            'slo_target_basis_points.in' => '請選擇支援的可用率目標。',
         ]);
 
         $validated['label'] = $this->normalizeTagInput($validated['label'] ?? null);
@@ -1854,6 +1897,9 @@ class MonitorController extends Controller
             'interval_seconds' => array_key_exists('interval_seconds', $validated)
                 ? (int) $validated['interval_seconds']
                 : ($monitor?->interval_seconds ?? (int) config('monitoring.interval_seconds')),
+            'slo_target_basis_points' => array_key_exists('slo_target_basis_points', $validated)
+                ? (int) $validated['slo_target_basis_points']
+                : ($monitor?->slo_target_basis_points ?? Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS),
             'allowed_redirect_hosts' => array_values(array_unique($allowedHosts)),
         ];
     }

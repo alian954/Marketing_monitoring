@@ -232,6 +232,17 @@
                             @error('interval_seconds')<p id="interval-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
 
+                        <div class="field-group">
+                            <label class="field-label" for="slo_target_basis_points">服務可用率目標</label>
+                            <select class="field-select @error('slo_target_basis_points') is-invalid @enderror" id="slo_target_basis_points" name="slo_target_basis_points" required aria-describedby="{{ $errors->has('slo_target_basis_points') ? 'slo-target-help slo-target-error' : 'slo-target-help' }}" @if ($errors->has('slo_target_basis_points')) aria-invalid="true" @endif>
+                                @foreach ($sloTargetOptions as $basisPoints => $label)
+                                    <option value="{{ $basisPoints }}" @selected((string) old('slo_target_basis_points', $monitor->slo_target_basis_points ?? \App\Models\Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS) === (string) $basisPoints)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <p id="slo-target-help" class="field-help">用最近 30 天估算錯誤預算。只統計已觀測時間；維護時段與資料空窗會排除，請一併查看覆蓋率。</p>
+                            @error('slo_target_basis_points')<p id="slo-target-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
                         <div class="field-group field-group-full">
                             <label class="field-label" for="expected_text">預期貼文／回應文字片段</label>
                             <textarea class="field-textarea @error('expected_text') is-invalid @enderror" id="expected_text" name="expected_text" rows="4" maxlength="500" autocomplete="off" aria-describedby="{{ $errors->has('expected_text') ? 'expected-text-help expected-text-error' : 'expected-text-help' }}" @if ($errors->has('expected_text')) aria-invalid="true" @endif>{{ old('expected_text', $monitor->expected_text) }}</textarea>

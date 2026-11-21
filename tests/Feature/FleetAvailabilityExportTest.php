@@ -54,6 +54,11 @@ class FleetAvailabilityExportTest extends TestCase
             'period',
             'as_of_utc',
             'availability_percent',
+            'slo_target_percent',
+            'slo_allowed_downtime_minutes',
+            'slo_observed_downtime_minutes',
+            'slo_remaining_error_budget_minutes',
+            'slo_error_budget_used_percent',
             'coverage_percent',
             'estimated_up_minutes',
             'estimated_down_minutes',
@@ -71,6 +76,7 @@ class FleetAvailabilityExportTest extends TestCase
         $this->assertSame("'=Core marketing site", $availableRows['24 小時']['monitor_name']);
         $this->assertSame('2026-11-21T12:00:00+00:00', $availableRows['24 小時']['as_of_utc']);
         $this->assertSame('100.00', $availableRows['24 小時']['availability_percent']);
+        $this->assertSame('99.90', $availableRows['24 小時']['slo_target_percent']);
         $this->assertSame('0.28', $availableRows['24 小時']['coverage_percent']);
         $this->assertSame('4.00', $availableRows['24 小時']['estimated_up_minutes']);
         $this->assertSame('0.00', $availableRows['24 小時']['estimated_down_minutes']);
@@ -80,7 +86,9 @@ class FleetAvailabilityExportTest extends TestCase
 
         $this->assertSame('0.00', $unavailableRows['24 小時']['availability_percent']);
         $this->assertSame('1.00', $unavailableRows['24 小時']['estimated_down_minutes']);
+        $this->assertSame('0.44', $unavailableRows['24 小時']['slo_remaining_error_budget_minutes']);
         $this->assertSame('', $emptyRows['24 小時']['availability_percent']);
+        $this->assertSame('', $emptyRows['24 小時']['slo_observed_downtime_minutes']);
         $this->assertSame('0.00', $emptyRows['24 小時']['coverage_percent']);
         $this->assertSame('0.00', $emptyRows['24 小時']['observed_minutes']);
         $this->assertNotContains((string) $pausedMonitor->id, array_column($rows, 'monitor_id'));
@@ -108,6 +116,11 @@ class FleetAvailabilityExportTest extends TestCase
             'period',
             'as_of_utc',
             'availability_percent',
+            'slo_target_percent',
+            'slo_allowed_downtime_minutes',
+            'slo_observed_downtime_minutes',
+            'slo_remaining_error_budget_minutes',
+            'slo_error_budget_used_percent',
             'coverage_percent',
             'estimated_up_minutes',
             'estimated_down_minutes',

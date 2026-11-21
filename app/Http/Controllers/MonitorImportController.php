@@ -37,6 +37,7 @@ class MonitorImportController extends Controller
         'alert_on_response_metadata_change',
         'expected_response_header',
         'interval_seconds',
+        'slo_target_basis_points',
         'timeout_seconds',
         'response_time_threshold_ms',
         'min_response_body_bytes',
@@ -108,7 +109,7 @@ class MonitorImportController extends Controller
         ) {
             fclose($stream);
             throw ValidationException::withMessages([
-                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、alert_on_visible_text_change、alert_on_response_metadata_change、expected_response_header、interval_seconds、timeout_seconds、response_time_threshold_ms、min_response_body_bytes、max_response_body_bytes、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
+                'csv_file' => '標題列必須以 name,url,label 開頭，後續欄位請依序排列：expected_text、expected_text_mode、alert_on_visible_text_change、alert_on_response_metadata_change、expected_response_header、interval_seconds、slo_target_basis_points、timeout_seconds、response_time_threshold_ms、min_response_body_bytes、max_response_body_bytes、accepted_status_codes、request_headers、allowed_redirect_hosts、notification_email、notification_escalation_email、notification_escalation_delay_minutes、notification_escalation_stage_2_email、notification_escalation_stage_2_delay_minutes、notification_slack_webhook、notification_discord_webhook、notification_teams_webhook、confirmation_delay_seconds、enabled、public_status；expected_text_mode 需搭配 expected_text。',
             ]);
         }
 
@@ -145,6 +146,7 @@ class MonitorImportController extends Controller
             $expectedResponseHeaderName = null;
             $intervalSeconds = (int) config('monitoring.interval_seconds');
             $timeoutSeconds = (int) config('monitoring.request_timeout_seconds');
+            $sloTargetBasisPoints = Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS;
             $timeoutIsValid = true;
             $responseTimeThresholdMs = null;
             $minimumResponseBodyBytes = null;
@@ -429,6 +431,20 @@ class MonitorImportController extends Controller
                 }
             }
 
+            if (isset($columnIndexes['slo_target_basis_points'])) {
+                $sloTargetInput = trim((string) ($cells[$columnIndexes['slo_target_basis_points']] ?? ''));
+
+                if ($sloTargetInput !== '') {
+                    $parsedSloTarget = ctype_digit($sloTargetInput) ? (int) $sloTargetInput : null;
+
+                    if ($parsedSloTarget === null || ! array_key_exists($parsedSloTarget, Monitor::SLO_TARGET_OPTIONS)) {
+                        $errors[] = 'SLO 目標只能使用 '.implode('、', array_keys(Monitor::SLO_TARGET_OPTIONS)).' 基點。';
+                    } else {
+                        $sloTargetBasisPoints = $parsedSloTarget;
+                    }
+                }
+            }
+
             if (isset($columnIndexes['timeout_seconds'])) {
                 $timeoutInput = trim((string) ($cells[$columnIndexes['timeout_seconds']] ?? ''));
 
@@ -602,6 +618,7 @@ class MonitorImportController extends Controller
                 'expected_response_header' => $expectedResponseHeader,
                 'expected_response_header_name' => $expectedResponseHeaderName,
                 'interval_seconds' => $intervalSeconds,
+                'slo_target_basis_points' => $sloTargetBasisPoints,
                 'timeout_seconds' => $timeoutSeconds,
                 'response_time_threshold_ms' => $responseTimeThresholdMs,
                 'min_response_body_bytes' => $minimumResponseBodyBytes,
@@ -723,6 +740,7 @@ class MonitorImportController extends Controller
                 'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
                 'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
                 'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
+                'slo_target_basis_points' => $row['slo_target_basis_points'] ?? Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS,
                 'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
                 'min_response_body_bytes' => $row['min_response_body_bytes'] ?? null,
                 'max_response_body_bytes' => $row['max_response_body_bytes'] ?? null,

@@ -50,6 +50,11 @@ class MonitorAvailabilityExportTest extends TestCase
             'period',
             'as_of_utc',
             'availability_percent',
+            'slo_target_percent',
+            'slo_allowed_downtime_minutes',
+            'slo_observed_downtime_minutes',
+            'slo_remaining_error_budget_minutes',
+            'slo_error_budget_used_percent',
             'coverage_percent',
             'estimated_up_minutes',
             'estimated_down_minutes',
@@ -62,6 +67,8 @@ class MonitorAvailabilityExportTest extends TestCase
         $this->assertSame("'=Campaign status", $firstPeriod['monitor_name']);
         $this->assertSame('2026-11-19T12:00:00+00:00', $firstPeriod['as_of_utc']);
         $this->assertSame(number_format($detailStat['availability_rate'], 2, '.', ''), $firstPeriod['availability_percent']);
+        $this->assertSame('99.90', $firstPeriod['slo_target_percent']);
+        $this->assertSame(number_format($detailResponse->viewData('sloBudget')['allowed_downtime_minutes'], 2, '.', ''), $rows[2]['slo_allowed_downtime_minutes']);
         $this->assertSame(number_format($detailStat['coverage_rate'], 2, '.', ''), $firstPeriod['coverage_percent']);
         $this->assertSame(number_format($detailStat['up_minutes'], 2, '.', ''), $firstPeriod['estimated_up_minutes']);
         $estimatedUnavailableMinutes = ($detailStat['observed_seconds'] - $detailStat['up_seconds']) / 60;
@@ -87,6 +94,8 @@ class MonitorAvailabilityExportTest extends TestCase
 
         $this->assertCount(3, $rows);
         $this->assertSame('', $rows[0]['availability_percent']);
+        $this->assertSame('', $rows[0]['slo_observed_downtime_minutes']);
+        $this->assertSame('', $rows[0]['slo_remaining_error_budget_minutes']);
         $this->assertSame('0.00', $rows[0]['coverage_percent']);
         $this->assertSame('0.00', $rows[0]['observed_minutes']);
     }

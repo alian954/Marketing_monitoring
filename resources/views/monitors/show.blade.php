@@ -821,6 +821,46 @@
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.availability.export', $monitor) }}">匯出可用率 CSV</a>
         </div>
+        <div class="spaced-top" aria-labelledby="slo-budget-title">
+            <div class="panel-header">
+                <div>
+                    <h3 id="slo-budget-title" class="panel-title">服務可用率目標與 30 天錯誤預算</h3>
+                    <p class="panel-description">目標 {{ number_format($sloBudget['target_percent'], 2) }}%；允許的不可用時間按最近 30 天非維護時間計算，已用時間只包括實際觀測到的不可用時間。</p>
+                </div>
+            </div>
+            <div class="stat-grid monitor-availability-grid" aria-label="服務可用率目標與錯誤預算">
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">允許不可用時間</span></div>
+                    <strong class="stat-value">{{ number_format($sloBudget['allowed_downtime_minutes'], 1) }} 分鐘</strong>
+                    <p class="stat-hint">非維護時間 {{ number_format($sloBudget['eligible_minutes'], 1) }} 分鐘</p>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">已觀測不可用時間</span></div>
+                    <strong class="stat-value">{{ $sloBudget['observed_downtime_minutes'] === null ? '—' : number_format($sloBudget['observed_downtime_minutes'], 1).' 分鐘' }}</strong>
+                    <p class="stat-hint">預算使用率 {{ $sloBudget['error_budget_used_percent'] === null ? '—' : number_format($sloBudget['error_budget_used_percent'], 2).'%' }}</p>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-topline"><span class="stat-label">剩餘錯誤預算</span></div>
+                    <strong class="stat-value">
+                        @if ($sloBudget['remaining_error_budget_minutes'] === null)
+                            —
+                        @elseif ($sloBudget['remaining_error_budget_minutes'] < 0)
+                            超出 {{ number_format(abs($sloBudget['remaining_error_budget_minutes']), 1) }} 分鐘
+                        @else
+                            {{ number_format($sloBudget['remaining_error_budget_minutes'], 1) }} 分鐘
+                        @endif
+                    </strong>
+                    <p class="stat-hint">檢查覆蓋率 {{ $sloBudget['coverage_rate'] === null ? '—' : number_format($sloBudget['coverage_rate'], 2).'%' }}</p>
+                </article>
+            </div>
+            @if (! $sloBudget['has_eligible_time'])
+                <p class="field-help">最近 30 天沒有可計算的非維護時間。</p>
+            @elseif (! $sloBudget['has_observations'])
+                <p class="field-help">尚無可用觀測，暫不估算已用與剩餘預算。</p>
+            @elseif ($sloBudget['low_coverage'])
+                <p class="field-help">資料覆蓋率低於 90%；未觀測時間不列為正常或故障，已用預算可能低估。</p>
+            @endif
+        </div>
         <div class="stat-grid monitor-availability-grid" aria-label="不同期間的估算時間可用率">
             @foreach ($availabilityStats as $stat)
                 <article class="stat-card">
