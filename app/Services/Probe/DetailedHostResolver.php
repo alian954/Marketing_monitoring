@@ -5,7 +5,7 @@ namespace App\Services\Probe;
 interface DetailedHostResolver extends HostResolver
 {
     /**
-     * @return array{ips: list<string>, cnames: list<string>, records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>}
+     * @return array{ips: list<string>, cnames: list<string>, records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>|null}
      */
     public function resolveDetails(string $hostname, ?int $timeoutMilliseconds = null): array;
 }

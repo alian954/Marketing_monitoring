@@ -64,32 +64,44 @@ class ProbeSecurityTest extends TestCase
 
     public function test_native_resolver_extracts_and_normalizes_common_dns_record_types(): void
     {
-        $queryType = null;
+        $queryTypes = [];
         $queryHostname = null;
-        $resolver = new NativeHostResolver(function (string $hostname, int $type) use (&$queryHostname, &$queryType): array|false {
+        $addressRecordType = DNS_A | DNS_AAAA | DNS_CNAME;
+        $resolver = new NativeHostResolver(function (string $hostname, int $type) use (&$queryHostname, &$queryTypes, $addressRecordType): array|false {
             $queryHostname = $hostname;
-            $queryType = $type;
+            $queryTypes[] = $type;
 
-            return [
-                ['type' => 'A', 'ip' => '93.184.216.34'],
-                ['type' => 'CNAME', 'target' => 'EDGE.example.net.'],
-                ['type' => 'MX', 'pri' => 10, 'target' => 'Mail.example.net.'],
-                ['type' => 'NS', 'target' => 'NS1.example.net.'],
-                ['type' => 'TXT', 'txt' => 'v=spf1 include:example.net -all'],
-                ['type' => 'TXT', 'txt' => "\xFF"],
-                ['type' => 'CAA', 'flags' => 0, 'tag' => 'issue', 'value' => 'ca.example'],
-            ];
+            if ($type === $addressRecordType) {
+                return [
+                    ['type' => 'A', 'ip' => '93.184.216.34'],
+                    ['type' => 'CNAME', 'target' => 'EDGE.example.net.'],
+                ];
+            }
+
+            if (defined('DNS_CAA') && $type === DNS_CAA) {
+                return [['type' => 'CAA', 'flags' => 0, 'tag' => 'issue', 'value' => 'ca.example']];
+            }
+
+            return match ($type) {
+                DNS_MX => [['type' => 'MX', 'pri' => 10, 'target' => 'Mail.example.net.']],
+                DNS_NS => [['type' => 'NS', 'target' => 'NS1.example.net.']],
+                DNS_TXT => [
+                    ['type' => 'TXT', 'txt' => 'v=spf1 include:example.net -all'],
+                    ['type' => 'TXT', 'txt' => "\xFF"],
+                ],
+                default => [],
+            };
         });
 
         $resolution = $resolver->resolveDetails('landing.example');
-        $expectedRecordType = DNS_A | DNS_AAAA | DNS_CNAME | DNS_MX | DNS_NS | DNS_TXT;
+        $expectedQueryTypes = [$addressRecordType, DNS_MX, DNS_NS, DNS_TXT];
 
         if (defined('DNS_CAA')) {
-            $expectedRecordType |= DNS_CAA;
+            $expectedQueryTypes[] = DNS_CAA;
         }
 
         $this->assertSame('landing.example', $queryHostname);
-        $this->assertSame($expectedRecordType, $queryType);
+        $this->assertSame($expectedQueryTypes, $queryTypes);
         $this->assertSame(['93.184.216.34'], $resolution['ips']);
         $this->assertSame(['edge.example.net'], $resolution['cnames']);
         $this->assertSame([
@@ -99,6 +111,36 @@ class ProbeSecurityTest extends TestCase
             ['type' => 'TXT', 'value' => 'base64:/w=='],
             ['type' => 'TXT', 'value' => 'v=spf1 include:example.net -all'],
         ], $resolution['records']);
+    }
+
+    public function test_optional_dns_record_lookup_timeout_does_not_block_http_probe(): void
+    {
+        $queryTypes = [];
+        $addressRecordType = DNS_A | DNS_AAAA | DNS_CNAME;
+        $resolver = new NativeHostResolver(function (string $hostname, int $type) use (&$queryTypes, $addressRecordType): array|false {
+            $queryTypes[] = $type;
+
+            if ($type === $addressRecordType) {
+                return [['type' => 'A', 'ip' => '93.184.216.34']];
+            }
+
+            return $type === DNS_MX ? false : [];
+        });
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(200, null, '<p>healthy</p>', 1, null, null, null);
+            }
+        };
+        $client = new SecureProbeClient(new UrlSafetyPolicy($resolver), $transport, new UrlMasker);
+
+        $result = $client->inspect('https://landing.example', [], 'MonitorTest/1.0');
+
+        $this->assertTrue($result->succeeded());
+        $this->assertSame(['93.184.216.34'], $result->monitorHostIps);
+        $this->assertNull($result->monitorHostDnsRecords);
+        $this->assertSame([$addressRecordType, DNS_MX], $queryTypes);
     }
 
     public function test_native_resolver_stops_a_blocked_lookup_at_its_timeout(): void

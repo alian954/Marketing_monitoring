@@ -24,26 +24,24 @@ class NativeHostResolver implements DetailedHostResolver
         return $this->resolveDetails($hostname)['ips'];
     }
 
-    /** @return array{ips: list<string>, cnames: list<string>, records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>} */
+    /** @return array{ips: list<string>, cnames: list<string>, records: list<array{type: 'MX'|'NS'|'TXT'|'CAA', value: string}>|null} */
     public function resolveDetails(string $hostname, ?int $timeoutMilliseconds = null): array
     {
-        $recordType = DNS_A | DNS_AAAA | DNS_CNAME | DNS_MX | DNS_NS | DNS_TXT;
+        $timeoutMilliseconds = min(
+            self::MAX_DNS_TIMEOUT_MILLISECONDS,
+            max(1, $timeoutMilliseconds ?? self::DEFAULT_DNS_TIMEOUT_MILLISECONDS),
+        );
+        $deadline = hrtime(true) + $timeoutMilliseconds * 1_000_000;
+        $addressRecords = $this->lookupRecords($hostname, DNS_A | DNS_AAAA | DNS_CNAME, $timeoutMilliseconds);
 
-        if (defined('DNS_CAA')) {
-            $recordType |= DNS_CAA;
-        }
-
-        $records = $this->lookupRecords($hostname, $recordType, $timeoutMilliseconds);
-
-        if ($records === false) {
+        if ($addressRecords === false) {
             throw new ProbeException('dns_timeout', 'DNS 查詢失敗或逾時。');
         }
 
         $addresses = [];
         $cnames = [];
-        $dnsRecords = [];
 
-        foreach ($records as $record) {
+        foreach ($addressRecords as $record) {
             $address = $record['ip'] ?? $record['ipv6'] ?? null;
 
             if (is_string($address)) {
@@ -58,15 +56,45 @@ class NativeHostResolver implements DetailedHostResolver
                 }
             }
 
-            $dnsRecord = $this->normalizeDnsRecord($record);
-
-            if ($dnsRecord !== null) {
-                $dnsRecords[] = $dnsRecord;
-            }
         }
 
         if ($addresses === []) {
             throw new ProbeException('dns_no_address', 'DNS 回應沒有可用的 A/AAAA 位址，可能是名稱不存在、沒有地址記錄，或解析器未提供回答。');
+        }
+
+        $metadataRecordTypes = [DNS_MX, DNS_NS, DNS_TXT];
+
+        if (defined('DNS_CAA')) {
+            $metadataRecordTypes[] = DNS_CAA;
+        }
+
+        $dnsRecords = [];
+        $metadataRecordsComplete = true;
+
+        foreach ($metadataRecordTypes as $recordType) {
+            $remainingMilliseconds = $this->remainingMilliseconds($deadline);
+
+            if ($remainingMilliseconds === 0) {
+                $metadataRecordsComplete = false;
+
+                break;
+            }
+
+            $records = $this->lookupRecords($hostname, $recordType, $remainingMilliseconds);
+
+            if ($records === false) {
+                $metadataRecordsComplete = false;
+
+                break;
+            }
+
+            foreach ($records as $record) {
+                $dnsRecord = $this->normalizeDnsRecord($record);
+
+                if ($dnsRecord !== null) {
+                    $dnsRecords[] = $dnsRecord;
+                }
+            }
         }
 
         $dnsRecords = array_values(array_unique($dnsRecords, SORT_REGULAR));
@@ -75,8 +103,13 @@ class NativeHostResolver implements DetailedHostResolver
         return [
             'ips' => array_values(array_unique($addresses)),
             'cnames' => array_values(array_unique($cnames)),
-            'records' => $dnsRecords,
+            'records' => $metadataRecordsComplete ? $dnsRecords : null,
         ];
+    }
+
+    private function remainingMilliseconds(int $deadline): int
+    {
+        return max(0, (int) floor(($deadline - hrtime(true)) / 1_000_000));
     }
 
     /**
