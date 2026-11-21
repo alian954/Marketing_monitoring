@@ -205,6 +205,44 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('60.00', $rows[2]['public_engagement_rate_percent']);
     }
 
+    public function test_social_engagement_history_csv_limits_rows_to_recent_current_social_checks(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $monitor = $this->createSocialMonitor('HISTORY001', 'campaign');
+        $staleConfigMonitor = $this->createSocialMonitor('HISTORY002', 'campaign');
+        $oldMonitor = $this->createSocialMonitor('HISTORY003', 'campaign');
+        $websiteUrl = 'https://example.test/history';
+        $website = Monitor::factory()->create([
+            'url' => $websiteUrl,
+            'url_hash' => Monitor::fingerprintUrl($websiteUrl),
+        ]);
+
+        $earlierRun = $this->createMetricRun($monitor, now()->subDays(20), ['views' => 1000, 'likes' => 50, 'comments' => 5, 'shares' => 10, 'source' => 'json_ld']);
+        $latestRun = $this->createMetricRun($monitor, now()->subDays(5), ['views' => 1500, 'likes' => 90, 'comments' => 12, 'shares' => 18, 'source' => 'json_ld']);
+        $staleConfigRun = $this->createMetricRun($staleConfigMonitor, now()->subDay(), ['views' => 100, 'likes' => 10, 'comments' => 1, 'shares' => 2, 'source' => 'json_ld']);
+        $staleConfigRun->forceFill(['config_version' => $staleConfigMonitor->config_version - 1])->save();
+        $oldRun = $this->createMetricRun($oldMonitor, now()->subDays(31), ['views' => 100, 'likes' => 10, 'comments' => 1, 'shares' => 2, 'source' => 'json_ld']);
+        $dailyRun = $this->createMetricRun($monitor, now()->subDay(), ['views' => 100, 'likes' => 10, 'comments' => 1, 'shares' => 2, 'source' => 'json_ld']);
+        $dailyRun->forceFill(['source' => 'domain_daily'])->save();
+        $this->createMetricRun($website, now()->subDay(), ['views' => 100, 'likes' => 10, 'comments' => 1, 'shares' => 2, 'source' => 'json_ld']);
+
+        $this->get(route('monitors.social-engagement.export.history'))->assertRedirect(route('login'));
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('monitors.social-engagement.export.history'))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-engagement-history-2026-11-22.csv');
+        $rows = $this->csvRows($response->streamedContent());
+
+        $this->assertCount(2, $rows);
+        $this->assertSame((string) $earlierRun->id, $rows[0]['check_run_id']);
+        $this->assertSame((string) $latestRun->id, $rows[1]['check_run_id']);
+        $this->assertSame($monitor->name, $rows[0]['monitor_name']);
+        $this->assertSame('campaign', $rows[1]['tags']);
+        $this->assertSame('6.50', $rows[0]['public_engagement_rate_percent']);
+        $this->assertSame('8.00', $rows[1]['public_engagement_rate_percent']);
+    }
+
     private function createSocialMonitor(string $postId = 'POST123', ?string $label = null): Monitor
     {
         $url = 'https://www.instagram.com/reel/'.$postId.'/';

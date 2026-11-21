@@ -67,6 +67,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/monitors/export.csv', [MonitorController::class, 'export'])->name('monitors.export');
     Route::get('/monitors/availability/export.csv', [MonitorController::class, 'exportFleetAvailability'])->name('monitors.availability.export.fleet');
     Route::get('/monitors/social-engagement/export.csv', [MonitorController::class, 'exportSocialEngagement'])->name('monitors.social-engagement.export');
+    Route::get('/monitors/social-engagement/history.csv', [MonitorController::class, 'exportSocialEngagementHistory'])->name('monitors.social-engagement.export.history');
     Route::get('/monitors/{monitor}/availability.csv', [MonitorController::class, 'exportAvailability'])->name('monitors.availability.export');
     Route::get('/monitors/{monitor}/checks/export.csv', [MonitorController::class, 'exportCheckRuns'])->name('monitors.checks.export');
     Route::get('/monitors/{monitor}/dns-changes/export.csv', [MonitorController::class, 'exportDnsChanges'])->name('monitors.dns-changes.export');

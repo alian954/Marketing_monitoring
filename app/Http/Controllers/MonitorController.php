@@ -1332,6 +1332,78 @@ class MonitorController extends Controller
         }, 'social-engagement-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    public function exportSocialEngagementHistory(): StreamedResponse
+    {
+        $asOf = now()->toImmutable();
+        $startsAt = $asOf->subDays(30);
+
+        return response()->streamDownload(function () use ($asOf, $startsAt): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'check_run_id',
+                'monitor_name',
+                'platform',
+                'url',
+                'tags',
+                'collected_at_utc',
+                'public_views',
+                'public_likes',
+                'public_comments',
+                'public_shares',
+                'public_engagement_rate_percent',
+                'metrics_source',
+            ], ',', '"', '');
+
+            CheckRun::query()
+                ->select(['id', 'monitor_id', 'config_version', 'finished_at', 'response_public_engagement_metrics'])
+                ->where('status', 'completed')
+                ->whereNotNull('finished_at')
+                ->whereBetween('finished_at', [$startsAt, $asOf])
+                ->whereNotNull('response_public_engagement_metrics')
+                ->whereNotIn('source', ['tls_daily', 'domain_daily'])
+                ->whereHas('monitor', static function (Builder $query): void {
+                    $query->whereNotNull('social_platform')
+                        ->whereColumn('check_runs.config_version', 'monitors.config_version');
+                })
+                ->with('monitor')
+                ->orderBy('id')
+                ->lazyById(500)
+                ->each(function (CheckRun $run) use ($stream): void {
+                    $monitor = $run->monitor;
+                    $metrics = $run->response_public_engagement_metrics ?? [];
+                    $engagementRate = null;
+
+                    if (is_numeric($metrics['views'] ?? null)
+                        && is_numeric($metrics['likes'] ?? null)
+                        && is_numeric($metrics['comments'] ?? null)
+                        && is_numeric($metrics['shares'] ?? null)
+                        && (int) $metrics['views'] > 0) {
+                        $engagementRate = ((int) $metrics['likes'] + (int) $metrics['comments'] + (int) $metrics['shares'])
+                            / (int) $metrics['views'] * 100;
+                    }
+
+                    $fields = [
+                        (string) $run->id,
+                        $monitor->name,
+                        $monitor->socialPlatform() ?? '',
+                        $this->urlMasker->mask($monitor->url),
+                        $monitor->tagInputValue(),
+                        $run->finished_at?->utc()->toIso8601String() ?? '',
+                        ...array_map(
+                            static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
+                            ['views', 'likes', 'comments', 'shares'],
+                        ),
+                        $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
+                        (string) ($metrics['source'] ?? ''),
+                    ];
+
+                    fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+                });
+
+            fclose($stream);
+        }, 'social-engagement-history-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function exportAvailability(Monitor $monitor): StreamedResponse
     {
         $asOf = now()->toImmutable();

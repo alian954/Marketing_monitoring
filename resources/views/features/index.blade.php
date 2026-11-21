@@ -73,7 +73,7 @@
             <div>
                 <h2 id="status-pages-title" class="panel-title">公開狀態頁與資料匯出</h2>
                 <p class="panel-description">公開狀態頁可顯示已選取項目的狀態、成功率、可用率、近期事件與維護；不公開網址、比對文字或事件備註。訪客可訂閱異常與恢復通知。</p>
-                <p class="panel-description">公開互動數可匯出 CSV，含平台、標籤、最新數值與資料時間；監測項目、通知紀錄、事件與可用率資料也可匯出，監測項目支援 CSV 批次匯入。</p>
+                <p class="panel-description">公開互動數可匯出最新值或近 30 天歷史 CSV，含平台、標籤、互動數與資料時間；監測項目、通知紀錄、事件與可用率資料也可匯出，監測項目支援 CSV 批次匯入。</p>
             </div>
         </div>
     </section>
