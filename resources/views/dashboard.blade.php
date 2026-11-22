@@ -380,7 +380,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-engagement-targets-title" class="panel-title">活動互動目標</h2>
-                <p class="panel-description">依標籤與平台設定累計目標；目前值只加總各貼文最近一次完整、可讀取的公開互動數，括號列出讀值覆蓋篇數。</p>
+                <p class="panel-description">目前值依各貼文最近一次完整讀值加總，括號列出資料覆蓋篇數；進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位。尚未開始則按活動日數分配目標；進行中資料不足、已達成或活動結束時不估算。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.export') }}">匯出目標 CSV</a>
         </div>
@@ -441,7 +441,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-targets-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">各平台活動互動目標的目前累計值、達成率及完整讀值覆蓋篇數</caption>
+                    <caption class="sr-only">各平台活動互動目標的目前累計值、達成率、每日所需互動及完整讀值覆蓋篇數</caption>
                     <thead>
                         <tr>
                             <th scope="col">活動標籤</th>
@@ -449,6 +449,7 @@
                             <th scope="col">活動期間</th>
                             <th scope="col">目前／目標互動</th>
                             <th scope="col">達成率</th>
+                            <th scope="col">每日需新增</th>
                             <th scope="col">資料覆蓋</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -461,6 +462,14 @@
                                 <td>{{ $socialEngagementTarget['starts_on'] === null ? '不限日期' : $socialEngagementTarget['starts_on'].' 至 '.$socialEngagementTarget['ends_on'] }}</td>
                                 <td class="numeric">{{ $socialEngagementTarget['current_interactions'] === null ? '—' : number_format($socialEngagementTarget['current_interactions']) }}／{{ number_format($socialEngagementTarget['target_interactions']) }}</td>
                                 <td class="numeric">{{ $socialEngagementTarget['completion_percent'] === null ? '尚無完整讀值' : number_format($socialEngagementTarget['completion_percent'], 1).'%' }}</td>
+                                <td class="numeric">
+                                    @if ($socialEngagementTarget['daily_required_interactions'] !== null)
+                                        {{ $socialEngagementTarget['pacing_status'] === 'scheduled' ? '每日目標 ' : '需新增 ' }}{{ number_format($socialEngagementTarget['daily_required_interactions']) }} 次
+                                        <span class="secondary-text">／{{ $socialEngagementTarget['pacing_status'] === 'scheduled' ? '共' : '剩' }} {{ number_format($socialEngagementTarget['remaining_days']) }} 天</span>
+                                    @else
+                                        {{ $socialEngagementTarget['pacing_status_label'] }}
+                                    @endif
+                                </td>
                                 <td class="numeric">已讀 {{ number_format($socialEngagementTarget['available_post_count']) }}／{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇@if ($socialEngagementTarget['unknown_publication_date_count'] > 0)<span class="secondary-text">另有 {{ number_format($socialEngagementTarget['unknown_publication_date_count']) }} 篇缺發布時間</span>@endif</td>
                                 <td>
                                     <form action="{{ route('social-engagement-targets.destroy', $socialEngagementTarget['id']) }}" method="POST">

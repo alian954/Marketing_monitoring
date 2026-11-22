@@ -375,10 +375,10 @@ class DashboardController extends Controller
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get()
-            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels): array {
+            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $asOf): array {
                 $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
 
-                return $this->socialEngagementTargetSummary($target, $summary, $socialEngagementTargetPlatformLabels);
+                return $this->socialEngagementTargetSummary($target, $summary, $socialEngagementTargetPlatformLabels, $asOf);
             })
             ->all();
         $targetFormPlatform = $request->old('social_platform');
@@ -662,6 +662,7 @@ class DashboardController extends Controller
 
     public function exportSocialEngagementTargets(): StreamedResponse
     {
+        $asOf = now()->toImmutable();
         $dashboardData = $this->socialEngagementDashboardData(null, 'all', null, 'interactions');
         $summariesByTagPlatform = [];
 
@@ -683,7 +684,7 @@ class DashboardController extends Controller
         ];
         $filename = 'social-engagement-targets-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($summariesByTagPlatform, $platformLabels): void {
+        return response()->streamDownload(function () use ($summariesByTagPlatform, $platformLabels, $asOf): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'campaign_tag',
@@ -694,6 +695,9 @@ class DashboardController extends Controller
                 'target_interactions',
                 'current_interactions',
                 'completion_percent',
+                'pacing_status',
+                'remaining_days',
+                'daily_required_interactions',
                 'available_post_count',
                 'tracked_post_count',
                 'unknown_publication_date_count',
@@ -703,9 +707,9 @@ class DashboardController extends Controller
                 ->orderBy('tag')
                 ->orderBy('social_platform')
                 ->cursor()
-                ->each(function (SocialEngagementTarget $target) use ($summariesByTagPlatform, $platformLabels, $stream): void {
+                ->each(function (SocialEngagementTarget $target) use ($summariesByTagPlatform, $platformLabels, $asOf, $stream): void {
                     $summary = $summariesByTagPlatform[$target->tag][$target->social_platform] ?? null;
-                    $targetSummary = $this->socialEngagementTargetSummary($target, $summary, $platformLabels);
+                    $targetSummary = $this->socialEngagementTargetSummary($target, $summary, $platformLabels, $asOf);
                     $fields = [
                         $targetSummary['tag'],
                         $targetSummary['platform_label'],
@@ -715,6 +719,9 @@ class DashboardController extends Controller
                         (string) $targetSummary['target_interactions'],
                         $targetSummary['current_interactions'] === null ? '' : (string) $targetSummary['current_interactions'],
                         $targetSummary['completion_percent'] === null ? '' : number_format($targetSummary['completion_percent'], 1, '.', ''),
+                        $targetSummary['pacing_status_label'],
+                        $targetSummary['remaining_days'] === null ? '' : (string) $targetSummary['remaining_days'],
+                        $targetSummary['daily_required_interactions'] === null ? '' : (string) $targetSummary['daily_required_interactions'],
                         (string) $targetSummary['available_post_count'],
                         (string) $targetSummary['tracked_post_count'],
                         (string) $targetSummary['unknown_publication_date_count'],
@@ -727,21 +734,6 @@ class DashboardController extends Controller
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /**
-     * @return list<array{
-     *     tag: string,
-     *     filter_label: string|null,
-     *     monitor_count: int,
-     *     metrics: array<string, array{total: int, available: int}>,
-     *     interaction_total: int,
-     *     interaction_count: int,
-     *     average_interactions_per_post: float|null,
-     *     engagement_rate: array{interactions: int, views: int, available: int},
-     *     interaction_scope_label: string,
-     *     capture_counts: array{current: int, previous: int},
-     *     latest_at: CarbonImmutable|null
-     * }>
-     */
     /**
      * @param array{
      *     monitor_count: int,
@@ -762,13 +754,21 @@ class DashboardController extends Controller
      *     ends_on: string|null,
      *     current_interactions: int|null,
      *     completion_percent: float|null,
+     *     pacing_status: 'no_period'|'unavailable'|'achieved'|'ended'|'scheduled'|'active',
+     *     pacing_status_label: string,
+     *     remaining_days: int|null,
+     *     daily_required_interactions: int|null,
      *     available_post_count: int,
      *     tracked_post_count: int,
      *     unknown_publication_date_count: int
      * }
      */
-    private function socialEngagementTargetSummary(SocialEngagementTarget $target, ?array $summary, array $platformLabels): array
-    {
+    private function socialEngagementTargetSummary(
+        SocialEngagementTarget $target,
+        ?array $summary,
+        array $platformLabels,
+        CarbonImmutable $asOf,
+    ): array {
         $trackedPostCount = (int) ($summary['monitor_count'] ?? 0);
         $availablePostCount = (int) ($summary['interaction_count'] ?? 0);
         $currentInteractionTotal = (int) ($summary['interaction_total'] ?? 0);
@@ -795,6 +795,13 @@ class DashboardController extends Controller
         }
 
         $currentInteractions = $availablePostCount > 0 ? $currentInteractionTotal : null;
+        $pacing = $this->socialEngagementTargetPacing(
+            $currentInteractions,
+            (int) $target->target_interactions,
+            $startsOn,
+            $endsOn,
+            $asOf,
+        );
 
         return [
             'id' => (int) $target->id,
@@ -808,12 +815,109 @@ class DashboardController extends Controller
             'completion_percent' => $currentInteractions === null
                 ? null
                 : round($currentInteractions / $target->target_interactions * 100, 1),
+            'pacing_status' => $pacing['status'],
+            'pacing_status_label' => $pacing['status_label'],
+            'remaining_days' => $pacing['remaining_days'],
+            'daily_required_interactions' => $pacing['daily_required_interactions'],
             'available_post_count' => $availablePostCount,
             'tracked_post_count' => $trackedPostCount,
             'unknown_publication_date_count' => $unknownPublicationDateCount,
         ];
     }
 
+    /**
+     * @return array{
+     *     status: 'no_period'|'unavailable'|'achieved'|'ended'|'scheduled'|'active',
+     *     status_label: string,
+     *     remaining_days: int|null,
+     *     daily_required_interactions: int|null
+     * }
+     */
+    private function socialEngagementTargetPacing(
+        ?int $currentInteractions,
+        int $targetInteractions,
+        ?string $startsOn,
+        ?string $endsOn,
+        CarbonImmutable $asOf,
+    ): array {
+        if ($currentInteractions !== null && $currentInteractions >= $targetInteractions) {
+            return [
+                'status' => 'achieved',
+                'status_label' => '已達成',
+                'remaining_days' => null,
+                'daily_required_interactions' => null,
+            ];
+        }
+
+        if ($startsOn === null || $endsOn === null || $endsOn < $startsOn) {
+            return [
+                'status' => 'no_period',
+                'status_label' => '未設定完整期間',
+                'remaining_days' => null,
+                'daily_required_interactions' => null,
+            ];
+        }
+
+        $timeZone = new \DateTimeZone(self::HISTORY_TIMEZONE);
+        $today = new \DateTimeImmutable($asOf->timezone(self::HISTORY_TIMEZONE)->toDateString(), $timeZone);
+        $campaignStart = new \DateTimeImmutable($startsOn, $timeZone);
+        $campaignEnd = new \DateTimeImmutable($endsOn, $timeZone);
+
+        if ($today < $campaignStart) {
+            $campaignDays = (int) $campaignStart->diff($campaignEnd)->format('%a') + 1;
+
+            return [
+                'status' => 'scheduled',
+                'status_label' => '尚未開始',
+                'remaining_days' => $campaignDays,
+                'daily_required_interactions' => (int) ceil($targetInteractions / $campaignDays),
+            ];
+        }
+
+        if ($today > $campaignEnd) {
+            return [
+                'status' => 'ended',
+                'status_label' => '期間已結束',
+                'remaining_days' => null,
+                'daily_required_interactions' => null,
+            ];
+        }
+
+        if ($currentInteractions === null) {
+            return [
+                'status' => 'unavailable',
+                'status_label' => '尚無完整讀值',
+                'remaining_days' => null,
+                'daily_required_interactions' => null,
+            ];
+        }
+
+        $firstRemainingDay = $today;
+        $remainingDays = (int) $firstRemainingDay->diff($campaignEnd)->format('%a') + 1;
+
+        return [
+            'status' => 'active',
+            'status_label' => '進行中',
+            'remaining_days' => $remainingDays,
+            'daily_required_interactions' => (int) ceil(($targetInteractions - $currentInteractions) / $remainingDays),
+        ];
+    }
+
+    /**
+     * @return list<array{
+     *     tag: string,
+     *     filter_label: string|null,
+     *     monitor_count: int,
+     *     metrics: array<string, array{total: int, available: int}>,
+     *     interaction_total: int,
+     *     interaction_count: int,
+     *     average_interactions_per_post: float|null,
+     *     engagement_rate: array{interactions: int, views: int, available: int},
+     *     interaction_scope_label: string,
+     *     capture_counts: array{current: int, previous: int},
+     *     latest_at: CarbonImmutable|null
+     * }>
+     */
     private function socialEngagementSummaries(?string $platform, string $sort): array
     {
         /**

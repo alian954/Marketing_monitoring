@@ -238,6 +238,7 @@ class SocialEngagementTargetTest extends TestCase
 
     public function test_campaign_period_counts_only_posts_published_within_the_date_range(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         $onStartDate = $this->createSocialMonitor('facebook', 'FB-START', 'Summer launch');
         $this->createMetricRun($onStartDate, ['likes' => 1, 'comments' => 1, 'shares' => 1], '2026-10-31 16:00:00');
         $withinPeriod = $this->createSocialMonitor('facebook', 'FB-WITHIN', 'Summer launch');
@@ -261,6 +262,8 @@ class SocialEngagementTargetTest extends TestCase
             ->assertOk()
             ->assertSee('2026-11-01 至 2026-11-30')
             ->assertSee('已讀 3／3 篇')
+            ->assertSee('需新增 8 次')
+            ->assertSee('剩 9 天')
             ->assertSee('另有 1 篇缺發布時間');
 
         $target = $response->viewData('socialEngagementTargets')[0];
@@ -269,6 +272,9 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame(3, $target['available_post_count']);
         $this->assertSame(3, $target['tracked_post_count']);
         $this->assertSame(1, $target['unknown_publication_date_count']);
+        $this->assertSame('active', $target['pacing_status']);
+        $this->assertSame(9, $target['remaining_days']);
+        $this->assertSame(8, $target['daily_required_interactions']);
         $this->assertSame('2026-11-01', $target['starts_on']);
         $this->assertSame('2026-11-30', $target['ends_on']);
         $response->assertSee('name="starts_on" type="date" value="2026-11-01"', false);
@@ -277,8 +283,96 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame(100, $response->viewData('socialEngagementTargetFormTarget')->target_interactions);
     }
 
+    public function test_active_and_scheduled_campaign_targets_show_daily_interaction_requirements(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $activeMonitor = $this->createSocialMonitor('facebook', 'FB-ACTIVE-PACING', 'Active launch');
+        $this->createMetricRun($activeMonitor, ['likes' => 12, 'comments' => 5, 'shares' => 3], '2026-11-20 12:00:00');
+        $scheduledMonitor = $this->createSocialMonitor('threads', 'THREAD-SCHEDULED-PACING', 'Future launch');
+
+        SocialEngagementTarget::factory()->create([
+            'tag' => 'Active launch',
+            'social_platform' => 'facebook',
+            'target_interactions' => 100,
+            'starts_on' => '2026-11-20',
+            'ends_on' => '2026-11-25',
+        ]);
+        SocialEngagementTarget::factory()->create([
+            'tag' => 'Future launch',
+            'social_platform' => 'threads',
+            'target_interactions' => 101,
+            'starts_on' => '2026-11-25',
+            'ends_on' => '2026-11-30',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('每日需新增')
+            ->assertSee('需新增 20 次')
+            ->assertSee('剩 4 天')
+            ->assertSee('每日目標 17 次')
+            ->assertSee('共 6 天');
+
+        $targets = collect($response->viewData('socialEngagementTargets'))->keyBy('tag');
+        $this->assertSame('active', $targets['Active launch']['pacing_status']);
+        $this->assertSame(4, $targets['Active launch']['remaining_days']);
+        $this->assertSame(20, $targets['Active launch']['daily_required_interactions']);
+        $this->assertSame('scheduled', $targets['Future launch']['pacing_status']);
+        $this->assertSame(6, $targets['Future launch']['remaining_days']);
+        $this->assertSame(17, $targets['Future launch']['daily_required_interactions']);
+    }
+
+    public function test_campaign_target_pacing_skips_unavailable_achieved_and_ended_periods(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $unavailableMonitor = $this->createSocialMonitor('facebook', 'FB-UNAVAILABLE-PACING', 'Unavailable launch');
+        $achievedMonitor = $this->createSocialMonitor('facebook', 'FB-ACHIEVED-PACING', 'Achieved launch');
+        $this->createMetricRun($achievedMonitor, ['likes' => 5, 'comments' => 3, 'shares' => 2], '2026-11-10 12:00:00');
+        $endedMonitor = $this->createSocialMonitor('facebook', 'FB-ENDED-PACING', 'Ended launch');
+        $this->createMetricRun($endedMonitor, ['likes' => 4, 'comments' => 3, 'shares' => 2], '2026-11-10 12:00:00');
+        $unboundedMonitor = $this->createSocialMonitor('facebook', 'FB-UNBOUNDED-PACING', 'Unbounded launch');
+        $this->createMetricRun($unboundedMonitor, ['likes' => 4, 'comments' => 3, 'shares' => 2]);
+
+        foreach ([
+            ['tag' => 'Unavailable launch', 'target' => 100, 'starts_on' => '2026-11-01', 'ends_on' => '2026-11-30'],
+            ['tag' => 'Achieved launch', 'target' => 10, 'starts_on' => '2026-11-01', 'ends_on' => '2026-11-30'],
+            ['tag' => 'Ended launch', 'target' => 100, 'starts_on' => '2026-11-01', 'ends_on' => '2026-11-20'],
+            ['tag' => 'Unbounded launch', 'target' => 100, 'starts_on' => null, 'ends_on' => null],
+        ] as $target) {
+            SocialEngagementTarget::factory()->create([
+                'tag' => $target['tag'],
+                'social_platform' => 'facebook',
+                'target_interactions' => $target['target'],
+                'starts_on' => $target['starts_on'],
+                'ends_on' => $target['ends_on'],
+            ]);
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('尚無完整讀值')
+            ->assertSee('已達成')
+            ->assertSee('期間已結束')
+            ->assertSee('未設定完整期間');
+
+        $targets = collect($response->viewData('socialEngagementTargets'))->keyBy('tag');
+        foreach ([
+            'Unavailable launch' => 'unavailable',
+            'Achieved launch' => 'achieved',
+            'Ended launch' => 'ended',
+            'Unbounded launch' => 'no_period',
+        ] as $tag => $expectedStatus) {
+            $this->assertSame($expectedStatus, $targets[$tag]['pacing_status']);
+            $this->assertNull($targets[$tag]['remaining_days']);
+            $this->assertNull($targets[$tag]['daily_required_interactions']);
+        }
+    }
+
     public function test_campaign_target_csv_exports_period_progress_and_read_coverage(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         $withinPeriod = $this->createSocialMonitor('facebook', 'FB-REPORT-WITHIN', 'Launch report');
         $this->createMetricRun($withinPeriod, ['likes' => 10, 'comments' => 5, 'shares' => 5], '2026-11-10 12:00:00');
         $unknownPublicationDate = $this->createSocialMonitor('facebook', 'FB-REPORT-NODATE', 'Launch report');
@@ -322,9 +416,14 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame('100', $rowsByTag['Launch report']['target_interactions']);
         $this->assertSame('20', $rowsByTag['Launch report']['current_interactions']);
         $this->assertSame('20.0', $rowsByTag['Launch report']['completion_percent']);
+        $this->assertSame('進行中', $rowsByTag['Launch report']['pacing_status']);
+        $this->assertSame('9', $rowsByTag['Launch report']['remaining_days']);
+        $this->assertSame('9', $rowsByTag['Launch report']['daily_required_interactions']);
         $this->assertSame('1', $rowsByTag['Launch report']['available_post_count']);
         $this->assertSame('1', $rowsByTag['Launch report']['tracked_post_count']);
         $this->assertSame('1', $rowsByTag['Launch report']['unknown_publication_date_count']);
+        $this->assertSame('未設定完整期間', $rowsByTag["'=SUM(1,1)"]['pacing_status']);
+        $this->assertSame('', $rowsByTag["'=SUM(1,1)"]['daily_required_interactions']);
         $this->assertSame("'=SUM(1,1)", $rowsByTag["'=SUM(1,1)"]['campaign_tag']);
     }
 
