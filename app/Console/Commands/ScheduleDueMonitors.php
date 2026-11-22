@@ -26,19 +26,27 @@ class ScheduleDueMonitors extends Command
 
         try {
             $queued = 0;
-            $dueMonitors = Monitor::query()
+            $dcardCheckInFlight = CheckRun::query()
+                ->whereIn('status', ['queued', 'running'])
+                ->whereHas('monitor', static fn (Builder $query): Builder => $query->where('social_platform', 'dcard'))
+                ->exists();
+            $dueMonitorsQuery = Monitor::query()
                 ->where('enabled', true)
                 ->whereNotNull('next_check_at')
-                ->where('next_check_at', '<=', now())
+                ->where('next_check_at', '<=', now());
+
+            if ($dcardCheckInFlight) {
+                $dueMonitorsQuery->where(static function (Builder $query): void {
+                    $query->whereNull('social_platform')
+                        ->orWhere('social_platform', '!=', 'dcard');
+                });
+            }
+
+            $dueMonitors = $dueMonitorsQuery
                 ->orderBy('next_check_at')
                 ->orderBy('id')
                 ->limit(100)
                 ->get();
-            $dcardCheckInFlight = $dueMonitors->contains(static fn (Monitor $monitor): bool => $monitor->social_platform === 'dcard')
-                && CheckRun::query()
-                    ->whereIn('status', ['queued', 'running'])
-                    ->whereHas('monitor', static fn (Builder $query): Builder => $query->where('social_platform', 'dcard'))
-                    ->exists();
 
             $dueMonitors->each(function (Monitor $monitor) use ($scheduler, &$queued, &$dcardCheckInFlight): void {
                 if ($monitor->social_platform === 'dcard' && $dcardCheckInFlight) {

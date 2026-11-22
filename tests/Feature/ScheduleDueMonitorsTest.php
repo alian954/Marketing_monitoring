@@ -8,6 +8,7 @@ use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\SchedulerHeartbeat;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
@@ -50,6 +51,47 @@ class ScheduleDueMonitorsTest extends TestCase
             'status' => 'queued',
         ]);
         Queue::assertPushed(RunMonitorCheck::class, 2);
+    }
+
+    public function test_due_dcard_backlog_does_not_starve_other_platforms_while_a_dcard_check_is_in_flight(): void
+    {
+        Queue::fake();
+        $this->travelTo(Carbon::parse('2026-11-18 12:00:00', 'UTC'));
+        $firstDcardMonitor = null;
+
+        for ($monitorNumber = 0; $monitorNumber < 101; $monitorNumber++) {
+            $url = 'https://www.dcard.tw/f/makeup/p/'.(262476944 + $monitorNumber);
+            $monitor = Monitor::factory()->create([
+                'url' => $url,
+                'url_hash' => Monitor::fingerprintUrl($url),
+                'next_check_at' => now()->subMinutes(10),
+            ]);
+
+            $firstDcardMonitor ??= $monitor;
+        }
+
+        CheckRun::factory()->for($firstDcardMonitor)->create([
+            'status' => 'queued',
+            'scheduled_at' => now()->subMinute(),
+        ]);
+        $instagramMonitor = Monitor::factory()->create([
+            'url' => 'https://www.instagram.com/p/STARVETEST123/',
+            'url_hash' => Monitor::fingerprintUrl('https://www.instagram.com/p/STARVETEST123/'),
+            'next_check_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('monitors:dispatch-due')->assertExitCode(0);
+
+        $this->assertDatabaseHas('check_runs', [
+            'monitor_id' => $instagramMonitor->id,
+            'source' => 'scheduled',
+            'status' => 'queued',
+        ]);
+        $this->assertSame(1, CheckRun::query()
+            ->whereIn('status', ['queued', 'running'])
+            ->whereHas('monitor', static fn (Builder $query): Builder => $query->where('social_platform', 'dcard'))
+            ->count());
+        Queue::assertPushed(RunMonitorCheck::class, 1);
     }
 
     public function test_dispatch_due_recovers_only_stale_sending_notifications_and_queues_pending_ones(): void
