@@ -345,6 +345,7 @@ class DashboardController extends Controller
         ));
         $socialEngagementTopPosts = $socialEngagementDashboardData['top_posts'];
         $socialEngagementPublishingDaySummaries = $socialEngagementDashboardData['publishing_day_summaries'];
+        $socialEngagementPublishingTimeSummaries = $socialEngagementDashboardData['publishing_time_summaries'];
         $socialEngagementTargetPlatformLabels = [
             'facebook' => 'Facebook',
             'instagram' => 'Instagram',
@@ -505,6 +506,7 @@ class DashboardController extends Controller
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
             'socialEngagementPublishingDaySummaries' => $socialEngagementPublishingDaySummaries,
+            'socialEngagementPublishingTimeSummaries' => $socialEngagementPublishingTimeSummaries,
             'socialEngagementTargets' => $socialEngagementTargets,
             'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
             'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,
@@ -1120,6 +1122,12 @@ class DashboardController extends Controller
      *         platform: string,
      *         interaction_scope_label: string,
      *         weekdays: array<int, array{average_interactions_per_post: float|null, post_count: int}>
+     *     }>,
+     *     publishing_time_summaries: list<array{
+     *         platform_key: string,
+     *         platform: string,
+     *         interaction_scope_label: string,
+     *         time_slots: array<int, array{label: string, average_interactions_per_post: float|null, post_count: int}>
      *     }>
      * }
      */
@@ -1130,9 +1138,11 @@ class DashboardController extends Controller
         $topPosts = [];
         /** @var array<string, array{platform_key: string, platform: string, interaction_scope_label: string, weekdays: array<int, array{total: int, post_count: int}>}> $publishingDayTotalsByPlatform */
         $publishingDayTotalsByPlatform = [];
+        /** @var array<string, array{platform_key: string, platform: string, interaction_scope_label: string, time_slots: array<int, array{total: int, post_count: int}>}> $publishingTimeTotalsByPlatform */
+        $publishingTimeTotalsByPlatform = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
         $platformLabels = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'];
-        $applicationTimezone = (string) config('app.timezone', 'UTC');
+        $publishingTimeSlotLabels = ['00–05 時', '06–11 時', '12–17 時', '18–23 時'];
         $sortTopPosts = static function (array $first, array $second) use ($topPostSort): int {
             if ($topPostSort === 'engagement_rate') {
                 $firstRate = $first['engagement_rate_percent'];
@@ -1194,7 +1204,7 @@ class DashboardController extends Controller
             ->whereNotNull('social_platform')
             ->select(['id', 'name', 'social_platform', 'config_version', 'tags', 'label'])
             ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
-            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, &$publishingDayTotalsByPlatform, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts, $applicationTimezone): void {
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, &$publishingDayTotalsByPlatform, &$publishingTimeTotalsByPlatform, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts): void {
                 foreach ($monitorBatch as $monitor) {
                     $platform = $monitor->social_platform;
 
@@ -1210,7 +1220,8 @@ class DashboardController extends Controller
 
                     $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
-                    $publishedDate = $engagementRun?->response_published_at?->timezone(self::HISTORY_TIMEZONE)->toDateString();
+                    $publishedAtInTaipei = $engagementRun?->response_published_at?->timezone(self::HISTORY_TIMEZONE);
+                    $publishedDate = $publishedAtInTaipei?->toDateString();
                     $hasEngagementMetrics = $this->hasPublicEngagementMetrics($metrics);
                     $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
                     $tags = $monitor->tagNames();
@@ -1227,9 +1238,8 @@ class DashboardController extends Controller
                         && $matchesSelectedTag
                         && $engagementRun?->response_published_at !== null
                         && $platformInteractionTotal !== null) {
-                        $weekday = (int) $engagementRun->response_published_at
-                            ->timezone($applicationTimezone)
-                            ->format('N');
+                        $weekday = (int) $publishedAtInTaipei->format('N');
+                        $timeSlot = intdiv((int) $publishedAtInTaipei->format('G'), 6);
 
                         if (! isset($publishingDayTotalsByPlatform[$platform])) {
                             $weekdays = [];
@@ -1248,6 +1258,24 @@ class DashboardController extends Controller
 
                         $publishingDayTotalsByPlatform[$platform]['weekdays'][$weekday]['total'] += $platformInteractionTotal;
                         $publishingDayTotalsByPlatform[$platform]['weekdays'][$weekday]['post_count']++;
+
+                        if (! isset($publishingTimeTotalsByPlatform[$platform])) {
+                            $timeSlots = [];
+
+                            foreach (range(0, 3) as $timeSlotNumber) {
+                                $timeSlots[$timeSlotNumber] = ['total' => 0, 'post_count' => 0];
+                            }
+
+                            $publishingTimeTotalsByPlatform[$platform] = [
+                                'platform_key' => $platform,
+                                'platform' => $platformLabels[$platform],
+                                'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
+                                'time_slots' => $timeSlots,
+                            ];
+                        }
+
+                        $publishingTimeTotalsByPlatform[$platform]['time_slots'][$timeSlot]['total'] += $platformInteractionTotal;
+                        $publishingTimeTotalsByPlatform[$platform]['time_slots'][$timeSlot]['post_count']++;
                     }
 
                     $interactionScopePlatform = $selectedPlatform;
@@ -1390,10 +1418,33 @@ class DashboardController extends Controller
             $publishingDaySummaries[] = $platformSummary;
         }
 
+        $publishingTimeSummaries = [];
+
+        foreach ($supportedPlatforms as $platform) {
+            if (! isset($publishingTimeTotalsByPlatform[$platform])) {
+                continue;
+            }
+
+            $platformSummary = $publishingTimeTotalsByPlatform[$platform];
+
+            foreach ($platformSummary['time_slots'] as $timeSlot => $timeSlotSummary) {
+                $platformSummary['time_slots'][$timeSlot] = [
+                    'label' => $publishingTimeSlotLabels[$timeSlot],
+                    'average_interactions_per_post' => $timeSlotSummary['post_count'] > 0
+                        ? round($timeSlotSummary['total'] / $timeSlotSummary['post_count'], 1)
+                        : null,
+                    'post_count' => $timeSlotSummary['post_count'],
+                ];
+            }
+
+            $publishingTimeSummaries[] = $platformSummary;
+        }
+
         return [
             'summaries' => $results,
             'top_posts' => $topPosts,
             'publishing_day_summaries' => $publishingDaySummaries,
+            'publishing_time_summaries' => $publishingTimeSummaries,
         ];
     }
 

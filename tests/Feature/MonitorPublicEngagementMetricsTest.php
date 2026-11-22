@@ -525,9 +525,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertOk()
             ->assertSee('發文週期成效')
             ->assertSee('尚無發文週期資料')
-            ->assertSee('貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入。');
+            ->assertSee('貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入星期與時段比較。');
 
         $this->assertSame([], $response->viewData('socialEngagementPublishingDaySummaries'));
+        $this->assertSame([], $response->viewData('socialEngagementPublishingTimeSummaries'));
     }
 
     public function test_dashboard_summarizes_published_weekday_interactions_per_platform_and_respects_filters(): void
@@ -561,13 +562,19 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('dashboard', ['engagement_tag' => 'tag:summer']))
             ->assertOk()
             ->assertSee('發文週期成效')
+            ->assertSee('發文時段成效')
             ->assertSee('週一')
             ->assertSee('週二')
-            ->assertSee('依貼文公開發布時間分組')
+            ->assertSee('依台灣時間的公開發布時間')
             ->assertSee('<div class="data-table-wrap" role="region" aria-labelledby="publishing-day-engagement-title" tabindex="0">', false)
-            ->assertSee('<caption class="sr-only">依公開發布時間的星期分組、按平台口徑計算的每篇平均互動與貼文數</caption>', false);
+            ->assertSee('<caption class="sr-only">依公開發布時間的星期分組、按平台口徑計算的每篇平均互動與貼文數</caption>', false)
+            ->assertSee('<caption class="sr-only">依台灣時間發布時段，按平台口徑計算的每篇平均互動與貼文數</caption>', false)
+            ->assertSee('00–05 時')
+            ->assertSee('18–23 時');
 
         $summaries = collect($response->viewData('socialEngagementPublishingDaySummaries'))
+            ->keyBy('platform_key');
+        $timeSummaries = collect($response->viewData('socialEngagementPublishingTimeSummaries'))
             ->keyBy('platform_key');
 
         $this->assertSame(['facebook', 'instagram'], $summaries->keys()->all());
@@ -578,6 +585,12 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(120.0, $summaries['instagram']['weekdays'][1]['average_interactions_per_post']);
         $this->assertSame(1, $summaries['instagram']['weekdays'][1]['post_count']);
         $this->assertSame('讚＋留言', $summaries['instagram']['interaction_scope_label']);
+        $this->assertSame(16.0, $timeSummaries['facebook']['time_slots'][0]['average_interactions_per_post']);
+        $this->assertSame(1, $timeSummaries['facebook']['time_slots'][0]['post_count']);
+        $this->assertSame(4.0, $timeSummaries['facebook']['time_slots'][1]['average_interactions_per_post']);
+        $this->assertSame(8.0, $timeSummaries['facebook']['time_slots'][3]['average_interactions_per_post']);
+        $this->assertSame(120.0, $timeSummaries['instagram']['time_slots'][3]['average_interactions_per_post']);
+        $this->assertSame('讚＋留言', $timeSummaries['instagram']['interaction_scope_label']);
 
         $facebookResponse = $this->actingAs(User::factory()->create())
             ->get(route('dashboard', [
@@ -592,6 +605,33 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         );
         $this->assertSame(6.0, $facebookResponse->viewData('socialEngagementPublishingDaySummaries')[0]['weekdays'][1]['average_interactions_per_post']);
         $this->assertSame(16.0, $facebookResponse->viewData('socialEngagementPublishingDaySummaries')[0]['weekdays'][2]['average_interactions_per_post']);
+        $this->assertSame(['facebook'], array_column($facebookResponse->viewData('socialEngagementPublishingTimeSummaries'), 'platform_key'));
+        $this->assertSame(4.0, $facebookResponse->viewData('socialEngagementPublishingTimeSummaries')[0]['time_slots'][1]['average_interactions_per_post']);
+    }
+
+    public function test_publishing_weekday_and_time_slots_use_taipei_time_when_app_timezone_is_utc(): void
+    {
+        Config::set('app.timezone', 'UTC');
+        $monitor = $this->createSocialMonitorForPlatform('facebook', 'TAIPEI-SLOT-001', 'summer');
+        $run = $this->createMetricRun($monitor, now(), [
+            'views' => null,
+            'likes' => 2,
+            'comments' => 1,
+            'shares' => 3,
+            'source' => 'json_ld',
+        ]);
+        $run->forceFill(['response_published_at' => '2026-11-16 16:30:00'])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_tag' => 'tag:summer']))
+            ->assertOk();
+
+        $weekdaySummary = $response->viewData('socialEngagementPublishingDaySummaries')[0];
+        $timeSummary = $response->viewData('socialEngagementPublishingTimeSummaries')[0];
+        $this->assertSame(1, $weekdaySummary['weekdays'][2]['post_count']);
+        $this->assertSame('00–05 時', $timeSummary['time_slots'][0]['label']);
+        $this->assertSame(6.0, $timeSummary['time_slots'][0]['average_interactions_per_post']);
+        $this->assertSame(1, $timeSummary['time_slots'][0]['post_count']);
     }
 
     public function test_dashboard_ranks_complete_interactions_using_selected_platform_and_tag(): void

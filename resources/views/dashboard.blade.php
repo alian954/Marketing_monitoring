@@ -492,13 +492,13 @@
         <div class="panel-header">
             <div>
                 <h2 id="publishing-day-engagement-title" class="panel-title">發文週期成效</h2>
-                <p class="panel-description">依貼文公開發布時間分組，列出各平台每週各日的平均互動與篇數。只反映目前追蹤樣本，不代表發文日造成成效差異。</p>
+                <p class="panel-description">依台灣時間的公開發布時間，列出各平台每週各日與四個時段的平均互動及篇數。只反映目前追蹤樣本，不代表發文時間造成成效差異。</p>
             </div>
         </div>
         @if ($socialEngagementPublishingDaySummaries === [])
             <div class="empty-state">
                 <h3 class="empty-title">尚無發文週期資料</h3>
-                <p class="empty-copy">貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入。</p>
+                <p class="empty-copy">貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入星期與時段比較。</p>
             </div>
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="publishing-day-engagement-title" tabindex="0">
@@ -524,6 +524,40 @@
                                         @if ($weekdaySummary['post_count'] > 0)
                                             {{ number_format($weekdaySummary['average_interactions_per_post'], 1) }}
                                             <span class="secondary-text">{{ number_format($weekdaySummary['post_count']) }} 篇</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <h3 id="publishing-time-engagement-title" class="panel-title spaced-top">發文時段成效</h3>
+            <div class="data-table-wrap" role="region" aria-labelledby="publishing-time-engagement-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依台灣時間發布時段，按平台口徑計算的每篇平均互動與貼文數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">平台與口徑</th>
+                            @foreach ($socialEngagementPublishingTimeSummaries[0]['time_slots'] as $timeSlot)
+                                <th scope="col">{{ $timeSlot['label'] }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementPublishingTimeSummaries as $publishingTimeSummary)
+                            <tr>
+                                <th scope="row">
+                                    {{ $publishingTimeSummary['platform'] }}
+                                    <span class="secondary-text">（{{ $publishingTimeSummary['interaction_scope_label'] }}）</span>
+                                </th>
+                                @foreach ($publishingTimeSummary['time_slots'] as $timeSlot)
+                                    <td class="numeric">
+                                        @if ($timeSlot['post_count'] > 0)
+                                            {{ number_format($timeSlot['average_interactions_per_post'], 1) }}
+                                            <span class="secondary-text">{{ number_format($timeSlot['post_count']) }} 篇</span>
                                         @else
                                             —
                                         @endif
