@@ -1155,6 +1155,7 @@ class SocialPostMonitorTest extends TestCase
         $this->assertNull($savedRun->expectedTextMatchResult());
         $this->assertNull($savedRun->response_public_engagement_metrics);
         $this->assertStringContainsString('Dcard 要求人工驗證', (string) $savedRun->error_detail);
+        $this->assertStringContainsString('背景工作出口 IP 申請放行', (string) $savedRun->error_detail);
         $this->assertSame('2026-11-22 18:00:00', $monitor->fresh()->next_check_at?->toDateTimeString());
         $this->assertSame('2026-11-22 18:00:00', $siblingDcardMonitor->fresh()->next_check_at?->toDateTimeString());
         $this->assertEquals($instagramNextCheckAt, $instagramMonitor->fresh()->next_check_at);

@@ -23,6 +23,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('發文週期成效依公開發布時間列出各平台每週各日的平均互動與篇數')
             ->assertSee('活動互動目標可依標籤與平台分別設定，可選擇活動期間')
             ->assertSee('Dcard 先讀公開 HTML，互動數不完整且未遇限制時才以 Playwright Chromium 渲染')
+            ->assertSee('取得監測同意後，可向 Dcard 提供背景工作出口 IP 申請放行')
             ->assertSee('遇到驗證時不會自動處理，預設延後 6 小時再檢查')
             ->assertSee('支援比較 Facebook、Instagram、Threads 與 Dcard 的公開互動數')
             ->assertSee('Instagram 與 Dcard 以公開的讚與留言計')

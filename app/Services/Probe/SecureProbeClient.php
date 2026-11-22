@@ -324,7 +324,7 @@ class SecureProbeClient implements ProbeClient
                         ? ($cloudflareBlockDetected
                             ? '平台回傳 Cloudflare 防護頁（HTTP '.($response->statusCode ?? '狀態未知').'）；這次無法讀取貼文內容或互動數，系統不會嘗試繞過防護。請降低檢查頻率，並洽平台確認可用的存取方式。'
                             : ($dcardVerificationDetected
-                                ? 'Dcard 要求人工驗證，這次無法讀取貼文內容或互動數；系統不會自動處理驗證。請稍後再試或手動開啟網址確認。'
+                                ? 'Dcard 要求人工驗證（HTTP '.($response->statusCode ?? '狀態未知').'）；這次無法讀取貼文內容或互動數，系統不會自動處理驗證。若已取得監測同意，請向 Dcard 提供背景工作出口 IP 申請放行。'
                                 : '平台公開回應包含登入、驗證或暫時限制提示，這次無法判定預期貼文文字；請手動開啟網址核對。'))
                         : null,
                     $matchesExpectedText,
