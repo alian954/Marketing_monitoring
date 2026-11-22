@@ -10,6 +10,7 @@ use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RobotsReviewController;
+use App\Http\Controllers\SocialEngagementTargetController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,8 @@ Route::post('/status-subscriptions/{subscription}/unsubscribe', [StatusPageSubsc
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::post('/social-engagement-targets', [SocialEngagementTargetController::class, 'store'])->name('social-engagement-targets.store');
+    Route::delete('/social-engagement-targets/{socialEngagementTarget}', [SocialEngagementTargetController::class, 'destroy'])->name('social-engagement-targets.destroy');
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');

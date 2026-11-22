@@ -376,6 +376,95 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="social-engagement-targets-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="social-engagement-targets-title" class="panel-title">活動互動目標</h2>
+                <p class="panel-description">依標籤與平台設定累計目標；目前值只加總各貼文最近一次完整、可讀取的公開互動數，括號列出讀值覆蓋篇數。</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            <form action="{{ route('social-engagement-targets.store') }}" method="POST" class="check-history-filter" aria-describedby="social-engagement-target-help">
+                @csrf
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-platform">社群平台</label>
+                    <select class="field-select{{ $errors->getBag('socialEngagementTarget')->has('social_platform') ? ' is-invalid' : '' }}" id="social-engagement-target-platform" name="social_platform" required aria-describedby="social-engagement-target-platform-help{{ $errors->getBag('socialEngagementTarget')->has('social_platform') ? ' social-engagement-target-platform-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('social_platform')) aria-invalid="true" @endif>
+                        @foreach ($socialEngagementTargetPlatformLabels as $platform => $platformLabel)
+                            <option value="{{ $platform }}" @selected(old('social_platform', $socialEngagementSelectedPlatform ?? 'facebook') === $platform)>{{ $platformLabel }}</option>
+                        @endforeach
+                    </select>
+                    <p id="social-engagement-target-platform-help" class="field-help">各平台目標分開計算。</p>
+                    @error('social_platform', 'socialEngagementTarget')<p id="social-engagement-target-platform-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-tag">活動標籤</label>
+                    <select class="field-select{{ $errors->getBag('socialEngagementTarget')->has('tag') ? ' is-invalid' : '' }}" id="social-engagement-target-tag" name="tag" required aria-describedby="social-engagement-target-tag-help{{ $errors->getBag('socialEngagementTarget')->has('tag') ? ' social-engagement-target-tag-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('tag')) aria-invalid="true" @endif>
+                        <option value="">選擇標籤</option>
+                        @foreach ($socialEngagementTargetTagOptions as $tag => $platforms)
+                            <option value="{{ $tag }}" @selected(old('tag') === $tag)>{{ $tag }} · {{ implode('、', array_values($platforms)) }}</option>
+                        @endforeach
+                    </select>
+                    <p id="social-engagement-target-tag-help" class="field-help">標籤必須有此平台的貼文。</p>
+                    @error('tag', 'socialEngagementTarget')<p id="social-engagement-target-tag-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-count">目標互動數</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('target_interactions') ? ' is-invalid' : '' }}" id="social-engagement-target-count" name="target_interactions" type="number" inputmode="numeric" min="1" max="1000000000" step="1" value="{{ old('target_interactions') }}" required aria-describedby="social-engagement-target-count-help{{ $errors->getBag('socialEngagementTarget')->has('target_interactions') ? ' social-engagement-target-count-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('target_interactions')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-count-help" class="field-help">至少 1；再次儲存相同標籤與平台會更新目標。</p>
+                    @error('target_interactions', 'socialEngagementTarget')<p id="social-engagement-target-count-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
+                <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
+                <div class="check-history-filter-actions">
+                    <button class="button button-primary" type="submit">儲存目標</button>
+                </div>
+                <p id="social-engagement-target-help" class="field-help">互動口徑依平台：Facebook／Threads 計讚、留言與分享；Instagram／Dcard 計讚與留言。目標不會把未讀到的數據當成 0。</p>
+            </form>
+        </div>
+        @if ($socialEngagementTargets === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚未設定互動目標</h3>
+                <p class="empty-copy">儲存後會顯示各活動標籤目前累計互動與讀值覆蓋率。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-targets-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">各平台活動互動目標的目前累計值、達成率及完整讀值覆蓋篇數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">活動標籤</th>
+                            <th scope="col">平台</th>
+                            <th scope="col">目前／目標互動</th>
+                            <th scope="col">達成率</th>
+                            <th scope="col">資料覆蓋</th>
+                            <th scope="col"><span class="sr-only">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementTargets as $socialEngagementTarget)
+                            <tr>
+                                <th scope="row">{{ $socialEngagementTarget['tag'] }}</th>
+                                <td>{{ $socialEngagementTarget['platform_label'] }}</td>
+                                <td class="numeric">{{ $socialEngagementTarget['current_interactions'] === null ? '—' : number_format($socialEngagementTarget['current_interactions']) }}／{{ number_format($socialEngagementTarget['target_interactions']) }}</td>
+                                <td class="numeric">{{ $socialEngagementTarget['completion_percent'] === null ? '尚無完整讀值' : number_format($socialEngagementTarget['completion_percent'], 1).'%' }}</td>
+                                <td class="numeric">已讀 {{ number_format($socialEngagementTarget['available_post_count']) }}／{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇</td>
+                                <td>
+                                    <form action="{{ route('social-engagement-targets.destroy', $socialEngagementTarget['id']) }}" method="POST">
+                                        @csrf
+                                        @method('DELETE')
+                                        <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
+                                        <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
+                                        <button class="button button-danger button-small" type="submit" aria-label="刪除 {{ $socialEngagementTarget['tag'] }} 的 {{ $socialEngagementTarget['platform_label'] }} 互動目標">刪除</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="publishing-day-engagement-title">
         <div class="panel-header">
             <div>

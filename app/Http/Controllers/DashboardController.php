@@ -9,6 +9,7 @@ use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
+use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\FleetAvailabilityReport;
@@ -344,6 +345,57 @@ class DashboardController extends Controller
         ));
         $socialEngagementTopPosts = $socialEngagementDashboardData['top_posts'];
         $socialEngagementPublishingDaySummaries = $socialEngagementDashboardData['publishing_day_summaries'];
+        $socialEngagementTargetPlatformLabels = [
+            'facebook' => 'Facebook',
+            'instagram' => 'Instagram',
+            'threads' => 'Threads',
+            'dcard' => 'Dcard',
+        ];
+        $socialEngagementTargetTagOptions = [];
+        $socialEngagementTagPlatformSummaries = [];
+
+        foreach ($socialEngagementDashboardData['summaries'] as $summary) {
+            $tag = $summary['filter_label'];
+
+            if ($tag === null) {
+                continue;
+            }
+
+            foreach ($summary['platforms'] as $platform => $platformSummary) {
+                $socialEngagementTagPlatformSummaries[$tag][$platform] = $platformSummary;
+                $socialEngagementTargetTagOptions[$tag][$platform] = $socialEngagementTargetPlatformLabels[$platform];
+            }
+        }
+
+        uksort($socialEngagementTargetTagOptions, 'strnatcasecmp');
+        $socialEngagementTargets = SocialEngagementTarget::query()
+            ->when($socialEngagementPlatform !== null, static fn (Builder $query): Builder => $query->where('social_platform', $socialEngagementPlatform))
+            ->when($socialEngagementSelectedTagValue !== null, static fn (Builder $query): Builder => $query->where('tag', $socialEngagementSelectedTagValue))
+            ->when($socialEngagementSelectedTag === 'unlabeled', static fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
+            ->orderBy('tag')
+            ->orderBy('social_platform')
+            ->get()
+            ->map(static function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels): array {
+                $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
+                $trackedPostCount = (int) ($summary['monitor_count'] ?? 0);
+                $availablePostCount = (int) ($summary['interaction_count'] ?? 0);
+                $currentInteractions = $availablePostCount > 0 ? (int) $summary['interaction_total'] : null;
+
+                return [
+                    'id' => (int) $target->id,
+                    'tag' => $target->tag,
+                    'social_platform' => $target->social_platform,
+                    'platform_label' => $socialEngagementTargetPlatformLabels[$target->social_platform],
+                    'target_interactions' => (int) $target->target_interactions,
+                    'current_interactions' => $currentInteractions,
+                    'completion_percent' => $currentInteractions === null
+                        ? null
+                        : round($currentInteractions / $target->target_interactions * 100, 1),
+                    'available_post_count' => $availablePostCount,
+                    'tracked_post_count' => $trackedPostCount,
+                ];
+            })
+            ->all();
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -450,6 +502,9 @@ class DashboardController extends Controller
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
             'socialEngagementPublishingDaySummaries' => $socialEngagementPublishingDaySummaries,
+            'socialEngagementTargets' => $socialEngagementTargets,
+            'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
+            'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,
             'socialEngagementTopPostSortOptions' => $socialEngagementTopPostSortOptions,
             'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
             'socialEngagementInteractionScopeLabel' => $socialEngagementInteractionScopeLabel,
