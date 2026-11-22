@@ -179,65 +179,99 @@ class GoogleAdsDataApi
             throw new GoogleAdsApiException('Google Ads 活動日期區間無效，請重新設定開始日與結束日。');
         }
 
-        $query = "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$startsOn}' AND '{$endsOn}'";
-        $payload = $this->googleAdsRequest(
-            $accessToken,
-            $customerId,
-            'googleAds:searchStream',
-            $query,
-            $loginCustomerId,
-        );
-        $rows = $this->rowsFromStream($payload);
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $hasHistoricalRange = $startsOn < $minimumSupportedDate;
+        $returnedCurrency = $accountCurrency;
 
-        if ($rows === []) {
-            $dailyMetrics = $this->dailyCampaignMetrics(
+        if ($hasHistoricalRange) {
+            $cutoffMonth = CarbonImmutable::parse($minimumSupportedDate)->startOfMonth();
+            $cutoffMonthEnd = $cutoffMonth->endOfMonth();
+            $endsBeforeCutoff = $endsOn < $minimumSupportedDate;
+            $endsBeforeCutoffMonthEnd = $endsOn < $cutoffMonthEnd->toDateString();
+
+            if (substr($startsOn, 8, 2) !== '01'
+                || ($endsBeforeCutoff && $endsOn !== CarbonImmutable::parse($endsOn)->endOfMonth()->toDateString())
+                || (! $endsBeforeCutoff && $endsBeforeCutoffMonthEnd)) {
+                throw new GoogleAdsApiException('Google Ads 較舊區間只能精確讀取完整月份，請將舊資料的開始日設為月初，結束日設為月底。');
+            }
+
+            $historicalEndMonth = $endsBeforeCutoff
+                ? CarbonImmutable::parse($endsOn)->startOfMonth()
+                : $cutoffMonth;
+            $metricRows = $this->campaignMetricRows(
                 $accessToken,
                 $customerId,
                 $campaignId,
-                $startsOn,
-                $endsOn,
+                'month',
+                CarbonImmutable::parse($startsOn)->startOfMonth()->toDateString(),
+                $historicalEndMonth->toDateString(),
                 $loginCustomerId,
-                $accountCurrency,
+                true,
             );
-            $conversionActions = $this->conversionActionInsights(
+
+            if ($endsOn > $cutoffMonthEnd->toDateString()) {
+                array_push($metricRows, ...$this->campaignMetricRows(
+                    $accessToken,
+                    $customerId,
+                    $campaignId,
+                    'date',
+                    $cutoffMonthEnd->addDay()->toDateString(),
+                    $endsOn,
+                    $loginCustomerId,
+                    true,
+                ));
+            }
+
+            $aggregate = $this->aggregateCampaignMetricRows(
+                $metricRows,
+                $customerId,
+                $campaignId,
+            );
+            $campaignName = $aggregate['campaign_name'] ?? $campaignId;
+            $metrics = $aggregate['metrics'];
+            $returnedCurrency = $aggregate['currency_code'] ?? $accountCurrency;
+        } else {
+            $metricRows = $this->campaignMetricRows(
                 $accessToken,
                 $customerId,
                 $campaignId,
+                'date',
                 $startsOn,
                 $endsOn,
                 $loginCustomerId,
+                false,
             );
+            $row = $metricRows[0] ?? null;
 
-            return [
-                'campaign_id' => $campaignId,
-                'campaign_name' => $campaignId,
-                'spend_amount' => '0.0000',
-                'impressions' => 0,
-                'clicks' => 0,
-                'conversions' => '0.0000',
-                'conversions_value' => '0.0000',
-                'conversion_actions' => $conversionActions,
-                'currency_code' => $accountCurrency,
-                ...$dailyMetrics,
-            ];
-        }
+            if (! is_array($row)) {
+                $campaignName = $campaignId;
+                $metrics = [
+                    'costMicros' => '0',
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'conversions' => '0.0000',
+                    'conversionsValue' => '0.0000',
+                ];
+            } else {
+                $campaign = $row['campaign'] ?? null;
+                $customer = $row['customer'] ?? null;
+                $metrics = $row['metrics'] ?? null;
+                $returnedCurrency = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
 
-        $row = $rows[0];
-        $campaign = $row['campaign'] ?? null;
-        $customer = $row['customer'] ?? null;
-        $metrics = $row['metrics'] ?? null;
-        $returnedCurrency = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+                if (! is_array($campaign)
+                    || (string) ($campaign['id'] ?? '') !== $campaignId
+                    || ! is_string($campaign['name'] ?? null)
+                    || trim($campaign['name']) === ''
+                    || ! is_array($customer)
+                    || (string) ($customer['id'] ?? '') !== $customerId
+                    || ! is_string($returnedCurrency)
+                    || preg_match('/^[A-Z]{3}$/', $returnedCurrency) !== 1
+                    || ! is_array($metrics)) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
+                }
 
-        if (! is_array($campaign)
-            || (string) ($campaign['id'] ?? '') !== $campaignId
-            || ! is_string($campaign['name'] ?? null)
-            || trim($campaign['name']) === ''
-            || ! is_array($customer)
-            || (string) ($customer['id'] ?? '') !== $customerId
-            || ! is_string($returnedCurrency)
-            || preg_match('/^[A-Z]{3}$/', $returnedCurrency) !== 1
-            || ! is_array($metrics)) {
-            throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
+                $campaignName = trim($campaign['name']);
+            }
         }
 
         $dailyMetrics = $this->dailyCampaignMetrics(
@@ -256,11 +290,12 @@ class GoogleAdsDataApi
             $startsOn,
             $endsOn,
             $loginCustomerId,
+            $minimumSupportedDate,
         );
 
         return [
             'campaign_id' => $campaignId,
-            'campaign_name' => trim($campaign['name']),
+            'campaign_name' => $campaignName,
             'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
             'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
             'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
@@ -289,7 +324,7 @@ class GoogleAdsDataApi
         ?string $loginCustomerId,
         string $expectedCurrency,
     ): array {
-        $minimumSupportedDate = CarbonImmutable::now(config('app.timezone'))->subMonthsNoOverflow(37)->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
 
         if ($endsOn < $minimumSupportedDate) {
             return [
@@ -367,17 +402,55 @@ class GoogleAdsDataApi
         string $startsOn,
         string $endsOn,
         ?string $loginCustomerId,
+        string $minimumSupportedDate,
     ): array {
-        $query = "SELECT customer.id, campaign.id, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$startsOn}' AND '{$endsOn}'";
-        $payload = $this->googleAdsRequest(
-            $accessToken,
-            $customerId,
-            'googleAds:searchStream',
-            $query,
-            $loginCustomerId,
-        );
-        $rows = $this->rowsFromStream($payload);
+        $rows = [];
+
+        if ($startsOn < $minimumSupportedDate) {
+            $cutoffMonth = CarbonImmutable::parse($minimumSupportedDate)->startOfMonth();
+            $cutoffMonthEnd = $cutoffMonth->endOfMonth();
+            $endsBeforeCutoff = $endsOn < $minimumSupportedDate;
+            $historicalEndMonth = $endsBeforeCutoff
+                ? CarbonImmutable::parse($endsOn)->startOfMonth()
+                : $cutoffMonth;
+            array_push($rows, ...$this->conversionActionRows(
+                $accessToken,
+                $customerId,
+                $campaignId,
+                'month',
+                CarbonImmutable::parse($startsOn)->startOfMonth()->toDateString(),
+                $historicalEndMonth->toDateString(),
+                $loginCustomerId,
+                true,
+            ));
+
+            if ($endsOn > $cutoffMonthEnd->toDateString()) {
+                array_push($rows, ...$this->conversionActionRows(
+                    $accessToken,
+                    $customerId,
+                    $campaignId,
+                    'date',
+                    $cutoffMonthEnd->addDay()->toDateString(),
+                    $endsOn,
+                    $loginCustomerId,
+                    true,
+                ));
+            }
+        } else {
+            $rows = $this->conversionActionRows(
+                $accessToken,
+                $customerId,
+                $campaignId,
+                'date',
+                $startsOn,
+                $endsOn,
+                $loginCustomerId,
+                false,
+            );
+        }
+
         $conversionActions = [];
+        $conversionActionsById = [];
 
         foreach ($rows as $row) {
             $campaign = $row['campaign'] ?? null;
@@ -400,11 +473,36 @@ class GoogleAdsDataApi
                 throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的轉換動作資料，未儲存讀值。');
             }
 
+            $conversionActionId = substr($conversionActionResourceName, strlen($expectedResourcePrefix));
+            $normalizedActionName = trim($conversionActionName);
+
+            if (isset($conversionActionsById[$conversionActionId])
+                && $conversionActionsById[$conversionActionId]['conversion_action_name'] !== $normalizedActionName) {
+                throw new GoogleAdsApiException('Google Ads API 回傳名稱不一致的轉換動作資料，未儲存讀值。');
+            }
+
+            $conversionActionsById[$conversionActionId] ??= [
+                'conversion_action_id' => $conversionActionId,
+                'conversion_action_name' => $normalizedActionName,
+                'conversions_units' => '0',
+                'conversion_value_units' => '0',
+            ];
+            $conversionActionsById[$conversionActionId]['conversions_units'] = $this->addSignedIntegerStrings(
+                $conversionActionsById[$conversionActionId]['conversions_units'],
+                $this->scaledDecimalUnits($metrics['conversions'] ?? null, false),
+            );
+            $conversionActionsById[$conversionActionId]['conversion_value_units'] = $this->addSignedIntegerStrings(
+                $conversionActionsById[$conversionActionId]['conversion_value_units'],
+                $this->scaledDecimalUnits($metrics['conversionsValue'] ?? null, true),
+            );
+        }
+
+        foreach ($conversionActionsById as $conversionAction) {
             $conversionActions[] = [
-                'conversion_action_id' => substr($conversionActionResourceName, strlen($expectedResourcePrefix)),
-                'conversion_action_name' => trim($conversionActionName),
-                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
-                'conversion_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+                'conversion_action_id' => $conversionAction['conversion_action_id'],
+                'conversion_action_name' => $conversionAction['conversion_action_name'],
+                'conversions' => $this->scaledUnitsToDecimal($conversionAction['conversions_units']),
+                'conversion_value' => $this->scaledUnitsToDecimal($conversionAction['conversion_value_units']),
             ];
         }
 
@@ -417,6 +515,315 @@ class GoogleAdsDataApi
         });
 
         return $conversionActions;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function campaignMetricRows(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $segment,
+        string $startsOn,
+        string $endsOn,
+        ?string $loginCustomerId,
+        bool $selectSegment,
+    ): array {
+        $segmentField = $segment === 'month' ? 'segments.month' : 'segments.date';
+        $selectedSegmentField = $selectSegment ? $segmentField.', ' : '';
+        $orderBySegment = $selectSegment ? " ORDER BY {$segmentField} ASC" : '';
+        $querySegmentField = $selectSegment ? $segmentField : 'segments.date';
+        $query = "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, {$selectedSegmentField}metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND {$querySegmentField} BETWEEN '{$startsOn}' AND '{$endsOn}'{$orderBySegment}";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+
+        return $selectSegment
+            ? $this->strictRowsFromStream($payload)
+            : $this->rowsFromStream($payload);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function conversionActionRows(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $segment,
+        string $startsOn,
+        string $endsOn,
+        ?string $loginCustomerId,
+        bool $selectSegment,
+    ): array {
+        $segmentField = $segment === 'month' ? 'segments.month' : 'segments.date';
+        $selectedSegmentField = $selectSegment ? $segmentField.', ' : '';
+        $querySegmentField = $selectSegment ? $segmentField : 'segments.date';
+        $query = "SELECT customer.id, campaign.id, {$selectedSegmentField}segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND {$querySegmentField} BETWEEN '{$startsOn}' AND '{$endsOn}'";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+
+        return $selectSegment
+            ? $this->strictRowsFromStream($payload)
+            : $this->rowsFromStream($payload);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function strictRowsFromStream(array $payload): array
+    {
+        if ($payload === []) {
+            return [];
+        }
+
+        $batches = array_is_list($payload) ? $payload : [$payload];
+        $rows = [];
+
+        foreach ($batches as $batch) {
+            if (! is_array($batch) || ! is_array($batch['results'] ?? null)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳格式無效的分段資料，未儲存讀值。');
+            }
+
+            foreach ($batch['results'] as $row) {
+                if (! is_array($row)) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳格式無效的分段資料，未儲存讀值。');
+                }
+
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{campaign_name: string|null, currency_code: string|null, metrics: array{costMicros: string, impressions: int, clicks: int, conversions: string, conversionsValue: string}}
+     */
+    private function aggregateCampaignMetricRows(
+        array $rows,
+        string $customerId,
+        string $campaignId,
+    ): array {
+        $campaignName = null;
+        $currencyCode = null;
+        $totals = [
+            'cost_micros' => '0',
+            'impressions' => 0,
+            'clicks' => 0,
+            'conversions_units' => '0',
+            'conversions_value_units' => '0',
+        ];
+
+        foreach ($rows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $segments = $row['segments'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+            $rowCampaignName = is_array($campaign) ? ($campaign['name'] ?? null) : null;
+            $month = is_array($segments) ? ($segments['month'] ?? null) : null;
+            $date = is_array($segments) ? ($segments['date'] ?? null) : null;
+            $hasValidSegment = (is_string($month)
+                    && $this->isCalendarDate($month)
+                    && substr($month, 8, 2) === '01')
+                || (is_string($date) && $this->isCalendarDate($date));
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! $hasValidSegment
+                || ! is_string($rowCampaignName)
+                || trim($rowCampaignName) === ''
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || preg_match('/^[A-Z]{3}$/', $rowCurrencyCode) !== 1
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
+            }
+
+            if (($campaignName !== null && $campaignName !== trim($rowCampaignName))
+                || ($currencyCode !== null && $currencyCode !== $rowCurrencyCode)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳名稱或幣別不一致的活動資料，未儲存讀值。');
+            }
+
+            $campaignName = trim($rowCampaignName);
+            $currencyCode = $rowCurrencyCode;
+            $totals['cost_micros'] = $this->addUnsignedIntegerStrings(
+                $totals['cost_micros'],
+                $this->unsignedIntegerString($metrics['costMicros'] ?? null, '花費'),
+            );
+            $totals['impressions'] = $this->addNonNegativeIntegers(
+                $totals['impressions'],
+                $this->nonNegativeInteger($metrics['impressions'] ?? null),
+            );
+            $totals['clicks'] = $this->addNonNegativeIntegers(
+                $totals['clicks'],
+                $this->nonNegativeInteger($metrics['clicks'] ?? null),
+            );
+            $totals['conversions_units'] = $this->addSignedIntegerStrings(
+                $totals['conversions_units'],
+                $this->scaledDecimalUnits($metrics['conversions'] ?? null, false),
+            );
+            $totals['conversions_value_units'] = $this->addSignedIntegerStrings(
+                $totals['conversions_value_units'],
+                $this->scaledDecimalUnits($metrics['conversionsValue'] ?? null, true),
+            );
+        }
+
+        return [
+            'campaign_name' => $campaignName,
+            'currency_code' => $currencyCode,
+            'metrics' => [
+                'costMicros' => $totals['cost_micros'],
+                'impressions' => $totals['impressions'],
+                'clicks' => $totals['clicks'],
+                'conversions' => $this->scaledUnitsToDecimal($totals['conversions_units']),
+                'conversionsValue' => $this->scaledUnitsToDecimal($totals['conversions_value_units']),
+            ],
+        ];
+    }
+
+    private function minimumSupportedDate(): string
+    {
+        return CarbonImmutable::now(config('app.timezone'))->subMonthsNoOverflow(37)->toDateString();
+    }
+
+    private function unsignedIntegerString(mixed $value, string $metricName): string
+    {
+        if ((! is_string($value) && ! is_int($value)) || ! ctype_digit((string) $value)) {
+            throw new GoogleAdsApiException('Google Ads API 回傳的'.$metricName.'格式無效。');
+        }
+
+        $normalizedValue = ltrim((string) $value, '0');
+
+        return $normalizedValue === '' ? '0' : $normalizedValue;
+    }
+
+    private function addNonNegativeIntegers(int $first, int $second): int
+    {
+        if ($second > PHP_INT_MAX - $first) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超出可儲存範圍的整數指標。');
+        }
+
+        return $first + $second;
+    }
+
+    private function scaledDecimalUnits(mixed $value, bool $allowNegative): string
+    {
+        $decimal = $this->decimalString($value, $allowNegative);
+        $isNegative = str_starts_with($decimal, '-');
+        $unsignedDecimal = ltrim($decimal, '-');
+        [$integerPart, $fractionalPart] = explode('.', $unsignedDecimal);
+        $units = ltrim($integerPart.$fractionalPart, '0');
+        $units = $units === '' ? '0' : $units;
+
+        return $isNegative && $units !== '0' ? '-'.$units : $units;
+    }
+
+    private function scaledUnitsToDecimal(string $units): string
+    {
+        $isNegative = str_starts_with($units, '-');
+        $unsignedUnits = ltrim($units, '-');
+        $unsignedUnits = str_pad($unsignedUnits, 5, '0', STR_PAD_LEFT);
+        $decimal = substr($unsignedUnits, 0, -4).'.'.substr($unsignedUnits, -4);
+
+        return $isNegative && $unsignedUnits !== '00000' ? '-'.$decimal : $decimal;
+    }
+
+    private function addSignedIntegerStrings(string $first, string $second): string
+    {
+        $firstNegative = str_starts_with($first, '-');
+        $secondNegative = str_starts_with($second, '-');
+        $firstMagnitude = ltrim($first, '-');
+        $secondMagnitude = ltrim($second, '-');
+
+        if ($firstNegative === $secondNegative) {
+            $sum = $this->addUnsignedIntegerStrings($firstMagnitude, $secondMagnitude);
+
+            return $firstNegative && $sum !== '0' ? '-'.$sum : $sum;
+        }
+
+        $comparison = $this->compareUnsignedIntegerStrings($firstMagnitude, $secondMagnitude);
+
+        if ($comparison === 0) {
+            return '0';
+        }
+
+        if ($comparison > 0) {
+            $difference = $this->subtractUnsignedIntegerStrings($firstMagnitude, $secondMagnitude);
+
+            return $firstNegative ? '-'.$difference : $difference;
+        }
+
+        $difference = $this->subtractUnsignedIntegerStrings($secondMagnitude, $firstMagnitude);
+
+        return $secondNegative ? '-'.$difference : $difference;
+    }
+
+    private function addUnsignedIntegerStrings(string $first, string $second): string
+    {
+        $maxLength = max(strlen($first), strlen($second));
+        $position = $maxLength - 1;
+        $carry = 0;
+        $sum = '';
+
+        for (; $position >= 0; $position--) {
+            $firstIndex = $position - ($maxLength - strlen($first));
+            $secondIndex = $position - ($maxLength - strlen($second));
+            $firstDigit = $firstIndex >= 0 ? (int) $first[$firstIndex] : 0;
+            $secondDigit = $secondIndex >= 0 ? (int) $second[$secondIndex] : 0;
+            $digitSum = $firstDigit + $secondDigit + $carry;
+            $sum = (string) ($digitSum % 10).$sum;
+            $carry = intdiv($digitSum, 10);
+        }
+
+        if ($carry > 0) {
+            $sum = (string) $carry.$sum;
+        }
+
+        $normalizedSum = ltrim($sum, '0');
+
+        return $normalizedSum === '' ? '0' : $normalizedSum;
+    }
+
+    private function compareUnsignedIntegerStrings(string $first, string $second): int
+    {
+        $first = ltrim($first, '0') ?: '0';
+        $second = ltrim($second, '0') ?: '0';
+
+        return strlen($first) <=> strlen($second) ?: strcmp($first, $second);
+    }
+
+    private function subtractUnsignedIntegerStrings(string $larger, string $smaller): string
+    {
+        $borrow = 0;
+        $difference = '';
+        $largerLength = strlen($larger);
+        $smallerLength = strlen($smaller);
+
+        for ($position = 1; $position <= $largerLength; $position++) {
+            $largerDigit = (int) $larger[$largerLength - $position] - $borrow;
+            $smallerDigit = (int) ($smaller[$smallerLength - $position] ?? '0');
+
+            if ($largerDigit < $smallerDigit) {
+                $largerDigit += 10;
+                $borrow = 1;
+            } else {
+                $borrow = 0;
+            }
+
+            $difference = (string) ($largerDigit - $smallerDigit).$difference;
+        }
+
+        $normalizedDifference = ltrim($difference, '0');
+
+        return $normalizedDifference === '' ? '0' : $normalizedDifference;
     }
 
     private function validateCustomerIds(string $customerId, ?string $loginCustomerId): void

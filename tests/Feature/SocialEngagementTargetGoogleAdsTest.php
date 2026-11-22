@@ -463,19 +463,57 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     'results' => [[
                         'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
                         'campaign' => ['id' => '987654321', 'name' => 'Long-running campaign'],
+                        'segments' => ['month' => '2023-10-01'],
                         'metrics' => [
-                            'costMicros' => '1000000',
-                            'impressions' => '100',
-                            'clicks' => '4',
-                            'conversions' => '1',
+                            'costMicros' => '100000000',
+                            'impressions' => '1000',
+                            'clicks' => '40',
+                            'conversions' => '2',
                             'conversionsValue' => '10',
+                        ],
+                    ]],
+                ]])
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Long-running campaign'],
+                        'segments' => ['date' => '2023-11-01'],
+                        'metrics' => [
+                            'costMicros' => '200000000',
+                            'impressions' => '2000',
+                            'clicks' => '80',
+                            'conversions' => '3',
+                            'conversionsValue' => '20',
                         ],
                     ]],
                 ]])
                 ->push($this->dailyMetricsPayload([
                     ['date' => '2023-10-22', 'cost_micros' => '1250000', 'impressions' => '12', 'clicks' => '2', 'conversions' => '1.5', 'conversions_value' => '3.25'],
                 ], '1234567890', '987654321', 'USD'))
-                ->push([]),
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => ['id' => '987654321'],
+                        'segments' => [
+                            'month' => '2023-10-01',
+                            'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                            'conversionActionName' => 'Purchase',
+                        ],
+                        'metrics' => ['conversions' => '2', 'conversionsValue' => '10'],
+                    ]],
+                ]])
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => ['id' => '987654321'],
+                        'segments' => [
+                            'date' => '2023-11-01',
+                            'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                            'conversionActionName' => 'Purchase',
+                        ],
+                        'metrics' => ['conversions' => '3', 'conversionsValue' => '20'],
+                    ]],
+                ]]),
         ]);
 
         $insights = (new GoogleAdsDataApi)->campaignInsights(
@@ -500,7 +538,10 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 'conversions_value' => '3.2500',
             ],
         ], $insights['daily_metrics']);
-        Http::assertSentCount(3);
+        $this->assertSame('300.0000', $insights['spend_amount']);
+        $this->assertSame(3000, $insights['impressions']);
+        $this->assertSame('5.0000', $insights['conversions']);
+        Http::assertSentCount(5);
     }
 
     public function test_google_ads_daily_metrics_mark_a_period_before_the_37_month_window_as_unsupported(): void
@@ -513,16 +554,28 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     'results' => [[
                         'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
                         'campaign' => ['id' => '987654321', 'name' => 'Historical campaign'],
+                        'segments' => ['month' => '2019-01-01'],
                         'metrics' => [
-                            'costMicros' => '1000000',
-                            'impressions' => '100',
-                            'clicks' => '4',
-                            'conversions' => '1',
-                            'conversionsValue' => '10',
+                            'costMicros' => '125500000',
+                            'impressions' => '1200',
+                            'clicks' => '48',
+                            'conversions' => '5.25',
+                            'conversionsValue' => '250.75',
                         ],
                     ]],
                 ]])
-                ->push([]),
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => ['id' => '987654321'],
+                        'segments' => [
+                            'month' => '2019-01-01',
+                            'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                            'conversionActionName' => 'Purchase',
+                        ],
+                        'metrics' => ['conversions' => '5.25', 'conversionsValue' => '250.75'],
+                    ]],
+                ]]),
         ]);
 
         $insights = (new GoogleAdsDataApi)->campaignInsights(
@@ -538,7 +591,225 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame([], $insights['daily_metrics']);
         $this->assertNull($insights['daily_metrics_coverage_start_on']);
         $this->assertNull($insights['daily_metrics_coverage_end_on']);
+        $this->assertSame('125.5000', $insights['spend_amount']);
+        $this->assertSame(1200, $insights['impressions']);
+        $this->assertSame(48, $insights['clicks']);
+        $this->assertSame('5.2500', $insights['conversions']);
+        $this->assertSame('250.7500', $insights['conversions_value']);
+        $this->assertSame([
+            [
+                'conversion_action_id' => '1001',
+                'conversion_action_name' => 'Purchase',
+                'conversions' => '5.2500',
+                'conversion_value' => '250.7500',
+            ],
+        ], $insights['conversion_actions']);
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_contains($query, 'segments.month BETWEEN \'2019-01-01\' AND \'2019-12-01\'');
+        });
         Http::assertSentCount(2);
+    }
+
+    public function test_google_ads_old_and_recent_monthly_totals_and_conversion_actions_use_matching_ranges(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Long-running campaign'],
+                        'segments' => ['month' => '2023-10-01'],
+                        'metrics' => [
+                            'costMicros' => '100000000',
+                            'impressions' => '1000',
+                            'clicks' => '40',
+                            'conversions' => '2.5',
+                            'conversionsValue' => '50',
+                        ],
+                    ]],
+                ]])
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Long-running campaign'],
+                        'segments' => ['date' => '2023-11-01'],
+                        'metrics' => [
+                            'costMicros' => '200000000',
+                            'impressions' => '2000',
+                            'clicks' => '80',
+                            'conversions' => '3.25',
+                            'conversionsValue' => '75.5',
+                        ],
+                    ]],
+                ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2023-10-22', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ], '1234567890', '987654321', 'USD'))
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => ['id' => '987654321'],
+                        'segments' => [
+                            'month' => '2023-10-01',
+                            'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                            'conversionActionName' => 'Purchase',
+                        ],
+                        'metrics' => ['conversions' => '2.5', 'conversionsValue' => '50'],
+                    ]],
+                ]])
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => ['id' => '987654321'],
+                        'segments' => [
+                            'date' => '2023-11-01',
+                            'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                            'conversionActionName' => 'Purchase',
+                        ],
+                        'metrics' => ['conversions' => '3.25', 'conversionsValue' => '75.5'],
+                    ]],
+                ]]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2022-01-01',
+            '2023-11-17',
+            'USD',
+        );
+
+        $this->assertSame('partial', $insights['daily_metrics_status']);
+        $this->assertSame('2023-10-22', $insights['daily_metrics_coverage_start_on']);
+        $this->assertSame('2023-11-17', $insights['daily_metrics_coverage_end_on']);
+        $this->assertSame('300.0000', $insights['spend_amount']);
+        $this->assertSame(3000, $insights['impressions']);
+        $this->assertSame(120, $insights['clicks']);
+        $this->assertSame('5.7500', $insights['conversions']);
+        $this->assertSame('125.5000', $insights['conversions_value']);
+        $this->assertSame([
+            [
+                'conversion_action_id' => '1001',
+                'conversion_action_name' => 'Purchase',
+                'conversions' => '5.7500',
+                'conversion_value' => '125.5000',
+            ],
+        ], $insights['conversion_actions']);
+
+        $queries = Http::recorded()->map(fn (array $record): string => $record[0]->data()['query'])->all();
+        $this->assertSame([
+            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.month BETWEEN '2022-01-01' AND '2023-10-01' ORDER BY segments.month ASC",
+            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-11-01' AND '2023-11-17' ORDER BY segments.date ASC",
+            "SELECT customer.id, customer.currency_code, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-10-22' AND '2023-11-17' ORDER BY segments.date ASC",
+            "SELECT customer.id, campaign.id, segments.month, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.month BETWEEN '2022-01-01' AND '2023-10-01'",
+            "SELECT customer.id, campaign.id, segments.date, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-11-01' AND '2023-11-17'",
+        ], $queries);
+    }
+
+    public function test_google_ads_rejects_partial_historical_months_before_querying(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+
+        foreach ([['2019-01-15', '2019-02-28'], ['2019-01-01', '2019-02-15']] as [$startsOn, $endsOn]) {
+            try {
+                (new GoogleAdsDataApi)->campaignInsights(
+                    'access-token',
+                    '1234567890',
+                    '987654321',
+                    $startsOn,
+                    $endsOn,
+                    'USD',
+                );
+                $this->fail('A partial historical month cannot be represented by monthly metrics.');
+            } catch (GoogleAdsApiException $exception) {
+                $this->assertSame('Google Ads 較舊區間只能精確讀取完整月份，請將舊資料的開始日設為月初，結束日設為月底。', $exception->getMessage());
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_google_ads_rejects_a_partial_cutoff_month_end_before_querying(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+
+        try {
+            (new GoogleAdsDataApi)->campaignInsights(
+                'access-token',
+                '1234567890',
+                '987654321',
+                '2022-01-01',
+                '2023-10-22',
+                'USD',
+            );
+            $this->fail('A partial historical cutoff month cannot be represented by monthly metrics.');
+        } catch (GoogleAdsApiException $exception) {
+            $this->assertSame('Google Ads 較舊區間只能精確讀取完整月份，請將舊資料的開始日設為月初，結束日設為月底。', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_google_ads_sync_keeps_the_last_successful_report_when_historical_dates_are_not_month_aligned(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2019-01-15',
+            'ends_on' => '2019-02-28',
+        ]);
+        $connection = $this->createConnection($user);
+        $report = $this->createReport($connection, $target, [
+            'campaign_name' => 'Last successful historical read',
+            'spend_amount' => '456.7800',
+            'impressions' => 1234,
+            'clicks' => 56,
+            'conversions' => '7.5000',
+            'conversions_value' => '89.2500',
+        ]);
+        $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->create([
+            'social_engagement_target_id' => $target->id,
+            'google_ads_connection_id' => $connection->id,
+            'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS,
+            'account_id' => $connection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'campaign_name' => 'Last successful historical read',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '456.7800',
+            'impressions' => 1234,
+            'clicks' => 56,
+            'conversions' => '7.5000',
+            'conversions_value' => '89.2500',
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subDay(),
+        ]);
+
+        $this->travelTo('2026-11-22 12:00:00');
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.sync', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHasErrors([
+                'google_ads' => 'Google Ads 較舊區間只能精確讀取完整月份，請將舊資料的開始日設為月初，結束日設為月底。',
+            ]);
+
+        $this->assertSame('456.7800', $report->fresh()->spend_amount);
+        $this->assertSame(1234, $report->fresh()->impressions);
+        $this->assertSame('Last successful historical read', $report->fresh()->campaign_name);
+        $this->assertSame('456.7800', $paidAdSnapshot->fresh()->spend_amount);
+        $this->assertSame(1, SocialEngagementTargetGoogleAdsReport::query()->count());
+        $this->assertSame(1, SocialEngagementTargetPaidAdSnapshot::query()->count());
+        Http::assertSentCount(1);
     }
 
     public function test_google_ads_daily_metrics_reject_rows_for_a_different_campaign(): void
