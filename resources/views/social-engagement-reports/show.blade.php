@@ -60,6 +60,128 @@
             </dl>
         </section>
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-meta-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-meta-title">Meta Ads 投放成效</h2>
+                    <p class="campaign-report-secondary">
+                        活動 ID：<code>{{ $target->meta_campaign_id ?? '尚未設定' }}</code>
+                    </p>
+                </div>
+                @if ($metaMarketingConnection && $metaMarketingConnection->ad_account_id && $target->meta_campaign_id && $target->starts_on && $target->ends_on && (! $metaMarketingConnection->token_expires_at || $metaMarketingConnection->token_expires_at->isFuture()))
+                    <form action="{{ route('social-engagement-targets.meta-marketing.sync', $target) }}" method="POST" class="ga4-sync-actions">
+                        @csrf
+                        <button class="button button-secondary button-small" type="submit">更新 Meta Ads 數據</button>
+                    </form>
+                @endif
+            </div>
+
+            @if (! $metaMarketingConnection)
+                <p class="campaign-report-empty">尚未連結 Meta Ads。<a href="{{ route('integrations.meta-marketing.edit') }}">設定 Meta Ads</a></p>
+            @elseif ($metaMarketingConnection->token_expires_at && $metaMarketingConnection->token_expires_at->isPast())
+                <p class="campaign-report-empty">Meta 授權已到期。<a href="{{ route('integrations.meta-marketing.edit') }}">重新連結帳戶</a></p>
+            @elseif (! $metaMarketingConnection->ad_account_id)
+                <p class="campaign-report-empty">尚未設定 Meta 廣告帳戶。<a href="{{ route('integrations.meta-marketing.edit') }}">前往設定</a></p>
+            @elseif (! $target->meta_campaign_id)
+                <p class="campaign-report-empty">在總覽的活動互動目標設定 Meta 活動 ID，即可同步投放成效。</p>
+            @elseif (! $target->starts_on || ! $target->ends_on)
+                <p class="campaign-report-empty">設定活動開始日與結束日後，即可讀取相同期間的 Meta Ads 成效。</p>
+            @elseif (! $metaMarketingReport)
+                <p class="campaign-report-empty">尚無 Meta Ads 讀值。按「更新 Meta Ads 數據」開始同步。</p>
+            @endif
+
+            @if ($metaMarketingReport)
+                <p class="campaign-report-secondary">
+                    {{ $metaMarketingReport->campaign_name }} · {{ $metaMarketingReport->currency_code }}；
+                    更新於 <time datetime="{{ $metaMarketingReport->synced_at->toIso8601String() }}">{{ $metaMarketingReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                </p>
+                <dl class="campaign-report-summary ga4-report-summary">
+                    <div>
+                        <dt>投放花費</dt>
+                        <dd>{{ number_format((float) $metaMarketingReport->spend_amount, 4) }} {{ $metaMarketingReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>曝光</dt>
+                        <dd>{{ number_format($metaMarketingReport->impressions) }}</dd>
+                    </div>
+                    <div>
+                        <dt>觸及</dt>
+                        <dd>{{ number_format($metaMarketingReport->reach) }}</dd>
+                    </div>
+                    <div>
+                        <dt>點擊</dt>
+                        <dd>{{ number_format($metaMarketingReport->clicks) }}</dd>
+                    </div>
+                </dl>
+                <p class="campaign-report-secondary">數據來自已授權廣告帳戶，依 Meta Ads 活動 ID 與活動期間彙總。</p>
+            @endif
+        </section>
+
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-google-ads-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-google-ads-title">Google Ads 投放成效</h2>
+                    <p class="campaign-report-secondary">
+                        活動 ID：<code>{{ $target->google_ads_campaign_id ?? '尚未設定' }}</code>
+                    </p>
+                </div>
+                @if ($googleAdsConnection && $googleAdsConnection->customer_id && $target->google_ads_campaign_id && $target->starts_on && $target->ends_on)
+                    <form action="{{ route('social-engagement-targets.google-ads.sync', $target) }}" method="POST" class="ga4-sync-actions">
+                        @csrf
+                        <button class="button button-secondary button-small" type="submit">更新 Google Ads 數據</button>
+                    </form>
+                @endif
+            </div>
+
+            @if (! $googleAdsConnection)
+                <p class="campaign-report-empty">尚未連結 Google Ads。<a href="{{ route('integrations.google-ads.edit') }}">設定 Google Ads</a></p>
+            @elseif (! $googleAdsConnection->customer_id)
+                <p class="campaign-report-empty">尚未設定 Google Ads 客戶帳戶。<a href="{{ route('integrations.google-ads.edit') }}">前往設定</a></p>
+            @elseif (! $target->google_ads_campaign_id)
+                <p class="campaign-report-empty">在總覽的活動互動目標設定 Google Ads 活動 ID，即可同步投放成效。</p>
+            @elseif (! $target->starts_on || ! $target->ends_on)
+                <p class="campaign-report-empty">設定活動開始日與結束日後，即可讀取相同期間的 Google Ads 成效。</p>
+            @elseif (! $googleAdsReport)
+                <p class="campaign-report-empty">尚無 Google Ads 讀值。按「更新 Google Ads 數據」開始同步。</p>
+            @endif
+
+            @if ($googleAdsReport)
+                <p class="campaign-report-secondary">
+                    {{ $googleAdsReport->campaign_name }} · {{ $googleAdsReport->currency_code }}；
+                    更新於 <time datetime="{{ $googleAdsReport->synced_at->toIso8601String() }}">{{ $googleAdsReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                </p>
+                <dl class="campaign-report-summary ga4-report-summary">
+                    <div>
+                        <dt>投放花費</dt>
+                        <dd>{{ number_format((float) $googleAdsReport->spend_amount, 4) }} {{ $googleAdsReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>曝光</dt>
+                        <dd>{{ number_format($googleAdsReport->impressions) }}</dd>
+                    </div>
+                    <div>
+                        <dt>點擊</dt>
+                        <dd>{{ number_format($googleAdsReport->clicks) }}</dd>
+                    </div>
+                    <div>
+                        <dt>轉換</dt>
+                        <dd>{{ number_format((float) $googleAdsReport->conversions, 2) }}</dd>
+                    </div>
+                    <div>
+                        <dt>轉換價值</dt>
+                        <dd>{{ number_format((float) $googleAdsReport->conversions_value, 2) }} {{ $googleAdsReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>Google Ads 轉換價值 ROAS</dt>
+                        <dd>
+                            {{ (float) $googleAdsReport->spend_amount > 0 ? number_format((float) $googleAdsReport->conversions_value / (float) $googleAdsReport->spend_amount, 2).'x' : '—' }}
+                        </dd>
+                    </div>
+                </dl>
+                <p class="campaign-report-secondary">Google Ads 轉換與轉換價值依該帳戶的轉換設定歸因；日期區間依 Google Ads 帳戶時區計算。</p>
+            @endif
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-ga4-title">
             <div class="campaign-report-section-header">
                 <div>
@@ -183,7 +305,7 @@
             <h2 id="campaign-report-efficiency-title">投放成本效率</h2>
             <dl class="campaign-report-summary campaign-efficiency-summary">
                 <div>
-                    <dt>人工記錄花費</dt>
+                    <dt>投放花費（{{ $adSpendAnalysis['ad_spend_source_label'] ?? '未設定' }}）</dt>
                     <dd>
                         @if ($adSpendAnalysis['ad_spend_amount'] === null)
                             —
@@ -218,17 +340,18 @@
             @if ($adSpendAnalysis['roas'] === null)
                 <p class="campaign-report-secondary">
                     {{ match ($adSpendAnalysis['roas_unavailable_reason']) {
-                        'missing_spend' => '輸入投放花費後即可計算 ROAS。',
+                        'missing_spend' => '同步 Meta Ads 或輸入投放花費後即可計算 ROAS。',
                         'zero_spend' => '投放花費須大於 0 才可計算 ROAS。',
                         'missing_ga4' => '同步 GA4 活動數據後即可計算 ROAS。',
                         'missing_spend_currency' => '請輸入花費幣別後再計算 ROAS。',
                         'missing_ga4_currency' => 'GA4 未提供營收幣別，暫不計算 ROAS。',
                         'currency_mismatch' => '花費與 GA4 營收幣別不同，暫不計算 ROAS。',
+                        'ad_platform_currency_mismatch' => 'Meta Ads 與 Google Ads 的花費幣別不同，未合併花費或計算 ROAS。',
                         default => '目前無法計算 ROAS。',
                     } }}
                 </p>
             @endif
-            <p class="campaign-report-secondary">ROAS 為同幣別 GA4 活動營收除以人工記錄花費，不扣除商品成本；每次成本依 GA4 工作階段／重要事件或完整公開互動數計算。</p>
+            <p class="campaign-report-secondary">ROAS 為同幣別 GA4 活動營收除以投放花費，不扣除商品成本；Meta Ads 與 Google Ads 讀值會合併，同幣別才計入總花費，尚無 API 讀值時使用人工記錄花費。</p>
 
             <form action="{{ route('social-engagement-targets.ad-spend.update', $target) }}" method="POST" class="campaign-spend-form" aria-labelledby="campaign-spend-form-title">
                 @csrf
@@ -237,7 +360,7 @@
                 <div class="field-group">
                     <label class="field-label" for="campaign-ad-spend-amount">花費金額</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_amount') ? ' is-invalid' : '' }}" id="campaign-ad-spend-amount" name="ad_spend_amount" type="number" inputmode="decimal" min="0" max="999999999999999.9999" step="0.0001" value="{{ old('ad_spend_amount', $target->ad_spend_amount) }}" aria-describedby="campaign-ad-spend-amount-help{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_amount') ? ' campaign-ad-spend-amount-error' : '' }}" @if ($errors->getBag('socialEngagementSpend')->has('ad_spend_amount')) aria-invalid="true" @endif>
-                    <p id="campaign-ad-spend-amount-help" class="field-help">最多 4 位小數；兩欄留白可清除花費。</p>
+                    <p id="campaign-ad-spend-amount-help" class="field-help">最多 4 位小數；兩欄留白可清除花費。Meta Ads 或 Google Ads 有讀值時會優先使用 API 花費。</p>
                     @error('ad_spend_amount', 'socialEngagementSpend')<p id="campaign-ad-spend-amount-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
                 <div class="field-group">

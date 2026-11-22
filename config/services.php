@@ -41,4 +41,18 @@ return [
         'redirect_uri' => env('GOOGLE_ANALYTICS_REDIRECT_URI'),
     ],
 
+    'meta_marketing' => [
+        'client_id' => env('META_MARKETING_CLIENT_ID'),
+        'client_secret' => env('META_MARKETING_CLIENT_SECRET'),
+        'redirect_uri' => env('META_MARKETING_REDIRECT_URI'),
+        'api_version' => env('META_MARKETING_API_VERSION', 'v27.0'),
+    ],
+
+    'google_ads' => [
+        'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_ADS_REDIRECT_URI'),
+        'api_version' => env('GOOGLE_ADS_API_VERSION', 'v26'),
+    ],
+
 ];

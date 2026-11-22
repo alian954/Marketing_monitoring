@@ -16,5 +16,7 @@ Schedule::command('monitors:dispatch-domain-expiry')->dailyAt('04:00')->withoutO
 Schedule::command('monitors:dispatch-robots')->dailyAt('05:00')->withoutOverlapping();
 Schedule::command('monitors:send-dns-summary')->dailyAt('06:00')->withoutOverlapping();
 Schedule::command('google-analytics:sync-due')->dailyAt('06:30')->timezone('Asia/Taipei')->withoutOverlapping(120);
+Schedule::command('meta-marketing:sync-due')->dailyAt('06:40')->timezone('Asia/Taipei')->withoutOverlapping(120);
+Schedule::command('google-ads:sync-due')->dailyAt('06:50')->timezone('Asia/Taipei')->withoutOverlapping(120);
 Schedule::command('monitors:prune')->dailyAt('02:05')->withoutOverlapping();
 Schedule::command('auth:clear-resets')->everyFifteenMinutes()->withoutOverlapping();

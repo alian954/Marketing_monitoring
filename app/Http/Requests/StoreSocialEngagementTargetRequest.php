@@ -36,6 +36,8 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ends_on' => ['nullable', 'date_format:Y-m-d'],
             'ga4_campaign_name' => ['nullable', 'string', 'max:100'],
             'ga4_source_name' => ['nullable', 'string', 'max:100'],
+            'meta_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
+            'google_ads_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
             'engagement_platform' => ['nullable', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
             'engagement_tag' => ['nullable', 'string', 'max:110'],
         ];
@@ -100,6 +102,10 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ends_on.date_format' => '活動結束日格式無效。',
             'ga4_campaign_name.max' => 'GA4 活動名稱不可超過 100 個字元。',
             'ga4_source_name.max' => 'GA4 來源名稱不可超過 100 個字元。',
+            'meta_campaign_id.between' => 'Meta 活動 ID 需為 5 至 32 位數字。',
+            'meta_campaign_id.regex' => 'Meta 活動 ID 必須是數字。',
+            'google_ads_campaign_id.between' => 'Google Ads 活動 ID 需為 5 至 32 位數字。',
+            'google_ads_campaign_id.regex' => 'Google Ads 活動 ID 必須是數字。',
         ];
     }
 }

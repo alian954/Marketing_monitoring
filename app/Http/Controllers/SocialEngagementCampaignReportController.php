@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
@@ -24,11 +26,11 @@ class SocialEngagementCampaignReportController extends Controller
     ): View {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
-        $connection = $request->user()->googleAnalyticsConnection;
-        $analyticsReport = $connection === null
+        $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
+        $analyticsReport = $googleAnalyticsConnection === null
             ? null
             : SocialEngagementTargetGoogleAnalyticsReport::query()
-                ->where('google_analytics_connection_id', $connection->getKey())
+                ->where('google_analytics_connection_id', $googleAnalyticsConnection->getKey())
                 ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
                 ->where('campaign_name', $campaignName)
                 ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
@@ -37,17 +39,53 @@ class SocialEngagementCampaignReportController extends Controller
                 ->when($socialEngagementTarget->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $socialEngagementTarget->ends_on))
                 ->first();
 
+        $metaMarketingConnection = $request->user()->metaMarketingConnection;
+        $metaMarketingReport = $metaMarketingConnection === null
+            || $metaMarketingConnection->ad_account_id === null
+            || $socialEngagementTarget->meta_campaign_id === null
+            || $socialEngagementTarget->starts_on === null
+            || $socialEngagementTarget->ends_on === null
+            ? null
+            : SocialEngagementTargetMetaMarketingReport::query()
+                ->where('meta_marketing_connection_id', $metaMarketingConnection->getKey())
+                ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+                ->where('ad_account_id', $metaMarketingConnection->ad_account_id)
+                ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
+                ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+                ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+                ->first();
+
+        $googleAdsConnection = $request->user()->googleAdsConnection;
+        $googleAdsReport = $googleAdsConnection === null
+            || $googleAdsConnection->customer_id === null
+            || $socialEngagementTarget->google_ads_campaign_id === null
+            || $socialEngagementTarget->starts_on === null
+            || $socialEngagementTarget->ends_on === null
+            ? null
+            : SocialEngagementTargetGoogleAdsReport::query()
+                ->where('google_ads_connection_id', $googleAdsConnection->getKey())
+                ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+                ->where('customer_id', $googleAdsConnection->customer_id)
+                ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+                ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+                ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+                ->first();
+
         $campaignData = $campaignReport->build($socialEngagementTarget);
 
         return view('social-engagement-reports.show', [
             ...$campaignData,
-            'googleAnalyticsConnection' => $connection,
+            'googleAnalyticsConnection' => $googleAnalyticsConnection,
             'googleAnalyticsReport' => $analyticsReport,
+            'metaMarketingConnection' => $metaMarketingConnection,
+            'metaMarketingReport' => $metaMarketingReport,
+            'googleAdsConnection' => $googleAdsConnection,
+            'googleAdsReport' => $googleAdsReport,
             'googleAnalyticsCampaignName' => $campaignName,
             'googleAnalyticsSourceName' => $sourceName,
-            'googleAnalyticsTrend' => $connection !== null && $analyticsReport !== null
+            'googleAnalyticsTrend' => $googleAnalyticsConnection !== null && $analyticsReport !== null
                 ? $googleAnalyticsTrendReport->recentChanges(
-                    $connection,
+                    $googleAnalyticsConnection,
                     $socialEngagementTarget,
                     $campaignName,
                     $sourceName,
@@ -57,6 +95,8 @@ class SocialEngagementCampaignReportController extends Controller
                 $socialEngagementTarget,
                 $analyticsReport,
                 $campaignData['report']['interaction_total'],
+                $metaMarketingReport,
+                $googleAdsReport,
             ),
         ]);
     }

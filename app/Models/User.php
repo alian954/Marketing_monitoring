@@ -33,6 +33,16 @@ class User extends Authenticatable
         return $this->hasOne(GoogleAnalyticsConnection::class);
     }
 
+    public function metaMarketingConnection(): HasOne
+    {
+        return $this->hasOne(MetaMarketingConnection::class);
+    }
+
+    public function googleAdsConnection(): HasOne
+    {
+        return $this->hasOne(GoogleAdsConnection::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *

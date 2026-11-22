@@ -22,6 +22,8 @@
                     <a class="nav-link" href="{{ route('monitors.index') }}" @if (request()->routeIs('monitors.*')) aria-current="page" @endif>監測項目</a>
                     <a class="nav-link" href="{{ route('notifications.index') }}" @if (request()->routeIs('notifications.*')) aria-current="page" @endif>通知紀錄</a>
                     <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
+                    <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
+                    <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
                 </nav>

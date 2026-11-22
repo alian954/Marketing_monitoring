@@ -436,6 +436,18 @@
                     <p id="social-engagement-target-ga4-source-help" class="field-help">選填；用來區分平台流量，例如 facebook、instagram 或 threads。</p>
                     @error('ga4_source_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-source-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-meta-campaign">Meta Ads 活動 ID</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('meta_campaign_id') ? ' is-invalid' : '' }}" id="social-engagement-target-meta-campaign" name="meta_campaign_id" type="text" inputmode="numeric" maxlength="32" pattern="[0-9]{5,32}" value="{{ old('meta_campaign_id', $socialEngagementTargetFormTarget?->meta_campaign_id) }}" aria-describedby="social-engagement-target-meta-campaign-help{{ $errors->getBag('socialEngagementTarget')->has('meta_campaign_id') ? ' social-engagement-target-meta-campaign-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('meta_campaign_id')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-meta-campaign-help" class="field-help">選填；已連結 Meta Ads 後，可同步此活動的曝光、觸及、點擊與花費。</p>
+                    @error('meta_campaign_id', 'socialEngagementTarget')<p id="social-engagement-target-meta-campaign-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-google-ads-campaign">Google Ads 活動 ID</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id') ? ' is-invalid' : '' }}" id="social-engagement-target-google-ads-campaign" name="google_ads_campaign_id" type="text" inputmode="numeric" maxlength="32" pattern="[0-9]{5,32}" value="{{ old('google_ads_campaign_id', $socialEngagementTargetFormTarget?->google_ads_campaign_id) }}" aria-describedby="social-engagement-target-google-ads-campaign-help{{ $errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id') ? ' social-engagement-target-google-ads-campaign-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-google-ads-campaign-help" class="field-help">選填；連結 Google Ads 後，可同步此活動的花費、曝光、點擊與轉換數據。</p>
+                    @error('google_ads_campaign_id', 'socialEngagementTarget')<p id="social-engagement-target-google-ads-campaign-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
                 <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
                 <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
                 <div class="check-history-filter-actions">

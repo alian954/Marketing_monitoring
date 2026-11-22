@@ -3,17 +3,21 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
+use App\Http\Controllers\GoogleAdsIntegrationController;
 use App\Http\Controllers\GoogleAnalyticsIntegrationController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\MaintenanceWindowController;
+use App\Http\Controllers\MetaMarketingIntegrationController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
 use App\Http\Controllers\SocialEngagementTargetController;
+use App\Http\Controllers\SocialEngagementTargetGoogleAdsController;
 use App\Http\Controllers\SocialEngagementTargetGoogleAnalyticsController;
+use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use Illuminate\Support\Facades\Route;
@@ -61,6 +65,14 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-analytics.sync');
+    Route::post('/social-engagement-targets/{socialEngagementTarget}/meta-marketing', [SocialEngagementTargetMetaMarketingController::class, 'sync'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.meta-marketing.sync');
+    Route::post('/social-engagement-targets/{socialEngagementTarget}/google-ads', [SocialEngagementTargetGoogleAdsController::class, 'sync'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-ads.sync');
     Route::put('/social-engagement-targets/{socialEngagementTarget}/ad-spend', [SocialEngagementTargetController::class, 'updateAdSpend'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.ad-spend.update');
@@ -71,6 +83,16 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/integrations/google-analytics/callback', [GoogleAnalyticsIntegrationController::class, 'callback'])->name('integrations.google-analytics.callback');
     Route::put('/integrations/google-analytics/property', [GoogleAnalyticsIntegrationController::class, 'updateProperty'])->name('integrations.google-analytics.property.update');
     Route::delete('/integrations/google-analytics/connection', [GoogleAnalyticsIntegrationController::class, 'disconnect'])->name('integrations.google-analytics.disconnect');
+    Route::get('/integrations/meta-marketing', [MetaMarketingIntegrationController::class, 'show'])->name('integrations.meta-marketing.edit');
+    Route::post('/integrations/meta-marketing/connect', [MetaMarketingIntegrationController::class, 'connect'])->name('integrations.meta-marketing.connect');
+    Route::get('/integrations/meta-marketing/callback', [MetaMarketingIntegrationController::class, 'callback'])->name('integrations.meta-marketing.callback');
+    Route::put('/integrations/meta-marketing/ad-account', [MetaMarketingIntegrationController::class, 'updateAdAccount'])->name('integrations.meta-marketing.ad-account.update');
+    Route::delete('/integrations/meta-marketing/connection', [MetaMarketingIntegrationController::class, 'disconnect'])->name('integrations.meta-marketing.disconnect');
+    Route::get('/integrations/google-ads', [GoogleAdsIntegrationController::class, 'show'])->name('integrations.google-ads.edit');
+    Route::post('/integrations/google-ads/connect', [GoogleAdsIntegrationController::class, 'connect'])->name('integrations.google-ads.connect');
+    Route::get('/integrations/google-ads/callback', [GoogleAdsIntegrationController::class, 'callback'])->name('integrations.google-ads.callback');
+    Route::put('/integrations/google-ads/customer', [GoogleAdsIntegrationController::class, 'updateCustomer'])->name('integrations.google-ads.customer.update');
+    Route::delete('/integrations/google-ads/connection', [GoogleAdsIntegrationController::class, 'disconnect'])->name('integrations.google-ads.disconnect');
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');

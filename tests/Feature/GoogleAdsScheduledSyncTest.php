@@ -1,0 +1,161 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\GoogleAdsConnection;
+use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
+use App\Models\User;
+use Illuminate\Console\Scheduling\Event as ScheduledEvent;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class GoogleAdsScheduledSyncTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_daily_google_ads_sync_is_scheduled_at_six_fifty_in_taipei_time(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn (ScheduledEvent $scheduledEvent): bool => str_contains((string) $scheduledEvent->command, 'google-ads:sync-due'));
+
+        $this->assertNotNull($event);
+        $this->assertSame('50 6 * * *', $event->expression);
+        $this->assertSame('Asia/Taipei', $event->timezone);
+    }
+
+    public function test_daily_command_syncs_active_and_recently_ended_campaigns_only(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
+                ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD')),
+        ]);
+        $user = User::factory()->create();
+        $this->createConnection($user);
+        $activeTarget = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
+        $recentlyEndedTarget = $this->createTarget('Recently ended campaign', '987654322', '2026-11-01', '2026-11-17');
+        $oldTarget = $this->createTarget('Old campaign', '987654323', '2026-11-01', '2026-11-14');
+        $futureTarget = $this->createTarget('Future campaign', '987654324', '2026-11-23', '2026-11-30');
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('完成 2 個活動，略過 0 個近期讀值，失敗 0 個。')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $activeTarget->id,
+            'spend_amount' => '125.5000',
+        ]);
+        $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $recentlyEndedTarget->id,
+            'spend_amount' => '60.0000',
+        ]);
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $oldTarget->id,
+        ]);
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $futureTarget->id,
+        ]);
+        Http::assertSentCount(3);
+        Http::assertSent(function (ClientRequest $request): bool {
+            return str_ends_with($request->url(), 'googleAds:searchStream')
+                && in_array($request->data()['query'], [
+                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2026-11-01' AND '2026-11-30'",
+                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654322 AND segments.date BETWEEN '2026-11-01' AND '2026-11-17'",
+                ], true);
+        });
+    }
+
+    public function test_daily_command_skips_a_matching_snapshot_synced_within_twenty_four_hours(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget('Current campaign', '987654321', '2026-11-01', '2026-11-30');
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => '1234567890',
+            'campaign_id' => '987654321',
+            'campaign_name' => 'Current campaign',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'spend_amount' => '100.0000',
+            'impressions' => 1000,
+            'clicks' => 40,
+            'conversions' => '2.0000',
+            'conversions_value' => '200.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subHours(4),
+        ]);
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('完成 0 個活動，略過 1 個近期讀值，失敗 0 個。')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_daily_command_does_not_request_google_data_without_a_connected_customer(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        $user = User::factory()->create();
+        GoogleAdsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'authorized-refresh-token',
+        ]);
+        $this->createTarget('Unconfigured campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('完成 0 個活動，略過 0 個近期讀值，失敗 0 個。')
+            ->assertExitCode(0);
+
+        Http::assertNothingSent();
+    }
+
+    private function createConnection(User $user): GoogleAdsConnection
+    {
+        return GoogleAdsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'authorized-refresh-token',
+            'customer_id' => '1234567890',
+            'customer_name' => 'Example Ads',
+            'currency_code' => 'TWD',
+        ]);
+    }
+
+    private function createTarget(string $tag, string $campaignId, string $startsOn, string $endsOn): SocialEngagementTarget
+    {
+        return SocialEngagementTarget::factory()->create([
+            'tag' => $tag,
+            'social_platform' => 'facebook',
+            'starts_on' => $startsOn,
+            'ends_on' => $endsOn,
+            'google_ads_campaign_id' => $campaignId,
+        ]);
+    }
+
+    /** @return array{0: array{results: list<array<string, mixed>>}} */
+    private function campaignPayload(string $campaignId, string $campaignName, string $costMicros, string $currencyCode): array
+    {
+        return [[
+            'results' => [[
+                'customer' => ['id' => '1234567890', 'currencyCode' => $currencyCode],
+                'campaign' => ['id' => $campaignId, 'name' => $campaignName],
+                'metrics' => [
+                    'costMicros' => $costMicros,
+                    'impressions' => '1200',
+                    'clicks' => '48',
+                    'conversions' => '5',
+                    'conversionsValue' => '250',
+                ],
+            ]],
+        ]];
+    }
+}

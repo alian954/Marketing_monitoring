@@ -144,7 +144,7 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             ->assertSee('0.5000 TWD')
             ->assertSee('10.0000 TWD')
             ->assertSee('0.8000 TWD')
-            ->assertSee('ROAS 為同幣別 GA4 活動營收除以人工記錄花費');
+            ->assertSee('ROAS 為同幣別 GA4 活動營收除以投放花費');
 
         $analysis = $response->viewData('adSpendAnalysis');
         $this->assertSame(6.5, $analysis['roas']);
