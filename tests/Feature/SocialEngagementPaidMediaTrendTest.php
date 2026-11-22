@@ -416,7 +416,7 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertIsInt($conversionActionsIndex);
         $this->assertSame('3.0000', $csvRows[2][$conversionChangeIndex]);
         $this->assertSame('120.0000', $csvRows[2][$conversionValueChangeIndex]);
-        $this->assertSame("'-20.0000", $csvRows[2][$conversionCostChangeIndex]);
+        $this->assertSame('-20.0000', $csvRows[2][$conversionCostChangeIndex]);
         $this->assertSame('50.00', $csvRows[2][$conversionRateIndex]);
         $this->assertSame('5.0000', $csvRows[2][$clickCostChangeIndex]);
         $this->assertSame(
