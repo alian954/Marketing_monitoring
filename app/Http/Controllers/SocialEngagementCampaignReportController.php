@@ -88,6 +88,7 @@ class SocialEngagementCampaignReportController extends Controller
      *     googleAdsTrend: list<array<string, mixed>>,
      *     googleAnalyticsCampaignName: string,
      *     googleAnalyticsSourceName: string|null,
+     *     googleAnalyticsMediumName: string|null,
      *     googleAnalyticsTrend: list<array<string, mixed>>,
      *     adSpendAnalysis: array<string, mixed>
      * }
@@ -103,6 +104,7 @@ class SocialEngagementCampaignReportController extends Controller
     ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
+        $mediumName = $socialEngagementTarget->googleAnalyticsMediumName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
         $analyticsReport = $googleAnalyticsConnection === null
             ? null
@@ -112,6 +114,8 @@ class SocialEngagementCampaignReportController extends Controller
                 ->where('campaign_name', $campaignName)
                 ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
                 ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
+                ->when($mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
+                ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
                 ->when($socialEngagementTarget->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $socialEngagementTarget->starts_on))
                 ->when($socialEngagementTarget->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $socialEngagementTarget->ends_on))
                 ->first();
@@ -181,12 +185,14 @@ class SocialEngagementCampaignReportController extends Controller
                 : [],
             'googleAnalyticsCampaignName' => $campaignName,
             'googleAnalyticsSourceName' => $sourceName,
+            'googleAnalyticsMediumName' => $mediumName,
             'googleAnalyticsTrend' => $includeHistoricalDetails && $googleAnalyticsConnection !== null && $analyticsReport !== null
                 ? $googleAnalyticsTrendReport->recentChanges(
                     $googleAnalyticsConnection,
                     $socialEngagementTarget,
                     $campaignName,
                     $sourceName,
+                    $mediumName,
                 )
                 : [],
             'adSpendAnalysis' => $marketingEfficiencyReport->build(
@@ -220,6 +226,7 @@ class SocialEngagementCampaignReportController extends Controller
             $socialEngagementTarget,
             $socialEngagementTarget->googleAnalyticsCampaignName(),
             $socialEngagementTarget->googleAnalyticsSourceName(),
+            $socialEngagementTarget->googleAnalyticsMediumName(),
         );
 
         return response()->streamDownload(function () use ($rows): void {

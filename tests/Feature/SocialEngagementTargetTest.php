@@ -25,6 +25,17 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertDatabaseCount('social_engagement_targets', 0);
     }
 
+    public function test_dashboard_exposes_a_labeled_ga4_medium_input(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('GA4 媒介（utm_medium）')
+            ->assertSee('id="social-engagement-target-ga4-medium"', false)
+            ->assertSee('name="ga4_medium_name"', false)
+            ->assertSee('aria-labelledby="social-engagement-targets-title"', false);
+    }
+
     public function test_authenticated_user_can_create_and_update_a_tag_platform_target(): void
     {
         $this->createSocialMonitor('facebook', 'POST123', 'Summer launch');
@@ -40,6 +51,7 @@ class SocialEngagementTargetTest extends TestCase
                 'ends_on' => '2026-11-30',
                 'ga4_campaign_name' => 'summer_launch_2026',
                 'ga4_source_name' => 'facebook',
+                'ga4_medium_name' => 'paid_social',
                 'engagement_platform' => 'facebook',
                 'engagement_tag' => 'tag:Summer launch',
             ])
@@ -54,6 +66,7 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame('2026-11-30', $target->ends_on?->toDateString());
         $this->assertSame('summer_launch_2026', $target->ga4_campaign_name);
         $this->assertSame('facebook', $target->ga4_source_name);
+        $this->assertSame('paid_social', $target->ga4_medium_name);
 
         $this->actingAs($user)
             ->post(route('social-engagement-targets.store'), [
@@ -62,6 +75,7 @@ class SocialEngagementTargetTest extends TestCase
                 'target_interactions' => 3000,
                 'ga4_campaign_name' => 'summer_launch_refresh',
                 'ga4_source_name' => 'fb',
+                'ga4_medium_name' => 'organic_social',
             ])
             ->assertRedirect(route('dashboard', ['engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']));
 
@@ -69,6 +83,7 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame(3000, $target->fresh()->target_interactions);
         $this->assertSame('summer_launch_refresh', $target->fresh()->ga4_campaign_name);
         $this->assertSame('fb', $target->fresh()->ga4_source_name);
+        $this->assertSame('organic_social', $target->fresh()->ga4_medium_name);
         $this->assertNull($target->fresh()->starts_on);
         $this->assertNull($target->fresh()->ends_on);
     }
@@ -83,9 +98,10 @@ class SocialEngagementTargetTest extends TestCase
                 'tag' => 'Unknown campaign',
                 'social_platform' => 'facebook',
                 'target_interactions' => 0,
+                'ga4_medium_name' => str_repeat('x', 101),
             ])
             ->assertRedirect(route('dashboard'))
-            ->assertSessionHasErrorsIn('socialEngagementTarget', ['tag', 'target_interactions']);
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['tag', 'target_interactions', 'ga4_medium_name']);
 
         $this->assertDatabaseCount('social_engagement_targets', 0);
     }

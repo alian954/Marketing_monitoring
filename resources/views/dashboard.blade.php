@@ -385,7 +385,7 @@
             <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.export') }}">匯出目標 CSV</a>
         </div>
         <div class="panel-body">
-            <form action="{{ route('social-engagement-targets.store') }}" method="POST" class="check-history-filter" aria-describedby="social-engagement-target-help">
+            <form action="{{ route('social-engagement-targets.store') }}" method="POST" class="check-history-filter" aria-labelledby="social-engagement-targets-title" aria-describedby="social-engagement-target-help">
                 @csrf
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-platform">社群平台</label>
@@ -435,6 +435,12 @@
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_source_name') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-source" name="ga4_source_name" type="text" maxlength="100" value="{{ old('ga4_source_name', $socialEngagementTargetFormTarget?->ga4_source_name) }}" aria-describedby="social-engagement-target-ga4-source-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_source_name') ? ' social-engagement-target-ga4-source-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_source_name')) aria-invalid="true" @endif>
                     <p id="social-engagement-target-ga4-source-help" class="field-help">選填；用來區分平台流量，例如 facebook、instagram 或 threads。</p>
                     @error('ga4_source_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-source-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-ga4-medium">GA4 媒介（utm_medium）</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_medium_name') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-medium" name="ga4_medium_name" type="text" maxlength="100" value="{{ old('ga4_medium_name', $socialEngagementTargetFormTarget?->ga4_medium_name) }}" aria-describedby="social-engagement-target-ga4-medium-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_medium_name') ? ' social-engagement-target-ga4-medium-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_medium_name')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-ga4-medium-help" class="field-help">選填；例如 paid_social、organic 或 email，用來分開付費與自然流量。</p>
+                    @error('ga4_medium_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-medium-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-meta-campaign">Meta Ads 活動 ID</label>

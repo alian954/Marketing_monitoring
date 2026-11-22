@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['tag', 'social_platform', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
+#[Fillable(['tag', 'social_platform', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ga4_medium_name', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
 class SocialEngagementTarget extends Model
 {
     /** @use HasFactory<SocialEngagementTargetFactory> */
@@ -35,6 +35,13 @@ class SocialEngagementTarget extends Model
     {
         return is_string($this->ga4_source_name) && trim($this->ga4_source_name) !== ''
             ? trim($this->ga4_source_name)
+            : null;
+    }
+
+    public function googleAnalyticsMediumName(): ?string
+    {
+        return is_string($this->ga4_medium_name) && trim($this->ga4_medium_name) !== ''
+            ? trim($this->ga4_medium_name)
             : null;
     }
 }

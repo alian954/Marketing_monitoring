@@ -34,6 +34,7 @@ class GoogleAnalyticsCampaignTrendReport
         SocialEngagementTarget $target,
         string $campaignName,
         ?string $sourceName,
+        ?string $mediumName = null,
     ): array {
         if ($target->starts_on === null || $target->ends_on === null) {
             return [];
@@ -45,6 +46,8 @@ class GoogleAnalyticsCampaignTrendReport
             ->where('campaign_name', $campaignName)
             ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
             ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
+            ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
+            ->when($mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
             ->whereDate('starts_on', $target->starts_on->toDateString())
             ->whereDate('ends_on', $target->ends_on->toDateString())
             ->orderByDesc('snapshot_date')

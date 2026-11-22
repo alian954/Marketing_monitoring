@@ -20,6 +20,7 @@ class GoogleAnalyticsCampaignReportSync
     ): SocialEngagementTargetGoogleAnalyticsReport {
         $campaignName = $target->googleAnalyticsCampaignName();
         $sourceName = $target->googleAnalyticsSourceName();
+        $mediumName = $target->googleAnalyticsMediumName();
         $metrics = $this->dataApi->campaignReport(
             $accessToken,
             (string) $connection->property_id,
@@ -27,6 +28,7 @@ class GoogleAnalyticsCampaignReportSync
             $target->starts_on->toDateString(),
             $target->ends_on->toDateString(),
             $sourceName,
+            $mediumName,
         );
 
         $syncedAt = CarbonImmutable::now();
@@ -34,6 +36,7 @@ class GoogleAnalyticsCampaignReportSync
         $reportAttributes = [
             'campaign_name' => $campaignName,
             'source_name' => $sourceName,
+            'medium_name' => $mediumName,
             'starts_on' => $target->starts_on->toDateString(),
             'ends_on' => $target->ends_on->toDateString(),
             ...$metrics,
@@ -70,6 +73,7 @@ class GoogleAnalyticsCampaignReportSync
         return $snapshot !== null
             && $snapshot->campaign_name === $target->googleAnalyticsCampaignName()
             && $snapshot->source_name === $target->googleAnalyticsSourceName()
+            && $snapshot->medium_name === $target->googleAnalyticsMediumName()
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
             && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;

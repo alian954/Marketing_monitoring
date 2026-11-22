@@ -22,6 +22,7 @@ class CampaignMarketingReportCsv
      *     googleAdsReportIsStale: bool,
      *     googleAnalyticsCampaignName: string,
      *     googleAnalyticsSourceName: string|null,
+     *     googleAnalyticsMediumName: string|null,
      *     adSpendAnalysis: array<string, mixed>
      * }  $data
      * @return array{headers: list<string>, fields: list<string>}
@@ -72,6 +73,7 @@ class CampaignMarketingReportCsv
             'engagement_rate_percent',
             'ga4_campaign_name',
             'ga4_source_name',
+            'ga4_medium_name',
             'ga4_sessions',
             'ga4_engaged_sessions',
             'ga4_key_events',
@@ -154,6 +156,7 @@ class CampaignMarketingReportCsv
             $this->formatDecimal($report['engagement_rate_percent'], 2),
             $data['googleAnalyticsCampaignName'],
             $data['googleAnalyticsSourceName'] ?? '',
+            $data['googleAnalyticsMediumName'] ?? '',
             $analyticsReport === null ? '' : (string) $analyticsReport->sessions,
             $analyticsReport === null ? '' : (string) $analyticsReport->engaged_sessions,
             $analyticsReport?->key_events ?? '',

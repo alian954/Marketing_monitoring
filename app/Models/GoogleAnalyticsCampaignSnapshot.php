@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'snapshot_date',
     'campaign_name',
     'source_name',
+    'medium_name',
     'starts_on',
     'ends_on',
     'sessions',

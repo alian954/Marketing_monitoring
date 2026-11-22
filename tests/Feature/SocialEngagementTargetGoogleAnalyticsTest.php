@@ -93,6 +93,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'tag' => 'Spring launch posts',
             'ga4_campaign_name' => 'spring_launch_2026',
             'ga4_source_name' => 'facebook_ads',
+            'ga4_medium_name' => 'paid_social',
         ]);
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -109,6 +110,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $dailySnapshot = GoogleAnalyticsCampaignSnapshot::query()->sole();
         $this->assertSame('spring_launch_2026', $snapshot->campaign_name);
         $this->assertSame('facebook_ads', $snapshot->source_name);
+        $this->assertSame('paid_social', $snapshot->medium_name);
         $this->assertSame(2400, $snapshot->sessions);
         $this->assertSame(1800, $snapshot->engaged_sessions);
         $this->assertSame('37.5000', $snapshot->key_events);
@@ -136,6 +138,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             && $request->data()['dimensionFilter']['andGroup']['expressions'][0]['filter']['stringFilter']['value'] === 'spring_launch_2026'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualSource'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'facebook_ads'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['fieldName'] === 'sessionManualMedium'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['stringFilter']['value'] === 'paid_social'
             && $request->hasHeader('Authorization', 'Bearer short-lived-access-token'));
 
         $reportResponse = $this->get(route('social-engagement-targets.report', $target))
@@ -148,6 +152,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('TWD')
             ->assertSee('spring_launch_2026')
             ->assertSee('facebook_ads')
+            ->assertSee('paid_social')
             ->assertSee('GA4 累計成效變化')
             ->assertSee('更新於')
             ->assertSee('2026/11/22 06:30')
@@ -155,6 +160,13 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('基準');
 
         $this->assertNull($reportResponse->viewData('report')['interaction_total']);
+
+        $campaignCsv = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report.export', $target))
+            ->assertDownload('campaign-report-'.$target->id.'.csv')
+            ->streamedContent();
+        $this->assertStringContainsString('ga4_medium_name', $campaignCsv);
+        $this->assertStringContainsString('paid_social', $campaignCsv);
 
         Http::assertSentCount(2);
     }
@@ -187,6 +199,65 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('1.2345', $report['key_events']);
         $this->assertSame('576460752303.4235', $report['total_revenue']);
         Http::assertSentCount(1);
+    }
+
+    public function test_ga4_report_history_ignores_snapshots_with_a_different_medium(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 12:00:00', 'Asia/Taipei'));
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'ga4_campaign_name' => 'spring_launch_2026',
+            'ga4_source_name' => 'facebook_ads',
+            'ga4_medium_name' => 'paid_social',
+        ]);
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+
+        $otherMediumSnapshot = $this->createTrendSnapshot(
+            $connection->id,
+            $target,
+            '2026-11-21',
+            10,
+            '100.0000',
+            'TWD',
+        );
+        $otherMediumSnapshot->update(['medium_name' => 'organic_social']);
+        $this->createTrendSnapshot(
+            $connection->id,
+            $target,
+            '2026-11-22',
+            25,
+            '300.0000',
+            'TWD',
+        );
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 25,
+            'engaged_sessions' => 20,
+            'key_events' => '3.0000',
+            'total_revenue' => '300.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('paid_social')
+            ->assertDontSee('organic_social');
+
+        $trend = $response->viewData('googleAnalyticsTrend');
+        $this->assertCount(1, $trend);
+        $this->assertSame('2026-11-22', $trend[0]['snapshot_date']->toDateString());
     }
 
     public function test_ga4_sync_uses_the_social_target_tag_when_no_utm_campaign_name_is_set(): void
@@ -466,6 +537,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
             'starts_on' => $target->starts_on,
             'ends_on' => $target->ends_on,
             'sessions' => 100,
@@ -697,6 +769,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'snapshot_date' => $date,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
             'starts_on' => $target->starts_on,
             'ends_on' => $target->ends_on,
             'sessions' => $sessions,

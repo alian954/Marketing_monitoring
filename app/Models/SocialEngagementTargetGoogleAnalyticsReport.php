@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
     'social_engagement_target_id',
     'campaign_name',
     'source_name',
+    'medium_name',
     'starts_on',
     'ends_on',
     'sessions',

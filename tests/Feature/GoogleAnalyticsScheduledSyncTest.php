@@ -106,6 +106,50 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_daily_sync_refreshes_a_recent_snapshot_when_the_medium_filter_changes(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response($this->emptyReportPayload()),
+        ]);
+
+        $connection = $this->createConnection();
+        $target = $this->createTarget(['ga4_medium_name' => 'paid_social']);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => 'organic_social',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 12,
+            'engaged_sessions' => 8,
+            'key_events' => '2.0000',
+            'total_revenue' => '500.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subHours(4),
+        ]);
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutputToContain('完成 1 個活動，略過 0 個近期讀值，失敗 0 個。')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
+            'social_engagement_target_id' => $target->id,
+            'medium_name' => 'paid_social',
+        ]);
+        Http::assertSentCount(2);
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualMedium'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'paid_social');
+    }
+
     public function test_daily_sync_refreshes_a_snapshot_that_reaches_the_twenty_four_hour_boundary(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-22 06:30:00', 'Asia/Taipei'));

@@ -26,6 +26,7 @@ class SocialEngagementTargetController extends Controller
                 'ends_on' => $data['ends_on'] ?? null,
                 'ga4_campaign_name' => filled($data['ga4_campaign_name'] ?? null) ? trim($data['ga4_campaign_name']) : null,
                 'ga4_source_name' => filled($data['ga4_source_name'] ?? null) ? trim($data['ga4_source_name']) : null,
+                'ga4_medium_name' => filled($data['ga4_medium_name'] ?? null) ? trim($data['ga4_medium_name']) : null,
                 'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
                 'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
             ],

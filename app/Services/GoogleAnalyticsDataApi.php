@@ -85,6 +85,7 @@ class GoogleAnalyticsDataApi
         string $startsOn,
         string $endsOn,
         ?string $sourceName = null,
+        ?string $mediumName = null,
     ): array {
         $dimensionFilters = [[
             'filter' => [
@@ -104,6 +105,19 @@ class GoogleAnalyticsDataApi
                     'stringFilter' => [
                         'matchType' => 'EXACT',
                         'value' => trim($sourceName),
+                        'caseSensitive' => true,
+                    ],
+                ],
+            ];
+        }
+
+        if (is_string($mediumName) && trim($mediumName) !== '') {
+            $dimensionFilters[] = [
+                'filter' => [
+                    'fieldName' => 'sessionManualMedium',
+                    'stringFilter' => [
+                        'matchType' => 'EXACT',
+                        'value' => trim($mediumName),
                         'caseSensitive' => true,
                     ],
                 ],

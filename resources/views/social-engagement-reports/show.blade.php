@@ -502,6 +502,7 @@
                     <p class="campaign-report-secondary">
                         比對活動名稱：<code>{{ $googleAnalyticsCampaignName }}</code>
                         · 來源：<code>{{ $googleAnalyticsSourceName ?? '所有來源' }}</code>
+                        · 媒介：<code>{{ $googleAnalyticsMediumName ?? '所有媒介' }}</code>
                     </p>
                 </div>
                 @if ($googleAnalyticsConnection && $googleAnalyticsConnection->property_id && $target->starts_on && $target->ends_on)

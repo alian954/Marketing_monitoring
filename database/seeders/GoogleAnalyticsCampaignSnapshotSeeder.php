@@ -24,6 +24,7 @@ class GoogleAnalyticsCampaignSnapshotSeeder extends Seeder
                         [
                             'campaign_name' => $report->campaign_name,
                             'source_name' => $report->source_name,
+                            'medium_name' => $report->medium_name,
                             'starts_on' => $report->starts_on->toDateString(),
                             'ends_on' => $report->ends_on->toDateString(),
                             'sessions' => $report->sessions,
