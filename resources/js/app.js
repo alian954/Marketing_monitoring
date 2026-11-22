@@ -61,3 +61,11 @@ const setupCheckboxSelection = (selectAllSelector, selectionSelector) => {
 
 setupCheckboxSelection('[data-monitor-select-all]', '[data-monitor-select]');
 setupCheckboxSelection('[data-incident-select-all]', '[data-incident-select]');
+
+document.querySelectorAll('[data-print-page]').forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    button.addEventListener('click', () => window.print());
+});

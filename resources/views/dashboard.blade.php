@@ -441,7 +441,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-targets-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">各平台活動互動目標的目前累計值、達成率、每日所需互動及完整讀值覆蓋篇數</caption>
+                    <caption class="sr-only">各平台活動互動目標與資料覆蓋及報告操作</caption>
                     <thead>
                         <tr>
                             <th scope="col">活動標籤</th>
@@ -472,13 +472,16 @@
                                 </td>
                                 <td class="numeric">已讀 {{ number_format($socialEngagementTarget['available_post_count']) }}／{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇@if ($socialEngagementTarget['unknown_publication_date_count'] > 0)<span class="secondary-text">另有 {{ number_format($socialEngagementTarget['unknown_publication_date_count']) }} 篇缺發布時間</span>@endif</td>
                                 <td>
-                                    <form action="{{ route('social-engagement-targets.destroy', $socialEngagementTarget['id']) }}" method="POST">
-                                        @csrf
-                                        @method('DELETE')
-                                        <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
-                                        <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
-                                        <button class="button button-danger button-small" type="submit" aria-label="刪除 {{ $socialEngagementTarget['tag'] }} 的 {{ $socialEngagementTarget['platform_label'] }} 互動目標">刪除</button>
-                                    </form>
+                                    <div class="social-target-actions">
+                                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.report', $socialEngagementTarget['id']) }}" aria-label="查看 {{ $socialEngagementTarget['tag'] }} 的 {{ $socialEngagementTarget['platform_label'] }} 活動報告">報告</a>
+                                        <form action="{{ route('social-engagement-targets.destroy', $socialEngagementTarget['id']) }}" method="POST">
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
+                                            <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
+                                            <button class="button button-danger button-small" type="submit" aria-label="刪除 {{ $socialEngagementTarget['tag'] }} 的 {{ $socialEngagementTarget['platform_label'] }} 互動目標">刪除</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach

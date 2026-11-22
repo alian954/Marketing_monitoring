@@ -2120,3 +2120,247 @@ a.platform-chip:hover {
         transition-duration: .01ms !important;
     }
 }
+
+.campaign-report {
+    display: grid;
+    gap: 18px;
+}
+
+.campaign-report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+}
+
+.campaign-report-eyebrow {
+    margin: 0 0 5px;
+    color: var(--blue-dark);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.campaign-report-header h1 {
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(25px, 4vw, 34px);
+    letter-spacing: -.04em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.campaign-report-subtitle,
+.campaign-report-generated {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.campaign-report-generated {
+    color: var(--subtle);
+    font-size: 12px;
+}
+
+.campaign-report-actions,
+.social-target-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.campaign-report-actions {
+    flex: 0 0 auto;
+}
+
+.social-target-actions form {
+    margin: 0;
+}
+
+.campaign-report-panel {
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.campaign-report-panel h2 {
+    margin: 0 0 14px;
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 720;
+}
+
+.campaign-report-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.campaign-report-summary > div {
+    min-width: 0;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-hover);
+}
+
+.campaign-report-summary dt {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.campaign-report-summary dd {
+    margin: 7px 0 0;
+    color: var(--ink);
+    font-size: 21px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.campaign-report-secondary {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.campaign-report-table {
+    min-width: 0;
+}
+
+.campaign-report-table th,
+.campaign-report-table td {
+    padding: 10px 12px;
+    font-size: 12px;
+}
+
+.campaign-report-metrics-table {
+    max-width: 620px;
+}
+
+.campaign-report-post-table {
+    min-width: 960px;
+}
+
+.campaign-report-empty,
+.campaign-report-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.campaign-report-note {
+    padding: 0 2px;
+}
+
+@media (max-width: 760px) {
+    .campaign-report-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .campaign-report-actions {
+        width: 100%;
+    }
+
+    .campaign-report-actions .button {
+        flex: 1 1 auto;
+    }
+
+    .campaign-report-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 12mm;
+    }
+
+    html,
+    body {
+        min-width: 0;
+        min-height: 0;
+        background: #fff;
+    }
+
+    .site-header,
+    .page-footer,
+    .skip-link,
+    .campaign-report-actions {
+        display: none !important;
+    }
+
+    .app-shell {
+        min-height: 0;
+    }
+
+    .page-shell {
+        width: auto;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+    }
+
+    .campaign-report {
+        gap: 10px;
+    }
+
+    .campaign-report-header {
+        padding-bottom: 10px;
+    }
+
+    .campaign-report-header h1 {
+        font-size: 23px;
+    }
+
+    .campaign-report-panel {
+        padding: 11px 13px;
+        border-color: #c8c8c8;
+        box-shadow: none;
+        break-inside: avoid;
+    }
+
+    .campaign-report-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .campaign-report-summary > div {
+        padding: 8px 10px;
+        background: #fff;
+    }
+
+    .campaign-report-summary dd {
+        font-size: 17px;
+    }
+
+    .campaign-report .data-table-wrap {
+        overflow: visible;
+    }
+
+    .campaign-report-table,
+    .campaign-report-post-table {
+        width: 100%;
+        min-width: 0;
+        font-size: 9pt;
+    }
+
+    .campaign-report-table th,
+    .campaign-report-table td {
+        padding: 5px 7px;
+        font-size: 8pt;
+    }
+
+    .campaign-report-note,
+    .campaign-report-generated,
+    .campaign-report-subtitle {
+        color: #444;
+    }
+}
