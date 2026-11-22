@@ -45,6 +45,11 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'reach' => 800,
             'clicks' => 20,
             'currency_code' => 'TWD',
+            'action_values' => [
+                ['action_type' => 'purchase', 'value' => '5000.0000'],
+                ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '3000.0000'],
+                ['action_type' => 'omni_purchase', 'value' => '900.0000'],
+            ],
         ]);
         $this->createMetaSnapshot($target, $metaConnection, '2026-11-21 06:00:00', [
             'spend_amount' => '150.0000',
@@ -52,6 +57,10 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'reach' => 1000,
             'clicks' => 35,
             'currency_code' => 'TWD',
+            'action_values' => [
+                ['action_type' => 'purchase', 'value' => '2000.0000'],
+                ['action_type' => 'omni_purchase', 'value' => '600.0000'],
+            ],
         ]);
         $this->createMetaSnapshot($target, $metaConnection, '2026-11-22 06:00:00', [
             'spend_amount' => '20.0000',
@@ -59,6 +68,9 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'reach' => 1200,
             'clicks' => 40,
             'currency_code' => 'USD',
+            'action_values' => [
+                ['action_type' => 'omni_purchase', 'value' => '20.0000'],
+            ],
         ]);
         $this->createMetaSnapshot($target, $otherMetaConnection, '2026-11-22 07:00:00', [
             'spend_amount' => '99999.0000',
@@ -115,11 +127,17 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             ->assertSee('<th scope="col">CPC</th>', false)
             ->assertSee('<th scope="col">CPM</th>', false)
             ->assertSee('<th scope="col">每次轉換成本</th>', false)
+            ->assertSee('<th scope="col">購買 ROAS</th>', false)
+            ->assertSee('<th scope="col">轉換價值 ROAS</th>', false)
+            ->assertSee('Meta 購買 ROAS 以 omni_purchase 轉換價值除以花費')
             ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']), false)
             ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'google-ads']), false)
             ->assertSee('<th scope="col">讀值時間</th>', false)
             ->assertSee('2,000')
             ->assertSee('100.00 TWD');
+        $response->assertSee('9.00x')
+            ->assertSee('4.00x')
+            ->assertSee('1.33x');
 
         $metaTrend = $response->viewData('metaMarketingTrend');
         $this->assertCount(3, $metaTrend);
@@ -135,6 +153,11 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame(-0.7143, $metaTrend[1]['cost_per_click_change']);
         $this->assertSame(93.75, $metaTrend[1]['cost_per_thousand_impressions']);
         $this->assertSame(-6.25, $metaTrend[1]['cost_per_thousand_impressions_change']);
+        $this->assertSame('600.0000', $metaTrend[1]['roas_value']);
+        $this->assertSame(4.0, $metaTrend[1]['roas']);
+        $this->assertSame(-5.0, $metaTrend[1]['roas_change']);
+        $this->assertSame(1.0, $metaTrend[2]['roas']);
+        $this->assertNull($metaTrend[2]['roas_change']);
         $this->assertFalse($metaTrend[2]['currency_comparable']);
         $this->assertNull($metaTrend[2]['spend_change']);
         $this->assertNull($metaTrend[2]['cost_per_click_change']);
@@ -158,6 +181,90 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame(-31.25, $googleAdsTrend[1]['cost_per_conversion_change']);
         $this->assertSame(18.18, $googleAdsTrend[1]['conversion_rate_percent']);
         $this->assertSame(8.18, $googleAdsTrend[1]['conversion_rate_change_percentage_points']);
+        $this->assertSame(1.33, $googleAdsTrend[1]['roas']);
+        $this->assertSame(0.53, $googleAdsTrend[1]['roas_change']);
+    }
+
+    public function test_paid_media_roas_requires_a_value_and_positive_spend_and_only_compares_matching_currencies(): void
+    {
+        $user = User::factory()->create();
+        $metaConnection = MetaMarketingConnection::factory()->create(['user_id' => $user->id]);
+        $googleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $user->id]);
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'ROAS quality campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '987654321',
+            'google_ads_campaign_id' => '987654322',
+        ]);
+
+        $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 06:00:00', [
+            'spend_amount' => '100.0000',
+            'action_values' => [],
+        ]);
+        $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 07:00:00', [
+            'spend_amount' => '0.0000',
+            'action_values' => [['action_type' => 'omni_purchase', 'value' => '300.0000']],
+        ]);
+        $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 08:00:00', [
+            'spend_amount' => '100.0000',
+            'action_values' => [['action_type' => 'omni_purchase', 'value' => '500.0000']],
+        ]);
+        $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 09:00:00', [
+            'spend_amount' => '100.0000',
+            'currency_code' => 'USD',
+            'action_values' => [['action_type' => 'omni_purchase', 'value' => '600.0000']],
+        ]);
+        $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 10:00:00', [
+            'spend_amount' => '100.0000',
+            'currency_code' => 'USD',
+            'action_values' => [['action_type' => 'omni_purchase', 'value' => '700.0000']],
+        ]);
+
+        $this->createGoogleAdsSnapshot($target, $googleAdsConnection, '2026-11-20 06:00:00', [
+            'spend_amount' => '100.0000',
+            'conversions_value' => null,
+        ]);
+        $this->createGoogleAdsSnapshot($target, $googleAdsConnection, '2026-11-20 07:00:00', [
+            'spend_amount' => '0.0000',
+            'conversions_value' => '800.0000',
+        ]);
+        $this->createGoogleAdsSnapshot($target, $googleAdsConnection, '2026-11-20 08:00:00', [
+            'spend_amount' => '100.0000',
+            'conversions_value' => '500.0000',
+        ]);
+        $this->createGoogleAdsSnapshot($target, $googleAdsConnection, '2026-11-20 09:00:00', [
+            'spend_amount' => '50.0000',
+            'conversions_value' => '250.0000',
+        ]);
+        $this->createGoogleAdsSnapshot($target, $googleAdsConnection, '2026-11-20 10:00:00', [
+            'spend_amount' => '100.0000',
+            'conversions_value' => '500.0000',
+            'currency_code' => 'USD',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk();
+
+        $metaTrend = $response->viewData('metaMarketingTrend');
+        $this->assertNull($metaTrend[0]['roas']);
+        $this->assertNull($metaTrend[1]['roas']);
+        $this->assertSame(5.0, $metaTrend[2]['roas']);
+        $this->assertNull($metaTrend[2]['roas_change']);
+        $this->assertSame(6.0, $metaTrend[3]['roas']);
+        $this->assertNull($metaTrend[3]['roas_change']);
+        $this->assertSame(1.0, $metaTrend[4]['roas_change']);
+
+        $googleAdsTrend = $response->viewData('googleAdsTrend');
+        $this->assertNull($googleAdsTrend[0]['roas']);
+        $this->assertNull($googleAdsTrend[1]['roas']);
+        $this->assertSame(5.0, $googleAdsTrend[2]['roas']);
+        $this->assertSame(5.0, $googleAdsTrend[3]['roas']);
+        $this->assertSame(0.0, $googleAdsTrend[3]['roas_change']);
+        $this->assertSame(5.0, $googleAdsTrend[4]['roas']);
+        $this->assertNull($googleAdsTrend[4]['roas_change']);
     }
 
     public function test_campaign_report_keeps_only_the_latest_thirty_snapshots_in_time_order(): void
@@ -298,6 +405,9 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->createMetaSnapshot($target, $connection, '2026-11-20 06:00:00', [
             'campaign_name' => '=SUM(1+1)',
             'spend_amount' => '100.0000',
+            'action_values' => [
+                ['action_type' => 'omni_purchase', 'value' => '400.0000'],
+            ],
         ]);
         $this->createMetaSnapshot($target, $connection, '2026-11-21 06:00:00', [
             'campaign_name' => '=SUM(1+1)',
@@ -307,6 +417,8 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             ],
             'action_values' => [
                 ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '200.0000'],
+                ['action_type' => 'purchase', 'value' => '9000.0000'],
+                ['action_type' => 'omni_purchase', 'value' => '450.0000'],
             ],
         ]);
         $this->createMetaSnapshot($target, $otherConnection, '2026-11-21 07:00:00', [
@@ -335,11 +447,17 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('50.0000', $csvRows[2][4]);
         $frequencyIndex = array_search('frequency_cumulative', $csvRows[0], true);
         $frequencyChangeIndex = array_search('frequency_change_since_previous', $csvRows[0], true);
+        $roasValueIndex = array_search('roas_value_cumulative', $csvRows[0], true);
+        $roasIndex = array_search('roas', $csvRows[0], true);
+        $roasChangeIndex = array_search('roas_change_since_previous', $csvRows[0], true);
         $ctrIndex = array_search('ctr_percent', $csvRows[0], true);
         $cpcChangeIndex = array_search('cost_per_click_change_since_previous', $csvRows[0], true);
         $cpmChangeIndex = array_search('cost_per_thousand_impressions_change_since_previous', $csvRows[0], true);
         $this->assertIsInt($frequencyIndex);
         $this->assertIsInt($frequencyChangeIndex);
+        $this->assertIsInt($roasValueIndex);
+        $this->assertIsInt($roasIndex);
+        $this->assertIsInt($roasChangeIndex);
         $this->assertIsInt($ctrIndex);
         $this->assertIsInt($cpcChangeIndex);
         $this->assertIsInt($cpmChangeIndex);
@@ -352,7 +470,7 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             $csvRows[2][$actionsIndex],
         );
         $this->assertSame(
-            '[{"action_type":"offsite_conversion.fb_pixel_purchase","value":"200.0000"}]',
+            '[{"action_type":"offsite_conversion.fb_pixel_purchase","value":"200.0000"},{"action_type":"purchase","value":"9000.0000"},{"action_type":"omni_purchase","value":"450.0000"}]',
             $csvRows[2][$actionValuesIndex],
         );
         $this->assertSame('1.2500', $csvRows[1][$frequencyIndex]);
@@ -360,6 +478,9 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('2.00', $csvRows[1][$ctrIndex]);
         $this->assertSame('2.5000', $csvRows[2][$cpcChangeIndex]);
         $this->assertSame('50.0000', $csvRows[2][$cpmChangeIndex]);
+        $this->assertSame('450.0000', $csvRows[2][$roasValueIndex]);
+        $this->assertSame('3.00', $csvRows[2][$roasIndex]);
+        $this->assertSame('-1.00', $csvRows[2][$roasChangeIndex]);
         $this->assertStringNotContainsString('Private other account', $response->streamedContent());
         $this->assertStringNotContainsString('Different campaign', $response->streamedContent());
     }
@@ -408,17 +529,23 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $conversionRateIndex = array_search('conversion_rate_percent', $csvRows[0], true);
         $clickCostChangeIndex = array_search('cost_per_click_change_since_previous', $csvRows[0], true);
         $conversionActionsIndex = array_search('conversion_actions', $csvRows[0], true);
+        $roasIndex = array_search('roas', $csvRows[0], true);
+        $roasChangeIndex = array_search('roas_change_since_previous', $csvRows[0], true);
         $this->assertIsInt($conversionChangeIndex);
         $this->assertIsInt($conversionValueChangeIndex);
         $this->assertIsInt($conversionCostChangeIndex);
         $this->assertIsInt($conversionRateIndex);
         $this->assertIsInt($clickCostChangeIndex);
         $this->assertIsInt($conversionActionsIndex);
+        $this->assertIsInt($roasIndex);
+        $this->assertIsInt($roasChangeIndex);
         $this->assertSame('3.0000', $csvRows[2][$conversionChangeIndex]);
         $this->assertSame('120.0000', $csvRows[2][$conversionValueChangeIndex]);
         $this->assertSame('-20.0000', $csvRows[2][$conversionCostChangeIndex]);
         $this->assertSame('50.00', $csvRows[2][$conversionRateIndex]);
         $this->assertSame('5.0000', $csvRows[2][$clickCostChangeIndex]);
+        $this->assertSame('1.33', $csvRows[2][$roasIndex]);
+        $this->assertSame('0.53', $csvRows[2][$roasChangeIndex]);
         $this->assertSame(
             '[{"conversion_action_id":"1001","conversion_action_name":"Purchase","conversions":"4.0000","conversion_value":"190.0000"}]',
             $csvRows[2][$conversionActionsIndex],

@@ -202,7 +202,7 @@
                 @if ($metaMarketingTrend === [])
                     <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
                 @else
-                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。最多顯示最近 30 次。</p>
+                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。Meta 購買 ROAS 以 omni_purchase 轉換價值除以花費；幣別不同時不比較 ROAS 差異。最多顯示最近 30 次。</p>
                     <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-trend-title" tabindex="0">
                         <table class="data-table campaign-report-table">
                             <caption>Meta Ads 最近 30 次累計成效讀值與前次差異</caption>
@@ -210,6 +210,7 @@
                                 <tr>
                                     <th scope="col">讀值時間</th>
                                     <th scope="col">花費</th>
+                                    <th scope="col">購買 ROAS</th>
                                     <th scope="col">曝光</th>
                                     <th scope="col">觸及</th>
                                     <th scope="col">頻率</th>
@@ -228,6 +229,10 @@
                                         <td class="numeric">
                                             {{ number_format((float) $snapshot['spend_amount'], 2) }} {{ $snapshot['currency_code'] }}
                                             <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['spend_change'] > 0 ? '+' : '').number_format($snapshot['spend_change'], 2))) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['roas'] === null ? '—' : number_format($snapshot['roas'], 2).'x' }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['roas_change'] === null ? '無法比較' : ($snapshot['roas_change'] > 0 ? '+' : '').number_format($snapshot['roas_change'], 2).'x')) }})</span>
                                         </td>
                                         <td class="numeric">
                                             {{ number_format($snapshot['impressions']) }}
@@ -307,7 +312,9 @@
                 @if ($googleAdsCampaignOptions === [])
                     <p class="campaign-report-empty">此客戶帳戶沒有可選的 Google Ads 活動。</p>
                 @else
-                    @php($currentCampaignIsAvailable = collect($googleAdsCampaignOptions)->contains('campaign_id', (string) $target->google_ads_campaign_id))
+                    @php
+                        $currentCampaignIsAvailable = collect($googleAdsCampaignOptions)->contains('campaign_id', (string) $target->google_ads_campaign_id);
+                    @endphp
                     <form action="{{ route('social-engagement-targets.google-ads.campaign.update', $target) }}" method="POST" class="check-history-filter" aria-labelledby="google-ads-campaign-picker-title">
                         @csrf
                         @method('PUT')
@@ -429,7 +436,7 @@
                 @if ($googleAdsTrend === [])
                     <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
                 @else
-                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。最多顯示最近 30 次。</p>
+                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。轉換價值 ROAS 以轉換價值除以花費；幣別不同時不比較 ROAS 差異。最多顯示最近 30 次。</p>
                     <div class="data-table-wrap" role="region" aria-labelledby="google-ads-trend-title" tabindex="0">
                         <table class="data-table campaign-report-table">
                             <caption>Google Ads 最近 30 次累計成效讀值與前次差異</caption>
@@ -441,6 +448,7 @@
                                     <th scope="col">點擊</th>
                                     <th scope="col">轉換</th>
                                     <th scope="col">轉換價值</th>
+                                    <th scope="col">轉換價值 ROAS</th>
                                     <th scope="col">CTR</th>
                                     <th scope="col">CPC</th>
                                     <th scope="col">CPM</th>
@@ -473,6 +481,10 @@
                                         <td class="numeric">
                                             {{ number_format((float) $snapshot['conversions_value'], 2) }} {{ $snapshot['currency_code'] }}
                                             <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['conversions_value_change'] > 0 ? '+' : '').number_format($snapshot['conversions_value_change'], 2))) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['roas'] === null ? '—' : number_format($snapshot['roas'], 2).'x' }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['roas_change'] === null ? '無法比較' : ($snapshot['roas_change'] > 0 ? '+' : '').number_format($snapshot['roas_change'], 2).'x')) }})</span>
                                         </td>
                                         <td class="numeric">
                                             {{ $snapshot['ctr_percent'] === null ? '—' : number_format($snapshot['ctr_percent'], 2).'%' }}

@@ -38,6 +38,9 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     roas_value: string|null,
+     *     roas: float|null,
+     *     roas_change: float|null,
      *     actions: list<array{action_type: string, value: string}>,
      *     action_values: list<array{action_type: string, value: string}>,
      *     conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>,
@@ -92,6 +95,9 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     roas_value: string|null,
+     *     roas: float|null,
+     *     roas_change: float|null,
      *     actions: list<array{action_type: string, value: string}>,
      *     action_values: list<array{action_type: string, value: string}>,
      *     conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>,
@@ -146,6 +152,9 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     roas_value: string|null,
+     *     roas: float|null,
+     *     roas_change: float|null,
      *     actions: list<array{action_type: string, value: string}>,
      *     action_values: list<array{action_type: string, value: string}>,
      *     conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>,
@@ -225,6 +234,18 @@ class PaidMediaCampaignTrendReport
             $currenciesMatch = $hasPreviousSnapshot
                 && $previousSnapshot->currency_code === $snapshot->currency_code;
             $moneyIsComparable = $currenciesMatch;
+            $roasValue = $source === SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING
+                ? $this->metaOmniPurchaseValue($snapshot->action_values)
+                : $snapshot->conversions_value;
+            $previousRoasValue = $previousSnapshot === null
+                ? null
+                : ($source === SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING
+                    ? $this->metaOmniPurchaseValue($previousSnapshot->action_values)
+                    : $previousSnapshot->conversions_value);
+            $roas = $this->roas($roasValue, $snapshot->spend_amount);
+            $previousRoas = $previousSnapshot === null
+                ? null
+                : $this->roas($previousRoasValue, $previousSnapshot->spend_amount);
 
             $changes[] = [
                 'synced_at' => $snapshot->synced_at,
@@ -271,6 +292,11 @@ class PaidMediaCampaignTrendReport
                 'conversions_value_change' => $moneyIsComparable
                     ? $this->optionalDecimalChange($snapshot->conversions_value, $previousSnapshot->conversions_value)
                     : null,
+                'roas_value' => $roasValue,
+                'roas' => $roas,
+                'roas_change' => $moneyIsComparable && $roas !== null && $previousRoas !== null
+                    ? round($roas - $previousRoas, 2)
+                    : null,
                 'actions' => $snapshot->actions ?? [],
                 'action_values' => $snapshot->action_values ?? [],
                 'conversion_actions' => $snapshot->conversion_actions ?? [],
@@ -307,6 +333,32 @@ class PaidMediaCampaignTrendReport
     {
         return $reach !== null && $reach > 0
             ? round($impressions / $reach, 4)
+            : null;
+    }
+
+    private function metaOmniPurchaseValue(?array $actionValues): ?string
+    {
+        foreach ($actionValues ?? [] as $actionValue) {
+            if (! is_array($actionValue) || ($actionValue['action_type'] ?? null) !== 'omni_purchase') {
+                continue;
+            }
+
+            $value = $actionValue['value'] ?? null;
+
+            if (is_numeric($value)) {
+                return (string) $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function roas(?string $conversionValue, ?string $spendAmount): ?float
+    {
+        return $conversionValue !== null
+            && $spendAmount !== null
+            && (float) $spendAmount > 0
+            ? round((float) $conversionValue / (float) $spendAmount, 2)
             : null;
     }
 }
