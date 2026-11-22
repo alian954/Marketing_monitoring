@@ -112,8 +112,20 @@
                         <dt>點擊</dt>
                         <dd>{{ number_format($metaMarketingReport->clicks) }}</dd>
                     </div>
+                    <div>
+                        <dt>Meta Ads CTR</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_ctr_percent'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_ctr_percent'], 2).'%' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Meta Ads CPC</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_cost_per_click'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_cost_per_click'], 4).' '.$metaMarketingReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>Meta Ads CPM</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_cost_per_thousand_impressions'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_cost_per_thousand_impressions'], 4).' '.$metaMarketingReport->currency_code }}</dd>
+                    </div>
                 </dl>
-                <p class="campaign-report-secondary">數據來自已授權廣告帳戶，依 Meta Ads 活動 ID 與活動期間彙總。</p>
+                <p class="campaign-report-secondary">數據來自已授權廣告帳戶；CTR 以平台點擊除以曝光計算，CPC 與 CPM 使用此活動的花費。</p>
 
                 <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
                 @if ($metaMarketingTrend === [])
@@ -223,8 +235,28 @@
                             {{ (float) $googleAdsReport->spend_amount > 0 ? number_format((float) $googleAdsReport->conversions_value / (float) $googleAdsReport->spend_amount, 2).'x' : '—' }}
                         </dd>
                     </div>
+                    <div>
+                        <dt>Google Ads CTR</dt>
+                        <dd>{{ $adSpendAnalysis['google_ads_ctr_percent'] === null ? '—' : number_format($adSpendAnalysis['google_ads_ctr_percent'], 2).'%' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Google Ads CPC</dt>
+                        <dd>{{ $adSpendAnalysis['google_ads_cost_per_click'] === null ? '—' : number_format($adSpendAnalysis['google_ads_cost_per_click'], 4).' '.$googleAdsReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>Google Ads CPM</dt>
+                        <dd>{{ $adSpendAnalysis['google_ads_cost_per_thousand_impressions'] === null ? '—' : number_format($adSpendAnalysis['google_ads_cost_per_thousand_impressions'], 4).' '.$googleAdsReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>Google Ads 每次轉換成本</dt>
+                        <dd>{{ $adSpendAnalysis['google_ads_cost_per_conversion'] === null ? '—' : number_format($adSpendAnalysis['google_ads_cost_per_conversion'], 4).' '.$googleAdsReport->currency_code }}</dd>
+                    </div>
+                    <div>
+                        <dt>Google Ads 點擊轉換率</dt>
+                        <dd>{{ $adSpendAnalysis['google_ads_conversion_rate_percent'] === null ? '—' : number_format($adSpendAnalysis['google_ads_conversion_rate_percent'], 2).'%' }}</dd>
+                    </div>
                 </dl>
-                <p class="campaign-report-secondary">Google Ads 轉換與轉換價值依該帳戶的轉換設定歸因；日期區間依 Google Ads 帳戶時區計算。</p>
+                <p class="campaign-report-secondary">CTR、CPC 與 CPM 依 Google Ads 點擊、曝光及花費計算；轉換成本與點擊轉換率依帳戶轉換設定歸因。日期區間依 Google Ads 帳戶時區計算。</p>
 
                 <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                 @if ($googleAdsTrend === [])

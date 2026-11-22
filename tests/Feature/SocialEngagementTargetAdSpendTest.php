@@ -3,10 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
 use App\Services\CampaignMarketingEfficiencyReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -195,5 +199,131 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         $this->assertNull($unavailableCosts['cost_per_session']);
         $this->assertNull($unavailableCosts['cost_per_key_event']);
         $this->assertNull($unavailableCosts['cost_per_public_interaction']);
+    }
+
+    public function test_campaign_report_displays_channel_specific_ad_efficiency_metrics(): void
+    {
+        $user = User::factory()->create();
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Efficiency campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '123456789',
+            'google_ads_campaign_id' => '987654321',
+        ]);
+        $metaConnection = MetaMarketingConnection::query()->create([
+            'user_id' => $user->id,
+            'access_token' => 'meta-token',
+            'ad_account_id' => '123456789',
+            'currency_code' => 'TWD',
+        ]);
+        $googleAdsConnection = GoogleAdsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'google-refresh-token',
+            'customer_id' => '1234567890',
+            'currency_code' => 'USD',
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => 'Meta efficiency campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '100.0000',
+            'impressions' => 1000,
+            'reach' => 800,
+            'clicks' => 40,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => $googleAdsConnection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'campaign_name' => 'Google efficiency campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '200.0000',
+            'impressions' => 4000,
+            'clicks' => 300,
+            'conversions' => '15.0000',
+            'conversions_value' => '600.0000',
+            'currency_code' => 'USD',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads CTR')
+            ->assertSee('Meta Ads CPC')
+            ->assertSee('Meta Ads CPM')
+            ->assertSee('Google Ads CTR')
+            ->assertSee('Google Ads CPC')
+            ->assertSee('Google Ads CPM')
+            ->assertSee('Google Ads 每次轉換成本')
+            ->assertSee('Google Ads 點擊轉換率')
+            ->assertSee('4.00%')
+            ->assertSee('2.5000 TWD')
+            ->assertSee('100.0000 TWD')
+            ->assertSee('7.50%')
+            ->assertSee('0.6667 USD')
+            ->assertSee('50.0000 USD')
+            ->assertSee('13.3333 USD')
+            ->assertSee('5.00%');
+
+        $analysis = $response->viewData('adSpendAnalysis');
+        $this->assertNull($analysis['ad_spend_amount']);
+        $this->assertTrue($analysis['platform_currency_mismatch']);
+        $this->assertSame(4.0, $analysis['meta_ads_ctr_percent']);
+        $this->assertSame(2.5, $analysis['meta_ads_cost_per_click']);
+        $this->assertSame(100.0, $analysis['meta_ads_cost_per_thousand_impressions']);
+        $this->assertSame(7.5, $analysis['google_ads_ctr_percent']);
+        $this->assertSame(0.6667, $analysis['google_ads_cost_per_click']);
+        $this->assertSame(50.0, $analysis['google_ads_cost_per_thousand_impressions']);
+        $this->assertSame(13.3333, $analysis['google_ads_cost_per_conversion']);
+        $this->assertSame(5.0, $analysis['google_ads_conversion_rate_percent']);
+    }
+
+    public function test_ad_efficiency_metrics_are_unavailable_when_their_denominators_are_zero(): void
+    {
+        $metaReport = new SocialEngagementTargetMetaMarketingReport;
+        $metaReport->forceFill([
+            'spend_amount' => '100.0000',
+            'impressions' => 0,
+            'clicks' => 0,
+        ]);
+        $googleAdsReport = new SocialEngagementTargetGoogleAdsReport;
+        $googleAdsReport->forceFill([
+            'spend_amount' => '100.0000',
+            'impressions' => 0,
+            'clicks' => 0,
+            'conversions' => '0.0000',
+        ]);
+
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build(
+            SocialEngagementTarget::factory()->make(),
+            null,
+            null,
+            $metaReport,
+            $googleAdsReport,
+        );
+
+        foreach ([
+            'meta_ads_ctr_percent',
+            'meta_ads_cost_per_click',
+            'meta_ads_cost_per_thousand_impressions',
+            'google_ads_ctr_percent',
+            'google_ads_cost_per_click',
+            'google_ads_cost_per_thousand_impressions',
+            'google_ads_cost_per_conversion',
+            'google_ads_conversion_rate_percent',
+        ] as $metric) {
+            $this->assertNull($analysis[$metric]);
+        }
     }
 }

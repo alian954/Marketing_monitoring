@@ -20,7 +20,15 @@ class CampaignMarketingEfficiencyReport
      *     roas_unavailable_reason: string|null,
      *     cost_per_session: float|null,
      *     cost_per_key_event: float|null,
-     *     cost_per_public_interaction: float|null
+     *     cost_per_public_interaction: float|null,
+     *     meta_ads_ctr_percent: float|null,
+     *     meta_ads_cost_per_click: float|null,
+     *     meta_ads_cost_per_thousand_impressions: float|null,
+     *     google_ads_ctr_percent: float|null,
+     *     google_ads_cost_per_click: float|null,
+     *     google_ads_cost_per_thousand_impressions: float|null,
+     *     google_ads_cost_per_conversion: float|null,
+     *     google_ads_conversion_rate_percent: float|null
      * }
      */
     public function build(
@@ -62,6 +70,11 @@ class CampaignMarketingEfficiencyReport
 
         $spendAmount = $spendAmountValue === null ? null : (float) $spendAmountValue;
         $spendCurrency = $this->currencyCode(is_string($spendCurrencyValue) ? $spendCurrencyValue : null);
+        $metaImpressions = $metaMarketingReport?->impressions ?? 0;
+        $metaClicks = $metaMarketingReport?->clicks ?? 0;
+        $googleAdsImpressions = $googleAdsReport?->impressions ?? 0;
+        $googleAdsClicks = $googleAdsReport?->clicks ?? 0;
+        $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
         $googleAnalyticsCurrency = is_string($googleAnalyticsReport?->currency_code) && trim($googleAnalyticsReport->currency_code) !== ''
             ? strtoupper(trim($googleAnalyticsReport->currency_code))
             : null;
@@ -101,6 +114,30 @@ class CampaignMarketingEfficiencyReport
                 : null,
             'cost_per_public_interaction' => $spendAmount !== null && $publicInteractionTotal !== null && $publicInteractionTotal > 0
                 ? round($spendAmount / $publicInteractionTotal, 4)
+                : null,
+            'meta_ads_ctr_percent' => $metaImpressions > 0
+                ? round($metaClicks / $metaImpressions * 100, 2)
+                : null,
+            'meta_ads_cost_per_click' => $metaSpendAmount !== null && $metaClicks > 0
+                ? round((float) $metaSpendAmount / $metaClicks, 4)
+                : null,
+            'meta_ads_cost_per_thousand_impressions' => $metaSpendAmount !== null && $metaImpressions > 0
+                ? round((float) $metaSpendAmount / $metaImpressions * 1000, 4)
+                : null,
+            'google_ads_ctr_percent' => $googleAdsImpressions > 0
+                ? round($googleAdsClicks / $googleAdsImpressions * 100, 2)
+                : null,
+            'google_ads_cost_per_click' => $googleAdsSpendAmount !== null && $googleAdsClicks > 0
+                ? round((float) $googleAdsSpendAmount / $googleAdsClicks, 4)
+                : null,
+            'google_ads_cost_per_thousand_impressions' => $googleAdsSpendAmount !== null && $googleAdsImpressions > 0
+                ? round((float) $googleAdsSpendAmount / $googleAdsImpressions * 1000, 4)
+                : null,
+            'google_ads_cost_per_conversion' => $googleAdsSpendAmount !== null && $googleAdsConversions !== null && $googleAdsConversions > 0
+                ? round((float) $googleAdsSpendAmount / $googleAdsConversions, 4)
+                : null,
+            'google_ads_conversion_rate_percent' => $googleAdsConversions !== null && $googleAdsClicks > 0
+                ? round($googleAdsConversions / $googleAdsClicks * 100, 2)
                 : null,
         ];
     }
