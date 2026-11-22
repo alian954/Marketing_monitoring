@@ -58,7 +58,7 @@ class SocialEngagementCampaignReport
      *     }
      * }
      */
-    public function build(SocialEngagementTarget $target): array
+    public function build(SocialEngagementTarget $target, bool $includeHistoricalDetails = true): array
     {
         $asOf = CarbonImmutable::now(self::HISTORY_TIMEZONE);
         $platform = $target->social_platform;
@@ -90,101 +90,113 @@ class SocialEngagementCampaignReport
                 : (strnatcasecmp($first['name'], $second['name']) ?: ($first['id'] <=> $second['id']));
         };
 
-        Monitor::query()
+        $monitors = Monitor::query()
             ->where('social_platform', $platform)
             ->where(function (Builder $query) use ($target): void {
                 $query->whereJsonContains('tags', $target->tag)
                     ->orWhere('label', $target->tag);
             })
             ->select(['id', 'name', 'social_platform', 'config_version'])
-            ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
-            ->chunkById(250, function (EloquentCollection $monitorBatch) use (
-                &$trackedPostCount,
-                &$completeReadCount,
-                &$unknownPublicationDateCount,
-                &$interactionTotal,
-                &$engagementRateInteractions,
-                &$engagementRateViews,
-                &$engagementRatePostCount,
-                &$metricTotals,
-                &$posts,
-                $platform,
-                $campaignStart,
-                $campaignEnd,
-                $hasCampaignPeriod,
-                $sortPosts,
-            ): void {
-                foreach ($monitorBatch as $monitor) {
-                    $engagementRun = $monitor->latestPublicEngagementCheckRun;
+            ->with('latestPublicEngagementCheckRun');
 
-                    if ($engagementRun?->config_version !== $monitor->config_version) {
-                        $engagementRun = null;
-                    }
+        if ($includeHistoricalDetails) {
+            $monitors->with('latestCheckRun');
+        }
 
-                    $publishedAt = $engagementRun?->response_published_at?->timezone(self::HISTORY_TIMEZONE);
-                    $publishedDate = $publishedAt?->toDateString();
+        $monitors->chunkById(250, function (EloquentCollection $monitorBatch) use (
+            &$trackedPostCount,
+            &$completeReadCount,
+            &$unknownPublicationDateCount,
+            &$interactionTotal,
+            &$engagementRateInteractions,
+            &$engagementRateViews,
+            &$engagementRatePostCount,
+            &$metricTotals,
+            &$posts,
+            $platform,
+            $campaignStart,
+            $campaignEnd,
+            $hasCampaignPeriod,
+            $includeHistoricalDetails,
+            $sortPosts,
+        ): void {
+            foreach ($monitorBatch as $monitor) {
+                $engagementRun = $monitor->latestPublicEngagementCheckRun;
 
-                    if ($hasCampaignPeriod && $publishedDate === null) {
-                        $unknownPublicationDateCount++;
+                if ($engagementRun?->config_version !== $monitor->config_version) {
+                    $engagementRun = null;
+                }
 
-                        continue;
-                    }
+                $publishedAt = $engagementRun?->response_published_at?->timezone(self::HISTORY_TIMEZONE);
+                $publishedDate = $publishedAt?->toDateString();
 
-                    if ($hasCampaignPeriod
-                        && (($campaignStart !== null && $publishedDate < $campaignStart)
-                            || ($campaignEnd !== null && $publishedDate > $campaignEnd))) {
-                        continue;
-                    }
+                if ($hasCampaignPeriod && $publishedDate === null) {
+                    $unknownPublicationDateCount++;
 
-                    $trackedPostCount++;
-                    $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
-                    $postInteractionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
-                    $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
+                    continue;
+                }
 
-                    foreach (array_keys($metricTotals) as $metric) {
-                        if (is_numeric($metrics[$metric] ?? null)) {
-                            $metricTotals[$metric]['total'] += (int) $metrics[$metric];
-                            $metricTotals[$metric]['available']++;
-                        }
-                    }
+                if ($hasCampaignPeriod
+                    && (($campaignStart !== null && $publishedDate < $campaignStart)
+                        || ($campaignEnd !== null && $publishedDate > $campaignEnd))) {
+                    continue;
+                }
 
-                    if ($postInteractionTotal !== null) {
-                        $completeReadCount++;
-                        $interactionTotal += $postInteractionTotal;
+                $trackedPostCount++;
+                $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                $postInteractionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
+                $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
 
-                        if ($views !== null && $views > 0) {
-                            $engagementRateInteractions += $postInteractionTotal;
-                            $engagementRateViews += $views;
-                            $engagementRatePostCount++;
-                        }
-                    }
-
-                    $latestCheckRun = $monitor->latestCheckRun;
-                    $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
-
-                    $posts[] = [
-                        'id' => (int) $monitor->id,
-                        'name' => $monitor->name,
-                        'published_at' => $publishedAt?->toImmutable(),
-                        'views' => $views,
-                        'likes' => is_numeric($metrics['likes'] ?? null) ? (int) $metrics['likes'] : null,
-                        'comments' => is_numeric($metrics['comments'] ?? null) ? (int) $metrics['comments'] : null,
-                        'shares' => is_numeric($metrics['shares'] ?? null) ? (int) $metrics['shares'] : null,
-                        'interaction_total' => $postInteractionTotal,
-                        'metrics_freshness' => $postInteractionTotal === null
-                            ? '尚無完整讀值'
-                            : ($captureIsCurrent ? '最新檢查讀取' : '沿用前次讀值'),
-                        'finished_at' => $engagementRun?->finished_at?->toImmutable(),
-                    ];
-
-                    if (count($posts) > 10) {
-                        usort($posts, $sortPosts);
-                        array_pop($posts);
+                foreach (array_keys($metricTotals) as $metric) {
+                    if (is_numeric($metrics[$metric] ?? null)) {
+                        $metricTotals[$metric]['total'] += (int) $metrics[$metric];
+                        $metricTotals[$metric]['available']++;
                     }
                 }
-            });
 
-        usort($posts, $sortPosts);
+                if ($postInteractionTotal !== null) {
+                    $completeReadCount++;
+                    $interactionTotal += $postInteractionTotal;
+
+                    if ($views !== null && $views > 0) {
+                        $engagementRateInteractions += $postInteractionTotal;
+                        $engagementRateViews += $views;
+                        $engagementRatePostCount++;
+                    }
+                }
+
+                if (! $includeHistoricalDetails) {
+                    continue;
+                }
+
+                $latestCheckRun = $monitor->latestCheckRun;
+                $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
+
+                $posts[] = [
+                    'id' => (int) $monitor->id,
+                    'name' => $monitor->name,
+                    'published_at' => $publishedAt?->toImmutable(),
+                    'views' => $views,
+                    'likes' => is_numeric($metrics['likes'] ?? null) ? (int) $metrics['likes'] : null,
+                    'comments' => is_numeric($metrics['comments'] ?? null) ? (int) $metrics['comments'] : null,
+                    'shares' => is_numeric($metrics['shares'] ?? null) ? (int) $metrics['shares'] : null,
+                    'interaction_total' => $postInteractionTotal,
+                    'metrics_freshness' => $postInteractionTotal === null
+                        ? '尚無完整讀值'
+                        : ($captureIsCurrent ? '最新檢查讀取' : '沿用前次讀值'),
+                    'finished_at' => $engagementRun?->finished_at?->toImmutable(),
+                ];
+
+                if (count($posts) > 10) {
+                    usort($posts, $sortPosts);
+                    array_pop($posts);
+                }
+            }
+        });
+
+        if ($includeHistoricalDetails) {
+            usort($posts, $sortPosts);
+        }
 
         foreach ($metricTotals as $metric => $summary) {
             $metricTotals[$metric] = [
@@ -217,12 +229,14 @@ class SocialEngagementCampaignReport
                     ? round($engagementRateInteractions / $engagementRateViews * 100, 2)
                     : null,
                 'metrics' => $metricTotals,
-                'weekly_interaction_changes' => $this->weeklyInteractionChanges(
-                    $target,
-                    $campaignStart,
-                    $campaignEnd,
-                    $asOf,
-                ),
+                'weekly_interaction_changes' => $includeHistoricalDetails
+                    ? $this->weeklyInteractionChanges(
+                        $target,
+                        $campaignStart,
+                        $campaignEnd,
+                        $asOf,
+                    )
+                    : [],
                 'top_posts' => $posts,
             ],
         ];

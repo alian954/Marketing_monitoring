@@ -12,6 +12,9 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\PaidMediaCampaignTrendReport;
+use App\Services\SocialEngagementCampaignReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -235,6 +238,12 @@ class SocialEngagementCampaignReportTest extends TestCase
             ['likes' => 100, 'comments' => 20, 'shares' => 5, 'views' => 1000],
             '2026-11-05T08:00:00Z',
         );
+        $googleAnalyticsTrendReport = $this->mock(GoogleAnalyticsCampaignTrendReport::class);
+        $googleAnalyticsTrendReport->shouldNotReceive('recentChanges');
+        $paidMediaTrendReport = $this->mock(PaidMediaCampaignTrendReport::class);
+        $paidMediaTrendReport->shouldNotReceive('metaMarketingChanges');
+        $paidMediaTrendReport->shouldNotReceive('googleAdsChanges');
+
         $response = $this->actingAs($user)
             ->get(route('social-engagement-targets.report.export', $target))
             ->assertDownload('campaign-report-'.$target->id.'.csv')
@@ -342,6 +351,44 @@ class SocialEngagementCampaignReportTest extends TestCase
                 ->assertSee($scope)
                 ->assertSee($total);
         }
+    }
+
+    public function test_campaign_summary_skips_historical_details_without_changing_aggregate_metrics(): void
+    {
+        $this->travelTo('2026-11-20 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Summary campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 100,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $monitor = $this->createSocialMonitor('facebook', 'SUMMARY001', 'Summary campaign', '摘要貼文');
+        $this->createMetricRun($monitor, ['likes' => 10, 'comments' => 2, 'shares' => 1, 'views' => 100], '2026-11-02T08:00:00Z', null, '2026-11-02T09:00:00Z');
+        $this->createMetricRun($monitor, ['likes' => 15, 'comments' => 3, 'shares' => 2, 'views' => 200], '2026-11-02T08:00:00Z', null, '2026-11-10T09:00:00Z');
+
+        $campaignReport = app(SocialEngagementCampaignReport::class);
+        $fullReport = $campaignReport->build($target)['report'];
+        $summaryReport = $campaignReport->build($target, false)['report'];
+
+        foreach ([
+            'tracked_post_count',
+            'complete_read_count',
+            'capture_coverage_percent',
+            'unknown_publication_date_count',
+            'interaction_total',
+            'target_completion_percent',
+            'average_interactions_per_post',
+            'engagement_rate_percent',
+            'metrics',
+        ] as $metric) {
+            $this->assertSame($fullReport[$metric], $summaryReport[$metric]);
+        }
+
+        $this->assertSame([], $summaryReport['top_posts']);
+        $this->assertSame([], $summaryReport['weekly_interaction_changes']);
+        $this->assertCount(1, $fullReport['top_posts']);
+        $this->assertNotEmpty($fullReport['weekly_interaction_changes']);
     }
 
     public function test_report_keeps_only_the_ten_highest_interaction_posts(): void

@@ -56,6 +56,7 @@ class SocialEngagementCampaignReportController extends Controller
             $googleAnalyticsTrendReport,
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
+            false,
         );
         $csv = $campaignMarketingReportCsv->build($data);
 
@@ -98,6 +99,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        bool $includeHistoricalDetails = true,
     ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
@@ -153,7 +155,7 @@ class SocialEngagementCampaignReportController extends Controller
             ? $googleAdsCampaignOptions['campaigns']
             : null;
 
-        $campaignData = $campaignReport->build($socialEngagementTarget);
+        $campaignData = $campaignReport->build($socialEngagementTarget, $includeHistoricalDetails);
         $reportFreshnessCutoff = now()->subDay();
 
         return [
@@ -166,16 +168,20 @@ class SocialEngagementCampaignReportController extends Controller
             'metaMarketingReport' => $metaMarketingReport,
             'metaMarketingReportIsStale' => $metaMarketingReport !== null
                 && $metaMarketingReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
-            'metaMarketingTrend' => $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget),
+            'metaMarketingTrend' => $includeHistoricalDetails
+                ? $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget)
+                : [],
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
             'googleAdsCampaignOptions' => $googleAdsCampaignOptions,
             'googleAdsReportIsStale' => $googleAdsReport !== null
                 && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
-            'googleAdsTrend' => $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget),
+            'googleAdsTrend' => $includeHistoricalDetails
+                ? $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget)
+                : [],
             'googleAnalyticsCampaignName' => $campaignName,
             'googleAnalyticsSourceName' => $sourceName,
-            'googleAnalyticsTrend' => $googleAnalyticsConnection !== null && $analyticsReport !== null
+            'googleAnalyticsTrend' => $includeHistoricalDetails && $googleAnalyticsConnection !== null && $analyticsReport !== null
                 ? $googleAnalyticsTrendReport->recentChanges(
                     $googleAnalyticsConnection,
                     $socialEngagementTarget,
