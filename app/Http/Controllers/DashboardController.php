@@ -343,6 +343,7 @@ class DashboardController extends Controller
             },
         ));
         $socialEngagementTopPosts = $socialEngagementDashboardData['top_posts'];
+        $socialEngagementPublishingDaySummaries = $socialEngagementDashboardData['publishing_day_summaries'];
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -448,6 +449,7 @@ class DashboardController extends Controller
             'socialEngagementSummaries' => $socialEngagementSummaries,
             'socialEngagementComparisonSummaries' => $socialEngagementComparisonSummaries,
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
+            'socialEngagementPublishingDaySummaries' => $socialEngagementPublishingDaySummaries,
             'socialEngagementTopPostSortOptions' => $socialEngagementTopPostSortOptions,
             'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
             'socialEngagementInteractionScopeLabel' => $socialEngagementInteractionScopeLabel,
@@ -806,6 +808,12 @@ class DashboardController extends Controller
      *         metrics_freshness: string,
      *         engagement_rate_percent: float|null,
      *         finished_at: CarbonImmutable|null
+     *     }>,
+     *     publishing_day_summaries: list<array{
+     *         platform_key: string,
+     *         platform: string,
+     *         interaction_scope_label: string,
+     *         weekdays: array<int, array{average_interactions_per_post: float|null, post_count: int}>
      *     }>
      * }
      */
@@ -814,8 +822,11 @@ class DashboardController extends Controller
         /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, interaction_scope_label: string, capture_counts: array{current: int, previous: int}}>}> $summaries */
         $summaries = [];
         $topPosts = [];
+        /** @var array<string, array{platform_key: string, platform: string, interaction_scope_label: string, weekdays: array<int, array{total: int, post_count: int}>}> $publishingDayTotalsByPlatform */
+        $publishingDayTotalsByPlatform = [];
         $supportedPlatforms = ['facebook', 'instagram', 'threads', 'dcard'];
         $platformLabels = ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'];
+        $applicationTimezone = (string) config('app.timezone', 'UTC');
         $sortTopPosts = static function (array $first, array $second) use ($topPostSort): int {
             if ($topPostSort === 'engagement_rate') {
                 $firstRate = $first['engagement_rate_percent'];
@@ -877,7 +888,7 @@ class DashboardController extends Controller
             ->whereNotNull('social_platform')
             ->select(['id', 'name', 'social_platform', 'config_version', 'tags', 'label'])
             ->with(['latestCheckRun', 'latestPublicEngagementCheckRun'])
-            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts): void {
+            ->chunkById(250, function (EloquentCollection $monitorBatch) use (&$summaries, &$topPosts, &$publishingDayTotalsByPlatform, $supportedPlatforms, $platformLabels, $selectedPlatform, $selectedTag, $selectedTagValue, $sortTopPosts, $applicationTimezone): void {
                 foreach ($monitorBatch as $monitor) {
                     $platform = $monitor->social_platform;
 
@@ -903,6 +914,35 @@ class DashboardController extends Controller
                         $selectedTagValue !== null => in_array($selectedTagValue, $tags, true),
                         default => true,
                     };
+                    $platformInteractionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
+
+                    if ($matchesSelectedPlatform
+                        && $matchesSelectedTag
+                        && $engagementRun?->response_published_at !== null
+                        && $platformInteractionTotal !== null) {
+                        $weekday = (int) $engagementRun->response_published_at
+                            ->timezone($applicationTimezone)
+                            ->format('N');
+
+                        if (! isset($publishingDayTotalsByPlatform[$platform])) {
+                            $weekdays = [];
+
+                            foreach (range(1, 7) as $weekdayNumber) {
+                                $weekdays[$weekdayNumber] = ['total' => 0, 'post_count' => 0];
+                            }
+
+                            $publishingDayTotalsByPlatform[$platform] = [
+                                'platform_key' => $platform,
+                                'platform' => $platformLabels[$platform],
+                                'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
+                                'weekdays' => $weekdays,
+                            ];
+                        }
+
+                        $publishingDayTotalsByPlatform[$platform]['weekdays'][$weekday]['total'] += $platformInteractionTotal;
+                        $publishingDayTotalsByPlatform[$platform]['weekdays'][$weekday]['post_count']++;
+                    }
+
                     $interactionScopePlatform = $selectedPlatform;
                     $hasComparableCrossPlatformScope = $selectedPlatform !== null
                         || in_array($platform, ['facebook', 'threads'], true);
@@ -1004,7 +1044,32 @@ class DashboardController extends Controller
         $results = array_values($summaries);
         usort($results, static fn (array $first, array $second): int => strnatcasecmp($first['tag'], $second['tag']));
 
-        return ['summaries' => $results, 'top_posts' => $topPosts];
+        $publishingDaySummaries = [];
+
+        foreach ($supportedPlatforms as $platform) {
+            if (! isset($publishingDayTotalsByPlatform[$platform])) {
+                continue;
+            }
+
+            $platformSummary = $publishingDayTotalsByPlatform[$platform];
+
+            foreach ($platformSummary['weekdays'] as $weekday => $weekdaySummary) {
+                $platformSummary['weekdays'][$weekday] = [
+                    'average_interactions_per_post' => $weekdaySummary['post_count'] > 0
+                        ? round($weekdaySummary['total'] / $weekdaySummary['post_count'], 1)
+                        : null,
+                    'post_count' => $weekdaySummary['post_count'],
+                ];
+            }
+
+            $publishingDaySummaries[] = $platformSummary;
+        }
+
+        return [
+            'summaries' => $results,
+            'top_posts' => $topPosts,
+            'publishing_day_summaries' => $publishingDaySummaries,
+        ];
     }
 
     /** @return array<int, string> */

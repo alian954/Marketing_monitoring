@@ -518,6 +518,82 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(0, $summaries['unavailable']['interaction_count']);
     }
 
+    public function test_dashboard_explains_when_published_weekday_data_is_unavailable(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('發文週期成效')
+            ->assertSee('尚無發文週期資料')
+            ->assertSee('貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入。');
+
+        $this->assertSame([], $response->viewData('socialEngagementPublishingDaySummaries'));
+    }
+
+    public function test_dashboard_summarizes_published_weekday_interactions_per_platform_and_respects_filters(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Config::set('app.timezone', 'Asia/Taipei');
+        $firstFacebookPost = $this->createSocialMonitorForPlatform('facebook', 'WEEKDAYFB001', 'summer');
+        $secondFacebookPost = $this->createSocialMonitorForPlatform('facebook', 'WEEKDAYFB002', 'summer');
+        $tuesdayFacebookPost = $this->createSocialMonitorForPlatform('facebook', 'WEEKDAYFB004', 'summer');
+        $incompleteFacebookPost = $this->createSocialMonitorForPlatform('facebook', 'WEEKDAYFB003', 'summer');
+        $instagramPost = $this->createSocialMonitorForPlatform('instagram', 'WEEKDAYIG001', 'summer');
+        $unpublishedThreadsPost = $this->createSocialMonitorForPlatform('threads', 'WEEKDAYTH001', 'summer');
+        $otherCampaignDcardPost = $this->createSocialMonitorForPlatform('dcard', '262476944', 'winter');
+
+        $firstFacebookRun = $this->createMetricRun($firstFacebookPost, now(), ['views' => null, 'likes' => 2, 'comments' => 1, 'shares' => 1, 'source' => 'json_ld']);
+        $secondFacebookRun = $this->createMetricRun($secondFacebookPost, now(), ['views' => null, 'likes' => 4, 'comments' => 2, 'shares' => 2, 'source' => 'json_ld']);
+        $tuesdayFacebookRun = $this->createMetricRun($tuesdayFacebookPost, now(), ['views' => null, 'likes' => 10, 'comments' => 1, 'shares' => 5, 'source' => 'json_ld']);
+        $incompleteFacebookRun = $this->createMetricRun($incompleteFacebookPost, now(), ['views' => null, 'likes' => 20, 'comments' => 3, 'shares' => null, 'source' => 'json_ld']);
+        $instagramRun = $this->createMetricRun($instagramPost, now(), ['views' => null, 'likes' => 100, 'comments' => 20, 'shares' => 99, 'source' => 'json_ld']);
+        $threadsRun = $this->createMetricRun($unpublishedThreadsPost, now(), ['views' => null, 'likes' => 30, 'comments' => 5, 'shares' => 1, 'source' => 'json_ld']);
+        $dcardRun = $this->createMetricRun($otherCampaignDcardPost, now(), ['views' => null, 'likes' => 50, 'comments' => 10, 'shares' => 5, 'source' => 'rendered_dom']);
+
+        $firstFacebookRun->forceFill(['response_published_at' => '2026-11-16 02:00:00'])->save();
+        $secondFacebookRun->forceFill(['response_published_at' => '2026-11-16 10:00:00'])->save();
+        $tuesdayFacebookRun->forceFill(['response_published_at' => '2026-11-16 16:30:00'])->save();
+        $incompleteFacebookRun->forceFill(['response_published_at' => '2026-11-17 02:00:00'])->save();
+        $instagramRun->forceFill(['response_published_at' => '2026-11-16 12:00:00'])->save();
+        $dcardRun->forceFill(['response_published_at' => '2026-11-16 12:00:00'])->save();
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_tag' => 'tag:summer']))
+            ->assertOk()
+            ->assertSee('發文週期成效')
+            ->assertSee('週一')
+            ->assertSee('週二')
+            ->assertSee('依貼文公開發布時間分組')
+            ->assertSee('<div class="data-table-wrap" role="region" aria-labelledby="publishing-day-engagement-title" tabindex="0">', false)
+            ->assertSee('<caption class="sr-only">依公開發布時間的星期分組、按平台口徑計算的每篇平均互動與貼文數</caption>', false);
+
+        $summaries = collect($response->viewData('socialEngagementPublishingDaySummaries'))
+            ->keyBy('platform_key');
+
+        $this->assertSame(['facebook', 'instagram'], $summaries->keys()->all());
+        $this->assertSame(6.0, $summaries['facebook']['weekdays'][1]['average_interactions_per_post']);
+        $this->assertSame(2, $summaries['facebook']['weekdays'][1]['post_count']);
+        $this->assertSame(16.0, $summaries['facebook']['weekdays'][2]['average_interactions_per_post']);
+        $this->assertSame(1, $summaries['facebook']['weekdays'][2]['post_count']);
+        $this->assertSame(120.0, $summaries['instagram']['weekdays'][1]['average_interactions_per_post']);
+        $this->assertSame(1, $summaries['instagram']['weekdays'][1]['post_count']);
+        $this->assertSame('讚＋留言', $summaries['instagram']['interaction_scope_label']);
+
+        $facebookResponse = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:summer',
+            ]))
+            ->assertOk();
+
+        $this->assertSame(
+            ['facebook'],
+            array_column($facebookResponse->viewData('socialEngagementPublishingDaySummaries'), 'platform_key'),
+        );
+        $this->assertSame(6.0, $facebookResponse->viewData('socialEngagementPublishingDaySummaries')[0]['weekdays'][1]['average_interactions_per_post']);
+        $this->assertSame(16.0, $facebookResponse->viewData('socialEngagementPublishingDaySummaries')[0]['weekdays'][2]['average_interactions_per_post']);
+    }
+
     public function test_dashboard_ranks_complete_interactions_using_selected_platform_and_tag(): void
     {
         $facebookPost = $this->createSocialMonitorForPlatform('facebook', 'RANKFB001', 'summer');

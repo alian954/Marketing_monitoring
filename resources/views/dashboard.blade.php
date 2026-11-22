@@ -376,6 +376,55 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="publishing-day-engagement-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="publishing-day-engagement-title" class="panel-title">發文週期成效</h2>
+                <p class="panel-description">依貼文公開發布時間分組，列出各平台每週各日的平均互動與篇數。只反映目前追蹤樣本，不代表發文日造成成效差異。</p>
+            </div>
+        </div>
+        @if ($socialEngagementPublishingDaySummaries === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無發文週期資料</h3>
+                <p class="empty-copy">貼文需同時有公開發布時間與符合平台口徑的完整互動數，才會納入。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="publishing-day-engagement-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">依公開發布時間的星期分組、按平台口徑計算的每篇平均互動與貼文數</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">平台與口徑</th>
+                            @foreach (['週一', '週二', '週三', '週四', '週五', '週六', '週日'] as $weekdayLabel)
+                                <th scope="col">{{ $weekdayLabel }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementPublishingDaySummaries as $publishingDaySummary)
+                            <tr>
+                                <th scope="row">
+                                    {{ $publishingDaySummary['platform'] }}
+                                    <span class="secondary-text">（{{ $publishingDaySummary['interaction_scope_label'] }}）</span>
+                                </th>
+                                @foreach ($publishingDaySummary['weekdays'] as $weekdaySummary)
+                                    <td class="numeric">
+                                        @if ($weekdaySummary['post_count'] > 0)
+                                            {{ number_format($weekdaySummary['average_interactions_per_post'], 1) }}
+                                            <span class="secondary-text">{{ number_format($weekdaySummary['post_count']) }} 篇</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="cross-platform-engagement-title">
         <div class="panel-header">
             <div>
