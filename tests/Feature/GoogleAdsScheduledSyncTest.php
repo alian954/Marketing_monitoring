@@ -36,7 +36,9 @@ class GoogleAdsScheduledSyncTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
                 ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
-                ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD')),
+                ->push($this->conversionActionsPayload('987654321'))
+                ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD'))
+                ->push($this->conversionActionsPayload('987654322')),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -67,6 +69,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
             'spend_amount' => '125.5000',
             'conversions' => '5.0000',
             'conversions_value' => '250.0000',
+            'conversion_actions' => '[{"conversion_action_id":"1001","conversion_action_name":"Purchase","conversions":"5.0000","conversion_value":"250.0000"}]',
         ]);
         $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $oldTarget->id,
@@ -74,13 +77,20 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $futureTarget->id,
         ]);
-        Http::assertSentCount(3);
+        Http::assertSentCount(5);
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), 'googleAds:searchStream')
                 && in_array($request->data()['query'], [
                     "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2026-11-01' AND '2026-11-30'",
                     "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654322 AND segments.date BETWEEN '2026-11-01' AND '2026-11-17'",
                 ], true);
+        });
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_ends_with($request->url(), 'googleAds:searchStream')
+                && str_contains($query, 'segments.conversion_action')
+                && str_contains($query, 'campaign.id = 987654322');
         });
     }
 
@@ -122,7 +132,9 @@ class GoogleAdsScheduledSyncTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
                 ->push($this->campaignPayload('987654321', 'Active campaign', '100000000', 'TWD'))
-                ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD')),
+                ->push($this->conversionActionsPayload('987654321'))
+                ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
+                ->push($this->conversionActionsPayload('987654321')),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -139,13 +151,14 @@ class GoogleAdsScheduledSyncTest extends TestCase
 
         $this->assertCount(2, $history);
         $this->assertSame(['100.0000', '125.5000'], $history->pluck('spend_amount')->all());
+        $this->assertSame('Purchase', $history[1]->conversion_actions[0]['conversion_action_name']);
         $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 1);
         $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
             'google_ads_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
             'spend_amount' => '125.5000',
         ]);
-        Http::assertSentCount(4);
+        Http::assertSentCount(6);
     }
 
     public function test_daily_command_does_not_request_google_data_without_a_connected_customer(): void
@@ -224,6 +237,25 @@ class GoogleAdsScheduledSyncTest extends TestCase
                     'costMicros' => $costMicros,
                     'impressions' => '1200',
                     'clicks' => '48',
+                    'conversions' => '5',
+                    'conversionsValue' => '250',
+                ],
+            ]],
+        ]];
+    }
+
+    /** @return array{0: array{results: list<array<string, mixed>>}} */
+    private function conversionActionsPayload(string $campaignId): array
+    {
+        return [[
+            'results' => [[
+                'customer' => ['id' => '1234567890'],
+                'campaign' => ['id' => $campaignId],
+                'segments' => [
+                    'conversionAction' => 'customers/1234567890/conversionActions/1001',
+                    'conversionActionName' => 'Purchase',
+                ],
+                'metrics' => [
                     'conversions' => '5',
                     'conversionsValue' => '250',
                 ],

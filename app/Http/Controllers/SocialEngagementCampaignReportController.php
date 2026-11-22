@@ -230,6 +230,7 @@ class SocialEngagementCampaignReportController extends Controller
                 'conversion_rate_change_percentage_points_since_previous',
                 'actions',
                 'action_values',
+                'conversion_actions',
             ], ',', '"', '');
 
             foreach ($rows as $row) {
@@ -264,6 +265,7 @@ class SocialEngagementCampaignReportController extends Controller
                     $row['conversion_rate_change_percentage_points'] === null ? '' : number_format($row['conversion_rate_change_percentage_points'], 2, '.', ''),
                     json_encode($row['actions'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     json_encode($row['action_values'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    json_encode($row['conversion_actions'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ];
 
                 fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');

@@ -101,7 +101,7 @@ class GoogleAdsDataApi
         ];
     }
 
-    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, currency_code: string} */
+    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>, currency_code: string} */
     public function campaignInsights(
         string $accessToken,
         string $customerId,
@@ -130,8 +130,16 @@ class GoogleAdsDataApi
             $loginCustomerId,
         );
         $rows = $this->rowsFromStream($payload);
-
         if ($rows === []) {
+            $conversionActions = $this->conversionActionInsights(
+                $accessToken,
+                $customerId,
+                $campaignId,
+                $startsOn,
+                $endsOn,
+                $loginCustomerId,
+            );
+
             return [
                 'campaign_id' => $campaignId,
                 'campaign_name' => $campaignId,
@@ -140,6 +148,7 @@ class GoogleAdsDataApi
                 'clicks' => 0,
                 'conversions' => '0.0000',
                 'conversions_value' => '0.0000',
+                'conversion_actions' => $conversionActions,
                 'currency_code' => $accountCurrency,
             ];
         }
@@ -162,6 +171,15 @@ class GoogleAdsDataApi
             throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
         }
 
+        $conversionActions = $this->conversionActionInsights(
+            $accessToken,
+            $customerId,
+            $campaignId,
+            $startsOn,
+            $endsOn,
+            $loginCustomerId,
+        );
+
         return [
             'campaign_id' => $campaignId,
             'campaign_name' => trim($campaign['name']),
@@ -170,8 +188,69 @@ class GoogleAdsDataApi
             'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
             'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
             'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            'conversion_actions' => $conversionActions,
             'currency_code' => $returnedCurrency,
         ];
+    }
+
+    /** @return list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}> */
+    private function conversionActionInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        ?string $loginCustomerId,
+    ): array {
+        $query = "SELECT customer.id, campaign.id, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$startsOn}' AND '{$endsOn}'";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rows = $this->rowsFromStream($payload);
+        $conversionActions = [];
+
+        foreach ($rows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $segments = $row['segments'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $conversionActionResourceName = is_array($segments) ? ($segments['conversionAction'] ?? null) : null;
+            $conversionActionName = is_array($segments) ? ($segments['conversionActionName'] ?? null) : null;
+            $expectedResourcePrefix = 'customers/'.$customerId.'/conversionActions/';
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($conversionActionResourceName)
+                || preg_match('/^'.preg_quote($expectedResourcePrefix, '/').'\d{1,32}$/', $conversionActionResourceName) !== 1
+                || ! is_string($conversionActionName)
+                || trim($conversionActionName) === ''
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的轉換動作資料，未儲存讀值。');
+            }
+
+            $conversionActions[] = [
+                'conversion_action_id' => substr($conversionActionResourceName, strlen($expectedResourcePrefix)),
+                'conversion_action_name' => trim($conversionActionName),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversion_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        usort($conversionActions, static function (array $first, array $second): int {
+            $nameOrder = strcasecmp($first['conversion_action_name'], $second['conversion_action_name']);
+
+            return $nameOrder !== 0
+                ? $nameOrder
+                : strcmp($first['conversion_action_id'], $second['conversion_action_id']);
+        });
+
+        return $conversionActions;
     }
 
     private function validateCustomerIds(string $customerId, ?string $loginCustomerId): void

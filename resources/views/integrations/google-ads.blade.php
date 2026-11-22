@@ -67,7 +67,7 @@
     <section class="panel" aria-labelledby="google-ads-usage-title">
         <div class="panel-body">
             <h2 id="google-ads-usage-title" class="panel-title">數據如何對應</h2>
-            <p class="panel-description">先連結 Google 帳戶並驗證客戶 ID，再於活動互動目標填入 Google Ads 活動 ID 與活動期間，即可同步花費、曝光、點擊、轉換及轉換價值。日期區間依 Google Ads 帳戶時區計算。</p>
+            <p class="panel-description">先連結 Google 帳戶並驗證客戶 ID，再於活動互動目標填入 Google Ads 活動 ID 與活動期間，即可同步花費、曝光、點擊、轉換總計、轉換價值及轉換動作明細。日期區間依 Google Ads 帳戶時區計算。</p>
             <p class="panel-description">Google Ads 的轉換與轉換價值依該帳戶的轉換設定歸因，不等同 GA4 工作階段或 GA4 營收。活動效率會合併幣別相同的 Google Ads 與 Meta Ads 花費；若幣別不同，不會混算。</p>
             <p class="panel-description">Google Ads API 存取層級由 Google Cloud 專案管理；目前的新流程不需要舊式 developer token。正式使用前，請完成 Google OAuth 同意畫面及受限權限的應用程式驗證。</p>
         </div>

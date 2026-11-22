@@ -384,6 +384,14 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'spend_amount' => '150.0000',
             'conversions' => '5.0000',
             'conversions_value' => '200.0000',
+            'conversion_actions' => [
+                [
+                    'conversion_action_id' => '1001',
+                    'conversion_action_name' => 'Purchase',
+                    'conversions' => '4.0000',
+                    'conversion_value' => '190.0000',
+                ],
+            ],
         ]);
 
         $response = $this->actingAs($user)
@@ -399,16 +407,22 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $conversionCostChangeIndex = array_search('cost_per_conversion_change_since_previous', $csvRows[0], true);
         $conversionRateIndex = array_search('conversion_rate_percent', $csvRows[0], true);
         $clickCostChangeIndex = array_search('cost_per_click_change_since_previous', $csvRows[0], true);
+        $conversionActionsIndex = array_search('conversion_actions', $csvRows[0], true);
         $this->assertIsInt($conversionChangeIndex);
         $this->assertIsInt($conversionValueChangeIndex);
         $this->assertIsInt($conversionCostChangeIndex);
         $this->assertIsInt($conversionRateIndex);
         $this->assertIsInt($clickCostChangeIndex);
+        $this->assertIsInt($conversionActionsIndex);
         $this->assertSame('3.0000', $csvRows[2][$conversionChangeIndex]);
         $this->assertSame('120.0000', $csvRows[2][$conversionValueChangeIndex]);
         $this->assertSame("'-20.0000", $csvRows[2][$conversionCostChangeIndex]);
         $this->assertSame('50.00', $csvRows[2][$conversionRateIndex]);
         $this->assertSame('5.0000', $csvRows[2][$clickCostChangeIndex]);
+        $this->assertSame(
+            '[{"conversion_action_id":"1001","conversion_action_name":"Purchase","conversions":"4.0000","conversion_value":"190.0000"}]',
+            $csvRows[2][$conversionActionsIndex],
+        );
     }
 
     public function test_paid_media_history_export_requires_authentication_and_rejects_unknown_sources(): void

@@ -343,6 +343,34 @@
                 </dl>
                 <p class="campaign-report-secondary">CTR、CPC 與 CPM 依 Google Ads 點擊、曝光及花費計算；轉換成本與點擊轉換率依帳戶轉換設定歸因。日期區間依 Google Ads 帳戶時區計算。</p>
 
+                <h3 id="google-ads-conversion-actions-title">Google Ads 轉換動作</h3>
+                <p class="campaign-report-secondary">依 Google Ads 轉換設定分列；零轉換動作不會列出，總計以此頁上方的轉換與轉換價值為準。</p>
+                @if (($googleAdsReport->conversion_actions ?? []) === [])
+                    <p class="campaign-report-empty">Google Ads 尚未回傳轉換動作明細。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="google-ads-conversion-actions-title" tabindex="0">
+                        <table class="data-table campaign-report-table">
+                            <caption>Google Ads 轉換動作、轉換數與轉換價值</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">轉換動作</th>
+                                    <th scope="col">轉換</th>
+                                    <th scope="col">轉換價值（{{ $googleAdsReport->currency_code }}）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAdsReport->conversion_actions as $conversionAction)
+                                    <tr>
+                                        <th scope="row">{{ $conversionAction['conversion_action_name'] }}</th>
+                                        <td class="numeric">{{ number_format((float) $conversionAction['conversions'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $conversionAction['conversion_value'], 2) }} {{ $googleAdsReport->currency_code }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
                 <div class="campaign-report-section-header">
                     <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                     @if ($googleAdsTrend !== [])

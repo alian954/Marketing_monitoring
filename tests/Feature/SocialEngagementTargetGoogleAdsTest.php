@@ -57,19 +57,24 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
     {
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
-            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([[
-                'results' => [[
-                    'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
-                    'campaign' => ['id' => '987654321', 'name' => 'Winter product launch'],
-                    'metrics' => [
-                        'costMicros' => '250750000',
-                        'impressions' => '12000',
-                        'clicks' => '480',
-                        'conversions' => 12.5,
-                        'conversionsValue' => 1003,
-                    ],
-                ]],
-            ]]),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Winter product launch'],
+                        'metrics' => [
+                            'costMicros' => '250750000',
+                            'impressions' => '12000',
+                            'clicks' => '480',
+                            'conversions' => 12.5,
+                            'conversionsValue' => 1003,
+                        ],
+                    ]],
+                ]])
+                ->push($this->conversionActionsPayload([
+                    ['id' => '1002', 'name' => 'Web purchase', 'conversions' => '10.5', 'value' => '900.25'],
+                    ['id' => '1001', 'name' => 'Lead & form <Submit>', 'conversions' => '7', 'value' => '80.5'],
+                ])),
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget([
@@ -94,6 +99,20 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame(480, $snapshot->clicks);
         $this->assertSame('12.5000', $snapshot->conversions);
         $this->assertSame('1003.0000', $snapshot->conversions_value);
+        $this->assertSame([
+            [
+                'conversion_action_id' => '1001',
+                'conversion_action_name' => 'Lead & form <Submit>',
+                'conversions' => '7.0000',
+                'conversion_value' => '80.5000',
+            ],
+            [
+                'conversion_action_id' => '1002',
+                'conversion_action_name' => 'Web purchase',
+                'conversions' => '10.5000',
+                'conversion_value' => '900.2500',
+            ],
+        ], $snapshot->conversion_actions);
         $this->assertSame('USD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
         $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
@@ -103,7 +122,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('250.7500', $paidAdSnapshot->spend_amount);
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
-        Http::assertSentCount(2);
+        $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
+        Http::assertSentCount(3);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 
@@ -111,6 +131,15 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 && $request->hasHeader('Authorization', 'Bearer temporary-access-token')
                 && $request->hasHeader('login-customer-id', '0987654321')
                 && str_contains($query, 'customer.id, customer.currency_code')
+                && str_contains($query, 'campaign.id = 987654321')
+                && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-30'");
+        });
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_ends_with($request->url(), '/customers/1234567890/googleAds:searchStream')
+                && str_contains($query, 'segments.conversion_action')
+                && str_contains($query, 'segments.conversion_action_name')
                 && str_contains($query, 'campaign.id = 987654321')
                 && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-30'");
         });
@@ -125,6 +154,13 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             ->assertSee('Google Ads 轉換價值 ROAS')
             ->assertSee('4.00x')
             ->assertSee('Google Ads 歷史讀值')
+            ->assertSee('Google Ads 轉換動作')
+            ->assertSee('Lead &amp; form &lt;Submit&gt;', false)
+            ->assertSee('7.00')
+            ->assertSee('80.50 USD')
+            ->assertSee('Web purchase')
+            ->assertSee('10.50')
+            ->assertSee('900.25 USD')
             ->assertSee('基準')
             ->assertSee('250.7500 USD')
             ->assertSee('Google Ads');
@@ -141,7 +177,9 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
     {
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
-            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([]),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([])
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $this->createTarget();
@@ -158,6 +196,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame(0, $snapshot->clicks);
         $this->assertSame('0.0000', $snapshot->conversions);
         $this->assertSame('0.0000', $snapshot->conversions_value);
+        $this->assertSame([], $snapshot->conversion_actions);
         $this->assertSame('TWD', $snapshot->currency_code);
     }
 
@@ -247,6 +286,53 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             ->assertSessionHasErrors(['google_ads']);
 
         $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 0);
+    }
+
+    public function test_google_ads_conversion_action_rows_for_a_different_customer_preserve_the_last_successful_report(): void
+    {
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'TWD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Winter product launch'],
+                        'metrics' => [
+                            'costMicros' => '1000000',
+                            'impressions' => '100',
+                            'clicks' => '4',
+                            'conversions' => '1',
+                            'conversionsValue' => '10',
+                        ],
+                    ]],
+                ]])
+                ->push($this->conversionActionsPayload([
+                    ['id' => '1001', 'name' => 'Private conversion', 'conversions' => '1', 'value' => '10'],
+                ], '9999999999')),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $connection = $this->createConnection($user);
+        $report = $this->createReport($connection, $target, [
+            'campaign_name' => 'Original campaign',
+            'spend_amount' => '100.0000',
+            'conversion_actions' => [[
+                'conversion_action_id' => '7',
+                'conversion_action_name' => 'Original action',
+                'conversions' => '2.0000',
+                'conversion_value' => '20.0000',
+            ]],
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.sync', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHasErrors(['google_ads']);
+
+        $this->assertSame('Original campaign', $report->fresh()->campaign_name);
+        $this->assertSame('100.0000', $report->fresh()->spend_amount);
+        $this->assertSame('Original action', $report->fresh()->conversion_actions[0]['conversion_action_name']);
+        $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 0);
     }
 
     public function test_google_ads_and_meta_spend_are_combined_when_currencies_match(): void
@@ -444,6 +530,27 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             'currency_code' => $connection->currency_code ?? 'TWD',
             'synced_at' => now(),
         ], $attributes));
+    }
+
+    /** @param list<array{id: string, name: string, conversions: string, value: string}> $actions
+     * @return list<array{results: list<array<string, mixed>>}>
+     */
+    private function conversionActionsPayload(array $actions, string $customerId = '1234567890'): array
+    {
+        return [[
+            'results' => array_map(static fn (array $action): array => [
+                'customer' => ['id' => $customerId],
+                'campaign' => ['id' => '987654321'],
+                'segments' => [
+                    'conversionAction' => 'customers/'.$customerId.'/conversionActions/'.$action['id'],
+                    'conversionActionName' => $action['name'],
+                ],
+                'metrics' => [
+                    'conversions' => $action['conversions'],
+                    'conversionsValue' => $action['value'],
+                ],
+            ], $actions),
+        ]];
     }
 
     private function createGoogleAnalyticsReport(User $user, SocialEngagementTarget $target): void

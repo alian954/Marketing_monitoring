@@ -73,6 +73,7 @@ class GoogleAdsCampaignReportSync
                     'clicks' => $metrics['clicks'],
                     'conversions' => $metrics['conversions'],
                     'conversions_value' => $metrics['conversions_value'],
+                    'conversion_actions' => $metrics['conversion_actions'],
                     'currency_code' => $metrics['currency_code'],
                 ],
             );
