@@ -7,6 +7,7 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use App\Services\GoogleAnalyticsDataApi;
 use Carbon\CarbonImmutable;
 use Database\Seeders\GoogleAnalyticsCampaignSnapshotSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,6 +157,36 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertNull($reportResponse->viewData('report')['interaction_total']);
 
         Http::assertSentCount(2);
+    }
+
+    public function test_ga4_campaign_report_preserves_large_revenue_decimal_precision(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+                'rows' => [[
+                    'metricValues' => [
+                        ['value' => '1'],
+                        ['value' => '1'],
+                        ['value' => '1.23445'],
+                        ['value' => '576460752303.42354'],
+                    ],
+                ]],
+                'metadata' => ['currencyCode' => 'TWD'],
+            ]),
+        ]);
+
+        $report = (new GoogleAnalyticsDataApi)->campaignReport(
+            'access-token',
+            '123456789',
+            'precision-check',
+            '2026-11-01',
+            '2026-11-30',
+        );
+
+        $this->assertSame('1.2345', $report['key_events']);
+        $this->assertSame('576460752303.4235', $report['total_revenue']);
+        Http::assertSentCount(1);
     }
 
     public function test_ga4_sync_uses_the_social_target_tag_when_no_utm_campaign_name_is_set(): void

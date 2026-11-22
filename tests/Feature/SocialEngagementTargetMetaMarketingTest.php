@@ -10,6 +10,7 @@ use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\User;
+use App\Services\MetaMarketingDataApi;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
@@ -177,6 +178,41 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame(4.0, $analysis['roas']);
         $this->assertSame(5.015, $analysis['cost_per_session']);
         $this->assertSame(25.075, $analysis['cost_per_key_event']);
+    }
+
+    public function test_meta_insights_preserve_large_decimal_precision_for_spend_and_actions(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::response([
+                'data' => [[
+                    'account_id' => '123456789',
+                    'campaign_id' => '987654321',
+                    'campaign_name' => 'Precision campaign',
+                    'spend' => '576460752303.42354',
+                    'impressions' => '1000',
+                    'reach' => '800',
+                    'clicks' => '40',
+                    'actions' => [['action_type' => 'purchase', 'value' => '576460752303.42354']],
+                    'action_values' => [['action_type' => 'purchase', 'value' => '576460752303.42354']],
+                    'account_currency' => 'TWD',
+                ]],
+            ]),
+        ]);
+
+        $insights = (new MetaMarketingDataApi)->campaignInsights(
+            'access-token',
+            '123456789',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+
+        $this->assertSame('576460752303.4235', $insights['spend_amount']);
+        $this->assertSame('576460752303.4235', $insights['actions'][0]['value']);
+        $this->assertSame('576460752303.4235', $insights['action_values'][0]['value']);
+        Http::assertSentCount(1);
     }
 
     public function test_meta_sync_saves_zero_metrics_when_the_campaign_has_no_insights(): void

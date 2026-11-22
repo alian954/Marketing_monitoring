@@ -262,7 +262,7 @@ class MetaMarketingDataApi
             throw new MetaMarketingApiException('Meta API 回傳的數值格式無效。');
         }
 
-        return number_format($number, 4, '.', '');
+        return PreciseDecimalFormatter::toFourDecimalPlaces($value);
     }
 
     private function graphUrl(string $path): string

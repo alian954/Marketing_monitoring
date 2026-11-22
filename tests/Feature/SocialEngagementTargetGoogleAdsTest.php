@@ -337,7 +337,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame(25.075, $analysis['cost_per_key_event']);
     }
 
-    public function test_google_ads_spend_keeps_decimal_precision_for_large_micros_values(): void
+    public function test_google_ads_metrics_keep_decimal_precision_for_large_values(): void
     {
         Http::preventStrayRequests();
         Http::fake([
@@ -372,6 +372,41 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
         $this->assertSame('9007199254.7400', $report->spend_amount);
         $this->assertSame('9007199254.7400', $paidAdSnapshot->spend_amount);
+    }
+
+    public function test_google_ads_api_preserves_large_decimal_precision_for_conversions(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'TWD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Precision campaign'],
+                        'metrics' => [
+                            'costMicros' => '1000000',
+                            'impressions' => '1',
+                            'clicks' => '1',
+                            'conversions' => '576460752303.42354',
+                            'conversionsValue' => '576460752303.42354',
+                        ],
+                    ]],
+                ]])
+                ->push([]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+
+        $this->assertSame('576460752303.4235', $insights['conversions']);
+        $this->assertSame('576460752303.4235', $insights['conversions_value']);
+        Http::assertSentCount(2);
     }
 
     public function test_google_ads_sync_saves_zero_metrics_when_no_campaign_rows_are_returned(): void

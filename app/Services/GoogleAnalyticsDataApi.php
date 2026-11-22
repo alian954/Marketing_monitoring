@@ -217,7 +217,7 @@ class GoogleAnalyticsDataApi
             throw new GoogleAnalyticsApiException('Google Analytics 回傳的數字格式無效。');
         }
 
-        return number_format($number, 4, '.', '');
+        return PreciseDecimalFormatter::toFourDecimalPlaces($value);
     }
 
     private function currencyCode(mixed $value): ?string

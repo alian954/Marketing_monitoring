@@ -449,7 +449,7 @@ class GoogleAdsDataApi
             throw new GoogleAdsApiException('Google Ads API 回傳的轉換指標格式無效。');
         }
 
-        return number_format($number, 4, '.', '');
+        return PreciseDecimalFormatter::toFourDecimalPlaces($value);
     }
 
     private function apiUrl(string $path): string
