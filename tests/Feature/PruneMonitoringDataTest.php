@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\GoogleAnalyticsCampaignSnapshot;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
@@ -124,5 +125,23 @@ class PruneMonitoringDataTest extends TestCase
         $this->assertDatabaseMissing('check_runs', ['id' => $expiredRun->id]);
         $this->assertDatabaseHas('robots_observations', ['id' => $retainedObservation->id]);
         $this->assertDatabaseMissing('robots_observations', ['id' => $expiredObservation->id]);
+    }
+
+    public function test_prune_removes_expired_ga4_trend_snapshots_and_keeps_recent_ones(): void
+    {
+        Config::set('monitoring.retention_days', 30);
+        $expiredSnapshot = GoogleAnalyticsCampaignSnapshot::factory()->create([
+            'snapshot_date' => today()->subDays(31),
+        ]);
+        $recentSnapshot = GoogleAnalyticsCampaignSnapshot::factory()->create([
+            'snapshot_date' => today()->subDays(29),
+        ]);
+
+        $this->artisan('monitors:prune')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('GA4 趨勢');
+
+        $this->assertDatabaseMissing('google_analytics_campaign_snapshots', ['id' => $expiredSnapshot->id]);
+        $this->assertDatabaseHas('google_analytics_campaign_snapshots', ['id' => $recentSnapshot->id]);
     }
 }

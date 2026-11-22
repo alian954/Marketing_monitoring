@@ -112,6 +112,73 @@
             @endif
         </section>
 
+        @if ($googleAnalyticsReport)
+            <section class="campaign-report-panel" aria-labelledby="campaign-report-ga4-trend-title">
+                <div class="campaign-report-section-header">
+                    <div>
+                        <h2 id="campaign-report-ga4-trend-title">GA4 累計成效變化</h2>
+                        <p class="campaign-report-secondary">括號為與前次成功讀值的差異；間隔可能跨越多天，不代表 GA4 單日區間數據。第一筆只作基準，幣別不同或未提供時不計算營收差異。</p>
+                    </div>
+                    @if ($googleAnalyticsTrend !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.history', $target) }}">匯出趨勢 CSV</a>
+                    @endif
+                </div>
+
+                @if ($googleAnalyticsTrend === [])
+                    <p class="campaign-report-empty">目前沒有保留中的趨勢讀值；下一次同步後會開始累積。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-trend-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-trend-table">
+                            <caption>最近 30 次 GA4 活動累計讀值與前次讀值差異</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">讀值時間</th>
+                                    <th scope="col">工作階段<br>累計（差異）</th>
+                                    <th scope="col">參與工作階段<br>累計（差異）</th>
+                                    <th scope="col">重要事件<br>累計（差異）</th>
+                                    <th scope="col">總營收<br>累計（差異）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsTrend as $snapshot)
+                                    <tr>
+                                        <th scope="row">
+                                            <time datetime="{{ $snapshot['snapshot_date']->toDateString() }}">{{ $snapshot['snapshot_date']->format('Y/n/j') }}</time>
+                                            <span class="campaign-report-secondary">{{ $snapshot['synced_at']->timezone('Asia/Taipei')->format('H:i') }}</span>
+                                        </th>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['sessions']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['sessions_change'] === null ? '基準' : ($snapshot['sessions_change'] > 0 ? '+' : '').number_format($snapshot['sessions_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['engaged_sessions']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['engaged_sessions_change'] === null ? '基準' : ($snapshot['engaged_sessions_change'] > 0 ? '+' : '').number_format($snapshot['engaged_sessions_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['key_events'], 2) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['key_events_change'] === null ? '基準' : ($snapshot['key_events_change'] > 0 ? '+' : '').number_format($snapshot['key_events_change'], 2) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['total_revenue'], 2) }} {{ $snapshot['currency_code'] ?? '' }}
+                                            <span class="campaign-report-secondary">
+                                                (@if (! $snapshot['has_previous_snapshot'])
+                                                    基準
+                                                @elseif ($snapshot['revenue_currency_comparable'])
+                                                    {{ ($snapshot['total_revenue_change'] > 0 ? '+' : '').number_format($snapshot['total_revenue_change'], 2) }} {{ $snapshot['currency_code'] }}
+                                                @else
+                                                    幣別無法比較
+                                                @endif)
+                                            </span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
+        @endif
+
         @if ($target->starts_on && $target->ends_on)
             <section class="campaign-report-panel" aria-labelledby="campaign-report-weekly-growth-title">
                 <h2 id="campaign-report-weekly-growth-title">每週觀測互動變化</h2>

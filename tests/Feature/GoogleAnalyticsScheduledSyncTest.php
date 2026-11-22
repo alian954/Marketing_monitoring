@@ -6,6 +6,8 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use Illuminate\Console\Scheduling\Event as ScheduledEvent;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
@@ -14,6 +16,16 @@ use Tests\TestCase;
 class GoogleAnalyticsScheduledSyncTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_daily_sync_is_scheduled_at_six_thirty_in_taipei_time(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn (ScheduledEvent $scheduledEvent): bool => str_contains((string) $scheduledEvent->command, 'google-analytics:sync-due'));
+
+        $this->assertNotNull($event);
+        $this->assertSame('30 6 * * *', $event->expression);
+        $this->assertSame('Asia/Taipei', $event->timezone);
+    }
 
     public function test_daily_command_syncs_active_and_recently_ended_campaigns_only(): void
     {
@@ -44,6 +56,11 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         ]);
         $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $recentlyEndedTarget->id,
+        ]);
+        $this->assertDatabaseCount('google_analytics_campaign_snapshots', 2);
+        $this->assertDatabaseHas('google_analytics_campaign_snapshots', [
+            'social_engagement_target_id' => $activeTarget->id,
+            'sessions' => 0,
         ]);
         $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $oldTarget->id,

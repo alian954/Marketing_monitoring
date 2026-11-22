@@ -21,4 +21,18 @@ class SocialEngagementTarget extends Model
             'ends_on' => 'immutable_date',
         ];
     }
+
+    public function googleAnalyticsCampaignName(): string
+    {
+        return is_string($this->ga4_campaign_name) && trim($this->ga4_campaign_name) !== ''
+            ? trim($this->ga4_campaign_name)
+            : $this->tag;
+    }
+
+    public function googleAnalyticsSourceName(): ?string
+    {
+        return is_string($this->ga4_source_name) && trim($this->ga4_source_name) !== ''
+            ? trim($this->ga4_source_name)
+            : null;
+    }
 }
