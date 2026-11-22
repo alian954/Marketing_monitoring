@@ -262,6 +262,7 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             ->assertSee('Meta Ads CTR')
             ->assertSee('Meta Ads CPC')
             ->assertSee('Meta Ads CPM')
+            ->assertSee('1.25 次／人')
             ->assertSee('Google Ads CTR')
             ->assertSee('Google Ads CPC')
             ->assertSee('Google Ads CPM')
@@ -280,6 +281,7 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         $this->assertNull($analysis['ad_spend_amount']);
         $this->assertTrue($analysis['platform_currency_mismatch']);
         $this->assertSame(4.0, $analysis['meta_ads_ctr_percent']);
+        $this->assertSame(1.25, $analysis['meta_ads_frequency']);
         $this->assertSame(2.5, $analysis['meta_ads_cost_per_click']);
         $this->assertSame(100.0, $analysis['meta_ads_cost_per_thousand_impressions']);
         $this->assertSame(7.5, $analysis['google_ads_ctr_percent']);
@@ -315,6 +317,7 @@ class SocialEngagementTargetAdSpendTest extends TestCase
 
         foreach ([
             'meta_ads_ctr_percent',
+            'meta_ads_frequency',
             'meta_ads_cost_per_click',
             'meta_ads_cost_per_thousand_impressions',
             'google_ads_ctr_percent',

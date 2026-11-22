@@ -23,7 +23,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('Google Ads API 讀取客戶帳戶')
             ->assertSee('手動記錄投放花費')
             ->assertSee('只有廣告花費與 GA4 營收幣別相同時才計算 ROAS')
-            ->assertSee('活動效率報告顯示 CTR、CPC、CPM')
+            ->assertSee('活動效率報告顯示 Meta Ads 頻率、CTR、CPC、CPM')
             ->assertSee('Google Ads 每次轉換成本與點擊轉換率')
             ->assertSee('歷史趨勢可匯出 CSV')
             ->assertSee('跨平台花費僅同幣別合計')

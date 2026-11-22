@@ -107,6 +107,7 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('Meta Ads 歷史讀值')
+            ->assertSee('頻率')
             ->assertSee('Google Ads 歷史讀值')
             ->assertSee('Meta Ads 最近 30 次累計成效讀值與前次差異')
             ->assertSee('Google Ads 最近 30 次累計成效讀值與前次差異')
@@ -121,6 +122,8 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame(50.0, $metaTrend[1]['spend_change']);
         $this->assertSame(600, $metaTrend[1]['impressions_change']);
         $this->assertSame(200, $metaTrend[1]['reach_change']);
+        $this->assertSame(1.6, $metaTrend[1]['frequency']);
+        $this->assertSame(0.35, $metaTrend[1]['frequency_change']);
         $this->assertSame(15, $metaTrend[1]['clicks_change']);
         $this->assertFalse($metaTrend[2]['currency_comparable']);
         $this->assertNull($metaTrend[2]['spend_change']);
@@ -130,6 +133,7 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertCount(2, $googleAdsTrend);
         $this->assertSame(25.0, $googleAdsTrend[1]['spend_change']);
         $this->assertSame(300, $googleAdsTrend[1]['impressions_change']);
+        $this->assertNull($googleAdsTrend[1]['frequency']);
         $this->assertSame(12, $googleAdsTrend[1]['clicks_change']);
         $this->assertSame(3.0, $googleAdsTrend[1]['conversions_change']);
         $this->assertSame(60.0, $googleAdsTrend[1]['conversions_value_change']);
@@ -213,6 +217,12 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('Meta Ads', $csvRows[1][0]);
         $this->assertSame("'=SUM(1+1)", $csvRows[1][1]);
         $this->assertSame('50.0000', $csvRows[2][4]);
+        $frequencyIndex = array_search('frequency_cumulative', $csvRows[0], true);
+        $frequencyChangeIndex = array_search('frequency_change_since_previous', $csvRows[0], true);
+        $this->assertIsInt($frequencyIndex);
+        $this->assertIsInt($frequencyChangeIndex);
+        $this->assertSame('1.2500', $csvRows[1][$frequencyIndex]);
+        $this->assertSame('0.0000', $csvRows[2][$frequencyChangeIndex]);
         $this->assertStringNotContainsString('Private other account', $response->streamedContent());
         $this->assertStringNotContainsString('Different campaign', $response->streamedContent());
     }
@@ -247,8 +257,12 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
 
         $this->assertCount(3, $csvRows);
         $this->assertSame('Google Ads', $csvRows[1][0]);
-        $this->assertSame('3.0000', $csvRows[2][13]);
-        $this->assertSame('120.0000', $csvRows[2][15]);
+        $conversionChangeIndex = array_search('conversions_change_since_previous', $csvRows[0], true);
+        $conversionValueChangeIndex = array_search('conversions_value_change_since_previous', $csvRows[0], true);
+        $this->assertIsInt($conversionChangeIndex);
+        $this->assertIsInt($conversionValueChangeIndex);
+        $this->assertSame('3.0000', $csvRows[2][$conversionChangeIndex]);
+        $this->assertSame('120.0000', $csvRows[2][$conversionValueChangeIndex]);
     }
 
     public function test_paid_media_history_export_requires_authentication_and_rejects_unknown_sources(): void

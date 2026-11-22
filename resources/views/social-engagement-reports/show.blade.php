@@ -109,6 +109,10 @@
                         <dd>{{ number_format($metaMarketingReport->reach) }}</dd>
                     </div>
                     <div>
+                        <dt>Meta Ads 頻率</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_frequency'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_frequency'], 2).' 次／人' }}</dd>
+                    </div>
+                    <div>
                         <dt>點擊</dt>
                         <dd>{{ number_format($metaMarketingReport->clicks) }}</dd>
                     </div>
@@ -146,6 +150,7 @@
                                     <th scope="col">花費</th>
                                     <th scope="col">曝光</th>
                                     <th scope="col">觸及</th>
+                                    <th scope="col">頻率</th>
                                     <th scope="col">點擊</th>
                                 </tr>
                             </thead>
@@ -166,6 +171,10 @@
                                         <td class="numeric">
                                             {{ number_format($snapshot['reach'] ?? 0) }}
                                             <span class="campaign-report-secondary">({{ $snapshot['reach_change'] === null ? '基準' : ($snapshot['reach_change'] > 0 ? '+' : '').number_format($snapshot['reach_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['frequency'] === null ? '—' : number_format($snapshot['frequency'], 2).' 次／人' }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['frequency_change'] === null ? '基準' : ($snapshot['frequency_change'] > 0 ? '+' : '').number_format($snapshot['frequency_change'], 2) }})</span>
                                         </td>
                                         <td class="numeric">
                                             {{ number_format($snapshot['clicks']) }}

@@ -24,6 +24,8 @@ class PaidMediaCampaignTrendReport
      *     impressions_change: int|null,
      *     reach: int|null,
      *     reach_change: int|null,
+     *     frequency: float|null,
+     *     frequency_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
@@ -63,6 +65,8 @@ class PaidMediaCampaignTrendReport
      *     impressions_change: int|null,
      *     reach: int|null,
      *     reach_change: int|null,
+     *     frequency: float|null,
+     *     frequency_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
@@ -102,6 +106,8 @@ class PaidMediaCampaignTrendReport
      *     impressions_change: int|null,
      *     reach: int|null,
      *     reach_change: int|null,
+     *     frequency: float|null,
+     *     frequency_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
@@ -143,6 +149,10 @@ class PaidMediaCampaignTrendReport
 
         foreach ($snapshots as $snapshot) {
             $hasPreviousSnapshot = $previousSnapshot !== null;
+            $frequency = $this->frequency($snapshot->impressions, $snapshot->reach);
+            $previousFrequency = $previousSnapshot === null
+                ? null
+                : $this->frequency($previousSnapshot->impressions, $previousSnapshot->reach);
             $currenciesMatch = $hasPreviousSnapshot
                 && $previousSnapshot->currency_code === $snapshot->currency_code;
             $moneyIsComparable = $currenciesMatch;
@@ -163,6 +173,10 @@ class PaidMediaCampaignTrendReport
                 'reach' => $snapshot->reach,
                 'reach_change' => $hasPreviousSnapshot && $snapshot->reach !== null && $previousSnapshot->reach !== null
                     ? $snapshot->reach - $previousSnapshot->reach
+                    : null,
+                'frequency' => $frequency,
+                'frequency_change' => $frequency !== null && $previousFrequency !== null
+                    ? round($frequency - $previousFrequency, 4)
                     : null,
                 'clicks' => $snapshot->clicks,
                 'clicks_change' => $hasPreviousSnapshot
@@ -194,6 +208,13 @@ class PaidMediaCampaignTrendReport
     {
         return $current !== null && $previous !== null
             ? $this->decimalChange($current, $previous)
+            : null;
+    }
+
+    private function frequency(int $impressions, ?int $reach): ?float
+    {
+        return $reach !== null && $reach > 0
+            ? round($impressions / $reach, 4)
             : null;
     }
 }

@@ -21,6 +21,7 @@ class CampaignMarketingEfficiencyReport
      *     cost_per_session: float|null,
      *     cost_per_key_event: float|null,
      *     cost_per_public_interaction: float|null,
+     *     meta_ads_frequency: float|null,
      *     meta_ads_ctr_percent: float|null,
      *     meta_ads_cost_per_click: float|null,
      *     meta_ads_cost_per_thousand_impressions: float|null,
@@ -71,6 +72,7 @@ class CampaignMarketingEfficiencyReport
         $spendAmount = $spendAmountValue === null ? null : (float) $spendAmountValue;
         $spendCurrency = $this->currencyCode(is_string($spendCurrencyValue) ? $spendCurrencyValue : null);
         $metaImpressions = $metaMarketingReport?->impressions ?? 0;
+        $metaReach = $metaMarketingReport?->reach ?? 0;
         $metaClicks = $metaMarketingReport?->clicks ?? 0;
         $googleAdsImpressions = $googleAdsReport?->impressions ?? 0;
         $googleAdsClicks = $googleAdsReport?->clicks ?? 0;
@@ -114,6 +116,9 @@ class CampaignMarketingEfficiencyReport
                 : null,
             'cost_per_public_interaction' => $spendAmount !== null && $publicInteractionTotal !== null && $publicInteractionTotal > 0
                 ? round($spendAmount / $publicInteractionTotal, 4)
+                : null,
+            'meta_ads_frequency' => $metaReach > 0
+                ? round($metaImpressions / $metaReach, 4)
                 : null,
             'meta_ads_ctr_percent' => $metaImpressions > 0
                 ? round($metaClicks / $metaImpressions * 100, 2)
