@@ -150,6 +150,10 @@ class CampaignMarketingReportCsv
             'cost_per_key_event',
             'cost_per_public_interaction',
             'cost_per_campaign_interaction_change',
+            'paid_ad_clicks',
+            'paid_click_source',
+            'ga4_sessions_per_paid_click',
+            'paid_click_session_status',
         ];
         $fields = [
             $target->tag,
@@ -255,6 +259,10 @@ class CampaignMarketingReportCsv
             $this->formatDecimal($adSpendAnalysis['cost_per_key_event'], 4),
             $this->formatDecimal($adSpendAnalysis['cost_per_public_interaction'], 4),
             $this->formatDecimal($adSpendAnalysis['cost_per_campaign_interaction_change'], 4),
+            $adSpendAnalysis['paid_ad_clicks'] === null ? '' : (string) $adSpendAnalysis['paid_ad_clicks'],
+            $adSpendAnalysis['paid_click_source'] ?? '',
+            $this->formatDecimal($adSpendAnalysis['ga4_sessions_per_paid_click'], 4),
+            $adSpendAnalysis['paid_click_session_status'],
         ];
 
         return [

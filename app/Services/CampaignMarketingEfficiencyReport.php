@@ -19,6 +19,12 @@ class CampaignMarketingEfficiencyReport
      *     platform_currency_mismatch: bool,
      *     roas: float|null,
      *     roas_unavailable_reason: string|null,
+     *     paid_ad_clicks: int|null,
+     *     paid_click_source: string|null,
+     *     paid_click_source_label: string|null,
+     *     ga4_sessions_per_paid_click: float|null,
+     *     paid_click_session_status: string,
+     *     paid_click_session_status_label: string,
      *     meta_ads_omni_purchase_value: string|null,
      *     meta_ads_purchase_roas: float|null,
      *     google_ads_conversion_value_roas: float|null,
@@ -94,6 +100,12 @@ class CampaignMarketingEfficiencyReport
         $metaClicks = $metaMarketingReport?->clicks ?? 0;
         $googleAdsImpressions = $googleAdsReport?->impressions ?? 0;
         $googleAdsClicks = $googleAdsReport?->clicks ?? 0;
+        $paidClickSessionDiagnostic = $this->paidClickSessionDiagnostic(
+            $target,
+            $googleAnalyticsReport,
+            $metaMarketingReport,
+            $googleAdsReport,
+        );
         $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
         $metaPurchaseValue = $this->metaOmniPurchaseValue($metaMarketingReport?->action_values);
         $metaCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
@@ -143,6 +155,7 @@ class CampaignMarketingEfficiencyReport
                 ? round((float) $googleAnalyticsReport->total_revenue / $spendAmount, 2)
                 : null,
             'roas_unavailable_reason' => $roasUnavailableReason,
+            ...$paidClickSessionDiagnostic,
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
             'google_ads_conversion_value_roas' => $googleAdsRoas,
@@ -190,6 +203,83 @@ class CampaignMarketingEfficiencyReport
                 ? round($googleAdsConversions / $googleAdsClicks * 100, 2)
                 : null,
             ...$budgetPacing,
+        ];
+    }
+
+    /**
+     * @return array{paid_ad_clicks: int|null, paid_click_source: string|null, paid_click_source_label: string|null, ga4_sessions_per_paid_click: float|null, paid_click_session_status: string, paid_click_session_status_label: string}
+     */
+    private function paidClickSessionDiagnostic(
+        SocialEngagementTarget $target,
+        ?SocialEngagementTargetGoogleAnalyticsReport $googleAnalyticsReport,
+        ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
+        ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
+    ): array {
+        $googleAdsIsConfigured = is_string($target->google_ads_campaign_id)
+            && trim($target->google_ads_campaign_id) !== '';
+        $metaIsConfigured = is_string($target->meta_campaign_id)
+            && trim($target->meta_campaign_id) !== '';
+
+        if (! $metaIsConfigured && ! $googleAdsIsConfigured) {
+            return [
+                'paid_ad_clicks' => null,
+                'paid_click_source' => null,
+                'paid_click_source_label' => null,
+                'ga4_sessions_per_paid_click' => null,
+                'paid_click_session_status' => 'not_configured',
+                'paid_click_session_status_label' => '尚未設定廣告活動',
+            ];
+        }
+
+        $clickSource = $googleAdsIsConfigured ? 'google_ads' : 'meta_marketing';
+        $clickSourceLabel = $googleAdsIsConfigured ? 'Google Ads' : 'Meta Ads';
+        $clickCount = $googleAdsIsConfigured
+            ? $googleAdsReport?->clicks
+            : $metaMarketingReport?->clicks;
+
+        if (! is_int($clickCount) || $clickCount < 0) {
+            return [
+                'paid_ad_clicks' => null,
+                'paid_click_source' => $clickSource,
+                'paid_click_source_label' => $clickSourceLabel,
+                'ga4_sessions_per_paid_click' => null,
+                'paid_click_session_status' => 'missing_paid_clicks',
+                'paid_click_session_status_label' => '缺少已設定廣告來源的點擊資料',
+            ];
+        }
+
+        $paidAdClicks = $clickCount;
+        $ga4Sessions = $googleAnalyticsReport?->sessions;
+
+        if (! is_int($ga4Sessions) || $ga4Sessions < 0) {
+            return [
+                'paid_ad_clicks' => $paidAdClicks,
+                'paid_click_source' => $clickSource,
+                'paid_click_source_label' => $clickSourceLabel,
+                'ga4_sessions_per_paid_click' => null,
+                'paid_click_session_status' => 'missing_ga4',
+                'paid_click_session_status_label' => '缺少 GA4 工作階段資料',
+            ];
+        }
+
+        if ($paidAdClicks === 0) {
+            return [
+                'paid_ad_clicks' => $paidAdClicks,
+                'paid_click_source' => $clickSource,
+                'paid_click_source_label' => $clickSourceLabel,
+                'ga4_sessions_per_paid_click' => null,
+                'paid_click_session_status' => 'zero_clicks',
+                'paid_click_session_status_label' => '零廣告點擊，無法計算',
+            ];
+        }
+
+        return [
+            'paid_ad_clicks' => $paidAdClicks,
+            'paid_click_source' => $clickSource,
+            'paid_click_source_label' => $clickSourceLabel,
+            'ga4_sessions_per_paid_click' => round($ga4Sessions / $paidAdClicks, 4),
+            'paid_click_session_status' => 'complete',
+            'paid_click_session_status_label' => '資料完整',
         ];
     }
 

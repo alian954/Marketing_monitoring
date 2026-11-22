@@ -1,0 +1,235 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
+use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
+use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class CampaignMarketingEfficiencyReportTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_campaign_report_shows_complete_paid_click_to_session_diagnostic_and_exports_it(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createMetaReport($user, $target, 60);
+        $this->createGoogleAdsReport($user, $target, 40);
+        $this->createGoogleAnalyticsReport($user, $target, 180);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('GA4 工作階段／Google Ads點擊')
+            ->assertSee('4.50 次／點擊')
+            ->assertSee('Google Ads點擊 40 · GA4 工作階段 180');
+
+        $csvRows = $this->csvRows(
+            $this->actingAs($user)
+                ->get(route('social-engagement-targets.report.export', $target))
+                ->assertOk()
+                ->streamedContent(),
+        );
+        $csv = array_combine($csvRows[0], $csvRows[1]);
+
+        $this->assertSame('40', $csv['paid_ad_clicks']);
+        $this->assertSame('4.5000', $csv['ga4_sessions_per_paid_click']);
+        $this->assertSame('google_ads', $csv['paid_click_source']);
+        $this->assertSame('complete', $csv['paid_click_session_status']);
+    }
+
+    public function test_campaign_report_does_not_sum_clicks_when_a_configured_source_is_missing(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createMetaReport($user, $target, 60);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('缺少已設定廣告來源的點擊資料')
+            ->assertSee('Google Ads點擊 —');
+
+        $diagnostic = $response->viewData('adSpendAnalysis');
+
+        $this->assertNull($diagnostic['paid_ad_clicks']);
+        $this->assertNull($diagnostic['ga4_sessions_per_paid_click']);
+        $this->assertSame('missing_paid_clicks', $diagnostic['paid_click_session_status']);
+    }
+
+    public function test_campaign_report_marks_zero_clicks_without_dividing_by_zero(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget(metaCampaignId: 'meta-zero-clicks', googleAdsCampaignId: null);
+        $this->createMetaReport($user, $target, 0);
+        $this->createGoogleAnalyticsReport($user, $target, 0);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('零廣告點擊，無法計算')
+            ->assertSee('Meta Ads點擊 0 · GA4 工作階段 0');
+
+        $diagnostic = $response->viewData('adSpendAnalysis');
+
+        $this->assertSame(0, $diagnostic['paid_ad_clicks']);
+        $this->assertNull($diagnostic['ga4_sessions_per_paid_click']);
+        $this->assertSame('zero_clicks', $diagnostic['paid_click_session_status']);
+    }
+
+    public function test_campaign_report_keeps_click_count_when_ga4_data_is_missing(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget(metaCampaignId: 'meta-without-ga4', googleAdsCampaignId: null);
+        $this->createMetaReport($user, $target, 23);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('缺少 GA4 工作階段資料')
+            ->assertSee('Meta Ads點擊 23 · GA4 工作階段 —');
+
+        $diagnostic = $response->viewData('adSpendAnalysis');
+
+        $this->assertSame(23, $diagnostic['paid_ad_clicks']);
+        $this->assertNull($diagnostic['ga4_sessions_per_paid_click']);
+        $this->assertSame('missing_ga4', $diagnostic['paid_click_session_status']);
+    }
+
+    public function test_campaign_report_does_not_require_paid_campaign_ids_for_manual_spend(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget(
+            metaCampaignId: null,
+            googleAdsCampaignId: null,
+            additionalAttributes: ['ad_spend_amount' => '250.0000', 'ad_spend_currency' => 'TWD'],
+        );
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('尚未設定廣告活動');
+
+        $diagnostic = $response->viewData('adSpendAnalysis');
+
+        $this->assertNull($diagnostic['paid_ad_clicks']);
+        $this->assertNull($diagnostic['ga4_sessions_per_paid_click']);
+        $this->assertSame('not_configured', $diagnostic['paid_click_session_status']);
+    }
+
+    /** @param array<string, mixed> $additionalAttributes */
+    private function createTarget(
+        ?string $metaCampaignId = 'meta-campaign-123',
+        ?string $googleAdsCampaignId = 'google-campaign-123',
+        array $additionalAttributes = [],
+    ): SocialEngagementTarget {
+        return SocialEngagementTarget::factory()->create([
+            'tag' => 'Click diagnostic campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 500,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => $metaCampaignId,
+            'google_ads_campaign_id' => $googleAdsCampaignId,
+            ...$additionalAttributes,
+        ]);
+    }
+
+    private function createMetaReport(User $user, SocialEngagementTarget $target, int $clicks): SocialEngagementTargetMetaMarketingReport
+    {
+        $connection = MetaMarketingConnection::factory()->create([
+            'user_id' => $user->getKey(),
+            'ad_account_id' => '123456789',
+            'currency_code' => 'TWD',
+        ]);
+
+        return SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $connection->getKey(),
+            'social_engagement_target_id' => $target->getKey(),
+            'ad_account_id' => $connection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => 'Meta campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '100.0000',
+            'impressions' => 1000,
+            'reach' => 700,
+            'clicks' => $clicks,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+    }
+
+    private function createGoogleAdsReport(User $user, SocialEngagementTarget $target, int $clicks): SocialEngagementTargetGoogleAdsReport
+    {
+        $connection = GoogleAdsConnection::factory()->create([
+            'user_id' => $user->getKey(),
+            'customer_id' => '1234567890',
+            'currency_code' => 'TWD',
+        ]);
+
+        return SocialEngagementTargetGoogleAdsReport::factory()->create([
+            'google_ads_connection_id' => $connection->getKey(),
+            'social_engagement_target_id' => $target->getKey(),
+            'customer_id' => $connection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'clicks' => $clicks,
+            'currency_code' => 'TWD',
+        ]);
+    }
+
+    private function createGoogleAnalyticsReport(User $user, SocialEngagementTarget $target, int $sessions): SocialEngagementTargetGoogleAnalyticsReport
+    {
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->getKey(),
+            'property_id' => '123456789',
+            'refresh_token' => 'test-refresh-token',
+        ]);
+        $usesGoogleAdsAutoTagging = $target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging';
+
+        return SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->getKey(),
+            'social_engagement_target_id' => $target->getKey(),
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'attribution_mode' => $target->googleAnalyticsAttributionMode(),
+            'campaign_id' => $usesGoogleAdsAutoTagging ? $target->google_ads_campaign_id : null,
+            'source_name' => null,
+            'medium_name' => null,
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => $sessions,
+            'engaged_sessions' => $sessions,
+            'key_events' => '0.0000',
+            'total_revenue' => '0.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+    }
+
+    /** @return list<list<string|null>> */
+    private function csvRows(string $csv): array
+    {
+        $stream = fopen('php://temp', 'w+');
+        fwrite($stream, $csv);
+        rewind($stream);
+        $rows = [];
+
+        while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+            $rows[] = $row;
+        }
+
+        fclose($stream);
+
+        return $rows;
+    }
+}

@@ -1147,6 +1147,15 @@
                     </dd>
                 </div>
                 <div>
+                    <dt>GA4 工作階段／{{ $adSpendAnalysis['paid_click_source_label'] ?? '廣告' }}點擊</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['ga4_sessions_per_paid_click'] === null ? $adSpendAnalysis['paid_click_session_status_label'] : number_format($adSpendAnalysis['ga4_sessions_per_paid_click'], 2).' 次／點擊' }}
+                        <span class="campaign-report-secondary">
+                            {{ $adSpendAnalysis['paid_click_source_label'] ?? '廣告' }}點擊 {{ $adSpendAnalysis['paid_ad_clicks'] === null ? '—' : number_format($adSpendAnalysis['paid_ad_clicks']) }} · GA4 工作階段 {{ $googleAnalyticsReport?->sessions === null ? '—' : number_format($googleAnalyticsReport->sessions) }}
+                        </span>
+                    </dd>
+                </div>
+                <div>
                     <dt>每重要事件成本</dt>
                     <dd>
                         {{ $adSpendAnalysis['cost_per_key_event'] === null ? '—' : number_format($adSpendAnalysis['cost_per_key_event'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
@@ -1168,6 +1177,7 @@
                     </dd>
                 </div>
             </dl>
+            <p class="campaign-report-secondary">已設定 Google Ads 活動時使用 Google Ads 點擊；否則使用 Meta Ads 點擊。此比值僅供追蹤診斷，點擊與工作階段不一定一對一，不代表轉換率。</p>
             <p class="campaign-report-secondary">活動期間互動增量以每篇貼文在活動日期內的首、末完整讀值相減；至少兩次完整讀值才納入，下降的數量會抵銷增量。</p>
             @if ($adSpendAnalysis['roas'] === null)
                 <p class="campaign-report-secondary">
