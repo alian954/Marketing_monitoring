@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Http;
 
 class GoogleAnalyticsDataApi
 {
+    private const CAMPAIGN_BREAKDOWN_ROW_LIMIT = 10000;
+
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
@@ -76,7 +78,22 @@ class GoogleAnalyticsDataApi
     }
 
     /**
-     * @return array{sessions: int, engaged_sessions: int, key_events: string, total_revenue: string, currency_code: ?string}
+     * @return array{
+     *     sessions: int,
+     *     engaged_sessions: int,
+     *     key_events: string,
+     *     total_revenue: string,
+     *     currency_code: ?string,
+     *     source_medium_breakdown: list<array{
+     *         source_name: string,
+     *         medium_name: string,
+     *         sessions: int,
+     *         engaged_sessions: int,
+     *         key_events: string,
+     *         total_revenue: string
+     *     }>,
+     *     source_medium_breakdown_truncated: bool
+     * }
      */
     public function campaignReport(
         string $accessToken,
@@ -137,6 +154,8 @@ class GoogleAnalyticsDataApi
                 ],
                 'dimensions' => [
                     ['name' => 'sessionManualCampaignName'],
+                    ['name' => 'sessionManualSource'],
+                    ['name' => 'sessionManualMedium'],
                 ],
                 'metrics' => [
                     ['name' => 'sessions'],
@@ -145,27 +164,100 @@ class GoogleAnalyticsDataApi
                     ['name' => 'totalRevenue'],
                 ],
                 'dimensionFilter' => $dimensionFilter,
-                'limit' => 1,
+                'metricAggregations' => ['TOTAL'],
+                'limit' => self::CAMPAIGN_BREAKDOWN_ROW_LIMIT + 1,
             ]);
 
         $payload = $this->successfulPayload($response, 'Google Analytics Data API');
-        $row = $payload['rows'][0] ?? null;
 
         if (($payload['metadata']['subjectToThresholding'] ?? false) === true) {
             throw new GoogleAnalyticsApiException('GA4 因資料門檻未回傳這項活動的數值，請直接在 GA4 查看。');
         }
 
-        if ($row === null) {
-            return [
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的報表格式無效，請稍後再試。');
+        }
+
+        $totalRow = $this->totalRow($payload, $rows);
+        $totalMetrics = $totalRow === null
+            ? [
                 'sessions' => 0,
                 'engaged_sessions' => 0,
                 'key_events' => '0.0000',
                 'total_revenue' => '0.0000',
-                'currency_code' => $this->currencyCode($payload['metadata']['currencyCode'] ?? null),
+            ]
+            : $this->metricsForRow($totalRow);
+        $channelRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的報表格式無效，請稍後再試。');
+            }
+
+            if ($this->isMetricAggregationRow($row)) {
+                continue;
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+
+            if (! is_array($dimensionValues) || count($dimensionValues) !== 3) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的來源／媒介格式無效，請稍後再試。');
+            }
+
+            $channelMetrics = $this->metricsForRow($row);
+            $channelRows[] = [
+                'source_name' => $this->dimensionValue($dimensionValues[1] ?? null),
+                'medium_name' => $this->dimensionValue($dimensionValues[2] ?? null),
+                ...$channelMetrics,
             ];
         }
 
-        $values = is_array($row) && is_array($row['metricValues'] ?? null)
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($rows);
+
+        return [
+            ...$totalMetrics,
+            'currency_code' => $this->currencyCode($payload['metadata']['currencyCode'] ?? null),
+            'source_medium_breakdown' => array_slice($channelRows, 0, self::CAMPAIGN_BREAKDOWN_ROW_LIMIT),
+            'source_medium_breakdown_truncated' => $rowCount > count($rows)
+                || count($channelRows) > self::CAMPAIGN_BREAKDOWN_ROW_LIMIT,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<int, mixed>  $rows
+     * @return array<string, mixed>|null
+     */
+    private function totalRow(array $payload, array $rows): ?array
+    {
+        $totals = is_array($payload['totals'] ?? null) ? $payload['totals'] : [];
+
+        foreach ($totals as $row) {
+            if (is_array($row)) {
+                return $row;
+            }
+        }
+
+        foreach ($rows as $row) {
+            if (is_array($row) && $this->isMetricAggregationRow($row)) {
+                return $row;
+            }
+        }
+
+        return $rows === [] ? null : throw new GoogleAnalyticsApiException('Google Analytics 未回傳來源／媒介總計，請稍後再同步。');
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{sessions: int, engaged_sessions: int, key_events: string, total_revenue: string}
+     */
+    private function metricsForRow(array $row): array
+    {
+        $values = is_array($row['metricValues'] ?? null)
             ? array_column($row['metricValues'], 'value')
             : [];
 
@@ -178,8 +270,32 @@ class GoogleAnalyticsDataApi
             'engaged_sessions' => $this->nonNegativeInteger($values[1]),
             'key_events' => $this->decimalString($values[2], false),
             'total_revenue' => $this->decimalString($values[3], true),
-            'currency_code' => $this->currencyCode($payload['metadata']['currencyCode'] ?? null),
         ];
+    }
+
+    /** @param array<string, mixed> $row */
+    private function isMetricAggregationRow(array $row): bool
+    {
+        foreach ($row['dimensionValues'] ?? [] as $dimensionValue) {
+            $value = is_array($dimensionValue) ? ($dimensionValue['value'] ?? null) : null;
+
+            if (is_string($value) && str_starts_with($value, 'RESERVED_')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function dimensionValue(mixed $dimensionValue): string
+    {
+        $value = is_array($dimensionValue) ? ($dimensionValue['value'] ?? null) : null;
+
+        if (! is_string($value)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的來源／媒介格式無效，請稍後再試。');
+        }
+
+        return $value;
     }
 
     /** @return array<string, mixed> */

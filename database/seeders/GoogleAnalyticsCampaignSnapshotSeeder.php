@@ -32,6 +32,8 @@ class GoogleAnalyticsCampaignSnapshotSeeder extends Seeder
                             'key_events' => $report->key_events,
                             'total_revenue' => $report->total_revenue,
                             'currency_code' => $report->currency_code,
+                            'source_medium_breakdown' => $report->source_medium_breakdown,
+                            'source_medium_breakdown_truncated' => $report->source_medium_breakdown_truncated,
                             'synced_at' => $report->synced_at,
                         ],
                     );

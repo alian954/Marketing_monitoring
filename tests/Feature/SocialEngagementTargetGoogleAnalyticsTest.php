@@ -77,7 +77,11 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'short-lived-access-token']),
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
                 'rows' => [[
-                    'dimensionValues' => [['value' => 'spring_launch_2026']],
+                    'dimensionValues' => [
+                        ['value' => 'spring_launch_2026'],
+                        ['value' => 'facebook_ads'],
+                        ['value' => 'paid_social'],
+                    ],
                     'metricValues' => [
                         ['value' => '2400'],
                         ['value' => '1800'],
@@ -85,6 +89,15 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                         ['value' => '12890.25'],
                     ],
                 ]],
+                'totals' => [[
+                    'metricValues' => [
+                        ['value' => '2400'],
+                        ['value' => '1800'],
+                        ['value' => '37.5'],
+                        ['value' => '12890.25'],
+                    ],
+                ]],
+                'rowCount' => 1,
                 'metadata' => ['currencyCode' => 'TWD'],
             ]),
         ]);
@@ -116,11 +129,16 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('37.5000', $snapshot->key_events);
         $this->assertSame('12890.2500', $snapshot->total_revenue);
         $this->assertSame('TWD', $snapshot->currency_code);
+        $this->assertSame('facebook_ads', $snapshot->source_medium_breakdown[0]['source_name']);
+        $this->assertSame('paid_social', $snapshot->source_medium_breakdown[0]['medium_name']);
+        $this->assertSame(2400, $snapshot->source_medium_breakdown[0]['sessions']);
+        $this->assertFalse($snapshot->source_medium_breakdown_truncated);
         $this->assertNotNull($snapshot->synced_at);
         $this->assertSame('2026-11-22', $dailySnapshot->snapshot_date->toDateString());
         $this->assertSame('spring_launch_2026', $dailySnapshot->campaign_name);
         $this->assertSame(2400, $dailySnapshot->sessions);
         $this->assertSame('TWD', $dailySnapshot->currency_code);
+        $this->assertSame($snapshot->source_medium_breakdown, $dailySnapshot->source_medium_breakdown);
 
         Http::assertSentCount(2);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
@@ -128,13 +146,19 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                 'startDate' => '2026-11-01',
                 'endDate' => '2026-11-30',
             ]]
-            && $request->data()['dimensions'] === [['name' => 'sessionManualCampaignName']]
+            && $request->data()['dimensions'] === [
+                ['name' => 'sessionManualCampaignName'],
+                ['name' => 'sessionManualSource'],
+                ['name' => 'sessionManualMedium'],
+            ]
             && $request->data()['metrics'] === [
                 ['name' => 'sessions'],
                 ['name' => 'engagedSessions'],
                 ['name' => 'keyEvents'],
                 ['name' => 'totalRevenue'],
             ]
+            && $request->data()['metricAggregations'] === ['TOTAL']
+            && $request->data()['limit'] === 10001
             && $request->data()['dimensionFilter']['andGroup']['expressions'][0]['filter']['stringFilter']['value'] === 'spring_launch_2026'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualSource'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'facebook_ads'
@@ -153,6 +177,9 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('spring_launch_2026')
             ->assertSee('facebook_ads')
             ->assertSee('paid_social')
+            ->assertSee('來源／媒介成效')
+            ->assertSee('工作階段')
+            ->assertSee('facebook_ads')
             ->assertSee('GA4 累計成效變化')
             ->assertSee('更新於')
             ->assertSee('2026/11/22 06:30')
@@ -166,6 +193,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertDownload('campaign-report-'.$target->id.'.csv')
             ->streamedContent();
         $this->assertStringContainsString('ga4_medium_name', $campaignCsv);
+        $this->assertStringContainsString('ga4_source_medium_breakdown_json', $campaignCsv);
         $this->assertStringContainsString('paid_social', $campaignCsv);
 
         Http::assertSentCount(2);
@@ -176,7 +204,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         Http::preventStrayRequests();
         Http::fake([
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
-                'rows' => [[
+                'rows' => [],
+                'totals' => [[
                     'metricValues' => [
                         ['value' => '1'],
                         ['value' => '1'],
@@ -184,6 +213,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                         ['value' => '576460752303.42354'],
                     ],
                 ]],
+                'rowCount' => 0,
                 'metadata' => ['currencyCode' => 'TWD'],
             ]),
         ]);
@@ -198,7 +228,100 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
 
         $this->assertSame('1.2345', $report['key_events']);
         $this->assertSame('576460752303.4235', $report['total_revenue']);
+        $this->assertSame([], $report['source_medium_breakdown']);
         Http::assertSentCount(1);
+    }
+
+    public function test_ga4_campaign_report_returns_source_medium_rows_and_marks_truncated_results(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+                'rows' => [
+                    [
+                        'dimensionValues' => [
+                            ['value' => 'spring-launch'],
+                            ['value' => 'facebook'],
+                            ['value' => 'paid_social'],
+                        ],
+                        'metricValues' => [
+                            ['value' => '24'],
+                            ['value' => '20'],
+                            ['value' => '3.5'],
+                            ['value' => '120.25'],
+                        ],
+                    ],
+                    [
+                        'dimensionValues' => [
+                            ['value' => 'spring-launch'],
+                            ['value' => 'newsletter'],
+                            ['value' => 'email'],
+                        ],
+                        'metricValues' => [
+                            ['value' => '16'],
+                            ['value' => '11'],
+                            ['value' => '2'],
+                            ['value' => '80.5'],
+                        ],
+                    ],
+                    [
+                        'dimensionValues' => [
+                            ['value' => 'RESERVED_TOTAL'],
+                            ['value' => 'RESERVED_TOTAL'],
+                            ['value' => 'RESERVED_TOTAL'],
+                        ],
+                        'metricValues' => [
+                            ['value' => '40'],
+                            ['value' => '31'],
+                            ['value' => '5.5'],
+                            ['value' => '200.75'],
+                        ],
+                    ],
+                ],
+                'totals' => [[
+                    'metricValues' => [
+                        ['value' => '40'],
+                        ['value' => '31'],
+                        ['value' => '5.5'],
+                        ['value' => '200.75'],
+                    ],
+                ]],
+                'rowCount' => 10001,
+                'metadata' => ['currencyCode' => 'TWD'],
+            ]),
+        ]);
+
+        $report = (new GoogleAnalyticsDataApi)->campaignReport(
+            'access-token',
+            '123456789',
+            'spring-launch',
+            '2026-11-01',
+            '2026-11-30',
+        );
+
+        $this->assertSame(40, $report['sessions']);
+        $this->assertSame(31, $report['engaged_sessions']);
+        $this->assertSame('5.5000', $report['key_events']);
+        $this->assertSame('200.7500', $report['total_revenue']);
+        $this->assertSame([
+            [
+                'source_name' => 'facebook',
+                'medium_name' => 'paid_social',
+                'sessions' => 24,
+                'engaged_sessions' => 20,
+                'key_events' => '3.5000',
+                'total_revenue' => '120.2500',
+            ],
+            [
+                'source_name' => 'newsletter',
+                'medium_name' => 'email',
+                'sessions' => 16,
+                'engaged_sessions' => 11,
+                'key_events' => '2.0000',
+                'total_revenue' => '80.5000',
+            ],
+        ], $report['source_medium_breakdown']);
+        $this->assertTrue($report['source_medium_breakdown_truncated']);
     }
 
     public function test_ga4_report_history_ignores_snapshots_with_a_different_medium(): void
@@ -293,6 +416,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('0.0000', $snapshot->key_events);
         $this->assertSame('0.0000', $snapshot->total_revenue);
         $this->assertSame('JPY', $snapshot->currency_code);
+        $this->assertSame([], $snapshot->source_medium_breakdown);
 
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === 'Autumn promotion');
@@ -610,6 +734,14 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
     public function test_ga4_campaign_snapshot_seeder_backfills_current_reports_idempotently(): void
     {
         $target = $this->createTarget(['tag' => 'Seed campaign']);
+        $breakdown = [[
+            'source_name' => 'facebook',
+            'medium_name' => 'paid_social',
+            'sessions' => 200,
+            'engaged_sessions' => 150,
+            'key_events' => '12.0000',
+            'total_revenue' => '800.0000',
+        ]];
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => User::factory()->create()->id,
             'property_id' => '123456789',
@@ -625,6 +757,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'engaged_sessions' => 150,
             'key_events' => '12.0000',
             'total_revenue' => '800.0000',
+            'source_medium_breakdown' => $breakdown,
+            'source_medium_breakdown_truncated' => true,
             'currency_code' => 'TWD',
             'synced_at' => CarbonImmutable::parse('2026-11-20 06:30:00', 'Asia/Taipei'),
         ]);
@@ -639,6 +773,9 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'snapshot_date' => '2026-11-20',
             'sessions' => 200,
         ]);
+        $snapshot = GoogleAnalyticsCampaignSnapshot::query()->sole();
+        $this->assertSame($breakdown, $snapshot->source_medium_breakdown);
+        $this->assertTrue($snapshot->source_medium_breakdown_truncated);
     }
 
     public function test_campaign_snapshot_migration_backfills_the_latest_ga4_read_in_taipei_time(): void
@@ -744,6 +881,11 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
     {
         return [
             'rows' => [[
+                'dimensionValues' => [
+                    ['value' => 'campaign'],
+                    ['value' => '(not set)'],
+                    ['value' => '(not set)'],
+                ],
                 'metricValues' => [
                     ['value' => (string) $sessions],
                     ['value' => (string) $engagedSessions],
@@ -751,6 +893,15 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                     ['value' => $revenue],
                 ],
             ]],
+            'totals' => [[
+                'metricValues' => [
+                    ['value' => (string) $sessions],
+                    ['value' => (string) $engagedSessions],
+                    ['value' => $keyEvents],
+                    ['value' => $revenue],
+                ],
+            ]],
+            'rowCount' => 1,
             'metadata' => ['currencyCode' => $currency],
         ];
     }

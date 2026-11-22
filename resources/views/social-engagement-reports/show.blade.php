@@ -548,6 +548,44 @@
                     </div>
                 </dl>
                 <p class="campaign-report-secondary">GA4 的「重要事件」依該資源標記的事件計算；營收採該資源報告幣別。</p>
+
+                <h3 id="campaign-report-ga4-channel-title">來源／媒介成效</h3>
+                @if ($googleAnalyticsReport->source_medium_breakdown === null)
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含渠道明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsReport->source_medium_breakdown === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的來源／媒介數據。</p>
+                @else
+                    @if ($googleAnalyticsReport->source_medium_breakdown_truncated)
+                        <p class="campaign-report-note">來源／媒介組合超過 10,000 筆，表格僅顯示前 10,000 筆。</p>
+                    @endif
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-channel-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-channel-table">
+                            <caption>GA4 活動來源與媒介的成效比較</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">來源</th>
+                                    <th scope="col">媒介</th>
+                                    <th scope="col" class="numeric">工作階段</th>
+                                    <th scope="col" class="numeric">參與工作階段</th>
+                                    <th scope="col" class="numeric">重要事件</th>
+                                    <th scope="col" class="numeric">營收（{{ $googleAnalyticsReport->currency_code ?? '幣別未知' }}）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsReport->source_medium_breakdown as $channel)
+                                    <tr>
+                                        <th scope="row">{{ $channel['source_name'] }}</th>
+                                        <td>{{ $channel['medium_name'] }}</td>
+                                        <td class="numeric">{{ number_format($channel['sessions']) }}</td>
+                                        <td class="numeric">{{ number_format($channel['engaged_sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $channel['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $channel['total_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             @endif
         </section>
 

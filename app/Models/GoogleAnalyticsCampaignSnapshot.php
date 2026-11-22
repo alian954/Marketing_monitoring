@@ -25,6 +25,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'key_events',
     'total_revenue',
     'currency_code',
+    'source_medium_breakdown',
+    'source_medium_breakdown_truncated',
     'synced_at',
 ])]
 class GoogleAnalyticsCampaignSnapshot extends Model
@@ -42,6 +44,8 @@ class GoogleAnalyticsCampaignSnapshot extends Model
             'engaged_sessions' => 'integer',
             'key_events' => 'decimal:4',
             'total_revenue' => 'decimal:4',
+            'source_medium_breakdown' => 'array',
+            'source_medium_breakdown_truncated' => 'boolean',
             'synced_at' => 'immutable_datetime',
         ];
     }

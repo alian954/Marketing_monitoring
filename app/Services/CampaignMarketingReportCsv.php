@@ -78,6 +78,8 @@ class CampaignMarketingReportCsv
             'ga4_engaged_sessions',
             'ga4_key_events',
             'ga4_total_revenue',
+            'ga4_source_medium_breakdown_json',
+            'ga4_source_medium_breakdown_truncated',
             'ga4_currency_code',
             'ga4_synced_at',
             'ga4_is_stale',
@@ -161,6 +163,10 @@ class CampaignMarketingReportCsv
             $analyticsReport === null ? '' : (string) $analyticsReport->engaged_sessions,
             $analyticsReport?->key_events ?? '',
             $analyticsReport?->total_revenue ?? '',
+            $analyticsReport?->source_medium_breakdown === null
+                ? ''
+                : $this->encodeJson($analyticsReport->source_medium_breakdown),
+            $analyticsReport === null ? '' : ($analyticsReport->source_medium_breakdown_truncated ? 'true' : 'false'),
             $analyticsReport?->currency_code ?? '',
             $this->formatDateTime($analyticsReport?->synced_at),
             $analyticsReport === null ? '' : ($data['googleAnalyticsReportIsStale'] ? 'true' : 'false'),

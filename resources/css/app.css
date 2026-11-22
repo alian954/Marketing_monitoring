@@ -2293,6 +2293,10 @@ a.platform-chip:hover {
     min-width: 0;
 }
 
+.campaign-report-ga4-channel-table {
+    min-width: 720px;
+}
+
 .campaign-report-table th,
 .campaign-report-table td {
     padding: 10px 12px;

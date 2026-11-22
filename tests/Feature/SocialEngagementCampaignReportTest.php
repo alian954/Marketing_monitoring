@@ -162,6 +162,15 @@ class SocialEngagementCampaignReportTest extends TestCase
             'engaged_sessions' => 150,
             'key_events' => '10.0000',
             'total_revenue' => '900.0000',
+            'source_medium_breakdown' => [[
+                'source_name' => 'facebook',
+                'medium_name' => 'paid_social',
+                'sessions' => 200,
+                'engaged_sessions' => 150,
+                'key_events' => '10.0000',
+                'total_revenue' => '900.0000',
+            ]],
+            'source_medium_breakdown_truncated' => false,
             'currency_code' => 'TWD',
             'synced_at' => now(),
         ]);
@@ -264,6 +273,8 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('5', $fields['shares_total']);
         $this->assertSame('12.50', $fields['engagement_rate_percent']);
         $this->assertSame('200', $fields['ga4_sessions']);
+        $this->assertSame('[{"source_name":"facebook","medium_name":"paid_social","sessions":200,"engaged_sessions":150,"key_events":"10.0000","total_revenue":"900.0000"}]', $fields['ga4_source_medium_breakdown_json']);
+        $this->assertSame('false', $fields['ga4_source_medium_breakdown_truncated']);
         $this->assertSame('150', $fields['ga4_engaged_sessions']);
         $this->assertSame('10.0000', $fields['ga4_key_events']);
         $this->assertSame('900.0000', $fields['ga4_total_revenue']);
