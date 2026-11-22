@@ -909,6 +909,54 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="social-engagement-data-coverage-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="social-engagement-data-coverage-title" class="panel-title">互動數擷取覆蓋</h2>
+                <p class="panel-description">統計已取得 HTTP 狀態碼的完成檢查，包含 4xx／5xx 回應；覆蓋率代表讀到平台所需完整互動數的比例，與頁面可用率不同。</p>
+            </div>
+        </div>
+        @if ($socialEngagementDataCoverageRows === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無互動數擷取資料</h3>
+                <p class="empty-copy">目前篩選條件下，近 7／30 天沒有可用的 HTTP 回應檢查；至少保留 7 天歷史資料才能計算。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="social-engagement-data-coverage-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">近 7 天與 30 天內，各社群平台取得 HTTP 回應後讀到完整公開互動數的比例</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">期間</th>
+                            <th scope="col">平台與口徑</th>
+                            <th scope="col">HTTP 回應</th>
+                            <th scope="col">完整互動讀取</th>
+                            <th scope="col">擷取覆蓋率</th>
+                            <th scope="col">有數據貼文／有回應貼文</th>
+                            <th scope="col">最近完整讀取</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementDataCoverageRows as $coverageRow)
+                            <tr>
+                                <th scope="row">{{ $coverageRow['period_label'] }}</th>
+                                <td>
+                                    {{ $coverageRow['platform'] }}
+                                    <span class="secondary-text">（{{ $coverageRow['interaction_scope_label'] }}）</span>
+                                </td>
+                                <td class="numeric">{{ number_format($coverageRow['http_response_count']) }}</td>
+                                <td class="numeric">{{ number_format($coverageRow['complete_metric_read_count']) }}</td>
+                                <td class="numeric">{{ number_format($coverageRow['coverage_rate_percent'], 1) }}%</td>
+                                <td class="numeric">{{ number_format($coverageRow['posts_with_metrics_count']) }}／{{ number_format($coverageRow['posts_with_response_count']) }} 篇</td>
+                                <td>{{ $coverageRow['latest_complete_capture_at'] ?? '—' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="social-platform-availability-title">
         <div class="panel-header">
             <div>

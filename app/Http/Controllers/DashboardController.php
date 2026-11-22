@@ -13,6 +13,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\FleetAvailabilityReport;
+use App\Services\SocialEngagementDataCoverageReport;
 use App\Services\SocialPostMaturityReport;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
@@ -68,6 +69,7 @@ class DashboardController extends Controller
         Request $request,
         UrlMasker $urlMasker,
         FleetAvailabilityReport $availabilityReport,
+        SocialEngagementDataCoverageReport $socialEngagementDataCoverageReport,
         SocialPostMaturityReport $socialPostMaturityReport,
     ): View {
         $asOf = now()->toImmutable();
@@ -431,6 +433,13 @@ class DashboardController extends Controller
             $socialEngagementSelectedTagValue,
             $socialEngagementRetentionDays,
         );
+        $socialEngagementDataCoverageRows = $socialEngagementDataCoverageReport->build(
+            $asOf,
+            $socialEngagementPlatform,
+            $socialEngagementSelectedTag,
+            $socialEngagementSelectedTagValue,
+            $socialEngagementRetentionDays,
+        );
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -520,6 +529,7 @@ class DashboardController extends Controller
             'socialEngagementPublishingDaySummaries' => $socialEngagementPublishingDaySummaries,
             'socialEngagementPublishingTimeSummaries' => $socialEngagementPublishingTimeSummaries,
             'socialPostMaturityRows' => $socialPostMaturityRows,
+            'socialEngagementDataCoverageRows' => $socialEngagementDataCoverageRows,
             'socialEngagementTargets' => $socialEngagementTargets,
             'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
             'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,

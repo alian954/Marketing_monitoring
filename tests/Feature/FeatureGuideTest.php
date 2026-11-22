@@ -20,6 +20,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('公開的互動數')
             ->assertSee('不提供帳號洞察')
             ->assertSee('可依平台或活動標籤篩選貼文、互動排行與彙總，並匯出 CSV')
+            ->assertSee('互動數擷取覆蓋率依近 7／30 天取得 HTTP 狀態碼')
             ->assertSee('發文時間成效依台灣時間分為四個時段')
             ->assertSee('貼文年齡成效比較發文後 24 小時、7 天及 30 天')
             ->assertSee('平均與中位數互動、觀看互動率')
