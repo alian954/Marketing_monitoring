@@ -110,6 +110,8 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             ->assertSee('Google Ads 歷史讀值')
             ->assertSee('Meta Ads 最近 30 次累計成效讀值與前次差異')
             ->assertSee('Google Ads 最近 30 次累計成效讀值與前次差異')
+            ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']), false)
+            ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'google-ads']), false)
             ->assertSee('<th scope="col">讀值時間</th>', false)
             ->assertSee('2,000')
             ->assertSee('100.00 TWD');
@@ -163,6 +165,102 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('102.0000', $metaTrend[0]['spend_amount']);
         $this->assertSame('131.0000', $metaTrend[29]['spend_amount']);
         $this->assertTrue($metaTrend[0]['synced_at']->lessThan($metaTrend[29]['synced_at']));
+    }
+
+    public function test_meta_paid_media_history_export_is_scoped_and_formula_safe(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $connection = MetaMarketingConnection::factory()->create(['user_id' => $user->id]);
+        $otherConnection = MetaMarketingConnection::factory()->create(['user_id' => $otherUser->id]);
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Export campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '987654321',
+        ]);
+
+        $this->createMetaSnapshot($target, $connection, '2026-11-20 06:00:00', [
+            'campaign_name' => '=SUM(1+1)',
+            'spend_amount' => '100.0000',
+        ]);
+        $this->createMetaSnapshot($target, $connection, '2026-11-21 06:00:00', [
+            'campaign_name' => '=SUM(1+1)',
+            'spend_amount' => '150.0000',
+        ]);
+        $this->createMetaSnapshot($target, $otherConnection, '2026-11-21 07:00:00', [
+            'campaign_name' => 'Private other account',
+            'spend_amount' => '99999.0000',
+        ]);
+        $this->createMetaSnapshot($target, $connection, '2026-11-21 08:00:00', [
+            'campaign_id' => '987654329',
+            'campaign_name' => 'Different campaign',
+            'spend_amount' => '88888.0000',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $this->assertStringContainsString('meta-marketing-campaign-trend-'.$target->id.'.csv', (string) $response->headers->get('content-disposition'));
+        $csvLines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+        $csvRows = array_map(static fn (string $line): array => str_getcsv($line), $csvLines);
+
+        $this->assertCount(3, $csvRows);
+        $this->assertSame('source', $csvRows[0][0]);
+        $this->assertSame('Meta Ads', $csvRows[1][0]);
+        $this->assertSame("'=SUM(1+1)", $csvRows[1][1]);
+        $this->assertSame('50.0000', $csvRows[2][4]);
+        $this->assertStringNotContainsString('Private other account', $response->streamedContent());
+        $this->assertStringNotContainsString('Different campaign', $response->streamedContent());
+    }
+
+    public function test_google_ads_paid_media_history_export_includes_conversion_deltas(): void
+    {
+        $user = User::factory()->create();
+        $connection = GoogleAdsConnection::factory()->create(['user_id' => $user->id]);
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Google export campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'google_ads_campaign_id' => '987654321',
+        ]);
+        $this->createGoogleAdsSnapshot($target, $connection, '2026-11-20 06:00:00', [
+            'spend_amount' => '100.0000',
+            'conversions' => '2.0000',
+            'conversions_value' => '80.0000',
+        ]);
+        $this->createGoogleAdsSnapshot($target, $connection, '2026-11-21 06:00:00', [
+            'spend_amount' => '150.0000',
+            'conversions' => '5.0000',
+            'conversions_value' => '200.0000',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.paid-media.history', [$target, 'google-ads']))
+            ->assertOk();
+        $csvLines = preg_split('/\r\n|\n|\r/', trim($response->streamedContent()));
+        $csvRows = array_map(static fn (string $line): array => str_getcsv($line), $csvLines);
+
+        $this->assertCount(3, $csvRows);
+        $this->assertSame('Google Ads', $csvRows[1][0]);
+        $this->assertSame('3.0000', $csvRows[2][13]);
+        $this->assertSame('120.0000', $csvRows[2][15]);
+    }
+
+    public function test_paid_media_history_export_requires_authentication_and_rejects_unknown_sources(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+
+        $this->get(route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs(User::factory()->create())
+            ->get('/social-engagement-targets/'.$target->id.'/paid-media-history/unknown.csv')
+            ->assertNotFound();
     }
 
     /** @param array<string, mixed> $attributes */

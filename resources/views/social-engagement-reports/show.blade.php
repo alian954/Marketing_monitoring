@@ -127,7 +127,12 @@
                 </dl>
                 <p class="campaign-report-secondary">數據來自已授權廣告帳戶；CTR 以平台點擊除以曝光計算，CPC 與 CPM 使用此活動的花費。</p>
 
-                <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
+                <div class="campaign-report-section-header">
+                    <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
+                    @if ($metaMarketingTrend !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']) }}">匯出趨勢 CSV</a>
+                    @endif
+                </div>
                 @if ($metaMarketingTrend === [])
                     <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
                 @else
@@ -258,7 +263,12 @@
                 </dl>
                 <p class="campaign-report-secondary">CTR、CPC 與 CPM 依 Google Ads 點擊、曝光及花費計算；轉換成本與點擊轉換率依帳戶轉換設定歸因。日期區間依 Google Ads 帳戶時區計算。</p>
 
-                <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
+                <div class="campaign-report-section-header">
+                    <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
+                    @if ($googleAdsTrend !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'google-ads']) }}">匯出趨勢 CSV</a>
+                    @endif
+                </div>
                 @if ($googleAdsTrend === [])
                     <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
                 @else

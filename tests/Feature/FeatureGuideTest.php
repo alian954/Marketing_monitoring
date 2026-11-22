@@ -25,6 +25,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('只有廣告花費與 GA4 營收幣別相同時才計算 ROAS')
             ->assertSee('活動效率報告顯示 CTR、CPC、CPM')
             ->assertSee('Google Ads 每次轉換成本與點擊轉換率')
+            ->assertSee('歷史趨勢可匯出 CSV')
             ->assertSee('跨平台花費僅同幣別合計')
             ->assertSee('可依平台或活動標籤篩選貼文、互動排行與彙總，並匯出 CSV')
             ->assertSee('互動數擷取覆蓋率依近 7／30 天取得 HTTP 狀態碼')

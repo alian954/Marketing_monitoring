@@ -61,6 +61,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/social-engagement-targets/{socialEngagementTarget}/google-analytics-history.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAnalyticsHistory'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.google-analytics.history');
+    Route::get('/social-engagement-targets/{socialEngagementTarget}/paid-media-history/{source}.csv', [SocialEngagementCampaignReportController::class, 'exportPaidMediaHistory'])
+        ->whereNumber('socialEngagementTarget')
+        ->where('source', 'meta-marketing|google-ads')
+        ->name('social-engagement-targets.paid-media.history');
     Route::post('/social-engagement-targets/{socialEngagementTarget}/google-analytics', [SocialEngagementTargetGoogleAnalyticsController::class, 'sync'])
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')

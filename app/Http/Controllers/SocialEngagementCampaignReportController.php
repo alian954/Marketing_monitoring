@@ -167,4 +167,76 @@ class SocialEngagementCampaignReportController extends Controller
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
+
+    public function exportPaidMediaHistory(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        PaidMediaCampaignTrendReport $paidMediaTrendReport,
+        string $source,
+    ): StreamedResponse {
+        [$rows, $sourceLabel, $filePrefix] = match ($source) {
+            'meta-marketing' => [
+                $paidMediaTrendReport->metaMarketingChanges($request->user()->metaMarketingConnection, $socialEngagementTarget),
+                'Meta Ads',
+                'meta-marketing',
+            ],
+            'google-ads' => [
+                $paidMediaTrendReport->googleAdsChanges($request->user()->googleAdsConnection, $socialEngagementTarget),
+                'Google Ads',
+                'google-ads',
+            ],
+            default => abort(404),
+        };
+
+        abort_if($rows === [], 404);
+
+        return response()->streamDownload(function () use ($rows, $sourceLabel): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'source',
+                'campaign_name',
+                'synced_at_asia_taipei',
+                'spend_cumulative',
+                'spend_change_since_previous',
+                'currency_code',
+                'impressions_cumulative',
+                'impressions_change_since_previous',
+                'reach_cumulative',
+                'reach_change_since_previous',
+                'clicks_cumulative',
+                'clicks_change_since_previous',
+                'conversions_cumulative',
+                'conversions_change_since_previous',
+                'conversions_value_cumulative',
+                'conversions_value_change_since_previous',
+            ], ',', '"', '');
+
+            foreach ($rows as $row) {
+                $fields = [
+                    $sourceLabel,
+                    $row['campaign_name'],
+                    $row['synced_at']->timezone('Asia/Taipei')->format('Y-m-d H:i:s'),
+                    $row['spend_amount'],
+                    $row['spend_change'] === null ? '' : number_format($row['spend_change'], 4, '.', ''),
+                    $row['currency_code'],
+                    (string) $row['impressions'],
+                    $row['impressions_change'] === null ? '' : (string) $row['impressions_change'],
+                    $row['reach'] === null ? '' : (string) $row['reach'],
+                    $row['reach_change'] === null ? '' : (string) $row['reach_change'],
+                    (string) $row['clicks'],
+                    $row['clicks_change'] === null ? '' : (string) $row['clicks_change'],
+                    $row['conversions'] ?? '',
+                    $row['conversions_change'] === null ? '' : number_format($row['conversions_change'], 4, '.', ''),
+                    $row['conversions_value'] ?? '',
+                    $row['conversions_value_change'] === null ? '' : number_format($row['conversions_value_change'], 4, '.', ''),
+                ];
+
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, $filePrefix.'-campaign-trend-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
 }
