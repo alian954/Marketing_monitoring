@@ -21,6 +21,8 @@ class SocialEngagementTargetFactory extends Factory
             'tag' => fake()->words(2, true),
             'social_platform' => fake()->randomElement(['facebook', 'instagram', 'threads', 'dcard']),
             'target_interactions' => fake()->numberBetween(100, 10000),
+            'starts_on' => null,
+            'ends_on' => null,
         ];
     }
 }

@@ -18,10 +18,17 @@ class SocialEngagementTargetController extends Controller
                 'tag' => $data['tag'],
                 'social_platform' => $data['social_platform'],
             ],
-            ['target_interactions' => (int) $data['target_interactions']],
+            [
+                'target_interactions' => (int) $data['target_interactions'],
+                'starts_on' => $data['starts_on'] ?? null,
+                'ends_on' => $data['ends_on'] ?? null,
+            ],
         );
 
-        return redirect()->route('dashboard', $this->dashboardFilters($data))
+        return redirect()->route('dashboard', [
+            'engagement_platform' => $data['social_platform'],
+            'engagement_tag' => 'tag:'.$data['tag'],
+        ])
             ->with('status', '活動互動目標已儲存。');
     }
 

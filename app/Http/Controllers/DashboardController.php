@@ -379,7 +379,30 @@ class DashboardController extends Controller
                 $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
                 $trackedPostCount = (int) ($summary['monitor_count'] ?? 0);
                 $availablePostCount = (int) ($summary['interaction_count'] ?? 0);
-                $currentInteractions = $availablePostCount > 0 ? (int) $summary['interaction_total'] : null;
+                $currentInteractionTotal = (int) ($summary['interaction_total'] ?? 0);
+                $startsOn = $target->starts_on?->toDateString();
+                $endsOn = $target->ends_on?->toDateString();
+                $unknownPublicationDateCount = 0;
+
+                if ($startsOn !== null || $endsOn !== null) {
+                    $trackedPostCount = 0;
+                    $availablePostCount = 0;
+                    $currentInteractionTotal = 0;
+                    $unknownPublicationDateCount = (int) ($summary['unknown_publication_date_count'] ?? 0);
+
+                    foreach ($summary['published_date_summaries'] ?? [] as $publishedDate => $publishedDateSummary) {
+                        if (($startsOn !== null && $publishedDate < $startsOn)
+                            || ($endsOn !== null && $publishedDate > $endsOn)) {
+                            continue;
+                        }
+
+                        $trackedPostCount += $publishedDateSummary['monitor_count'];
+                        $availablePostCount += $publishedDateSummary['interaction_count'];
+                        $currentInteractionTotal += $publishedDateSummary['interaction_total'];
+                    }
+                }
+
+                $currentInteractions = $availablePostCount > 0 ? $currentInteractionTotal : null;
 
                 return [
                     'id' => (int) $target->id,
@@ -387,15 +410,36 @@ class DashboardController extends Controller
                     'social_platform' => $target->social_platform,
                     'platform_label' => $socialEngagementTargetPlatformLabels[$target->social_platform],
                     'target_interactions' => (int) $target->target_interactions,
+                    'starts_on' => $startsOn,
+                    'ends_on' => $endsOn,
                     'current_interactions' => $currentInteractions,
                     'completion_percent' => $currentInteractions === null
                         ? null
                         : round($currentInteractions / $target->target_interactions * 100, 1),
                     'available_post_count' => $availablePostCount,
                     'tracked_post_count' => $trackedPostCount,
+                    'unknown_publication_date_count' => $unknownPublicationDateCount,
                 ];
             })
             ->all();
+        $targetFormPlatform = $request->old('social_platform');
+
+        if (! is_string($targetFormPlatform) || ! array_key_exists($targetFormPlatform, $socialEngagementTargetPlatformLabels)) {
+            $targetFormPlatform = $socialEngagementPlatform ?? 'facebook';
+        }
+
+        $targetFormTag = $request->old('tag');
+
+        if (! is_string($targetFormTag)) {
+            $targetFormTag = $socialEngagementSelectedTagValue;
+        }
+
+        $socialEngagementTargetFormTarget = is_string($targetFormTag)
+            ? SocialEngagementTarget::query()
+                ->where('tag', $targetFormTag)
+                ->where('social_platform', $targetFormPlatform)
+                ->first()
+            : null;
         $socialEngagementRetentionDays = max(1, (int) config('monitoring.retention_days'));
         $socialEngagementChangePeriodOptions = $this->socialEngagementChangePeriodOptions($socialEngagementRetentionDays);
         $requestedSocialEngagementPeriod = $request->query('engagement_period');
@@ -505,6 +549,9 @@ class DashboardController extends Controller
             'socialEngagementTargets' => $socialEngagementTargets,
             'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
             'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,
+            'socialEngagementTargetFormPlatform' => $targetFormPlatform,
+            'socialEngagementTargetFormTag' => $targetFormTag,
+            'socialEngagementTargetFormTarget' => $socialEngagementTargetFormTarget,
             'socialEngagementTopPostSortOptions' => $socialEngagementTopPostSortOptions,
             'socialEngagementTopPostSort' => $socialEngagementTopPostSort,
             'socialEngagementInteractionScopeLabel' => $socialEngagementInteractionScopeLabel,
@@ -845,7 +892,9 @@ class DashboardController extends Controller
      *             average_interactions_per_post: float|null,
      *             engagement_rate: array{interactions: int, views: int, available: int},
      *             interaction_scope_label: string,
-     *             capture_counts: array{current: int, previous: int}
+     *             capture_counts: array{current: int, previous: int},
+     *             published_date_summaries: array<string, array{monitor_count: int, interaction_total: int, interaction_count: int}>,
+     *             unknown_publication_date_count: int
      *         }>
      *     }>,
      *     top_posts: list<array{
@@ -874,7 +923,7 @@ class DashboardController extends Controller
      */
     private function socialEngagementDashboardData(?string $selectedPlatform, string $selectedTag, ?string $selectedTagValue, string $topPostSort): array
     {
-        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, interaction_scope_label: string, capture_counts: array{current: int, previous: int}}>}> $summaries */
+        /** @var array<string, array{tag: string, filter_label: string|null, platforms: array<string, array{monitor_count: int, metrics: array<string, array{total: int, available: int}>, interaction_total: int, interaction_count: int, average_interactions_per_post: float|null, engagement_rate: array{interactions: int, views: int, available: int}, interaction_scope_label: string, capture_counts: array{current: int, previous: int}, published_date_summaries: array<string, array{monitor_count: int, interaction_total: int, interaction_count: int}>, unknown_publication_date_count: int}>}> $summaries */
         $summaries = [];
         $topPosts = [];
         /** @var array<string, array{platform_key: string, platform: string, interaction_scope_label: string, weekdays: array<int, array{total: int, post_count: int}>}> $publishingDayTotalsByPlatform */
@@ -959,6 +1008,7 @@ class DashboardController extends Controller
 
                     $latestCheckRun = $monitor->latestCheckRun;
                     $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                    $publishedDate = $engagementRun?->response_published_at?->timezone(self::HISTORY_TIMEZONE)->toDateString();
                     $hasEngagementMetrics = $this->hasPublicEngagementMetrics($metrics);
                     $captureIsCurrent = $engagementRun !== null && $latestCheckRun?->id === $engagementRun->id;
                     $tags = $monitor->tagNames();
@@ -1056,11 +1106,29 @@ class DashboardController extends Controller
                                 'engagement_rate' => ['interactions' => 0, 'views' => 0, 'available' => 0],
                                 'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
                                 'capture_counts' => ['current' => 0, 'previous' => 0],
+                                'published_date_summaries' => [],
+                                'unknown_publication_date_count' => 0,
                             ];
                         }
 
                         $platformSummary = $summaries[$tagKey]['platforms'][$platform];
                         $platformSummary['monitor_count']++;
+
+                        if ($publishedDate === null) {
+                            $platformSummary['unknown_publication_date_count']++;
+                        } else {
+                            $platformSummary['published_date_summaries'][$publishedDate] ??= [
+                                'monitor_count' => 0,
+                                'interaction_total' => 0,
+                                'interaction_count' => 0,
+                            ];
+                            $platformSummary['published_date_summaries'][$publishedDate]['monitor_count']++;
+
+                            if ($platformInteractionTotal !== null) {
+                                $platformSummary['published_date_summaries'][$publishedDate]['interaction_total'] += $platformInteractionTotal;
+                                $platformSummary['published_date_summaries'][$publishedDate]['interaction_count']++;
+                            }
+                        }
 
                         if ($hasEngagementMetrics) {
                             $captureKey = $captureIsCurrent ? 'current' : 'previous';

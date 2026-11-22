@@ -6,6 +6,7 @@ use App\Models\Monitor;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreSocialEngagementTargetRequest extends FormRequest
 {
@@ -31,9 +32,35 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'tag' => ['required', 'string', 'max:100', Rule::in($this->trackedTagsForPlatform())],
             'social_platform' => ['required', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
             'target_interactions' => ['required', 'integer', 'min:1', 'max:1000000000'],
+            'starts_on' => ['nullable', 'date_format:Y-m-d'],
+            'ends_on' => ['nullable', 'date_format:Y-m-d'],
             'engagement_platform' => ['nullable', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
             'engagement_tag' => ['nullable', 'string', 'max:110'],
         ];
+    }
+
+    /** @return list<callable(Validator): void> */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $startsOn = $this->input('starts_on');
+            $endsOn = $this->input('ends_on');
+
+            if (($startsOn === null) !== ($endsOn === null)) {
+                $validator->errors()->add('starts_on', '活動期間需同時設定開始日與結束日。');
+                $validator->errors()->add('ends_on', '活動期間需同時設定開始日與結束日。');
+
+                return;
+            }
+
+            if (is_string($startsOn) && is_string($endsOn) && $endsOn < $startsOn) {
+                $validator->errors()->add('ends_on', '活動結束日不可早於開始日。');
+            }
+        }];
     }
 
     /** @return list<string> */
@@ -67,6 +94,8 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'target_interactions.integer' => '互動目標必須是整數。',
             'target_interactions.min' => '互動目標至少為 1。',
             'target_interactions.max' => '互動目標不可超過 1,000,000,000。',
+            'starts_on.date_format' => '活動開始日格式無效。',
+            'ends_on.date_format' => '活動結束日格式無效。',
         ];
     }
 }
