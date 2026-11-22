@@ -152,6 +152,9 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'ga4_currency_code',
             'daily_roas',
             'roas_status',
+            'roas_spend_amount',
+            'roas_spend_currency',
+            'roas_spend_source',
         ], $csvRows[0]);
 
         $fields = array_combine($csvRows[0], $csvRows[1]);
@@ -177,7 +180,7 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $combinedFields = array_combine($csvRows[0], $csvRows[4]);
         $this->assertSame('每日 GA4 ROAS', $combinedFields['source']);
         $this->assertSame('2026-11-06', $combinedFields['date']);
-        $this->assertSame('missing_spend', $combinedFields['roas_status']);
+        $this->assertSame('missing_ga4', $combinedFields['roas_status']);
         $this->assertSame('2026-11-30', $adsFields['coverage_end_on']);
     }
 

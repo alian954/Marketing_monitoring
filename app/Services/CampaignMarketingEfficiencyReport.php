@@ -18,6 +18,10 @@ class CampaignMarketingEfficiencyReport
      *     ad_spend_source_label: string|null,
      *     platform_currency_mismatch: bool,
      *     roas: float|null,
+     *     roas_spend_amount: string|null,
+     *     roas_spend_currency: string|null,
+     *     roas_spend_source: string|null,
+     *     roas_spend_source_label: string|null,
      *     roas_unavailable_reason: string|null,
      *     paid_ad_clicks: int|null,
      *     paid_click_source: string|null,
@@ -95,6 +99,14 @@ class CampaignMarketingEfficiencyReport
 
         $spendAmount = $spendAmountValue === null ? null : (float) $spendAmountValue;
         $spendCurrency = $this->currencyCode(is_string($spendCurrencyValue) ? $spendCurrencyValue : null);
+        [$roasSpendAmount, $roasSpendCurrencyValue, $roasSpendSource] = $this->roasSpendSource(
+            $target,
+            $metaSpendAmount,
+            $metaSpendCurrency,
+            $googleAdsSpendAmount,
+            $googleAdsSpendCurrency,
+        );
+        $roasSpendCurrency = $this->currencyCode($roasSpendCurrencyValue);
         $metaImpressions = $metaMarketingReport?->impressions ?? 0;
         $metaReach = $metaMarketingReport?->reach ?? 0;
         $metaClicks = $metaMarketingReport?->clicks ?? 0;
@@ -127,13 +139,12 @@ class CampaignMarketingEfficiencyReport
             ? strtoupper(trim($googleAnalyticsReport->currency_code))
             : null;
         $roasUnavailableReason = match (true) {
-            $hasDifferentPlatformCurrencies => 'ad_platform_currency_mismatch',
-            $spendAmount === null => 'missing_spend',
-            $spendAmount <= 0 => 'zero_spend',
+            $roasSpendAmount === null => 'missing_spend',
+            (float) $roasSpendAmount <= 0 => 'zero_spend',
             $googleAnalyticsReport === null => 'missing_ga4',
-            $spendCurrency === null => 'missing_spend_currency',
+            $roasSpendCurrency === null => 'missing_spend_currency',
             $googleAnalyticsCurrency === null => 'missing_ga4_currency',
-            $spendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
+            $roasSpendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
             default => null,
         };
         $budgetPacing = $this->budgetPacing($target, $spendAmount, $spendCurrency, $spendSource);
@@ -151,19 +162,28 @@ class CampaignMarketingEfficiencyReport
                 default => null,
             },
             'platform_currency_mismatch' => $hasDifferentPlatformCurrencies,
-            'roas' => $roasUnavailableReason === null && $googleAnalyticsReport !== null && $spendAmount !== null
-                ? round((float) $googleAnalyticsReport->total_revenue / $spendAmount, 2)
+            'roas' => $roasUnavailableReason === null && $googleAnalyticsReport !== null && $roasSpendAmount !== null
+                ? round((float) $googleAnalyticsReport->total_revenue / (float) $roasSpendAmount, 2)
                 : null,
+            'roas_spend_amount' => $roasSpendAmount,
+            'roas_spend_currency' => $roasSpendCurrency,
+            'roas_spend_source' => $roasSpendSource,
+            'roas_spend_source_label' => match ($roasSpendSource) {
+                'google_ads' => 'Google Ads 花費',
+                'meta_marketing' => 'Meta Ads 花費',
+                'manual' => '人工記錄花費',
+                default => null,
+            },
             'roas_unavailable_reason' => $roasUnavailableReason,
             ...$paidClickSessionDiagnostic,
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
             'google_ads_conversion_value_roas' => $googleAdsRoas,
-            'cost_per_session' => $spendAmount !== null && $googleAnalyticsReport !== null && $googleAnalyticsReport->sessions > 0
-                ? round($spendAmount / $googleAnalyticsReport->sessions, 4)
+            'cost_per_session' => $roasSpendAmount !== null && $googleAnalyticsReport !== null && $googleAnalyticsReport->sessions > 0
+                ? round((float) $roasSpendAmount / $googleAnalyticsReport->sessions, 4)
                 : null,
-            'cost_per_key_event' => $spendAmount !== null && $googleAnalyticsReport !== null && (float) $googleAnalyticsReport->key_events > 0
-                ? round($spendAmount / (float) $googleAnalyticsReport->key_events, 4)
+            'cost_per_key_event' => $roasSpendAmount !== null && $googleAnalyticsReport !== null && (float) $googleAnalyticsReport->key_events > 0
+                ? round((float) $roasSpendAmount / (float) $googleAnalyticsReport->key_events, 4)
                 : null,
             'cost_per_public_interaction' => $spendAmount !== null && $publicInteractionTotal !== null && $publicInteractionTotal > 0
                 ? round($spendAmount / $publicInteractionTotal, 4)
@@ -204,6 +224,29 @@ class CampaignMarketingEfficiencyReport
                 : null,
             ...$budgetPacing,
         ];
+    }
+
+    /** @return array{string|null, string|null, string|null} */
+    private function roasSpendSource(
+        SocialEngagementTarget $target,
+        mixed $metaSpendAmount,
+        ?string $metaSpendCurrency,
+        mixed $googleAdsSpendAmount,
+        ?string $googleAdsSpendCurrency,
+    ): array {
+        if ($target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging') {
+            return [$googleAdsSpendAmount, $googleAdsSpendCurrency, 'google_ads'];
+        }
+
+        if ($metaSpendAmount !== null) {
+            return [$metaSpendAmount, $metaSpendCurrency, 'meta_marketing'];
+        }
+
+        if ($target->ad_spend_amount !== null) {
+            return [$target->ad_spend_amount, $target->ad_spend_currency, 'manual'];
+        }
+
+        return [null, null, null];
     }
 
     /**

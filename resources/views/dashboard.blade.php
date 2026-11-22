@@ -618,6 +618,7 @@
                                 <td class="numeric">
                                     @if ($efficiency['roas'] !== null)
                                         {{ number_format($efficiency['roas'], 2) }}x
+                                        <span class="secondary-text">分母：{{ $efficiency['roas_spend_source_label'] ?? '—' }} {{ number_format((float) $efficiency['roas_spend_amount'], 2) }} {{ $efficiency['roas_spend_currency'] ?? '' }}</span>
                                     @else
                                         {{ $roasUnavailableLabel }}
                                     @endif

@@ -56,6 +56,9 @@ class CampaignDailyMarketingReportCsv
         'ga4_currency_code',
         'daily_roas',
         'roas_status',
+        'roas_spend_amount',
+        'roas_spend_currency',
+        'roas_spend_source',
     ];
 
     /**
@@ -93,7 +96,7 @@ class CampaignDailyMarketingReportCsv
                         : '';
                 }
 
-                $fields = [...$fields, ...array_fill(0, 10, '')];
+                $fields = [...$fields, ...array_fill(0, 13, '')];
 
                 $rows[] = array_map($this->value(...), $fields);
             }
@@ -132,6 +135,9 @@ class CampaignDailyMarketingReportCsv
                 'ga4_currency_code',
                 'roas',
                 'roas_status',
+                'roas_spend_amount',
+                'roas_spend_currency',
+                'roas_spend_source',
             ] as $metric) {
                 $fields[] = $this->value(match ($metric) {
                     'meta_currency_code' => $combinedRow['meta_currency_code'] ?? null,

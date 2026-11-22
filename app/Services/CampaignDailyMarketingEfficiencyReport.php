@@ -22,6 +22,8 @@ class CampaignDailyMarketingEfficiencyReport
      *     coverage_start_on: string|null,
      *     coverage_end_on: string|null,
      *     latest_synced_at: CarbonImmutable|null,
+     *     roas_spend_source: string|null,
+     *     roas_spend_source_label: string|null,
      *     period_comparison: array<string, mixed>,
      *     rows: list<array{
      *         date: string,
@@ -31,6 +33,9 @@ class CampaignDailyMarketingEfficiencyReport
      *         google_ads_currency_code: string|null,
      *         ad_spend_amount: string|null,
      *         ad_spend_currency: string|null,
+     *         roas_spend_amount: string|null,
+     *         roas_spend_currency: string|null,
+     *         roas_spend_source: string|null,
      *         ga4_revenue: string|null,
      *         ga4_currency_code: string|null,
      *         roas: float|null,
@@ -46,10 +51,22 @@ class CampaignDailyMarketingEfficiencyReport
         $startOn = $target->starts_on?->toDateString();
         $endOn = $target->ends_on?->toDateString();
         $hasCampaignPeriod = $startOn !== null && $endOn !== null;
+        $metaIsConfigured = is_string($target->meta_campaign_id)
+            && trim($target->meta_campaign_id) !== '';
+        $googleAdsIsConfigured = is_string($target->google_ads_campaign_id)
+            && trim($target->google_ads_campaign_id) !== '';
         $expectedSources = [
-            'meta_marketing' => $hasCampaignPeriod && $target->meta_campaign_id !== null,
-            'google_ads' => $hasCampaignPeriod && $target->google_ads_campaign_id !== null,
+            'meta_marketing' => $hasCampaignPeriod && $metaIsConfigured,
+            'google_ads' => $hasCampaignPeriod && $googleAdsIsConfigured,
         ];
+        $roasSpendSource = $expectedSources['google_ads']
+            ? 'google_ads'
+            : ($expectedSources['meta_marketing'] ? 'meta_marketing' : null);
+        $roasSpendSourceLabel = match ($roasSpendSource) {
+            'google_ads' => 'Google Ads',
+            'meta_marketing' => 'Meta Ads',
+            default => null,
+        };
         $expectedSourceCount = count(array_filter($expectedSources));
         $metaSource = $dailyMarketingPerformance['meta_marketing'] ?? [];
         $googleAdsSource = $dailyMarketingPerformance['google_ads'] ?? [];
@@ -104,19 +121,23 @@ class CampaignDailyMarketingEfficiencyReport
                 $metaCurrency,
                 $googleAdsCurrency,
             );
+            [$roasSpendAmount, $roasSpendCurrency] = match ($roasSpendSource) {
+                'google_ads' => [$googleAdsSpend, $googleAdsSpend === null ? null : $googleAdsCurrency],
+                'meta_marketing' => [$metaSpend, $metaSpend === null ? null : $metaCurrency],
+                default => [null, null],
+            };
             $googleAnalyticsRowAvailable = $googleAnalyticsHasSnapshot && array_key_exists($date, $googleAnalyticsRows);
             $ga4Revenue = $googleAnalyticsRowAvailable ? $googleAnalyticsRows[$date] : null;
             $roasStatus = $this->roasStatus(
-                $expectedSourceCount,
-                $spendStatus,
-                $adSpendAmount,
-                $adSpendCurrency,
+                $roasSpendSource !== null,
+                $roasSpendAmount,
+                $roasSpendCurrency,
                 $ga4Revenue,
                 $googleAnalyticsCurrency,
                 $googleAnalyticsRowAvailable,
             );
             $roas = $roasStatus === 'available'
-                ? round((float) $ga4Revenue / (float) $adSpendAmount, 2)
+                ? round((float) $ga4Revenue / (float) $roasSpendAmount, 2)
                 : null;
 
             $rows[] = [
@@ -127,6 +148,9 @@ class CampaignDailyMarketingEfficiencyReport
                 'google_ads_currency_code' => $googleAdsSpend === null ? null : $googleAdsCurrency,
                 'ad_spend_amount' => $adSpendAmount,
                 'ad_spend_currency' => $adSpendCurrency,
+                'roas_spend_amount' => $roasSpendAmount,
+                'roas_spend_currency' => $roasSpendCurrency,
+                'roas_spend_source' => $roasSpendSource,
                 'ga4_revenue' => $ga4Revenue,
                 'ga4_currency_code' => $ga4Revenue === null ? null : $googleAnalyticsCurrency,
                 'roas' => $roas,
@@ -177,6 +201,8 @@ class CampaignDailyMarketingEfficiencyReport
             'coverage_start_on' => $coverageStartOn,
             'coverage_end_on' => $coverageEndOn,
             'latest_synced_at' => $latestSyncedAt,
+            'roas_spend_source' => $roasSpendSource,
+            'roas_spend_source_label' => $roasSpendSourceLabel,
             'period_comparison' => $periodComparison,
             'rows' => array_reverse($rows),
             'trend_chart' => $trendChart,
@@ -286,24 +312,21 @@ class CampaignDailyMarketingEfficiencyReport
     }
 
     private function roasStatus(
-        int $expectedSourceCount,
-        string $spendStatus,
-        ?string $adSpendAmount,
-        ?string $adSpendCurrency,
+        bool $roasSpendSourceIsConfigured,
+        ?string $roasSpendAmount,
+        ?string $roasSpendCurrency,
         ?string $ga4Revenue,
         ?string $googleAnalyticsCurrency,
         bool $googleAnalyticsRowAvailable,
     ): string {
         return match (true) {
-            $expectedSourceCount === 0 => 'not_configured',
-            $spendStatus === 'currency_mismatch' => 'platform_currency_mismatch',
-            $spendStatus === 'missing_data' => 'missing_spend',
-            $adSpendAmount === null => 'missing_spend',
-            (float) $adSpendAmount <= 0 => 'zero_spend',
+            ! $roasSpendSourceIsConfigured => 'not_configured',
+            $roasSpendAmount === null => 'missing_spend',
+            (float) $roasSpendAmount <= 0 => 'zero_spend',
             ! $googleAnalyticsRowAvailable || $ga4Revenue === null => 'missing_ga4',
-            $adSpendCurrency === null => 'missing_spend_currency',
+            $roasSpendCurrency === null => 'missing_spend_currency',
             $googleAnalyticsCurrency === null => 'missing_ga4_currency',
-            $adSpendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
+            $roasSpendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
             default => 'available',
         };
     }

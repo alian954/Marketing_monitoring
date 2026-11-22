@@ -46,7 +46,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             ->assertSee('每日廣告花費與同日 ROAS')
             ->assertSee('120.00 TWD')
             ->assertSee('30.00 TWD')
-            ->assertSee('4.00x')
+            ->assertSee('6.00x')
             ->assertSee('資料不完整')
             ->assertSee('role="img"', false);
 
@@ -56,16 +56,56 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertSame('partial', $efficiency['status']);
         $this->assertFalse($rowsByDate->has('2026-10-31'));
         $this->assertSame('30.0000', $rowsByDate['2026-11-02']['ad_spend_amount']);
-        $this->assertSame(4.0, $rowsByDate['2026-11-02']['roas']);
+        $this->assertSame('20.0000', $rowsByDate['2026-11-02']['roas_spend_amount']);
+        $this->assertSame('TWD', $rowsByDate['2026-11-02']['roas_spend_currency']);
+        $this->assertSame('google_ads', $rowsByDate['2026-11-02']['roas_spend_source']);
+        $this->assertSame(6.0, $rowsByDate['2026-11-02']['roas']);
         $this->assertSame('5.0000', $rowsByDate['2026-11-03']['ad_spend_amount']);
+        $this->assertSame('5.0000', $rowsByDate['2026-11-03']['roas_spend_amount']);
         $this->assertSame(0.0, $rowsByDate['2026-11-03']['roas']);
         $this->assertNull($rowsByDate['2026-11-04']['ad_spend_amount']);
         $this->assertSame('50.0000', $rowsByDate['2026-11-04']['ga4_revenue']);
         $this->assertSame('missing_spend', $rowsByDate['2026-11-04']['roas_status']);
         $this->assertSame(['2026-11-02', '2026-11-03'], array_column($efficiency['trend_chart']['points'], 'date'));
+
+        $csvRows = $this->csvRows(
+            $this->get(route('social-engagement-targets.daily-marketing-performance', $target))
+                ->assertDownload('campaign-daily-marketing-performance-'.$target->id.'.csv')
+                ->streamedContent(),
+        );
+        $combinedRow = collect(array_slice($csvRows, 1))->first(
+            static fn (array $row): bool => ($row[0] ?? null) === '每日 GA4 ROAS' && ($row[1] ?? null) === '2026-11-02',
+        );
+        $this->assertIsArray($combinedRow);
+        $combinedFields = array_combine($csvRows[0], $combinedRow);
+        $this->assertSame('20.0000', $combinedFields['roas_spend_amount']);
+        $this->assertSame('TWD', $combinedFields['roas_spend_currency']);
+        $this->assertSame('google_ads', $combinedFields['roas_spend_source']);
     }
 
-    public function test_report_does_not_merge_daily_ad_spend_when_platform_currencies_differ(): void
+    public function test_report_uses_meta_spend_for_ga4_roas_without_a_google_ads_campaign(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget(['google_ads_campaign_id' => null]);
+        $this->createDailyReports($user, $target, [
+            'ga_rows' => [$this->gaRow('2026-11-02', '120.0000')],
+            'meta_rows' => [$this->metaRow('2026-11-02', '10.0000')],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('12.00x');
+        $dailyRow = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['rows'][0];
+
+        $this->assertSame('10.0000', $dailyRow['ad_spend_amount']);
+        $this->assertSame('10.0000', $dailyRow['roas_spend_amount']);
+        $this->assertSame('TWD', $dailyRow['roas_spend_currency']);
+        $this->assertSame('meta_marketing', $dailyRow['roas_spend_source']);
+        $this->assertSame(12.0, $dailyRow['roas']);
+    }
+
+    public function test_report_can_calculate_google_ads_roas_when_meta_currency_differs(): void
     {
         $user = User::factory()->create();
         $target = $this->createTarget();
@@ -73,6 +113,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'ga_rows' => [$this->gaRow('2026-11-02', '120.0000')],
             'meta_rows' => [$this->metaRow('2026-11-02', '10.0000')],
             'ads_rows' => [$this->adsRow('2026-11-02', '20.0000')],
+            'ga_currency' => 'USD',
             'ads_currency' => 'USD',
         ]);
 
@@ -81,15 +122,18 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             ->assertOk()
             ->assertSee('廣告平台幣別不同')
             ->assertSee('10.00 TWD')
-            ->assertSee('20.00 USD');
+            ->assertSee('20.00 USD')
+            ->assertSee('6.00x');
 
         $efficiency = $response->viewData('dailyMarketingPerformance')['combined_efficiency'];
         $dailyRow = $efficiency['rows'][0];
 
         $this->assertSame('currency_mismatch', $efficiency['status']);
         $this->assertNull($dailyRow['ad_spend_amount']);
-        $this->assertNull($dailyRow['roas']);
-        $this->assertSame('platform_currency_mismatch', $dailyRow['roas_status']);
+        $this->assertSame('20.0000', $dailyRow['roas_spend_amount']);
+        $this->assertSame('google_ads', $dailyRow['roas_spend_source']);
+        $this->assertSame(6.0, $dailyRow['roas']);
+        $this->assertSame('available', $dailyRow['roas_status']);
     }
 
     public function test_report_keeps_ad_spend_when_ga4_revenue_currency_does_not_match(): void
@@ -368,12 +412,13 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'property_id' => '123456789',
             'refresh_token' => 'ga-refresh-token',
         ]);
+        $attributionMode = $target->googleAnalyticsAttributionMode();
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $analyticsConnection->id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
-            'attribution_mode' => 'google_ads_auto_tagging',
-            'campaign_id' => $target->google_ads_campaign_id,
+            'attribution_mode' => $attributionMode,
+            'campaign_id' => $attributionMode === 'google_ads_auto_tagging' ? $target->google_ads_campaign_id : null,
             'source_name' => null,
             'medium_name' => null,
             'starts_on' => $startOn,
@@ -423,34 +468,36 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'synced_at' => now(),
         ]);
 
-        $adsConnection = GoogleAdsConnection::factory()->create([
-            'user_id' => $user->id,
-            'customer_id' => '1234567890',
-            'currency_code' => $options['ads_currency'] ?? 'TWD',
-        ]);
-        SocialEngagementTargetGoogleAdsReport::query()->create([
-            'google_ads_connection_id' => $adsConnection->id,
-            'social_engagement_target_id' => $target->id,
-            'customer_id' => $adsConnection->customer_id,
-            'campaign_id' => $target->google_ads_campaign_id,
-            'campaign_name' => 'Daily efficiency Google Ads campaign',
-            'starts_on' => $startOn,
-            'ends_on' => $endOn,
-            'spend_amount' => '20.0000',
-            'impressions' => 2000,
-            'clicks' => 100,
-            'conversions' => '10.0000',
-            'conversions_value' => '300.0000',
-            'currency_code' => $options['ads_currency'] ?? 'TWD',
-            'daily_metrics' => [
-                'status' => $options['ads_status'] ?? 'complete',
-                ...$requestedDates,
-                'coverage_start_on' => $options['ads_coverage_start_on'] ?? $startOn,
-                'coverage_end_on' => $options['ads_coverage_end_on'] ?? $endOn,
-                'rows' => $options['ads_rows'] ?? [],
-            ],
-            'synced_at' => now(),
-        ]);
+        if ($target->google_ads_campaign_id !== null) {
+            $adsConnection = GoogleAdsConnection::factory()->create([
+                'user_id' => $user->id,
+                'customer_id' => '1234567890',
+                'currency_code' => $options['ads_currency'] ?? 'TWD',
+            ]);
+            SocialEngagementTargetGoogleAdsReport::query()->create([
+                'google_ads_connection_id' => $adsConnection->id,
+                'social_engagement_target_id' => $target->id,
+                'customer_id' => $adsConnection->customer_id,
+                'campaign_id' => $target->google_ads_campaign_id,
+                'campaign_name' => 'Daily efficiency Google Ads campaign',
+                'starts_on' => $startOn,
+                'ends_on' => $endOn,
+                'spend_amount' => '20.0000',
+                'impressions' => 2000,
+                'clicks' => 100,
+                'conversions' => '10.0000',
+                'conversions_value' => '300.0000',
+                'currency_code' => $options['ads_currency'] ?? 'TWD',
+                'daily_metrics' => [
+                    'status' => $options['ads_status'] ?? 'complete',
+                    ...$requestedDates,
+                    'coverage_start_on' => $options['ads_coverage_start_on'] ?? $startOn,
+                    'coverage_end_on' => $options['ads_coverage_end_on'] ?? $endOn,
+                    'rows' => $options['ads_rows'] ?? [],
+                ],
+                'synced_at' => now(),
+            ]);
+        }
     }
 
     /** @return array<string, mixed> */
@@ -508,8 +555,8 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
                 $gaRows[] = $this->gaRow($date, $metrics['revenue']);
             }
 
-            $metaRows[] = $this->metaRow($date, $metrics['spend']);
-            $adsRows[] = $this->adsRow($date, '0.0000');
+            $metaRows[] = $this->metaRow($date, number_format((float) $metrics['spend'] * 2, 4, '.', ''));
+            $adsRows[] = $this->adsRow($date, $metrics['spend']);
         }
 
         return [

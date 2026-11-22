@@ -1133,7 +1133,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 0);
     }
 
-    public function test_google_ads_and_meta_spend_are_combined_when_currencies_match(): void
+    public function test_google_ads_ga4_roas_uses_google_ads_spend_when_meta_is_also_configured(): void
     {
         $user = User::factory()->create();
         $target = $this->createTarget(['meta_campaign_id' => '777777777']);
@@ -1169,12 +1169,20 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('350.7500 USD')
-            ->assertSee('Meta Ads + Google Ads');
+            ->assertSee('Meta Ads + Google Ads')
+            ->assertSee('GA4 營收 ROAS（Google Ads 花費）')
+            ->assertSee('分母 Google Ads 花費 250.75 USD');
 
         $analysis = $response->viewData('adSpendAnalysis');
         $this->assertSame('combined_paid_ads', $analysis['ad_spend_source']);
         $this->assertSame('350.7500', $analysis['ad_spend_amount']);
-        $this->assertSame(2.86, $analysis['roas']);
+        $this->assertSame('google_ads', $analysis['roas_spend_source']);
+        $this->assertSame('Google Ads 花費', $analysis['roas_spend_source_label']);
+        $this->assertSame('250.7500', $analysis['roas_spend_amount']);
+        $this->assertSame('USD', $analysis['roas_spend_currency']);
+        $this->assertSame(4.0, $analysis['roas']);
+        $this->assertSame(5.015, $analysis['cost_per_session']);
+        $this->assertSame(25.075, $analysis['cost_per_key_event']);
     }
 
     public function test_google_ads_and_meta_spend_are_not_combined_when_currencies_differ(): void
@@ -1212,13 +1220,18 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $response = $this->actingAs($user)
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
-            ->assertSee('Meta Ads 與 Google Ads 的花費幣別不同')
-            ->assertSee('多平台幣別不同');
+            ->assertSee('多平台幣別不同')
+            ->assertSee('GA4 營收 ROAS（Google Ads 花費）')
+            ->assertSee('5.0150 USD')
+            ->assertSee('25.0750 USD');
 
         $analysis = $response->viewData('adSpendAnalysis');
         $this->assertTrue($analysis['platform_currency_mismatch']);
         $this->assertNull($analysis['ad_spend_amount']);
-        $this->assertNull($analysis['roas']);
+        $this->assertSame('google_ads', $analysis['roas_spend_source']);
+        $this->assertSame('USD', $analysis['roas_spend_currency']);
+        $this->assertSame(4.0, $analysis['roas']);
+        $this->assertNull($analysis['roas_unavailable_reason']);
     }
 
     public function test_google_ads_campaign_id_is_saved_and_validated_by_the_target_form(): void

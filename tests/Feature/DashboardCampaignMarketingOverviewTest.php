@@ -40,7 +40,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertSee('120 工作階段')
             ->assertSee('900.00')
             ->assertSee('300.00 TWD')
-            ->assertSee('3.00x')
+            ->assertSee('4.50x')
             ->assertSee('30.0%');
 
         $marketing = $response->viewData('socialEngagementTargets')[0]['marketing'];
@@ -50,7 +50,10 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame('fresh', $marketing['google_ads']['status']);
         $this->assertSame(120, $marketing['google_analytics']['sessions']);
         $this->assertSame('300.0000', $marketing['efficiency']['ad_spend_amount']);
-        $this->assertSame(3.0, $marketing['efficiency']['roas']);
+        $this->assertSame('google_ads', $marketing['efficiency']['roas_spend_source']);
+        $this->assertSame('Google Ads 花費', $marketing['efficiency']['roas_spend_source_label']);
+        $this->assertSame('200.0000', $marketing['efficiency']['roas_spend_amount']);
+        $this->assertSame(4.5, $marketing['efficiency']['roas']);
         $this->assertSame(30.0, $marketing['efficiency']['budget_utilization_percent']);
     }
 
@@ -84,12 +87,15 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame('not_connected', $marketing['google_ads']['status']);
     }
 
-    public function test_dashboard_does_not_combine_spend_or_calculate_roas_across_currencies(): void
+    public function test_dashboard_keeps_total_spend_separate_and_calculates_roas_for_matching_currencies(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
         $user = User::factory()->create();
         $target = $this->createTarget();
-        $this->createGoogleAnalyticsReport($user, $target, ['total_revenue' => '900.0000']);
+        $this->createGoogleAnalyticsReport($user, $target, [
+            'total_revenue' => '900.0000',
+            'currency_code' => 'USD',
+        ]);
         $this->createMetaMarketingReport($user, $target, ['spend_amount' => '100.0000', 'currency_code' => 'TWD']);
         $this->createGoogleAdsReport($user, $target, ['spend_amount' => '200.0000', 'currency_code' => 'USD']);
 
@@ -97,14 +103,17 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('幣別不同，未合併')
-            ->assertSee('廣告幣別不同');
+            ->assertSee('分母：Google Ads 花費 200.00 USD')
+            ->assertSee('4.50x');
 
         $efficiency = $response->viewData('socialEngagementTargets')[0]['marketing']['efficiency'];
 
         $this->assertTrue($efficiency['platform_currency_mismatch']);
         $this->assertNull($efficiency['ad_spend_amount']);
-        $this->assertNull($efficiency['roas']);
-        $this->assertSame('ad_platform_currency_mismatch', $efficiency['roas_unavailable_reason']);
+        $this->assertSame('google_ads', $efficiency['roas_spend_source']);
+        $this->assertSame('Google Ads 花費', $efficiency['roas_spend_source_label']);
+        $this->assertSame(4.5, $efficiency['roas']);
+        $this->assertNull($efficiency['roas_unavailable_reason']);
     }
 
     public function test_dashboard_marks_unconfigured_ad_platforms_before_connection_status(): void

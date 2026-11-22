@@ -744,6 +744,7 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->actingAs($user)
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
+            ->assertSee('GA4 營收 ROAS（Google Ads 花費）')
             ->assertSee('Meta Ads 購買 ROAS')
             ->assertSee('9.00x')
             ->assertSee('Google Ads 轉換價值 ROAS')
@@ -792,10 +793,13 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('409.0909', $fields['budget_projected_spend_amount']);
         $this->assertSame('-90.9091', $fields['budget_projected_overrun_amount']);
         $this->assertSame('in_progress', $fields['budget_status']);
-        $this->assertSame('3.00', $fields['roas']);
+        $this->assertSame('4.50', $fields['roas']);
         $this->assertSame('可計算', $fields['roas_status']);
-        $this->assertSame('1.5000', $fields['cost_per_session']);
-        $this->assertSame('30.0000', $fields['cost_per_key_event']);
+        $this->assertSame('200.0000', $fields['roas_spend_amount']);
+        $this->assertSame('TWD', $fields['roas_spend_currency']);
+        $this->assertSame('google_ads', $fields['roas_spend_source']);
+        $this->assertSame('1.0000', $fields['cost_per_session']);
+        $this->assertSame('20.0000', $fields['cost_per_key_event']);
         $this->assertSame('2.4000', $fields['cost_per_public_interaction']);
         $this->assertSame('', $fields['cost_per_campaign_interaction_change']);
         $this->assertSame('[{"action_type":"link_click","value":"80.0000"}]', $fields['meta_actions_json']);

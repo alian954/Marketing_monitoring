@@ -947,7 +947,7 @@
                 <p class="campaign-report-secondary">
                     活動期間：{{ $dailyMarketingEfficiency['requested_start_on'] ?? '—' }} 至 {{ $dailyMarketingEfficiency['requested_end_on'] ?? '—' }}
                     · 更新於：{{ $dailyMarketingEfficiency['latest_synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
-                    · 花費只在已設定的廣告來源都有當日資料且幣別一致時合併；缺少日期不補零。
+                    · 合計花費只在已設定來源都有當日資料且幣別一致時合併；ROAS 分母使用 {{ $dailyMarketingEfficiency['roas_spend_source_label'] ?? 'GA4 歸因來源' }} 花費；缺少日期不補零。
                 </p>
                 <div class="campaign-report-section-header">
                     <h4>近 7 天與前 7 天</h4>
@@ -956,7 +956,7 @@
                 <p class="campaign-report-secondary">
                     近期：{{ $dailyMarketingPeriodComparison['current_period']['start_on'] ?? '—' }} 至 {{ $dailyMarketingPeriodComparison['current_period']['end_on'] ?? '—' }}
                     · 前期：{{ $dailyMarketingPeriodComparison['previous_period']['start_on'] ?? '—' }} 至 {{ $dailyMarketingPeriodComparison['previous_period']['end_on'] ?? '—' }}
-                    · 依最近已結束日（台灣時間）切成兩段；以期間營收總和除以花費總和計算 ROAS，兩期需有完整逐日資料且幣別一致。
+                    · ROAS 分母使用 {{ $dailyMarketingEfficiency['roas_spend_source_label'] ?? 'GA4 歸因來源' }} 花費；兩期都需有完整逐日資料且幣別一致。
                 </p>
                 <div class="data-table-wrap campaign-report-daily-period-comparison" role="region" aria-label="近七天與前七天成效比較" tabindex="0">
                     <table class="data-table campaign-report-table">
@@ -972,7 +972,7 @@
                         <tbody>
                             @foreach ([
                                 ['key' => 'revenue', 'label' => 'GA4 營收'],
-                                ['key' => 'spend', 'label' => '廣告花費'],
+                                ['key' => 'spend', 'label' => 'ROAS 對應花費'],
                                 ['key' => 'roas', 'label' => 'GA4 ROAS'],
                             ] as $periodMetric)
                                 @php
@@ -1037,7 +1037,7 @@
                         >
                             <title id="campaign-report-daily-efficiency-chart-title">每日 GA4 同日 ROAS 趨勢</title>
                             <desc id="campaign-report-daily-efficiency-chart-description">
-                                {{ $dailyMarketingEfficiency['requested_start_on'] ?? '—' }} 至 {{ $dailyMarketingEfficiency['requested_end_on'] ?? '—' }}；只繪製有完整花費與同幣別 GA4 營收的日期，缺少資料的日期不補零，精確值見下方表格。
+                                {{ $dailyMarketingEfficiency['requested_start_on'] ?? '—' }} 至 {{ $dailyMarketingEfficiency['requested_end_on'] ?? '—' }}；ROAS 使用 {{ $dailyMarketingEfficiency['roas_spend_source_label'] ?? 'GA4 歸因來源' }} 花費；只繪製花費與 GA4 營收完整且幣別相同的日期，缺少資料不補零。
                             </desc>
                             <line class="metric-trend-grid-line" x1="48" x2="576" y1="24" y2="24" />
                             <line class="metric-trend-grid-line" x1="48" x2="576" y1="89" y2="89" />
@@ -1071,7 +1071,7 @@
                 @endif
                 <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-daily-efficiency-title" tabindex="0">
                     <table class="data-table campaign-report-table">
-                        <caption class="sr-only">每日 GA4 營收、Meta Ads 與 Google Ads 花費、同幣別合計花費及 ROAS</caption>
+                        <caption class="sr-only">每日 GA4 營收、Meta Ads 與 Google Ads 花費、同幣別合計花費、ROAS 對應花費及 ROAS</caption>
                         <thead>
                             <tr>
                                 <th scope="col">日期</th>
@@ -1079,6 +1079,7 @@
                                 <th scope="col" class="numeric">Meta Ads 花費</th>
                                 <th scope="col" class="numeric">Google Ads 花費</th>
                                 <th scope="col" class="numeric">合計花費</th>
+                                <th scope="col" class="numeric">ROAS 對應花費</th>
                                 <th scope="col" class="numeric">GA4 ROAS</th>
                             </tr>
                         </thead>
@@ -1109,12 +1110,15 @@
                                         @endif
                                     </td>
                                     <td class="numeric">
+                                        {{ $dailyEfficiencyRow['roas_spend_amount'] === null ? $dailyEfficiencyRow['roas_status_label'] : number_format((float) $dailyEfficiencyRow['roas_spend_amount'], 2).' '.($dailyEfficiencyRow['roas_spend_currency'] ?? '未提供幣別') }}
+                                    </td>
+                                    <td class="numeric">
                                         {{ $dailyEfficiencyRow['roas'] === null ? $dailyEfficiencyRow['roas_status_label'] : number_format($dailyEfficiencyRow['roas'], 2).'x' }}
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="campaign-report-empty-cell">尚未取得可對齊的逐日資料。</td>
+                                    <td colspan="7" class="campaign-report-empty-cell">尚未取得可對齊的逐日資料。</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -1137,13 +1141,20 @@
                     </dd>
                 </div>
                 <div>
-                    <dt>GA4 營收 ROAS</dt>
-                    <dd>{{ $adSpendAnalysis['roas'] === null ? '—' : number_format($adSpendAnalysis['roas'], 2).'x' }}</dd>
+                    <dt>GA4 營收 ROAS（{{ $adSpendAnalysis['roas_spend_source_label'] ?? '無配對花費' }}）</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['roas'] === null ? '—' : number_format($adSpendAnalysis['roas'], 2).'x' }}
+                        @if ($adSpendAnalysis['roas_spend_amount'] !== null)
+                            <span class="campaign-report-secondary">
+                                分母 {{ $adSpendAnalysis['roas_spend_source_label'] }} {{ number_format((float) $adSpendAnalysis['roas_spend_amount'], 2) }} {{ $adSpendAnalysis['roas_spend_currency'] ?? '未提供幣別' }}
+                            </span>
+                        @endif
+                    </dd>
                 </div>
                 <div>
                     <dt>每工作階段成本</dt>
                     <dd>
-                        {{ $adSpendAnalysis['cost_per_session'] === null ? '—' : number_format($adSpendAnalysis['cost_per_session'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                        {{ $adSpendAnalysis['cost_per_session'] === null ? '—' : number_format($adSpendAnalysis['cost_per_session'], 4).' '.$adSpendAnalysis['roas_spend_currency'] }}
                     </dd>
                 </div>
                 <div>
@@ -1158,7 +1169,7 @@
                 <div>
                     <dt>每重要事件成本</dt>
                     <dd>
-                        {{ $adSpendAnalysis['cost_per_key_event'] === null ? '—' : number_format($adSpendAnalysis['cost_per_key_event'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                        {{ $adSpendAnalysis['cost_per_key_event'] === null ? '—' : number_format($adSpendAnalysis['cost_per_key_event'], 4).' '.$adSpendAnalysis['roas_spend_currency'] }}
                     </dd>
                 </div>
                 <div>
@@ -1193,7 +1204,7 @@
                     } }}
                 </p>
             @endif
-            <p class="campaign-report-secondary">ROAS 為同幣別 GA4 活動營收除以投放花費，不扣除商品成本；Meta Ads 與 Google Ads 讀值會合併，同幣別才計入總花費，尚無 API 讀值時使用人工記錄花費。</p>
+            <p class="campaign-report-secondary">GA4 ROAS 與每工作階段／重要事件成本使用符合 GA4 歸因的單一來源花費：Google Ads 自動標記時採 Google Ads，否則採 Meta Ads 或人工記錄。投放總花費仍會合併同幣別的 Meta Ads 與 Google Ads；ROAS 不扣除商品成本。</p>
 
             <section class="spaced-top" aria-labelledby="campaign-budget-pacing-title">
                 <h3 id="campaign-budget-pacing-title">活動預算進度</h3>

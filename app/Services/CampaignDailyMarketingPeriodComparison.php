@@ -30,7 +30,12 @@ class CampaignDailyMarketingPeriodComparison
             return $this->comparison('missing_period', $emptyPeriod, $emptyPeriod);
         }
 
-        if ($target->meta_campaign_id === null && $target->google_ads_campaign_id === null) {
+        $metaIsConfigured = is_string($target->meta_campaign_id)
+            && trim($target->meta_campaign_id) !== '';
+        $googleAdsIsConfigured = is_string($target->google_ads_campaign_id)
+            && trim($target->google_ads_campaign_id) !== '';
+
+        if (! $metaIsConfigured && ! $googleAdsIsConfigured) {
             return $this->comparison('not_configured', $emptyPeriod, $emptyPeriod);
         }
 
@@ -114,17 +119,16 @@ class CampaignDailyMarketingPeriodComparison
                 return $this->emptyPeriod($startOn, $endOn, 'partial');
             }
 
-            if (($row['spend_status'] ?? null) === 'currency_mismatch'
-                || in_array($row['roas_status'] ?? null, ['currency_mismatch', 'platform_currency_mismatch'], true)) {
+            if (($row['roas_status'] ?? null) === 'currency_mismatch') {
                 return $this->emptyPeriod($startOn, $endOn, 'currency_mismatch');
             }
 
-            $spend = $this->nonNegativeMetric($row['ad_spend_amount'] ?? null);
+            $spend = $this->nonNegativeMetric($row['roas_spend_amount'] ?? null);
             $revenue = $this->nonNegativeMetric($row['ga4_revenue'] ?? null);
-            $spendCurrency = $this->currencyCode($row['ad_spend_currency'] ?? null);
+            $spendCurrency = $this->currencyCode($row['roas_spend_currency'] ?? null);
             $revenueCurrency = $this->currencyCode($row['ga4_currency_code'] ?? null);
 
-            if (($row['spend_status'] ?? null) !== 'available'
+            if (! in_array($row['roas_status'] ?? null, ['available', 'zero_spend'], true)
                 || $spend === null
                 || $revenue === null
                 || $spendCurrency === null

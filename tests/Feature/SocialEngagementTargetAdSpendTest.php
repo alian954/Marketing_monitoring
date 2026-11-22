@@ -297,7 +297,7 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             ->assertSee('活動預算進度')
             ->assertSee('依目前進度推估總花費')
             ->assertSee('20.00%')
-            ->assertSee('ROAS 為同幣別 GA4 活動營收除以投放花費');
+            ->assertSee('GA4 ROAS 與每工作階段／重要事件成本使用符合 GA4 歸因的單一來源花費');
 
         $analysis = $response->viewData('adSpendAnalysis');
         $this->assertSame(6.5, $analysis['roas']);
