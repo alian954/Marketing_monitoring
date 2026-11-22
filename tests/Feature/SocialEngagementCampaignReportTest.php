@@ -745,7 +745,18 @@ class SocialEngagementCampaignReportTest extends TestCase
         for ($rank = 1; $rank <= 12; $rank++) {
             $postName = sprintf('排行貼文 %02d', $rank);
             $monitor = $this->createSocialMonitor('facebook', sprintf('RANK%03d', $rank), 'Ranking campaign', $postName);
-            $this->createMetricRun($monitor, ['likes' => $rank, 'comments' => 0, 'shares' => 0]);
+            $metrics = ['likes' => $rank, 'comments' => 0, 'shares' => 0];
+
+            if ($rank === 12) {
+                $metrics['metric_sources'] = [
+                    'views' => 'json_ld',
+                    'likes' => 'embedded_json',
+                    'comments' => 'meta',
+                    'shares' => 'rendered_dom',
+                ];
+            }
+
+            $this->createMetricRun($monitor, $metrics);
         }
 
         $this->actingAs(User::factory()->create())
@@ -753,6 +764,10 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertOk()
             ->assertSee('排行貼文 12')
             ->assertSee('排行貼文 03')
+            ->assertSee('來源：JSON-LD')
+            ->assertSee('來源：內嵌 JSON')
+            ->assertSee('來源：Meta 標籤')
+            ->assertSee('來源：瀏覽器呈現')
             ->assertDontSee('排行貼文 02');
     }
 
@@ -928,7 +943,7 @@ class SocialEngagementCampaignReportTest extends TestCase
         return $rows;
     }
 
-    /** @param array<string, int|null> $metrics */
+    /** @param array<string, mixed> $metrics */
     private function createMetricRun(
         Monitor $monitor,
         array $metrics,

@@ -151,7 +151,7 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">社群貼文最近一次可讀取的公開互動數與觀看互動率</caption>
+                    <caption class="sr-only">社群貼文最近一次可讀取的公開互動數、各數值擷取來源與觀看互動率</caption>
                     <thead>
                         <tr>
                             <th scope="col">貼文</th>
@@ -167,6 +167,14 @@
                         </tr>
                     </thead>
                     <tbody>
+                        @php
+                            $metricSourceLabels = [
+                                'json_ld' => 'JSON-LD',
+                                'embedded_json' => '內嵌 JSON',
+                                'meta' => 'Meta 標籤',
+                                'rendered_dom' => '瀏覽器呈現',
+                            ];
+                        @endphp
                         @foreach ($socialEngagementMonitors as $socialEngagementMonitor)
                             @php
                                 $engagementRun = $socialEngagementMonitor->latestPublicEngagementCheckRun;
@@ -174,13 +182,22 @@
                                     $engagementRun = null;
                                 }
                                 $engagementMetrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                                $metricSources = is_array($engagementMetrics['metric_sources'] ?? null) ? $engagementMetrics['metric_sources'] : [];
                             @endphp
                             <tr>
                                 <th scope="row"><a href="{{ route('monitors.show', $socialEngagementMonitor) }}">{{ $socialEngagementMonitor->name }}</a></th>
                                 <td>{{ $socialEngagementMonitor->socialPlatform() }}</td>
                                 <td>{{ $socialEngagementMonitor->getAttribute('social_engagement_capture_status') }}</td>
                                 @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
-                                    <td class="numeric">{{ isset($engagementMetrics[$metric]) ? number_format((int) $engagementMetrics[$metric]) : '—' }}</td>
+                                    @php
+                                        $metricSource = is_string($metricSources[$metric] ?? null) ? $metricSources[$metric] : null;
+                                    @endphp
+                                    <td class="numeric">
+                                        {{ isset($engagementMetrics[$metric]) ? number_format((int) $engagementMetrics[$metric]) : '—' }}
+                                        @if (is_string($metricSource) && isset($metricSourceLabels[$metricSource]))
+                                            <span class="secondary-text">來源：{{ $metricSourceLabels[$metricSource] }}</span>
+                                        @endif
+                                    </td>
                                 @endforeach
                                 <td class="numeric">
                                     {{ $socialEngagementMonitor->getAttribute('social_engagement_interaction_total') !== null ? number_format((int) $socialEngagementMonitor->getAttribute('social_engagement_interaction_total')) : '—' }}

@@ -49,12 +49,13 @@ class SocialEngagementMetricExtractor
     ];
 
     /**
-     * @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string}|null
+     * @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string, metric_sources: array{views: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, likes: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, comments: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, shares: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null}}|null
      */
     public static function extract(DOMDocument $document, ?string $responseUrl = null): ?array
     {
         $canonicalUrl = self::canonicalUrl($document) ?? $responseUrl;
         $metrics = self::emptyMetrics();
+        $metricSources = self::emptyMetricSources();
         $sources = [];
         $metaMetrics = self::extractMetaMetrics($document);
         $schemaMetrics = self::extractSchemaMetrics($document, $responseUrl, $canonicalUrl);
@@ -68,6 +69,7 @@ class SocialEngagementMetricExtractor
             foreach (self::METRIC_KEYS as $metric) {
                 if ($metrics[$metric] === null && $candidate['metrics'][$metric] !== null) {
                     $metrics[$metric] = $candidate['metrics'][$metric];
+                    $metricSources[$metric] = $candidate['source'];
                     $sources[$candidate['source']] = true;
                 }
             }
@@ -77,7 +79,10 @@ class SocialEngagementMetricExtractor
             return null;
         }
 
-        return $metrics + ['source' => implode('+', array_keys($sources))];
+        return $metrics + [
+            'source' => implode('+', array_keys($sources)),
+            'metric_sources' => $metricSources,
+        ];
     }
 
     /** @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int} */
@@ -689,6 +694,12 @@ class SocialEngagementMetricExtractor
 
     /** @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int} */
     private static function emptyMetrics(): array
+    {
+        return ['views' => null, 'likes' => null, 'comments' => null, 'shares' => null];
+    }
+
+    /** @return array{views: 'json_ld'|'embedded_json'|'meta'|null, likes: 'json_ld'|'embedded_json'|'meta'|null, comments: 'json_ld'|'embedded_json'|'meta'|null, shares: 'json_ld'|'embedded_json'|'meta'|null} */
+    private static function emptyMetricSources(): array
     {
         return ['views' => null, 'likes' => null, 'comments' => null, 'shares' => null];
     }

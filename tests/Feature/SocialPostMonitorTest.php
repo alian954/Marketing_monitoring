@@ -843,6 +843,12 @@ class SocialPostMonitorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ], $savedRun->response_public_engagement_metrics);
         $this->assertTrue($savedRun->expectedTextMatchResult());
     }
@@ -898,8 +904,75 @@ class SocialPostMonitorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'embedded_json',
+                'comments' => 'embedded_json',
+                'shares' => null,
+            ],
         ], $result->publicEngagementMetrics);
         $this->assertSame(0, $renderer->calls);
+    }
+
+    public function test_probe_result_preserves_mixed_public_metric_sources(): void
+    {
+        $url = 'https://www.instagram.com/p/POST123/';
+        $transport = new class implements ProbeTransport
+        {
+            public function get(array $target, string $userAgent, int $timeoutMs): HopResponse
+            {
+                return new HopResponse(
+                    200,
+                    null,
+                    <<<'HTML'
+                        <html><head>
+                            <meta property="og:comments" content="19">
+                            <meta property="og:shares" content="7">
+                            <script type="application/ld+json">
+                                {"@type":"VideoObject","url":"https://www.instagram.com/p/POST123/","interactionStatistic":[
+                                    {"@type":"InteractionCounter","interactionType":{"@type":"WatchAction"},"userInteractionCount":5320}
+                                ]}
+                            </script>
+                            <script type="application/json">
+                                {"media":{"code":"POST123","like_count":184}}
+                            </script>
+                        </head><body><main>Public post</main></body></html>
+                        HTML,
+                    40,
+                    null,
+                    null,
+                    null,
+                    responseHeaders: ['content-type' => ['text/html; charset=UTF-8']],
+                );
+            }
+        };
+        $probe = new SecureProbeClient(app(UrlSafetyPolicy::class), $transport, new UrlMasker);
+
+        $result = $probe->inspect(
+            $url,
+            [],
+            'MarketingMonitor/1.0 (+authorized landing page check)',
+            null,
+            10,
+            'present',
+            [],
+            null,
+            'instagram',
+        );
+
+        $this->assertSame([
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => 7,
+            'source' => 'json_ld+embedded_json+meta',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'embedded_json',
+                'comments' => 'meta',
+                'shares' => 'meta',
+            ],
+        ], $result->publicEngagementMetrics);
     }
 
     public function test_dcard_cloudflare_interstitial_with_http_success_is_indeterminate_without_browser_retry(): void
@@ -1015,6 +1088,12 @@ class SocialPostMonitorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ], $result->publicEngagementMetrics);
         $this->assertSame(1, $renderer->calls);
     }
@@ -1080,6 +1159,12 @@ class SocialPostMonitorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ], $result->publicEngagementMetrics);
         $this->assertSame(1, $renderer->calls);
     }

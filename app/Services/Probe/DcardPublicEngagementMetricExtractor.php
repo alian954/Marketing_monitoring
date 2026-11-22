@@ -5,7 +5,7 @@ namespace App\Services\Probe;
 class DcardPublicEngagementMetricExtractor
 {
     /**
-     * @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string}|null
+     * @return array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string, metric_sources: array{views: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, likes: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, comments: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, shares: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null}}|null
      */
     public static function extract(string $visibleText): ?array
     {
@@ -67,6 +67,12 @@ class DcardPublicEngagementMetricExtractor
             'comments' => $countBlocks[0][1],
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ];
     }
 

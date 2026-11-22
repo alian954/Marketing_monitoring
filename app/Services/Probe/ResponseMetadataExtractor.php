@@ -39,7 +39,7 @@ class ResponseMetadataExtractor
      *     metadata: array{title: ?string, description: ?string, image_reference_hash: ?string, open_graph_type: ?string, canonical_reference_hash: ?string, published_at: ?DateTimeImmutable, modified_at: ?DateTimeImmutable},
      *     visible_text_hash: ?string,
      *     robots_directives: array{meta: array<string, list<string>>|null, meta_complete: ?bool, x_robots_tag: array<string, list<string>>},
-     *     public_engagement_metrics: array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string}|null
+     *     public_engagement_metrics: array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string, metric_sources: array{views: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, likes: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, comments: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null, shares: 'json_ld'|'embedded_json'|'meta'|'rendered_dom'|null}}|null
      * }
      */
     public static function inspect(string $html, ?string $responseUrl = null, array $responseHeaders = [], bool $bodyComplete = true): array

@@ -1248,6 +1248,10 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_views_source',
+                'public_likes_source',
+                'public_comments_source',
+                'public_shares_source',
                 'public_metrics_source',
                 'response_image_reference_present',
                 'response_og_type',
@@ -1303,6 +1307,7 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($publicMetrics[$metric]) ? (string) $publicMetrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        ...$this->publicMetricSourceValues($publicMetrics),
                         (string) ($publicMetrics['source'] ?? ''),
                         $run->response_image_reference_hash === null ? '0' : '1',
                         (string) $run->response_open_graph_type,
@@ -1339,6 +1344,10 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_views_source',
+                'public_likes_source',
+                'public_comments_source',
+                'public_shares_source',
                 'public_interaction_total',
                 'interaction_metric_scope',
                 'public_engagement_rate_percent',
@@ -1394,6 +1403,7 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        ...$this->publicMetricSourceValues($metrics),
                         $interactionTotal === null ? '' : (string) $interactionTotal,
                         implode('+', Monitor::publicEngagementInteractionMetricKeys($monitor->social_platform)),
                         $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
@@ -1448,6 +1458,10 @@ class MonitorController extends Controller
                 'public_likes',
                 'public_comments',
                 'public_shares',
+                'public_views_source',
+                'public_likes_source',
+                'public_comments_source',
+                'public_shares_source',
                 'public_interaction_total',
                 'interaction_metric_scope',
                 'public_engagement_rate_percent',
@@ -1501,6 +1515,7 @@ class MonitorController extends Controller
                             static fn (string $metric): string => isset($metrics[$metric]) ? (string) $metrics[$metric] : '',
                             ['views', 'likes', 'comments', 'shares'],
                         ),
+                        ...$this->publicMetricSourceValues($metrics),
                         $interactionTotal === null ? '' : (string) $interactionTotal,
                         implode('+', Monitor::publicEngagementInteractionMetricKeys($monitor->social_platform)),
                         $engagementRate === null ? '' : number_format($engagementRate, 2, '.', ''),
@@ -2730,6 +2745,20 @@ class MonitorController extends Controller
             ->where('status', 'queued')
             ->update(['status' => 'paused', 'finished_at' => now(), 'updated_at' => now()]);
         $incidents->pauseMonitor($monitor);
+    }
+
+    /**
+     * @param  array<string, mixed>  $metrics
+     * @return array{0: string, 1: string, 2: string, 3: string}
+     */
+    private function publicMetricSourceValues(array $metrics): array
+    {
+        $sources = is_array($metrics['metric_sources'] ?? null) ? $metrics['metric_sources'] : [];
+
+        return array_map(
+            static fn (string $metric): string => is_string($sources[$metric] ?? null) ? $sources[$metric] : '',
+            ['views', 'likes', 'comments', 'shares'],
+        );
     }
 
     private function resumeMonitorChecks(Monitor $monitor): void

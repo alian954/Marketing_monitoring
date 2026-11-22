@@ -474,11 +474,20 @@
             @else
                 @php
                     $latestPublicEngagementRow = $publicEngagementRows->last();
+                        $latestMetricSources = is_array($latestPublicEngagementRow['metrics']['metric_sources'] ?? null)
+                            ? $latestPublicEngagementRow['metrics']['metric_sources']
+                            : [];
                     $publicEngagementLabels = [
                         'views' => '觀看',
                         'likes' => '讚',
                         'comments' => '留言',
                         'shares' => '分享',
+                    ];
+                    $publicMetricSourceLabels = [
+                        'json_ld' => 'JSON-LD',
+                        'embedded_json' => '內嵌 JSON',
+                        'meta' => 'Meta 標籤',
+                        'rendered_dom' => '瀏覽器呈現',
                     ];
                 @endphp
                 <div class="panel-body">
@@ -489,10 +498,15 @@
                                 $metricChange = $latestPublicEngagementRow['changes'][$metric] ?? null;
                                 $metricChangePercentage = $latestPublicEngagementRow['change_percentages'][$metric] ?? null;
                                 $previousValueWasZero = $latestPublicEngagementRow['previous_values_were_zero'][$metric] ?? false;
+                                $metricSource = is_string($latestMetricSources[$metric] ?? null) ? $latestMetricSources[$metric] : null;
+                                $metricSourceLabel = is_string($metricSource) ? ($publicMetricSourceLabels[$metricSource] ?? null) : null;
                             @endphp
                             <article class="stat-card">
                                 <div class="stat-topline"><span class="stat-label">{{ $label }}</span></div>
                                 <strong class="stat-value">{{ $metricValue === null ? '未提供' : number_format((int) $metricValue) }}</strong>
+                                @if ($metricSourceLabel !== null)
+                                    <p class="stat-hint">來源：{{ $metricSourceLabel }}</p>
+                                @endif
                                 <p class="stat-hint">
                                     @if ($metricChange === null)
                                         {{ $metricValue === null ? '本次未提供數值，無法比較' : '尚無前次數值可比較' }}
@@ -565,7 +579,7 @@
                 </div>
                 <div class="data-table-wrap" role="region" aria-labelledby="public-engagement-history-title" tabindex="0">
                     <table class="data-table">
-                        <caption class="sr-only">{{ $monitor->name }}近 {{ $publicEngagementHistoryPeriodDays }} 天公開互動數歷史</caption>
+                        <caption class="sr-only">{{ $monitor->name }}近 {{ $publicEngagementHistoryPeriodDays }} 天公開互動數與各指標擷取來源</caption>
                         <thead>
                             <tr>
                                 <th scope="col">檢查時間</th>
@@ -576,10 +590,24 @@
                         </thead>
                         <tbody>
                             @foreach ($publicEngagementRows as $engagementRow)
+                                @php
+                                    $rowMetricSources = is_array($engagementRow['metrics']['metric_sources'] ?? null)
+                                        ? $engagementRow['metrics']['metric_sources']
+                                        : [];
+                                @endphp
                                 <tr>
                                     <td><time class="timestamp" datetime="{{ $engagementRow['run']->finished_at->toIso8601String() }}">{{ $engagementRow['run']->finished_at->timezone('Asia/Taipei')->format('Y/n/j H:i:s') }}</time></td>
                                     @foreach (array_keys($publicEngagementLabels) as $metric)
-                                        <td class="numeric">{{ ($engagementRow['metrics'][$metric] ?? null) === null ? '—' : number_format((int) $engagementRow['metrics'][$metric]) }}</td>
+                                        @php
+                                            $metricSource = is_string($rowMetricSources[$metric] ?? null) ? $rowMetricSources[$metric] : null;
+                                            $metricSourceLabel = is_string($metricSource) ? ($publicMetricSourceLabels[$metricSource] ?? null) : null;
+                                        @endphp
+                                        <td class="numeric">
+                                            {{ ($engagementRow['metrics'][$metric] ?? null) === null ? '—' : number_format((int) $engagementRow['metrics'][$metric]) }}
+                                            @if ($metricSourceLabel !== null)
+                                                <span class="secondary-text">來源：{{ $metricSourceLabel }}</span>
+                                            @endif
+                                        </td>
                                     @endforeach
                                 </tr>
                             @endforeach

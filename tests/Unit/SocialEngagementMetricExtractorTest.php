@@ -33,6 +33,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ], DcardPublicEngagementMetricExtractor::extract($visibleText));
     }
 
@@ -51,6 +57,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'rendered_dom',
+                'comments' => 'rendered_dom',
+                'shares' => null,
+            ],
         ], DcardPublicEngagementMetricExtractor::extract("貼文內容\n1,200 3\n全部留言\n留言內容"));
     }
 
@@ -78,6 +90,46 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 19,
             'shares' => 7,
             'source' => 'json_ld',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'json_ld',
+                'comments' => 'json_ld',
+                'shares' => 'json_ld',
+            ],
+        ], $result);
+    }
+
+    public function test_it_tracks_each_metric_source_when_public_sources_are_mixed(): void
+    {
+        $html = <<<'HTML'
+            <html><head>
+                <meta property="og:comments" content="19">
+                <meta property="og:shares" content="7">
+                <script type="application/ld+json">
+                    {"@type":"VideoObject","url":"https://www.instagram.com/p/POST123/","interactionStatistic":[
+                        {"@type":"InteractionCounter","interactionType":{"@type":"WatchAction"},"userInteractionCount":5320}
+                    ]}
+                </script>
+                <script type="application/json">
+                    {"media":{"code":"POST123","like_count":184}}
+                </script>
+            </head><body></body></html>
+            HTML;
+
+        $result = ResponseMetadataExtractor::inspect($html, 'https://www.instagram.com/p/POST123/')['public_engagement_metrics'];
+
+        $this->assertSame([
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => 7,
+            'source' => 'json_ld+embedded_json+meta',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'embedded_json',
+                'comments' => 'meta',
+                'shares' => 'meta',
+            ],
         ], $result);
     }
 
@@ -100,6 +152,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 19,
             'shares' => 7,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => 'embedded_json',
+                'likes' => 'embedded_json',
+                'comments' => 'embedded_json',
+                'shares' => 'embedded_json',
+            ],
         ], $result);
     }
 
@@ -122,6 +180,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => null,
             'shares' => null,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'embedded_json',
+                'comments' => null,
+                'shares' => null,
+            ],
         ], $result['public_engagement_metrics']);
         $this->assertSame(hash('sha256', 'Public post'), $result['visible_text_hash']);
     }
@@ -141,6 +205,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 19,
             'shares' => null,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => 'embedded_json',
+                'likes' => 'embedded_json',
+                'comments' => 'embedded_json',
+                'shares' => null,
+            ],
         ], $result);
     }
 
@@ -161,6 +231,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => null,
             'shares' => null,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'embedded_json',
+                'comments' => null,
+                'shares' => null,
+            ],
         ], $result);
     }
 
@@ -188,6 +264,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 9,
             'shares' => 4,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => 'embedded_json',
+                'comments' => 'embedded_json',
+                'shares' => 'embedded_json',
+            ],
         ], $result);
     }
 
@@ -206,6 +288,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 2,
             'shares' => 0,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => null,
+                'likes' => null,
+                'comments' => 'embedded_json',
+                'shares' => 'embedded_json',
+            ],
         ], $result);
     }
 
@@ -228,6 +316,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => 19,
             'shares' => 7,
             'source' => 'embedded_json',
+            'metric_sources' => [
+                'views' => 'embedded_json',
+                'likes' => 'embedded_json',
+                'comments' => 'embedded_json',
+                'shares' => 'embedded_json',
+            ],
         ], $result);
     }
 
@@ -264,6 +358,12 @@ class SocialEngagementMetricExtractorTest extends TestCase
             'comments' => null,
             'shares' => null,
             'source' => 'meta',
+            'metric_sources' => [
+                'views' => 'meta',
+                'likes' => 'meta',
+                'comments' => null,
+                'shares' => null,
+            ],
         ], $result);
     }
 

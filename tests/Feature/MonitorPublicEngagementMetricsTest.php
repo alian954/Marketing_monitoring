@@ -60,7 +60,19 @@ class MonitorPublicEngagementMetricsTest extends TestCase
     {
         $monitor = $this->createSocialMonitor();
         $this->createMetricRun($monitor, now()->subHour(), ['views' => 4800, 'likes' => 160, 'comments' => 13, 'shares' => 4, 'source' => 'json_ld']);
-        $this->createMetricRun($monitor, now(), ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), [
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => 7,
+            'source' => 'json_ld+embedded_json+meta',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'embedded_json',
+                'comments' => 'meta',
+                'shares' => 'rendered_dom',
+            ],
+        ]);
 
         $this->actingAs(User::factory()->create())
             ->get(route('monitors.show', $monitor))
@@ -71,6 +83,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('5,320')
             ->assertSee('+520')
             ->assertSee('10.83%')
+            ->assertSee('來源：JSON-LD')
+            ->assertSee('來源：內嵌 JSON')
+            ->assertSee('來源：Meta 標籤')
+            ->assertSee('來源：瀏覽器呈現')
             ->assertSee('較前次 +520（+10.83%）')
             ->assertSee('較前次 +24（+15.00%）')
             ->assertSee('4,800');
@@ -232,7 +248,19 @@ class MonitorPublicEngagementMetricsTest extends TestCase
     public function test_dashboard_shows_the_latest_public_interaction_snapshot(): void
     {
         $monitor = $this->createSocialMonitor();
-        $this->createMetricRun($monitor, now(), ['views' => 5320, 'likes' => 184, 'comments' => 19, 'shares' => 7, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), [
+            'views' => 5320,
+            'likes' => 184,
+            'comments' => 19,
+            'shares' => 7,
+            'source' => 'json_ld+meta',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'meta',
+                'comments' => 'embedded_json',
+                'shares' => 'rendered_dom',
+            ],
+        ]);
 
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
@@ -243,6 +271,10 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('184')
             ->assertSee('19')
             ->assertSee('7')
+            ->assertSee('來源：JSON-LD')
+            ->assertSee('來源：Meta 標籤')
+            ->assertSee('來源：內嵌 JSON')
+            ->assertSee('來源：瀏覽器呈現')
             ->assertSee('203')
             ->assertSee('3.82%');
 
@@ -1109,7 +1141,19 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($websiteUrl),
         ]);
         $this->createMetricRun($monitor, now()->subHour(), ['views' => 900, 'likes' => 90, 'comments' => 9, 'shares' => 3, 'source' => 'json_ld']);
-        $this->createMetricRun($monitor, now(), ['views' => 0, 'likes' => null, 'comments' => 5, 'shares' => 1, 'source' => 'json_ld']);
+        $this->createMetricRun($monitor, now(), [
+            'views' => 0,
+            'likes' => null,
+            'comments' => 5,
+            'shares' => 1,
+            'source' => 'json_ld+meta',
+            'metric_sources' => [
+                'views' => 'json_ld',
+                'likes' => 'meta',
+                'comments' => 'embedded_json',
+                'shares' => 'rendered_dom',
+            ],
+        ]);
         $this->createMetricRun($monitorWithRate, now(), ['views' => 10, 'likes' => 1, 'comments' => 2, 'shares' => 3, 'source' => 'json_ld']);
 
         $this->get(route('monitors.social-engagement.export'))->assertRedirect(route('login'));
@@ -1129,8 +1173,12 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame('', $rows[0]['public_likes']);
         $this->assertSame('5', $rows[0]['public_comments']);
         $this->assertSame('1', $rows[0]['public_shares']);
+        $this->assertSame('json_ld', $rows[0]['public_views_source']);
+        $this->assertSame('meta', $rows[0]['public_likes_source']);
+        $this->assertSame('embedded_json', $rows[0]['public_comments_source']);
+        $this->assertSame('rendered_dom', $rows[0]['public_shares_source']);
         $this->assertSame('', $rows[0]['public_engagement_rate_percent']);
-        $this->assertSame('json_ld', $rows[0]['metrics_source']);
+        $this->assertSame('json_ld+meta', $rows[0]['metrics_source']);
         $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
         $this->assertSame('current', $rows[0]['metrics_capture_status']);
         $this->assertSame('200', $rows[0]['latest_check_http_status']);
@@ -1138,6 +1186,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame(now()->utc()->toIso8601String(), $rows[0]['latest_check_finished_at_utc']);
         $this->assertSame($monitorWithoutMetrics->name, $rows[1]['monitor_name']);
         $this->assertSame('', $rows[1]['public_views']);
+        $this->assertSame('', $rows[1]['public_views_source']);
         $this->assertSame('', $rows[1]['public_engagement_rate_percent']);
         $this->assertSame('', $rows[1]['collected_at_utc']);
         $this->assertSame('unavailable', $rows[1]['metrics_capture_status']);
@@ -1155,6 +1204,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             'comments' => 3,
             'shares' => null,
             'source' => 'rendered_dom',
+            'metric_sources' => ['likes' => 'rendered_dom'],
         ]);
         CheckRun::factory()->for($monitor)->create([
             'config_version' => $monitor->config_version,
@@ -1176,6 +1226,8 @@ class MonitorPublicEngagementMetricsTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('20', $rows[0]['public_likes']);
+        $this->assertSame('rendered_dom', $rows[0]['public_likes_source']);
+        $this->assertSame('', $rows[0]['public_comments_source']);
         $this->assertSame(now()->subHours(6)->utc()->toIso8601String(), $rows[0]['collected_at_utc']);
         $this->assertSame('previous', $rows[0]['metrics_capture_status']);
         $this->assertSame('403', $rows[0]['latest_check_http_status']);
@@ -1227,7 +1279,14 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($websiteUrl),
         ]);
 
-        $earlierRun = $this->createMetricRun($monitor, now()->subDays(20), ['views' => 1000, 'likes' => 50, 'comments' => 5, 'shares' => 10, 'source' => 'json_ld']);
+        $earlierRun = $this->createMetricRun($monitor, now()->subDays(20), [
+            'views' => 1000,
+            'likes' => 50,
+            'comments' => 5,
+            'shares' => 10,
+            'source' => 'json_ld',
+            'metric_sources' => ['views' => 'embedded_json', 'likes' => 'meta'],
+        ]);
         $latestRun = $this->createMetricRun($monitor, now()->subDays(5), ['views' => 1500, 'likes' => 90, 'comments' => 12, 'shares' => 18, 'source' => 'json_ld']);
         $staleConfigRun = $this->createMetricRun($staleConfigMonitor, now()->subDay(), ['views' => 100, 'likes' => 10, 'comments' => 1, 'shares' => 2, 'source' => 'json_ld']);
         $staleConfigRun->forceFill(['config_version' => $staleConfigMonitor->config_version - 1])->save();
@@ -1250,6 +1309,9 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         $this->assertSame($monitor->name, $rows[0]['monitor_name']);
         $this->assertSame('campaign', $rows[1]['tags']);
         $this->assertSame('5.50', $rows[0]['public_engagement_rate_percent']);
+        $this->assertSame('embedded_json', $rows[0]['public_views_source']);
+        $this->assertSame('meta', $rows[0]['public_likes_source']);
+        $this->assertSame('', $rows[0]['public_comments_source']);
         $this->assertSame('6.80', $rows[1]['public_engagement_rate_percent']);
 
         $shortPeriodRows = $this->actingAs(User::factory()->create())
@@ -1295,7 +1357,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
         ]);
     }
 
-    /** @param array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string} $metrics */
+    /** @param array{views: ?int, likes: ?int, comments: ?int, shares: ?int, source: string, metric_sources?: array{views?: string|null, likes?: string|null, comments?: string|null, shares?: string|null}} $metrics */
     private function createMetricRun(Monitor $monitor, DateTimeInterface $finishedAt, array $metrics): CheckRun
     {
         return CheckRun::factory()->for($monitor)->create([

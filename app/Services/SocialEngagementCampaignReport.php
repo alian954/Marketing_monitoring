@@ -51,6 +51,7 @@ class SocialEngagementCampaignReport
      *             likes: int|null,
      *             comments: int|null,
      *             shares: int|null,
+     *             metric_sources: array{views: string|null, likes: string|null, comments: string|null, shares: string|null},
      *             interaction_total: int|null,
      *             metrics_freshness: string,
      *             finished_at: CarbonImmutable|null
@@ -144,6 +145,7 @@ class SocialEngagementCampaignReport
 
                 $trackedPostCount++;
                 $metrics = $engagementRun?->response_public_engagement_metrics ?? [];
+                $metricSources = is_array($metrics['metric_sources'] ?? null) ? $metrics['metric_sources'] : [];
                 $postInteractionTotal = Monitor::publicEngagementInteractionTotal($metrics, $platform);
                 $views = is_numeric($metrics['views'] ?? null) ? (int) $metrics['views'] : null;
 
@@ -180,6 +182,12 @@ class SocialEngagementCampaignReport
                     'likes' => is_numeric($metrics['likes'] ?? null) ? (int) $metrics['likes'] : null,
                     'comments' => is_numeric($metrics['comments'] ?? null) ? (int) $metrics['comments'] : null,
                     'shares' => is_numeric($metrics['shares'] ?? null) ? (int) $metrics['shares'] : null,
+                    'metric_sources' => [
+                        'views' => is_string($metricSources['views'] ?? null) ? $metricSources['views'] : null,
+                        'likes' => is_string($metricSources['likes'] ?? null) ? $metricSources['likes'] : null,
+                        'comments' => is_string($metricSources['comments'] ?? null) ? $metricSources['comments'] : null,
+                        'shares' => is_string($metricSources['shares'] ?? null) ? $metricSources['shares'] : null,
+                    ],
                     'interaction_total' => $postInteractionTotal,
                     'metrics_freshness' => $postInteractionTotal === null
                         ? '尚無完整讀值'

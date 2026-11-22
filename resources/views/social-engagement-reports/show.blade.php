@@ -890,9 +890,17 @@
             @if ($report['top_posts'] === [])
                 <p class="campaign-report-empty">此活動期間尚無符合條件的貼文。</p>
             @else
+                @php
+                    $metricSourceLabels = [
+                        'json_ld' => 'JSON-LD',
+                        'embedded_json' => '內嵌 JSON',
+                        'meta' => 'Meta 標籤',
+                        'rendered_dom' => '瀏覽器呈現',
+                    ];
+                @endphp
                 <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-posts-title" tabindex="0">
                     <table class="data-table campaign-report-table campaign-report-post-table">
-                        <caption>依公開互動數排序的活動貼文；互動口徑為{{ $report['interaction_scope_label'] }}</caption>
+                        <caption>依公開互動數排序的活動貼文；互動口徑為{{ $report['interaction_scope_label'] }}，各指標列出擷取來源</caption>
                         <thead>
                             <tr>
                                 <th scope="col">貼文</th>
@@ -916,10 +924,18 @@
                                             —
                                         @endif
                                     </td>
-                                    <td class="numeric">{{ $post['views'] === null ? '—' : number_format($post['views']) }}</td>
-                                    <td class="numeric">{{ $post['likes'] === null ? '—' : number_format($post['likes']) }}</td>
-                                    <td class="numeric">{{ $post['comments'] === null ? '—' : number_format($post['comments']) }}</td>
-                                    <td class="numeric">{{ $post['shares'] === null ? '—' : number_format($post['shares']) }}</td>
+                                    @foreach (['views', 'likes', 'comments', 'shares'] as $metric)
+                                        @php
+                                            $metricSource = $post['metric_sources'][$metric] ?? null;
+                                            $metricSourceLabel = is_string($metricSource) ? ($metricSourceLabels[$metricSource] ?? null) : null;
+                                        @endphp
+                                        <td class="numeric">
+                                            {{ $post[$metric] === null ? '—' : number_format($post[$metric]) }}
+                                            @if ($metricSourceLabel !== null)
+                                                <span class="secondary-text">來源：{{ $metricSourceLabel }}</span>
+                                            @endif
+                                        </td>
+                                    @endforeach
                                     <td class="numeric">{{ $post['interaction_total'] === null ? '—' : number_format($post['interaction_total']) }}</td>
                                     <td>{{ $post['metrics_freshness'] }}</td>
                                 </tr>
