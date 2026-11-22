@@ -7,7 +7,7 @@
         <div>
             <p class="eyebrow">資料來源</p>
             <h1>Meta Ads</h1>
-            <p class="page-description">讀取已授權廣告帳戶的花費、曝光、觸及與點擊，補充 GA4 導流和公開貼文互動數。</p>
+            <p class="page-description">讀取已授權廣告帳戶的投放成效與追蹤行動。</p>
         </div>
     </div>
 
@@ -67,7 +67,8 @@
     <section class="panel" aria-labelledby="meta-marketing-usage-title">
         <div class="panel-body">
             <h2 id="meta-marketing-usage-title" class="panel-title">數據如何對應</h2>
-            <p class="panel-description">先連結有權限的 Meta 廣告帳戶，再於活動互動目標填入 Meta 活動 ID 與活動日期，即可同步該活動的投放花費、曝光、觸及和點擊。</p>
+            <p class="panel-description">連結有權限的廣告帳戶後，設定活動 ID 與日期，即可同步投放花費、曝光、觸及、點擊、行動數量與轉換價值。</p>
+            <p class="panel-description">行動類型由廣告帳戶追蹤設定與歸因決定；不同類型可能重疊，因此報表保留各類原始數據，不計算單一轉換總數。</p>
             <p class="panel-description">Meta Ads 數據僅涵蓋已授權廣告帳戶；它不會讀取任意第三方貼文的私有行銷數據。公開貼文互動仍由網址監測取得，GA4 繼續提供網站流量、重要事件與營收。</p>
             <p class="panel-description">活動報告每次手動同步，並每日自動更新。Meta Ads 花費會優先用於活動效率與 ROAS；沒有 Meta 讀值時，才使用活動中手動記錄的花費。幣別不同時不計算 ROAS。</p>
         </div>

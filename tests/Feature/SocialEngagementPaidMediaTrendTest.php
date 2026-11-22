@@ -302,6 +302,12 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->createMetaSnapshot($target, $connection, '2026-11-21 06:00:00', [
             'campaign_name' => '=SUM(1+1)',
             'spend_amount' => '150.0000',
+            'actions' => [
+                ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '4.0000'],
+            ],
+            'action_values' => [
+                ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '200.0000'],
+            ],
         ]);
         $this->createMetaSnapshot($target, $otherConnection, '2026-11-21 07:00:00', [
             'campaign_name' => 'Private other account',
@@ -337,6 +343,18 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertIsInt($ctrIndex);
         $this->assertIsInt($cpcChangeIndex);
         $this->assertIsInt($cpmChangeIndex);
+        $actionsIndex = array_search('actions', $csvRows[0], true);
+        $actionValuesIndex = array_search('action_values', $csvRows[0], true);
+        $this->assertIsInt($actionsIndex);
+        $this->assertIsInt($actionValuesIndex);
+        $this->assertSame(
+            '[{"action_type":"offsite_conversion.fb_pixel_purchase","value":"4.0000"}]',
+            $csvRows[2][$actionsIndex],
+        );
+        $this->assertSame(
+            '[{"action_type":"offsite_conversion.fb_pixel_purchase","value":"200.0000"}]',
+            $csvRows[2][$actionValuesIndex],
+        );
         $this->assertSame('1.2500', $csvRows[1][$frequencyIndex]);
         $this->assertSame('0.0000', $csvRows[2][$frequencyChangeIndex]);
         $this->assertSame('2.00', $csvRows[1][$ctrIndex]);

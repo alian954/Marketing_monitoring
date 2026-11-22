@@ -439,7 +439,7 @@
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-meta-campaign">Meta Ads 活動 ID</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('meta_campaign_id') ? ' is-invalid' : '' }}" id="social-engagement-target-meta-campaign" name="meta_campaign_id" type="text" inputmode="numeric" maxlength="32" pattern="[0-9]{5,32}" value="{{ old('meta_campaign_id', $socialEngagementTargetFormTarget?->meta_campaign_id) }}" aria-describedby="social-engagement-target-meta-campaign-help{{ $errors->getBag('socialEngagementTarget')->has('meta_campaign_id') ? ' social-engagement-target-meta-campaign-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('meta_campaign_id')) aria-invalid="true" @endif>
-                    <p id="social-engagement-target-meta-campaign-help" class="field-help">選填；已連結 Meta Ads 後，可同步此活動的曝光、觸及、點擊與花費。</p>
+                    <p id="social-engagement-target-meta-campaign-help" class="field-help">選填；已連結 Meta Ads 後，可同步此活動的投放成效與追蹤行動。</p>
                     @error('meta_campaign_id', 'socialEngagementTarget')<p id="social-engagement-target-meta-campaign-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
                 <div class="field-group">

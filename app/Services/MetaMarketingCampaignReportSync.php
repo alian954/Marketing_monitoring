@@ -69,6 +69,8 @@ class MetaMarketingCampaignReportSync
                     'impressions' => $metrics['impressions'],
                     'reach' => $metrics['reach'],
                     'clicks' => $metrics['clicks'],
+                    'actions' => $metrics['actions'],
+                    'action_values' => $metrics['action_values'],
                     'conversions' => null,
                     'conversions_value' => null,
                     'currency_code' => $metrics['currency_code'],

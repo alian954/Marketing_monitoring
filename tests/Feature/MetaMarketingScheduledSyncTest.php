@@ -30,6 +30,12 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'impressions' => '1200',
                     'reach' => '900',
                     'clicks' => '48',
+                    'actions' => [
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '2'],
+                    ],
+                    'action_values' => [
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '250.50'],
+                    ],
                     'account_currency' => 'TWD',
                 ]]])
                 ->push(['data' => [[
@@ -60,6 +66,15 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'spend_amount' => '60.0000',
         ]);
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 2);
+        $snapshot = SocialEngagementTargetPaidAdSnapshot::query()
+            ->where('social_engagement_target_id', $activeTarget->id)
+            ->sole();
+        $this->assertSame([
+            ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '2.0000'],
+        ], $snapshot->actions);
+        $this->assertSame([
+            ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '250.5000'],
+        ], $snapshot->action_values);
         $this->assertDatabaseHas('social_engagement_target_paid_ad_snapshots', [
             'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING,
             'meta_marketing_connection_id' => $connection->id,

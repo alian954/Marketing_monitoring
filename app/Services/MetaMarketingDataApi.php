@@ -60,7 +60,19 @@ class MetaMarketingDataApi
         ];
     }
 
-    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, reach: int, clicks: int, currency_code: string} */
+    /**
+     * @return array{
+     *     campaign_id: string,
+     *     campaign_name: string,
+     *     spend_amount: string,
+     *     impressions: int,
+     *     reach: int,
+     *     clicks: int,
+     *     actions: list<array{action_type: string, value: string}>,
+     *     action_values: list<array{action_type: string, value: string}>,
+     *     currency_code: string
+     * }
+     */
     public function campaignInsights(
         string $accessToken,
         string $adAccountId,
@@ -77,7 +89,7 @@ class MetaMarketingDataApi
             ->acceptJson()
             ->timeout(20)
             ->get($this->graphUrl('act_'.$adAccountId.'/insights'), [
-                'fields' => 'account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,account_currency',
+                'fields' => 'account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,actions,action_values,account_currency',
                 'level' => 'campaign',
                 'filtering' => json_encode([[
                     'field' => 'campaign.id',
@@ -102,6 +114,8 @@ class MetaMarketingDataApi
                 'impressions' => 0,
                 'reach' => 0,
                 'clicks' => 0,
+                'actions' => [],
+                'action_values' => [],
                 'currency_code' => $accountCurrency,
             ];
         }
@@ -129,8 +143,39 @@ class MetaMarketingDataApi
             'impressions' => $this->nonNegativeInteger($row['impressions'] ?? null),
             'reach' => $this->nonNegativeInteger($row['reach'] ?? null),
             'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
+            'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
+            'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
             'currency_code' => $currencyCode,
         ];
+    }
+
+    /** @return list<array{action_type: string, value: string}> */
+    private function actionMetrics(mixed $metrics, string $field): array
+    {
+        if ($metrics === null) {
+            return [];
+        }
+
+        if (! is_array($metrics) || ! array_is_list($metrics)) {
+            throw new MetaMarketingApiException('Meta Ads Insights API 回傳的 '.$field.' 格式無效。');
+        }
+
+        $normalizedMetrics = [];
+
+        foreach ($metrics as $metric) {
+            if (! is_array($metric)
+                || ! is_string($metric['action_type'] ?? null)
+                || trim($metric['action_type']) === '') {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的 '.$field.' 行動類型無效。');
+            }
+
+            $normalizedMetrics[] = [
+                'action_type' => trim($metric['action_type']),
+                'value' => $this->decimalString($metric['value'] ?? null),
+            ];
+        }
+
+        return $normalizedMetrics;
     }
 
     public function revokeAccessToken(string $accessToken): void

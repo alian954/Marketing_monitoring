@@ -72,6 +72,14 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                     'impressions' => '12000',
                     'reach' => '9000',
                     'clicks' => '480',
+                    'actions' => [
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '2'],
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '0.5'],
+                        ['action_type' => '<script>alert(1)</script>', 'value' => '1'],
+                    ],
+                    'action_values' => [
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '125.50'],
+                    ],
                     'account_currency' => 'USD',
                 ]],
             ]),
@@ -115,6 +123,14 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame(12000, $snapshot->impressions);
         $this->assertSame(9000, $snapshot->reach);
         $this->assertSame(480, $snapshot->clicks);
+        $this->assertSame([
+            ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '2.0000'],
+            ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '0.5000'],
+            ['action_type' => '<script>alert(1)</script>', 'value' => '1.0000'],
+        ], $snapshot->actions);
+        $this->assertSame([
+            ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '125.5000'],
+        ], $snapshot->action_values);
         $this->assertSame('USD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
         $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
@@ -123,6 +139,8 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame($connection->ad_account_id, $paidAdSnapshot->account_id);
         $this->assertSame('250.7500', $paidAdSnapshot->spend_amount);
         $this->assertSame(9000, $paidAdSnapshot->reach);
+        $this->assertSame($snapshot->actions, $paidAdSnapshot->actions);
+        $this->assertSame($snapshot->action_values, $paidAdSnapshot->action_values);
         $this->assertNull($paidAdSnapshot->conversions);
         Http::assertSent(function (ClientRequest $request): bool {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -130,7 +148,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             return str_starts_with($request->url(), 'https://graph.facebook.com/v27.0/act_123456789/insights')
                 && $request->hasHeader('Authorization', 'Bearer authorized-token')
                 && $query['level'] === 'campaign'
-                && $query['fields'] === 'account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,account_currency'
+                && $query['fields'] === 'account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,actions,action_values,account_currency'
                 && json_decode($query['filtering'], true)[0]['value'] === '987654321'
                 && json_decode($query['time_range'], true) === ['since' => '2026-11-01', 'until' => '2026-11-30'];
         });
@@ -144,10 +162,16 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             ->assertSee('250.7500 USD')
             ->assertSee('Meta Ads')
             ->assertSee('Meta Ads 歷史讀值')
+            ->assertSee('Meta Ads 行動成效')
+            ->assertSee('offsite_conversion.fb_pixel_purchase')
+            ->assertSee('125.5000 USD')
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(1)</script>', false)
             ->assertSee('基準')
             ->assertSee('4.00x');
 
         $analysis = $reportResponse->viewData('adSpendAnalysis');
+        $this->assertCount(3, $reportResponse->viewData('metaMarketingReport')->actions);
         $this->assertSame('meta_marketing', $analysis['ad_spend_source']);
         $this->assertSame(250.75, (float) $analysis['ad_spend_amount']);
         $this->assertSame(4.0, $analysis['roas']);
@@ -174,7 +198,58 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame(0, $snapshot->impressions);
         $this->assertSame(0, $snapshot->reach);
         $this->assertSame(0, $snapshot->clicks);
+        $this->assertSame([], $snapshot->actions);
+        $this->assertSame([], $snapshot->action_values);
         $this->assertSame('TWD', $snapshot->currency_code);
+    }
+
+    public function test_meta_sync_rejects_malformed_action_metrics_without_saving_a_report(): void
+    {
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::response([
+                'data' => [[
+                    'account_id' => '123456789',
+                    'campaign_id' => '987654321',
+                    'campaign_name' => 'Malformed actions campaign',
+                    'spend' => '10',
+                    'impressions' => '100',
+                    'reach' => '80',
+                    'clicks' => '4',
+                    'actions' => [
+                        ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => 'unknown'],
+                    ],
+                    'account_currency' => 'TWD',
+                ]],
+            ]),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $connection = $this->createConnection($user);
+        $previousReport = SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => $connection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => 'Last successful read',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '75.0000',
+            'impressions' => 750,
+            'reach' => 600,
+            'clicks' => 30,
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.meta-marketing.sync', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHasErrors(['meta_marketing']);
+
+        $this->assertSame('Last successful read', $previousReport->fresh()->campaign_name);
+        $this->assertSame('75.0000', $previousReport->fresh()->spend_amount);
+        $this->assertDatabaseCount('social_engagement_target_meta_marketing_reports', 1);
+        $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 0);
     }
 
     public function test_meta_sync_reports_missing_connection_campaign_and_date_settings(): void

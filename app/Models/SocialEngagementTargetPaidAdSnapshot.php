@@ -24,6 +24,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'clicks',
     'conversions',
     'conversions_value',
+    'actions',
+    'action_values',
     'currency_code',
     'synced_at',
 ])]
@@ -47,6 +49,8 @@ class SocialEngagementTargetPaidAdSnapshot extends Model
             'clicks' => 'integer',
             'conversions' => 'decimal:4',
             'conversions_value' => 'decimal:4',
+            'actions' => 'array',
+            'action_values' => 'array',
             'synced_at' => 'immutable_datetime',
         ];
     }

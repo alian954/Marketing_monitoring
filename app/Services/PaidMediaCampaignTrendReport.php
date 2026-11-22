@@ -38,6 +38,8 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     actions: list<array{action_type: string, value: string}>,
+     *     action_values: list<array{action_type: string, value: string}>,
      *     cost_per_conversion: float|null,
      *     cost_per_conversion_change: float|null,
      *     conversion_rate_percent: float|null,
@@ -89,6 +91,8 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     actions: list<array{action_type: string, value: string}>,
+     *     action_values: list<array{action_type: string, value: string}>,
      *     cost_per_conversion: float|null,
      *     cost_per_conversion_change: float|null,
      *     conversion_rate_percent: float|null,
@@ -140,6 +144,8 @@ class PaidMediaCampaignTrendReport
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     actions: list<array{action_type: string, value: string}>,
+     *     action_values: list<array{action_type: string, value: string}>,
      *     cost_per_conversion: float|null,
      *     cost_per_conversion_change: float|null,
      *     conversion_rate_percent: float|null,
@@ -262,6 +268,8 @@ class PaidMediaCampaignTrendReport
                 'conversions_value_change' => $moneyIsComparable
                     ? $this->optionalDecimalChange($snapshot->conversions_value, $previousSnapshot->conversions_value)
                     : null,
+                'actions' => $snapshot->actions ?? [],
+                'action_values' => $snapshot->action_values ?? [],
                 'cost_per_conversion' => $costPerConversion,
                 'cost_per_conversion_change' => $moneyIsComparable && $costPerConversion !== null && $previousCostPerConversion !== null
                     ? round($costPerConversion - $previousCostPerConversion, 4)

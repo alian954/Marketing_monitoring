@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Model;
     'impressions',
     'reach',
     'clicks',
+    'actions',
+    'action_values',
     'currency_code',
     'synced_at',
 ])]
@@ -31,6 +33,8 @@ class SocialEngagementTargetMetaMarketingReport extends Model
             'impressions' => 'integer',
             'reach' => 'integer',
             'clicks' => 'integer',
+            'actions' => 'array',
+            'action_values' => 'array',
             'synced_at' => 'immutable_datetime',
         ];
     }

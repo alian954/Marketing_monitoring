@@ -134,6 +134,56 @@
                 </dl>
                 <p class="campaign-report-secondary">數據來自已授權廣告帳戶；CTR 以平台點擊除以曝光計算，CPC 與 CPM 使用此活動的花費。</p>
 
+                <h3 id="meta-marketing-actions-title">Meta Ads 行動成效</h3>
+                <p class="campaign-report-secondary">依廣告帳戶追蹤設定與歸因列出原始行動類型；不同類型可能重疊，因此不合併成單一轉換總數。</p>
+                @if (($metaMarketingReport->actions ?? []) === [] && ($metaMarketingReport->action_values ?? []) === [])
+                    <p class="campaign-report-empty">Meta 尚未回傳行動數據。</p>
+                @else
+                    @if (($metaMarketingReport->actions ?? []) !== [])
+                        <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-actions-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Meta Ads 原始行動類型與歸因數量</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">行動類型</th>
+                                        <th scope="col">數量</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($metaMarketingReport->actions as $action)
+                                        <tr>
+                                            <th scope="row"><code>{{ $action['action_type'] }}</code></th>
+                                            <td class="numeric">{{ number_format((float) $action['value'], 4) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+
+                    @if (($metaMarketingReport->action_values ?? []) !== [])
+                        <div class="data-table-wrap spaced-top" role="region" aria-labelledby="meta-marketing-actions-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Meta Ads 原始行動類型與轉換價值（{{ $metaMarketingReport->currency_code }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">行動類型</th>
+                                        <th scope="col">價值</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($metaMarketingReport->action_values as $actionValue)
+                                        <tr>
+                                            <th scope="row"><code>{{ $actionValue['action_type'] }}</code></th>
+                                            <td class="numeric">{{ number_format((float) $actionValue['value'], 4) }} {{ $metaMarketingReport->currency_code }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                @endif
+
                 <div class="campaign-report-section-header">
                     <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
                     @if ($metaMarketingTrend !== [])
