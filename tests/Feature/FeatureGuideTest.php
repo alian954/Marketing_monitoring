@@ -22,6 +22,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('可依平台或活動標籤篩選貼文、互動排行與彙總，並匯出 CSV')
             ->assertSee('發文時間成效依台灣時間分為四個時段')
             ->assertSee('貼文年齡成效比較發文後 24 小時、7 天及 30 天')
+            ->assertSee('平均與中位數互動、觀看互動率')
             ->assertSee('活動互動目標可依標籤與平台設定期間')
             ->assertSee('進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位')
             ->assertSee('每日所需互動可匯出 CSV')

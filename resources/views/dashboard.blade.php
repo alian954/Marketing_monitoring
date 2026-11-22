@@ -575,7 +575,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-post-maturity-title" class="panel-title">貼文年齡成效</h2>
-                <p class="panel-description">比較發文後 24 小時、7 天與 30 天的互動表現；採目標時間前後 6 小時內最近的完整讀值，並列出樣本數。</p>
+                <p class="panel-description">比較發文後 24 小時、7 天與 30 天的互動表現；採目標時間前後 6 小時內最近的完整讀值，並列出平均值、中位數與樣本數。</p>
             </div>
             <a class="strong-link" href="{{ route('social-post-maturity.export', [
                 'engagement_platform' => $socialEngagementSelectedPlatform,
@@ -590,12 +590,13 @@
         @else
             <div class="data-table-wrap" role="region" aria-labelledby="social-post-maturity-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">各平台貼文在發文後 24 小時、7 天與 30 天的平均互動、平均觀看數和觀看互動率</caption>
+                    <caption class="sr-only">各平台貼文在發文後 24 小時、7 天與 30 天的平均及中位數互動、平均觀看數和觀看互動率</caption>
                     <thead>
                         <tr>
                             <th scope="col">貼文年齡</th>
                             <th scope="col">平台與口徑</th>
                             <th scope="col">平均互動／篇</th>
+                            <th scope="col">中位數互動／篇</th>
                             <th scope="col">平均觀看／篇</th>
                             <th scope="col">觀看互動率</th>
                             <th scope="col">互動樣本</th>
@@ -610,6 +611,7 @@
                                     <span class="secondary-text">（{{ $maturityRow['interaction_scope_label'] }}）</span>
                                 </td>
                                 <td class="numeric">{{ number_format($maturityRow['average_interactions_per_post'], 1) }}</td>
+                                <td class="numeric">{{ number_format($maturityRow['median_interactions_per_post'], 1) }}</td>
                                 <td class="numeric">
                                     @if ($maturityRow['average_views_per_post'] !== null)
                                         {{ number_format($maturityRow['average_views_per_post'], 1) }}

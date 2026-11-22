@@ -87,6 +87,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
     {
         $this->travelTo('2026-11-22 20:00:00');
         $facebook24HourPost = $this->createSocialMonitor('facebook', 'MATURITY24FB', 'campaign');
+        $facebookViralPost = $this->createSocialMonitor('facebook', 'MATURITYVIRAL', 'campaign');
         $facebookSevenDayPost = $this->createSocialMonitor('facebook', 'MATURITY7FB', 'campaign');
         $facebookThirtyDayPost = $this->createSocialMonitor('facebook', 'MATURITY30FB', 'campaign');
         $instagram24HourPost = $this->createSocialMonitor('instagram', 'MATURITY24IG', 'campaign');
@@ -107,6 +108,12 @@ class DashboardSocialEngagementTrendTest extends TestCase
             'likes' => 20,
             'comments' => 5,
             'shares' => 5,
+        ]);
+        $this->createPublishedMetricRun($facebookViralPost, '2026-11-21 12:00:00', '2026-11-22 12:00:00', [
+            'views' => null,
+            'likes' => 990,
+            'comments' => 10,
+            'shares' => 0,
         ]);
         $this->createPublishedMetricRun($facebookSevenDayPost, '2026-11-15 12:00:00', '2026-11-22 11:00:00', [
             'views' => 120,
@@ -175,6 +182,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->assertSee('貼文年齡成效')
             ->assertSee('目標時間前後 6 小時內最近的完整讀值')
             ->assertSee('<th scope="col">貼文年齡</th>', false)
+            ->assertSee('<th scope="col">中位數互動／篇</th>', false)
             ->assertSee('<th scope="col">互動樣本</th>', false)
             ->assertSee(e(route('social-post-maturity.export', [
                 'engagement_platform' => 'all',
@@ -188,11 +196,12 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->keyBy('platform_key');
 
         $this->assertSame(['facebook', 'instagram'], $dayOneRows->keys()->all());
-        $this->assertSame(10.3, $dayOneRows['facebook']['average_interactions_per_post']);
+        $this->assertSame(257.8, $dayOneRows['facebook']['average_interactions_per_post']);
+        $this->assertSame(14.0, $dayOneRows['facebook']['median_interactions_per_post']);
         $this->assertSame(200.0, $dayOneRows['facebook']['average_views_per_post']);
         $this->assertSame(2, $dayOneRows['facebook']['view_sample_count']);
         $this->assertSame(7.0, $dayOneRows['facebook']['engagement_rate_percent']);
-        $this->assertSame(3, $dayOneRows['facebook']['post_count']);
+        $this->assertSame(4, $dayOneRows['facebook']['post_count']);
         $this->assertSame(100.0, $dayOneRows['instagram']['average_interactions_per_post']);
         $this->assertSame(20.0, $dayOneRows['instagram']['engagement_rate_percent']);
         $this->assertSame(1, $dayOneRows['instagram']['post_count']);
@@ -212,7 +221,8 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ['facebook'],
             array_values(array_unique(array_column($facebookResponse->viewData('socialPostMaturityRows'), 'platform_key'))),
         );
-        $this->assertSame(10.3, $facebookResponse->viewData('socialPostMaturityRows')[0]['average_interactions_per_post']);
+        $this->assertSame(257.8, $facebookResponse->viewData('socialPostMaturityRows')[0]['average_interactions_per_post']);
+        $this->assertSame(14.0, $facebookResponse->viewData('socialPostMaturityRows')[0]['median_interactions_per_post']);
 
         $csvResponse = $this->actingAs(User::factory()->create())
             ->get(route('social-post-maturity.export', [
@@ -225,9 +235,10 @@ class DashboardSocialEngagementTrendTest extends TestCase
 
         $this->assertSame(['發文後 24 小時', '發文後 7 天', '發文後 30 天'], array_column($csvRows, 'maturity_age'));
         $this->assertSame(['Facebook', 'Facebook', 'Facebook'], array_column($csvRows, 'social_platform'));
-        $this->assertSame('10.3', $csvRows[0]['average_interactions_per_post']);
+        $this->assertSame('257.8', $csvRows[0]['average_interactions_per_post']);
+        $this->assertSame('14.0', $csvRows[0]['median_interactions_per_post']);
         $this->assertSame('7.00', $csvRows[0]['weighted_engagement_rate_percent']);
-        $this->assertSame('3', $csvRows[0]['interaction_sample_post_count']);
+        $this->assertSame('4', $csvRows[0]['interaction_sample_post_count']);
     }
 
     public function test_dashboard_shows_empty_post_maturity_state_without_matured_metric_samples(): void

@@ -36,6 +36,7 @@ class SocialPostMaturityReport
      *     platform: string,
      *     interaction_scope_label: string,
      *     average_interactions_per_post: float,
+     *     median_interactions_per_post: float,
      *     average_views_per_post: float|null,
      *     view_sample_count: int,
      *     engagement_rate_percent: float|null,
@@ -150,6 +151,7 @@ class SocialPostMaturityReport
                 $totalsByPlatform[$platform] ??= [
                     'interaction_total' => 0,
                     'post_count' => 0,
+                    'interaction_values' => [],
                     'view_total' => 0,
                     'view_sample_count' => 0,
                     'interactions_with_views' => 0,
@@ -157,6 +159,7 @@ class SocialPostMaturityReport
                 ];
                 $totalsByPlatform[$platform]['interaction_total'] += $observation['interaction_total'];
                 $totalsByPlatform[$platform]['post_count']++;
+                $totalsByPlatform[$platform]['interaction_values'][] = $observation['interaction_total'];
 
                 if ($observation['views'] !== null) {
                     $totalsByPlatform[$platform]['view_total'] += $observation['views'];
@@ -176,12 +179,20 @@ class SocialPostMaturityReport
                     continue;
                 }
 
+                $sortedInteractionValues = $totals['interaction_values'];
+                sort($sortedInteractionValues, SORT_NUMERIC);
+                $middleIndex = intdiv(count($sortedInteractionValues), 2);
+                $medianInteractionTotal = count($sortedInteractionValues) % 2 === 1
+                    ? $sortedInteractionValues[$middleIndex]
+                    : ($sortedInteractionValues[$middleIndex - 1] + $sortedInteractionValues[$middleIndex]) / 2;
+
                 $rows[] = [
                     'maturity_label' => $maturityAge['label'],
                     'platform_key' => $platformKey,
                     'platform' => $platformLabel,
                     'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platformKey),
                     'average_interactions_per_post' => round($totals['interaction_total'] / $totals['post_count'], 1),
+                    'median_interactions_per_post' => round($medianInteractionTotal, 1),
                     'average_views_per_post' => $totals['view_sample_count'] > 0
                         ? round($totals['view_total'] / $totals['view_sample_count'], 1)
                         : null,
