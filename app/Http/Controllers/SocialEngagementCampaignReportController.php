@@ -9,6 +9,7 @@ use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementTarget $socialEngagementTarget,
         SocialEngagementCampaignReport $campaignReport,
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
+        PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
     ): View {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
@@ -79,8 +81,10 @@ class SocialEngagementCampaignReportController extends Controller
             'googleAnalyticsReport' => $analyticsReport,
             'metaMarketingConnection' => $metaMarketingConnection,
             'metaMarketingReport' => $metaMarketingReport,
+            'metaMarketingTrend' => $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget),
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
+            'googleAdsTrend' => $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget),
             'googleAnalyticsCampaignName' => $campaignName,
             'googleAnalyticsSourceName' => $sourceName,
             'googleAnalyticsTrend' => $googleAnalyticsConnection !== null && $analyticsReport !== null

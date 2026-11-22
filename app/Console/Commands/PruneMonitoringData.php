@@ -5,13 +5,14 @@ namespace App\Console\Commands;
 use App\Models\CheckRun;
 use App\Models\GoogleAnalyticsCampaignSnapshot;
 use App\Models\RobotsObservation;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\StatusPageSubscription;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('monitors:prune')]
-#[Description('依保留期限清除檢查摘要、GA4 趨勢、robots.txt 觀測與過期未確認訂閱')]
+#[Description('依保留期限清除檢查摘要、廣告與 GA4 趨勢、robots.txt 觀測與過期未確認訂閱')]
 class PruneMonitoringData extends Command
 {
     public function handle(): int
@@ -28,6 +29,9 @@ class PruneMonitoringData extends Command
         $deletedGoogleAnalyticsSnapshots = GoogleAnalyticsCampaignSnapshot::query()
             ->whereDate('snapshot_date', '<', $observationCutoff)
             ->delete();
+        $deletedPaidAdSnapshots = SocialEngagementTargetPaidAdSnapshot::query()
+            ->where('synced_at', '<', $cutoff)
+            ->delete();
         $deletedPendingSubscriptions = StatusPageSubscription::query()
             ->whereNull('confirmed_at')
             ->whereNull('unsubscribed_at')
@@ -35,7 +39,7 @@ class PruneMonitoringData extends Command
             ->where('confirmation_expires_at', '<', now())
             ->delete();
 
-        $this->info('已清除 '.$deleted.' 筆檢查摘要、'.$deletedGoogleAnalyticsSnapshots.' 筆過期 GA4 趨勢、'.$deletedRobotsObservations.' 筆過期 robots.txt 觀測與 '.$deletedPendingSubscriptions.' 筆過期未確認訂閱；事件與事件記錄均予保留。');
+        $this->info('已清除 '.$deleted.' 筆檢查摘要、'.$deletedPaidAdSnapshots.' 筆過期廣告趨勢、'.$deletedGoogleAnalyticsSnapshots.' 筆過期 GA4 趨勢、'.$deletedRobotsObservations.' 筆過期 robots.txt 觀測與 '.$deletedPendingSubscriptions.' 筆過期未確認訂閱；事件與事件記錄均予保留。');
 
         return self::SUCCESS;
     }

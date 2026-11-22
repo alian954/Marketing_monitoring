@@ -6,8 +6,11 @@ use App\Models\CheckRun;
 use App\Models\GoogleAnalyticsCampaignSnapshot;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
+use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\RobotsObservation;
+use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\StatusPageSubscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -143,5 +146,27 @@ class PruneMonitoringDataTest extends TestCase
 
         $this->assertDatabaseMissing('google_analytics_campaign_snapshots', ['id' => $expiredSnapshot->id]);
         $this->assertDatabaseHas('google_analytics_campaign_snapshots', ['id' => $recentSnapshot->id]);
+    }
+
+    public function test_prune_removes_expired_paid_media_trend_snapshots_and_keeps_recent_ones(): void
+    {
+        Config::set('monitoring.retention_days', 30);
+        $target = SocialEngagementTarget::factory()->create();
+        $connection = MetaMarketingConnection::factory()->create();
+        $expiredSnapshot = SocialEngagementTargetPaidAdSnapshot::factory()
+            ->for($target, 'target')
+            ->forMetaMarketing($connection)
+            ->create(['synced_at' => now()->subDays(31)]);
+        $recentSnapshot = SocialEngagementTargetPaidAdSnapshot::factory()
+            ->for($target, 'target')
+            ->forMetaMarketing($connection)
+            ->create(['synced_at' => now()->subDays(29)]);
+
+        $this->artisan('monitors:prune')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('過期廣告趨勢');
+
+        $this->assertDatabaseMissing('social_engagement_target_paid_ad_snapshots', ['id' => $expiredSnapshot->id]);
+        $this->assertDatabaseHas('social_engagement_target_paid_ad_snapshots', ['id' => $recentSnapshot->id]);
     }
 }

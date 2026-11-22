@@ -6,6 +6,7 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -103,6 +104,35 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
 
         $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 1);
         Http::assertNothingSent();
+    }
+
+    public function test_daily_sync_refreshes_a_snapshot_that_reaches_the_twenty_four_hour_boundary(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:30:00', 'Asia/Taipei'));
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
+                ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload()),
+        ]);
+        $this->createConnection();
+        $target = $this->createTarget();
+
+        $this->artisan('google-analytics:sync-due')->assertExitCode(0);
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 06:30:00', 'Asia/Taipei'));
+        $this->artisan('google-analytics:sync-due')->assertExitCode(0);
+
+        $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 1);
+        $this->assertDatabaseCount('google_analytics_campaign_snapshots', 2);
+        $this->assertDatabaseHas('google_analytics_campaign_snapshots', [
+            'social_engagement_target_id' => $target->id,
+            'snapshot_date' => '2026-11-23',
+        ]);
+        Http::assertSentCount(4);
     }
 
     public function test_daily_command_continues_after_a_campaign_report_error(): void

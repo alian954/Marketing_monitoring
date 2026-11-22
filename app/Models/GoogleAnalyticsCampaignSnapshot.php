@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Database\Factories\GoogleAnalyticsCampaignSnapshotFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,6 +34,7 @@ class GoogleAnalyticsCampaignSnapshot extends Model
     protected function casts(): array
     {
         return [
+            'snapshot_date' => 'immutable_date',
             'starts_on' => 'immutable_date',
             'ends_on' => 'immutable_date',
             'sessions' => 'integer',
@@ -39,6 +43,13 @@ class GoogleAnalyticsCampaignSnapshot extends Model
             'total_revenue' => 'decimal:4',
             'synced_at' => 'immutable_datetime',
         ];
+    }
+
+    protected function snapshotDate(): Attribute
+    {
+        return Attribute::make(
+            set: fn (CarbonInterface|string $value): string => CarbonImmutable::parse($value)->toDateString(),
+        );
     }
 
     public function googleAnalyticsConnection(): BelongsTo

@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\GoogleAdsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -29,7 +31,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
 
     public function test_daily_command_syncs_active_and_recently_ended_campaigns_only(): void
     {
-        $this->travelTo('2026-11-22 06:50:00');
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:50:00', 'Asia/Taipei'));
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
@@ -37,7 +39,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
                 ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD')),
         ]);
         $user = User::factory()->create();
-        $this->createConnection($user);
+        $connection = $this->createConnection($user);
         $activeTarget = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
         $recentlyEndedTarget = $this->createTarget('Recently ended campaign', '987654322', '2026-11-01', '2026-11-17');
         $oldTarget = $this->createTarget('Old campaign', '987654323', '2026-11-01', '2026-11-14');
@@ -54,6 +56,17 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $recentlyEndedTarget->id,
             'spend_amount' => '60.0000',
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 2);
+        $this->assertDatabaseHas('social_engagement_target_paid_ad_snapshots', [
+            'source' => 'google_ads',
+            'google_ads_connection_id' => $connection->id,
+            'social_engagement_target_id' => $activeTarget->id,
+            'account_id' => $connection->customer_id,
+            'campaign_id' => '987654321',
+            'spend_amount' => '125.5000',
+            'conversions' => '5.0000',
+            'conversions_value' => '250.0000',
         ]);
         $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $oldTarget->id,
@@ -102,6 +115,39 @@ class GoogleAdsScheduledSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_daily_sync_appends_a_paid_media_snapshot_after_the_previous_read_goes_stale(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:50:00', 'Asia/Taipei'));
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignPayload('987654321', 'Active campaign', '100000000', 'TWD'))
+                ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD')),
+        ]);
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('google-ads:sync-due')->assertExitCode(0);
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 06:50:00', 'Asia/Taipei'));
+        $this->artisan('google-ads:sync-due')->assertExitCode(0);
+
+        $history = SocialEngagementTargetPaidAdSnapshot::query()
+            ->where('social_engagement_target_id', $target->id)
+            ->orderBy('synced_at')
+            ->get();
+
+        $this->assertCount(2, $history);
+        $this->assertSame(['100.0000', '125.5000'], $history->pluck('spend_amount')->all());
+        $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 1);
+        $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
+            'google_ads_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'spend_amount' => '125.5000',
+        ]);
+        Http::assertSentCount(4);
+    }
+
     public function test_daily_command_does_not_request_google_data_without_a_connected_customer(): void
     {
         $this->travelTo('2026-11-22 06:50:00');
@@ -117,6 +163,32 @@ class GoogleAdsScheduledSyncTest extends TestCase
             ->assertExitCode(0);
 
         Http::assertNothingSent();
+    }
+
+    public function test_failed_google_ads_sync_does_not_store_a_report_or_trend_snapshot(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([
+                'error' => ['message' => 'Access denied.'],
+            ], 403),
+        ]);
+        $user = User::factory()->create();
+        $this->createConnection($user);
+        $target = $this->createTarget('Failed campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+        $this->assertDatabaseMissing('social_engagement_target_paid_ad_snapshots', [
+            'social_engagement_target_id' => $target->id,
+        ]);
     }
 
     private function createConnection(User $user): GoogleAdsConnection

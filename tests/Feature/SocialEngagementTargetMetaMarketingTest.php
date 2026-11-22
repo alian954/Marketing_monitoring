@@ -8,6 +8,7 @@ use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
@@ -116,6 +117,13 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame(480, $snapshot->clicks);
         $this->assertSame('USD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
+        $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
+        $this->assertSame(SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING, $paidAdSnapshot->source);
+        $this->assertSame($connection->id, $paidAdSnapshot->meta_marketing_connection_id);
+        $this->assertSame($connection->ad_account_id, $paidAdSnapshot->account_id);
+        $this->assertSame('250.7500', $paidAdSnapshot->spend_amount);
+        $this->assertSame(9000, $paidAdSnapshot->reach);
+        $this->assertNull($paidAdSnapshot->conversions);
         Http::assertSent(function (ClientRequest $request): bool {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
 
@@ -135,6 +143,8 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             ->assertSee('480')
             ->assertSee('250.7500 USD')
             ->assertSee('Meta Ads')
+            ->assertSee('Meta Ads 歷史讀值')
+            ->assertSee('基準')
             ->assertSee('4.00x');
 
         $analysis = $reportResponse->viewData('adSpendAnalysis');

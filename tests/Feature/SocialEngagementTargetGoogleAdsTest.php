@@ -10,6 +10,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\User;
 use App\Services\GoogleAdsApiException;
 use App\Services\GoogleAdsDataApi;
@@ -95,6 +96,13 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('1003.0000', $snapshot->conversions_value);
         $this->assertSame('USD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
+        $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
+        $this->assertSame(SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS, $paidAdSnapshot->source);
+        $this->assertSame($connection->id, $paidAdSnapshot->google_ads_connection_id);
+        $this->assertSame($connection->customer_id, $paidAdSnapshot->account_id);
+        $this->assertSame('250.7500', $paidAdSnapshot->spend_amount);
+        $this->assertSame('12.5000', $paidAdSnapshot->conversions);
+        $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         Http::assertSentCount(2);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
@@ -116,6 +124,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             ->assertSee('1,003.00 USD')
             ->assertSee('Google Ads 轉換價值 ROAS')
             ->assertSee('4.00x')
+            ->assertSee('Google Ads 歷史讀值')
+            ->assertSee('基準')
             ->assertSee('250.7500 USD')
             ->assertSee('Google Ads');
 

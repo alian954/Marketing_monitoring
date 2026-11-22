@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -17,7 +19,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
 
     public function test_scheduled_sync_refreshes_active_and_recently_finished_campaigns(): void
     {
-        $this->travelTo('2026-11-22 06:40:00');
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:40:00', 'Asia/Taipei'));
         Http::fake([
             'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::sequence()
                 ->push(['data' => [[
@@ -42,7 +44,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                 ]]]),
         ]);
         $user = User::factory()->create();
-        $this->createConnection($user);
+        $connection = $this->createConnection($user);
         $activeTarget = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
         $endedTarget = $this->createTarget('Recently ended campaign', '987654322', '2026-11-01', '2026-11-20');
 
@@ -56,6 +58,17 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $this->assertDatabaseHas('social_engagement_target_meta_marketing_reports', [
             'social_engagement_target_id' => $endedTarget->id,
             'spend_amount' => '60.0000',
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 2);
+        $this->assertDatabaseHas('social_engagement_target_paid_ad_snapshots', [
+            'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING,
+            'meta_marketing_connection_id' => $connection->id,
+            'social_engagement_target_id' => $activeTarget->id,
+            'account_id' => $connection->ad_account_id,
+            'campaign_id' => '987654321',
+            'spend_amount' => '125.5000',
+            'reach' => 900,
+            'conversions' => null,
         ]);
         $this->assertStringContainsString('完成 2 個活動', Artisan::output());
         Http::assertSentCount(2);
@@ -90,6 +103,56 @@ class MetaMarketingScheduledSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_scheduled_sync_appends_a_paid_media_snapshot_after_the_previous_read_goes_stale(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:40:00', 'Asia/Taipei'));
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::sequence()
+                ->push(['data' => [[
+                    'account_id' => '123456789',
+                    'campaign_id' => '987654321',
+                    'campaign_name' => 'Active campaign',
+                    'spend' => '100.00',
+                    'impressions' => '1000',
+                    'reach' => '800',
+                    'clicks' => '40',
+                    'account_currency' => 'TWD',
+                ]]])
+                ->push(['data' => [[
+                    'account_id' => '123456789',
+                    'campaign_id' => '987654321',
+                    'campaign_name' => 'Active campaign',
+                    'spend' => '125.50',
+                    'impressions' => '1200',
+                    'reach' => '900',
+                    'clicks' => '48',
+                    'account_currency' => 'TWD',
+                ]]]),
+        ]);
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('meta-marketing:sync-due')->assertExitCode(0);
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 06:40:00', 'Asia/Taipei'));
+        $this->artisan('meta-marketing:sync-due')->assertExitCode(0);
+
+        $history = SocialEngagementTargetPaidAdSnapshot::query()
+            ->where('social_engagement_target_id', $target->id)
+            ->orderBy('synced_at')
+            ->get();
+
+        $this->assertCount(2, $history);
+        $this->assertSame(['100.0000', '125.5000'], $history->pluck('spend_amount')->all());
+        $this->assertDatabaseCount('social_engagement_target_meta_marketing_reports', 1);
+        $this->assertDatabaseHas('social_engagement_target_meta_marketing_reports', [
+            'meta_marketing_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'spend_amount' => '125.5000',
+        ]);
+        Http::assertSentCount(2);
+    }
+
     public function test_scheduled_sync_does_not_request_data_for_an_expired_token(): void
     {
         $user = User::factory()->create();
@@ -101,6 +164,30 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('失敗 0 個', Artisan::output());
         Http::assertNothingSent();
+    }
+
+    public function test_failed_meta_sync_does_not_store_a_report_or_trend_snapshot(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::response([
+                'error' => ['code' => 10, 'message' => 'Permission denied.'],
+            ], 403),
+        ]);
+        $user = User::factory()->create();
+        $this->createConnection($user);
+        $target = $this->createTarget('Failed Meta campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('meta-marketing:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('social_engagement_target_meta_marketing_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+        $this->assertDatabaseMissing('social_engagement_target_paid_ad_snapshots', [
+            'social_engagement_target_id' => $target->id,
+        ]);
     }
 
     private function createConnection(User $user, mixed $tokenExpiresAt = null): MetaMarketingConnection

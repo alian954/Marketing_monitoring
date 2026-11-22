@@ -67,6 +67,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
 
     public function test_ga4_sync_queries_campaign_metrics_and_renders_the_private_snapshot(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:30:00', 'Asia/Taipei'));
         config([
             'services.google_analytics.client_id' => 'client-id',
             'services.google_analytics.client_secret' => 'client-secret',
@@ -113,6 +114,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('12890.2500', $snapshot->total_revenue);
         $this->assertSame('TWD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
+        $this->assertSame('2026-11-22', $dailySnapshot->snapshot_date->toDateString());
         $this->assertSame('spring_launch_2026', $dailySnapshot->campaign_name);
         $this->assertSame(2400, $dailySnapshot->sessions);
         $this->assertSame('TWD', $dailySnapshot->currency_code);
@@ -146,6 +148,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('spring_launch_2026')
             ->assertSee('facebook_ads')
             ->assertSee('GA4 累計成效變化')
+            ->assertSee('更新於')
+            ->assertSee('2026/11/22 06:30')
             ->assertSee('匯出趨勢 CSV')
             ->assertSee('基準');
 

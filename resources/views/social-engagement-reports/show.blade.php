@@ -114,6 +114,52 @@
                     </div>
                 </dl>
                 <p class="campaign-report-secondary">數據來自已授權廣告帳戶，依 Meta Ads 活動 ID 與活動期間彙總。</p>
+
+                <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
+                @if ($metaMarketingTrend === [])
+                    <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
+                @else
+                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。最多顯示最近 30 次。</p>
+                    <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-trend-title" tabindex="0">
+                        <table class="data-table campaign-report-table">
+                            <caption>Meta Ads 最近 30 次累計成效讀值與前次差異</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">讀值時間</th>
+                                    <th scope="col">花費</th>
+                                    <th scope="col">曝光</th>
+                                    <th scope="col">觸及</th>
+                                    <th scope="col">點擊</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($metaMarketingTrend as $snapshot)
+                                    <tr>
+                                        <th scope="row">
+                                            <time datetime="{{ $snapshot['synced_at']->toIso8601String() }}">{{ $snapshot['synced_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        </th>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['spend_amount'], 2) }} {{ $snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['spend_change'] > 0 ? '+' : '').number_format($snapshot['spend_change'], 2))) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['impressions']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['impressions_change'] === null ? '基準' : ($snapshot['impressions_change'] > 0 ? '+' : '').number_format($snapshot['impressions_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['reach'] ?? 0) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['reach_change'] === null ? '基準' : ($snapshot['reach_change'] > 0 ? '+' : '').number_format($snapshot['reach_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['clicks']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['clicks_change'] === null ? '基準' : ($snapshot['clicks_change'] > 0 ? '+' : '').number_format($snapshot['clicks_change']) }})</span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             @endif
         </section>
 
@@ -179,6 +225,57 @@
                     </div>
                 </dl>
                 <p class="campaign-report-secondary">Google Ads 轉換與轉換價值依該帳戶的轉換設定歸因；日期區間依 Google Ads 帳戶時區計算。</p>
+
+                <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
+                @if ($googleAdsTrend === [])
+                    <p class="campaign-report-empty">下一次成功同步後會開始累積。</p>
+                @else
+                    <p class="campaign-report-secondary">括號是與前次讀值的差異；不同同步間隔不代表單日成效。最多顯示最近 30 次。</p>
+                    <div class="data-table-wrap" role="region" aria-labelledby="google-ads-trend-title" tabindex="0">
+                        <table class="data-table campaign-report-table">
+                            <caption>Google Ads 最近 30 次累計成效讀值與前次差異</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">讀值時間</th>
+                                    <th scope="col">花費</th>
+                                    <th scope="col">曝光</th>
+                                    <th scope="col">點擊</th>
+                                    <th scope="col">轉換</th>
+                                    <th scope="col">轉換價值</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAdsTrend as $snapshot)
+                                    <tr>
+                                        <th scope="row">
+                                            <time datetime="{{ $snapshot['synced_at']->toIso8601String() }}">{{ $snapshot['synced_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        </th>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['spend_amount'], 2) }} {{ $snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['spend_change'] > 0 ? '+' : '').number_format($snapshot['spend_change'], 2))) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['impressions']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['impressions_change'] === null ? '基準' : ($snapshot['impressions_change'] > 0 ? '+' : '').number_format($snapshot['impressions_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format($snapshot['clicks']) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['clicks_change'] === null ? '基準' : ($snapshot['clicks_change'] > 0 ? '+' : '').number_format($snapshot['clicks_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['conversions'], 2) }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['conversions_change'] === null ? '基準' : ($snapshot['conversions_change'] > 0 ? '+' : '').number_format($snapshot['conversions_change'], 2) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format((float) $snapshot['conversions_value'], 2) }} {{ $snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['conversions_value_change'] > 0 ? '+' : '').number_format($snapshot['conversions_value_change'], 2))) }})</span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             @endif
         </section>
 
@@ -210,7 +307,7 @@
             @else
                 <p class="campaign-report-secondary">
                     資料期間 {{ $googleAnalyticsReport->starts_on->format('Y/n/j') }} 至 {{ $googleAnalyticsReport->ends_on->format('Y/n/j') }}；
-                    更新於 <time datetime="{{ $googleAnalyticsReport->synced_at->toIso8601String() }}">{{ $googleAnalyticsReport->synced_at->format('Y/n/j H:i') }}</time>
+                    更新於 <time datetime="{{ $googleAnalyticsReport->synced_at->toIso8601String() }}">{{ $googleAnalyticsReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                 </p>
                 <dl class="campaign-report-summary ga4-report-summary">
                     <div>

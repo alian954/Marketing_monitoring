@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\GoogleAdsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 class GoogleAdsCampaignReportSync
 {
@@ -33,22 +35,50 @@ class GoogleAdsCampaignReportSync
             $connection->currency_code,
             $connection->login_customer_id,
         );
-        $syncedAt = CarbonImmutable::now('Asia/Taipei');
+        $syncedAt = CarbonImmutable::now();
 
-        return SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
-            [
-                'google_ads_connection_id' => $connection->getKey(),
-                'social_engagement_target_id' => $target->getKey(),
-            ],
-            [
-                'customer_id' => $connection->customer_id,
-                'campaign_id' => $target->google_ads_campaign_id,
-                'starts_on' => $target->starts_on->toDateString(),
-                'ends_on' => $target->ends_on->toDateString(),
-                ...$metrics,
-                'synced_at' => $syncedAt,
-            ],
-        );
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt): SocialEngagementTargetGoogleAdsReport {
+            $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
+                [
+                    'google_ads_connection_id' => $connection->getKey(),
+                    'social_engagement_target_id' => $target->getKey(),
+                ],
+                [
+                    'customer_id' => $connection->customer_id,
+                    'campaign_id' => $target->google_ads_campaign_id,
+                    'starts_on' => $target->starts_on->toDateString(),
+                    'ends_on' => $target->ends_on->toDateString(),
+                    ...$metrics,
+                    'synced_at' => $syncedAt,
+                ],
+            );
+
+            SocialEngagementTargetPaidAdSnapshot::query()->updateOrCreate(
+                [
+                    'google_ads_connection_id' => $connection->getKey(),
+                    'social_engagement_target_id' => $target->getKey(),
+                    'starts_on' => $target->starts_on->toDateString(),
+                    'ends_on' => $target->ends_on->toDateString(),
+                    'account_id' => $connection->customer_id,
+                    'synced_at' => $syncedAt,
+                ],
+                [
+                    'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS,
+                    'account_id' => $connection->customer_id,
+                    'campaign_id' => $metrics['campaign_id'],
+                    'campaign_name' => $metrics['campaign_name'],
+                    'spend_amount' => $metrics['spend_amount'],
+                    'impressions' => $metrics['impressions'],
+                    'reach' => null,
+                    'clicks' => $metrics['clicks'],
+                    'conversions' => $metrics['conversions'],
+                    'conversions_value' => $metrics['conversions_value'],
+                    'currency_code' => $metrics['currency_code'],
+                ],
+            );
+
+            return $report;
+        });
     }
 
     public function isSnapshotFresh(
@@ -62,6 +92,6 @@ class GoogleAdsCampaignReportSync
             && $snapshot->campaign_id === $target->google_ads_campaign_id
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
-            && $snapshot->synced_at?->greaterThanOrEqualTo($asOf->subDay()) === true;
+            && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
     }
 }

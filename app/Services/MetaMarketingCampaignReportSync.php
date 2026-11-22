@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 class MetaMarketingCampaignReportSync
 {
@@ -31,22 +33,50 @@ class MetaMarketingCampaignReportSync
             $target->ends_on->toDateString(),
             $connection->currency_code,
         );
-        $syncedAt = CarbonImmutable::now('Asia/Taipei');
+        $syncedAt = CarbonImmutable::now();
 
-        return SocialEngagementTargetMetaMarketingReport::query()->updateOrCreate(
-            [
-                'meta_marketing_connection_id' => $connection->getKey(),
-                'social_engagement_target_id' => $target->getKey(),
-            ],
-            [
-                'ad_account_id' => $connection->ad_account_id,
-                'campaign_id' => $target->meta_campaign_id,
-                'starts_on' => $target->starts_on->toDateString(),
-                'ends_on' => $target->ends_on->toDateString(),
-                ...$metrics,
-                'synced_at' => $syncedAt,
-            ],
-        );
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt): SocialEngagementTargetMetaMarketingReport {
+            $report = SocialEngagementTargetMetaMarketingReport::query()->updateOrCreate(
+                [
+                    'meta_marketing_connection_id' => $connection->getKey(),
+                    'social_engagement_target_id' => $target->getKey(),
+                ],
+                [
+                    'ad_account_id' => $connection->ad_account_id,
+                    'campaign_id' => $target->meta_campaign_id,
+                    'starts_on' => $target->starts_on->toDateString(),
+                    'ends_on' => $target->ends_on->toDateString(),
+                    ...$metrics,
+                    'synced_at' => $syncedAt,
+                ],
+            );
+
+            SocialEngagementTargetPaidAdSnapshot::query()->updateOrCreate(
+                [
+                    'meta_marketing_connection_id' => $connection->getKey(),
+                    'social_engagement_target_id' => $target->getKey(),
+                    'starts_on' => $target->starts_on->toDateString(),
+                    'ends_on' => $target->ends_on->toDateString(),
+                    'account_id' => $connection->ad_account_id,
+                    'synced_at' => $syncedAt,
+                ],
+                [
+                    'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING,
+                    'account_id' => $connection->ad_account_id,
+                    'campaign_id' => $metrics['campaign_id'],
+                    'campaign_name' => $metrics['campaign_name'],
+                    'spend_amount' => $metrics['spend_amount'],
+                    'impressions' => $metrics['impressions'],
+                    'reach' => $metrics['reach'],
+                    'clicks' => $metrics['clicks'],
+                    'conversions' => null,
+                    'conversions_value' => null,
+                    'currency_code' => $metrics['currency_code'],
+                ],
+            );
+
+            return $report;
+        });
     }
 
     public function isSnapshotFresh(
@@ -60,6 +90,6 @@ class MetaMarketingCampaignReportSync
             && $snapshot->campaign_id === $target->meta_campaign_id
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
-            && $snapshot->synced_at?->greaterThanOrEqualTo($asOf->subDay()) === true;
+            && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
     }
 }

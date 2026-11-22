@@ -29,7 +29,8 @@ class GoogleAnalyticsCampaignReportSync
             $sourceName,
         );
 
-        $syncedAt = CarbonImmutable::now('Asia/Taipei');
+        $syncedAt = CarbonImmutable::now();
+        $snapshotDate = $syncedAt->timezone('Asia/Taipei')->toDateString();
         $reportAttributes = [
             'campaign_name' => $campaignName,
             'source_name' => $sourceName,
@@ -39,7 +40,7 @@ class GoogleAnalyticsCampaignReportSync
             'synced_at' => $syncedAt,
         ];
 
-        return DB::transaction(function () use ($connection, $target, $syncedAt, $reportAttributes): SocialEngagementTargetGoogleAnalyticsReport {
+        return DB::transaction(function () use ($connection, $target, $snapshotDate, $reportAttributes): SocialEngagementTargetGoogleAnalyticsReport {
             $report = SocialEngagementTargetGoogleAnalyticsReport::query()->updateOrCreate(
                 [
                     'google_analytics_connection_id' => $connection->getKey(),
@@ -52,7 +53,7 @@ class GoogleAnalyticsCampaignReportSync
                 [
                     'google_analytics_connection_id' => $connection->getKey(),
                     'social_engagement_target_id' => $target->getKey(),
-                    'snapshot_date' => $syncedAt->toDateString(),
+                    'snapshot_date' => $snapshotDate,
                 ],
                 $reportAttributes,
             );
@@ -71,6 +72,6 @@ class GoogleAnalyticsCampaignReportSync
             && $snapshot->source_name === $target->googleAnalyticsSourceName()
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
-            && $snapshot->synced_at?->greaterThanOrEqualTo($asOf->subDay()) === true;
+            && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
     }
 }
