@@ -43,6 +43,17 @@ class SocialEngagementMetricExtractorTest extends TestCase
         $this->assertNull(DcardPublicEngagementMetricExtractor::extract("貼文內容\n20\n全部留言"));
     }
 
+    public function test_it_extracts_dcard_counters_rendered_as_two_numbers_on_one_line(): void
+    {
+        $this->assertSame([
+            'views' => null,
+            'likes' => 1200,
+            'comments' => 3,
+            'shares' => null,
+            'source' => 'rendered_dom',
+        ], DcardPublicEngagementMetricExtractor::extract("貼文內容\n1,200 3\n全部留言\n留言內容"));
+    }
+
     public function test_it_extracts_explicit_schema_interaction_counts_for_the_current_post(): void
     {
         $html = <<<'HTML'

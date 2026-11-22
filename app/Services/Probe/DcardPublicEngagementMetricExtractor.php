@@ -37,6 +37,12 @@ class DcardPublicEngagementMetricExtractor
 
                 $currentBlock = [];
 
+                $sameLineCounts = self::parseCountPair($line);
+
+                if ($sameLineCounts !== null) {
+                    $countBlocks[] = $sameLineCounts;
+                }
+
                 continue;
             }
 
@@ -73,5 +79,20 @@ class DcardPublicEngagementMetricExtractor
         }
 
         return (int) $normalized;
+    }
+
+    /** @return array{0: int, 1: int}|null */
+    private static function parseCountPair(string $line): ?array
+    {
+        if (preg_match('/\A([\d,]{1,19})\s+([\d,]{1,19})\z/u', trim($line), $matches) !== 1) {
+            return null;
+        }
+
+        $firstCount = self::parseCount($matches[1]);
+        $secondCount = self::parseCount($matches[2]);
+
+        return $firstCount === null || $secondCount === null
+            ? null
+            : [$firstCount, $secondCount];
     }
 }
