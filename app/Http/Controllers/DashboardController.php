@@ -11,7 +11,9 @@ use App\Models\Monitor;
 use App\Models\SchedulerHeartbeat;
 use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
+use App\Models\User;
 use App\Services\CsvFormulaSanitizer;
+use App\Services\DashboardCampaignMarketingSummary;
 use App\Services\FleetAvailabilityReport;
 use App\Services\SocialEngagementDataCoverageReport;
 use App\Services\SocialPostMaturityReport;
@@ -71,6 +73,7 @@ class DashboardController extends Controller
         FleetAvailabilityReport $availabilityReport,
         SocialEngagementDataCoverageReport $socialEngagementDataCoverageReport,
         SocialPostMaturityReport $socialPostMaturityReport,
+        DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
     ): View {
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
@@ -376,17 +379,24 @@ class DashboardController extends Controller
         }
 
         uksort($socialEngagementTargetTagOptions, 'strnatcasecmp');
-        $socialEngagementTargets = SocialEngagementTarget::query()
+        $socialEngagementTargetModels = SocialEngagementTarget::query()
             ->when($socialEngagementPlatform !== null, static fn (Builder $query): Builder => $query->where('social_platform', $socialEngagementPlatform))
             ->when($socialEngagementSelectedTagValue !== null, static fn (Builder $query): Builder => $query->where('tag', $socialEngagementSelectedTagValue))
             ->when($socialEngagementSelectedTag === 'unlabeled', static fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
             ->orderBy('tag')
             ->orderBy('social_platform')
-            ->get()
-            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $asOf): array {
+            ->get();
+        $user = $request->user();
+        $socialEngagementMarketingSummaries = $user instanceof User
+            ? $dashboardCampaignMarketingSummary->build($socialEngagementTargetModels, $user, $asOf)
+            : [];
+        $socialEngagementTargets = $socialEngagementTargetModels
+            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $socialEngagementMarketingSummaries, $asOf): array {
                 $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
+                $targetSummary = $this->socialEngagementTargetSummary($target, $summary, $socialEngagementTargetPlatformLabels, $asOf);
+                $targetSummary['marketing'] = $socialEngagementMarketingSummaries[$target->getKey()];
 
-                return $this->socialEngagementTargetSummary($target, $summary, $socialEngagementTargetPlatformLabels, $asOf);
+                return $targetSummary;
             })
             ->all();
         $targetFormPlatform = $request->old('social_platform');

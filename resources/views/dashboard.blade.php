@@ -538,6 +538,111 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="campaign-marketing-overview-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="campaign-marketing-overview-title" class="panel-title">活動行銷成效</h2>
+                <p class="panel-description">查看 GA4 工作階段與營收、廣告花費、ROAS 和預算使用率。缺少或過期的資料會標示狀態。</p>
+            </div>
+        </div>
+        @if ($socialEngagementTargets === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無活動行銷成效</h3>
+                <p class="empty-copy">設定活動目標並同步 GA4 或廣告平台後，這裡會顯示成效摘要。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="campaign-marketing-overview-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">各活動的 GA4 成效、廣告花費、ROAS 與預算使用率</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">活動</th>
+                            <th scope="col">GA4</th>
+                            <th scope="col">廣告花費</th>
+                            <th scope="col">ROAS</th>
+                            <th scope="col">預算使用率</th>
+                            <th scope="col"><span class="sr-only">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialEngagementTargets as $socialEngagementTarget)
+                            @php
+                                $marketing = $socialEngagementTarget['marketing'];
+                                $efficiency = $marketing['efficiency'];
+                                $roasUnavailableLabel = match ($efficiency['roas_unavailable_reason']) {
+                                    'ad_platform_currency_mismatch' => '廣告幣別不同',
+                                    'currency_mismatch' => '營收與花費幣別不同',
+                                    'missing_spend' => '尚無花費',
+                                    'zero_spend' => '花費為 0',
+                                    'missing_ga4' => '尚無 GA4 報表',
+                                    'missing_spend_currency' => '缺少花費幣別',
+                                    'missing_ga4_currency' => '缺少營收幣別',
+                                    default => '資料不足',
+                                };
+                                $budgetUnavailableLabel = match ($efficiency['budget_status']) {
+                                    'platform_currency_mismatch', 'currency_mismatch' => '幣別不同',
+                                    'missing_spend' => '尚無花費',
+                                    'not_started' => '尚未開始',
+                                    'missing_campaign_period' => '未設定活動期間',
+                                    'zero_budget' => '預算為 0',
+                                    default => '資料不足',
+                                };
+                            @endphp
+                            <tr>
+                                <th scope="row">
+                                    {{ $socialEngagementTarget['tag'] }}
+                                    <span class="secondary-text">{{ $socialEngagementTarget['platform_label'] }}</span>
+                                </th>
+                                <td class="numeric">
+                                    @if ($marketing['google_analytics']['sessions'] !== null)
+                                        {{ number_format($marketing['google_analytics']['sessions']) }} 工作階段
+                                        <span class="secondary-text">營收 {{ $marketing['google_analytics']['currency_code'] ?? '—' }} {{ number_format((float) $marketing['google_analytics']['revenue'], 2) }}</span>
+                                    @else
+                                        <span class="secondary-text">尚無工作階段資料</span>
+                                    @endif
+                                    <span class="secondary-text">GA4：{{ $marketing['google_analytics']['status_label'] }}</span>
+                                </td>
+                                <td class="numeric">
+                                    @if ($efficiency['ad_spend_amount'] !== null && $efficiency['ad_spend_currency'] !== null)
+                                        {{ number_format((float) $efficiency['ad_spend_amount'], 2) }} {{ $efficiency['ad_spend_currency'] }}
+                                        <span class="secondary-text">{{ $efficiency['ad_spend_source_label'] }}</span>
+                                    @elseif ($efficiency['ad_spend_source'] === 'currency_mismatch')
+                                        幣別不同，未合併
+                                    @else
+                                        <span class="secondary-text">尚無花費資料</span>
+                                    @endif
+                                    @foreach (['Meta Ads' => $marketing['meta_marketing'], 'Google Ads' => $marketing['google_ads']] as $sourceLabel => $sourceSummary)
+                                        <span class="secondary-text">{{ $sourceLabel }}：{{ $sourceSummary['status_label'] }}</span>
+                                    @endforeach
+                                </td>
+                                <td class="numeric">
+                                    @if ($efficiency['roas'] !== null)
+                                        {{ number_format($efficiency['roas'], 2) }}x
+                                    @else
+                                        {{ $roasUnavailableLabel }}
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if ($efficiency['campaign_budget_amount'] === null)
+                                        未設定
+                                    @elseif ($efficiency['budget_utilization_percent'] !== null)
+                                        {{ number_format($efficiency['budget_utilization_percent'], 1) }}%
+                                        <span class="secondary-text">{{ $efficiency['campaign_budget_currency'] }} {{ number_format((float) $efficiency['campaign_budget_amount'], 2) }}</span>
+                                    @else
+                                        {{ $budgetUnavailableLabel }}
+                                    @endif
+                                </td>
+                                <td>
+                                    <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.report', $socialEngagementTarget['id']) }}" aria-label="查看 {{ $socialEngagementTarget['tag'] }} 的行銷成效報告">報告</a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="publishing-day-engagement-title">
         <div class="panel-header">
             <div>
