@@ -74,14 +74,16 @@ class DashboardSocialEngagementDataCoverageTest extends TestCase
             ->get(route('dashboard', ['engagement_tag' => 'tag:campaign']))
             ->assertOk()
             ->assertSee('互動數擷取覆蓋')
-            ->assertSee('包含 4xx／5xx 回應')
-            ->assertSee('<th scope="col">擷取覆蓋率</th>', false);
+            ->assertSee('<th scope="col">擷取覆蓋率</th>', false)
+            ->assertSee('<th scope="col">未完整擷取原因（次）</th>', false)
+            ->assertSee('連線逾時');
 
         $coverageRows = collect($response->viewData('socialEngagementDataCoverageRows'))
             ->keyBy(static fn (array $row): string => $row['period_key'].'/'.$row['platform_key']);
 
         $this->assertSame(['7d/facebook', '7d/instagram', '7d/dcard', '30d/facebook', '30d/instagram', '30d/dcard'], $coverageRows->keys()->all());
         $this->assertSame(3, $coverageRows['7d/facebook']['http_response_count']);
+        $this->assertSame(4, $coverageRows['7d/facebook']['check_count']);
         $this->assertSame(1, $coverageRows['7d/facebook']['complete_metric_read_count']);
         $this->assertSame(33.3, $coverageRows['7d/facebook']['coverage_rate_percent']);
         $this->assertSame(2, $coverageRows['7d/facebook']['posts_with_response_count']);
@@ -96,8 +98,15 @@ class DashboardSocialEngagementDataCoverageTest extends TestCase
         $this->assertSame(0.0, $coverageRows['7d/dcard']['coverage_rate_percent']);
         $this->assertNotNull($coverageRows['7d/facebook']['latest_complete_capture_at']);
         $this->assertSame(4, $coverageRows['30d/facebook']['http_response_count']);
+        $this->assertSame(5, $coverageRows['30d/facebook']['check_count']);
         $this->assertSame(2, $coverageRows['30d/facebook']['complete_metric_read_count']);
         $this->assertSame(50.0, $coverageRows['30d/facebook']['coverage_rate_percent']);
+        $facebookFailureCounts = collect($coverageRows['7d/facebook']['failure_reason_counts'])
+            ->keyBy('key')
+            ->map(static fn (array $reason): int => $reason['count']);
+        $this->assertSame(1, $facebookFailureCounts['http_status_403']);
+        $this->assertSame(1, $facebookFailureCounts['partial_metrics']);
+        $this->assertSame(1, $facebookFailureCounts['connection_timeout']);
 
         $instagramResponse = $this->actingAs(User::factory()->create())
             ->get(route('dashboard', [
@@ -121,6 +130,73 @@ class DashboardSocialEngagementDataCoverageTest extends TestCase
             ->assertSee('至少保留 7 天歷史資料');
 
         $this->assertSame([], $response->viewData('socialEngagementDataCoverageRows'));
+    }
+
+    public function test_dashboard_keeps_checks_without_http_responses_and_leaves_coverage_undefined(): void
+    {
+        $this->travelTo('2026-11-22 20:00:00');
+        $monitor = $this->createSocialMonitor('dcard', '262500001', 'campaign');
+        $this->createRun($monitor, '2026-11-22 13:00:00', null, normalStatus: null, errorType: 'tls_handshake');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('TLS 連線失敗')
+            ->assertSee('0／1');
+
+        $coverageRows = collect($response->viewData('socialEngagementDataCoverageRows'))
+            ->keyBy('period_key');
+
+        $this->assertSame(['7d', '30d'], $coverageRows->keys()->all());
+        $this->assertSame(1, $coverageRows['7d']['check_count']);
+        $this->assertSame(0, $coverageRows['7d']['http_response_count']);
+        $this->assertNull($coverageRows['7d']['coverage_rate_percent']);
+        $this->assertSame('tls_failure', $coverageRows['7d']['failure_reason_counts'][0]['key']);
+    }
+
+    public function test_dashboard_groups_incomplete_capture_reasons_and_keeps_http_coverage_denominator(): void
+    {
+        $this->travelTo('2026-11-22 20:00:00');
+        $monitor = $this->createSocialMonitor('facebook', 'COVERAGECAUSES001', 'campaign');
+        $this->createRun($monitor, '2026-11-22 08:00:00', ['likes' => 10, 'comments' => 2, 'shares' => 1]);
+        $this->createRun($monitor, '2026-11-22 09:00:00', null, errorType: 'social_access_required');
+        $this->createRun($monitor, '2026-11-22 10:00:00', ['likes' => 12, 'comments' => 3, 'shares' => null], errorType: 'body_too_large');
+        $this->createRun($monitor, '2026-11-22 11:00:00', null, normalStatus: 403);
+        $this->createRun($monitor, '2026-11-22 12:00:00', ['likes' => 15, 'comments' => null, 'shares' => null]);
+        $this->createRun($monitor, '2026-11-22 13:00:00', null);
+        $this->createRun($monitor, '2026-11-22 14:00:00', null, normalStatus: null, errorType: 'tls_handshake');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('平台要求登入或驗證')
+            ->assertSee('回應超過讀取上限')
+            ->assertSee('HTTP 403')
+            ->assertSee('只讀到部分互動數')
+            ->assertSee('頁面未提供可辨識的互動數')
+            ->assertSee('TLS 連線失敗');
+
+        $coverageRows = collect($response->viewData('socialEngagementDataCoverageRows'))
+            ->keyBy(static fn (array $row): string => $row['period_key'].'/'.$row['platform_key']);
+        $coverageRow = $coverageRows['7d/facebook'];
+        $failureCounts = collect($coverageRow['failure_reason_counts'])
+            ->keyBy('key')
+            ->map(static fn (array $reason): int => $reason['count']);
+
+        $this->assertSame(7, $coverageRow['check_count']);
+        $this->assertSame(6, $coverageRow['http_response_count']);
+        $this->assertSame(1, $coverageRow['complete_metric_read_count']);
+        $this->assertSame(16.7, $coverageRow['coverage_rate_percent']);
+        $this->assertSame([
+            'http_status_403' => 1,
+            'metrics_unrecognized' => 1,
+            'partial_metrics' => 1,
+            'platform_access' => 1,
+            'response_too_large' => 1,
+            'tls_failure' => 1,
+        ], $failureCounts->sortKeys()->all());
+        $this->assertSame('TLS 連線失敗', $coverageRow['latest_failure_reason']);
+        $this->assertSame('2026-11-22 14:00', $coverageRow['latest_failure_at']);
     }
 
     public function test_dashboard_data_coverage_respects_history_retention(): void
@@ -169,8 +245,9 @@ class DashboardSocialEngagementDataCoverageTest extends TestCase
         ?int $normalStatus = 200,
         string $source = 'scheduled',
         ?int $configVersion = null,
+        ?string $errorType = null,
     ): CheckRun {
-        $timestamp = CarbonImmutable::parse($finishedAt, 'Asia/Taipei');
+        $timestamp = CarbonImmutable::parse($finishedAt, 'Asia/Taipei')->utc();
 
         return CheckRun::factory()->for($monitor)->create([
             'config_version' => $configVersion ?? $monitor->config_version,
@@ -180,7 +257,7 @@ class DashboardSocialEngagementDataCoverageTest extends TestCase
             'started_at' => $timestamp,
             'scheduled_at' => $timestamp,
             'normal_status' => $normalStatus,
-            'error_type' => $normalStatus === null ? 'connect_timeout' : null,
+            'error_type' => $errorType ?? ($normalStatus === null ? 'connect_timeout' : null),
             'response_public_engagement_metrics' => $metrics === null ? null : [
                 'views' => $metrics['views'] ?? null,
                 'likes' => $metrics['likes'] ?? null,

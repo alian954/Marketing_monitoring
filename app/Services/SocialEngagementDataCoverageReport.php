@@ -33,12 +33,16 @@ class SocialEngagementDataCoverageReport
      *     platform_key: string,
      *     platform: string,
      *     interaction_scope_label: string,
+     *     check_count: int,
      *     http_response_count: int,
      *     complete_metric_read_count: int,
-     *     coverage_rate_percent: float,
+     *     coverage_rate_percent: float|null,
      *     posts_with_response_count: int,
      *     posts_with_metrics_count: int,
-     *     latest_complete_capture_at: string|null
+     *     latest_complete_capture_at: string|null,
+     *     failure_reason_counts: list<array{key: string, label: string, count: int}>,
+     *     latest_failure_reason: string|null,
+     *     latest_failure_at: string|null
      * }>
      */
     public function build(
@@ -66,11 +70,11 @@ class SocialEngagementDataCoverageReport
                 'check_runs.monitor_id',
                 'check_runs.finished_at',
                 'check_runs.normal_status',
+                'check_runs.error_type',
                 'check_runs.response_public_engagement_metrics',
             ])
             ->where('check_runs.status', 'completed')
             ->whereNotNull('check_runs.finished_at')
-            ->whereNotNull('check_runs.normal_status')
             ->whereBetween('check_runs.finished_at', [$historyStartsAt, $asOf])
             ->whereNotIn('check_runs.source', ['tls_daily', 'domain_daily'])
             ->whereHas('monitor', static function (Builder $query) use ($selectedPlatform): void {
@@ -96,7 +100,10 @@ class SocialEngagementDataCoverageReport
                     $metrics = is_array($run->response_public_engagement_metrics)
                         ? $run->response_public_engagement_metrics
                         : [];
-                    $hasCompleteMetrics = Monitor::publicEngagementInteractionTotal($metrics, $platform) !== null;
+                    $hasHttpResponse = $run->normal_status !== null;
+                    $hasCompleteMetrics = $hasHttpResponse
+                        && Monitor::publicEngagementInteractionTotal($metrics, $platform) !== null;
+                    $failureReason = $this->failureReason($platform, $run->normal_status, $run->error_type, $metrics);
 
                     foreach ($availablePeriods as $periodKey => $period) {
                         if ($run->finished_at->lessThan($asOf->subDays($period['days']))) {
@@ -104,15 +111,39 @@ class SocialEngagementDataCoverageReport
                         }
 
                         $totalsByPeriodAndPlatform[$periodKey][$platform] ??= [
+                            'check_count' => 0,
                             'http_response_count' => 0,
                             'complete_metric_read_count' => 0,
                             'posts_with_response' => [],
                             'posts_with_metrics' => [],
                             'latest_complete_capture_at' => null,
+                            'failure_reason_counts' => [],
+                            'latest_failure_reason' => null,
                         ];
 
-                        $totalsByPeriodAndPlatform[$periodKey][$platform]['http_response_count']++;
-                        $totalsByPeriodAndPlatform[$periodKey][$platform]['posts_with_response'][$monitor->id] = true;
+                        $totalsByPeriodAndPlatform[$periodKey][$platform]['check_count']++;
+
+                        if ($hasHttpResponse) {
+                            $totalsByPeriodAndPlatform[$periodKey][$platform]['http_response_count']++;
+                            $totalsByPeriodAndPlatform[$periodKey][$platform]['posts_with_response'][$monitor->id] = true;
+                        }
+
+                        if ($failureReason !== null) {
+                            $totalsByPeriodAndPlatform[$periodKey][$platform]['failure_reason_counts'][$failureReason['key']] ??= [
+                                'key' => $failureReason['key'],
+                                'label' => $failureReason['label'],
+                                'count' => 0,
+                            ];
+                            $totalsByPeriodAndPlatform[$periodKey][$platform]['failure_reason_counts'][$failureReason['key']]['count']++;
+                            $latestFailure = $totalsByPeriodAndPlatform[$periodKey][$platform]['latest_failure_reason'];
+
+                            if ($latestFailure === null || $run->finished_at->greaterThan($latestFailure['finished_at'])) {
+                                $totalsByPeriodAndPlatform[$periodKey][$platform]['latest_failure_reason'] = [
+                                    'label' => $failureReason['label'],
+                                    'finished_at' => $run->finished_at->toImmutable(),
+                                ];
+                            }
+                        }
 
                         if (! $hasCompleteMetrics) {
                             continue;
@@ -135,9 +166,12 @@ class SocialEngagementDataCoverageReport
             foreach (self::PLATFORM_LABELS as $platformKey => $platformLabel) {
                 $totals = $totalsByPeriodAndPlatform[$periodKey][$platformKey] ?? null;
 
-                if ($totals === null || $totals['http_response_count'] === 0) {
+                if ($totals === null || $totals['check_count'] === 0) {
                     continue;
                 }
+
+                $failureReasonCounts = array_values($totals['failure_reason_counts']);
+                usort($failureReasonCounts, static fn (array $left, array $right): int => $right['count'] <=> $left['count'] ?: strcmp($left['label'], $right['label']));
 
                 $rows[] = [
                     'period_label' => $period['label'],
@@ -145,12 +179,18 @@ class SocialEngagementDataCoverageReport
                     'platform_key' => $platformKey,
                     'platform' => $platformLabel,
                     'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platformKey),
+                    'check_count' => $totals['check_count'],
                     'http_response_count' => $totals['http_response_count'],
                     'complete_metric_read_count' => $totals['complete_metric_read_count'],
-                    'coverage_rate_percent' => round($totals['complete_metric_read_count'] / $totals['http_response_count'] * 100, 1),
+                    'coverage_rate_percent' => $totals['http_response_count'] > 0
+                        ? round($totals['complete_metric_read_count'] / $totals['http_response_count'] * 100, 1)
+                        : null,
                     'posts_with_response_count' => count($totals['posts_with_response']),
                     'posts_with_metrics_count' => count($totals['posts_with_metrics']),
                     'latest_complete_capture_at' => $totals['latest_complete_capture_at']?->timezone(self::HISTORY_TIMEZONE)->format('Y-m-d H:i'),
+                    'failure_reason_counts' => $failureReasonCounts,
+                    'latest_failure_reason' => $totals['latest_failure_reason']['label'] ?? null,
+                    'latest_failure_at' => ($totals['latest_failure_reason']['finished_at'] ?? null)?->timezone(self::HISTORY_TIMEZONE)->format('Y-m-d H:i'),
                 ];
             }
         }
@@ -167,5 +207,54 @@ class SocialEngagementDataCoverageReport
             $selectedTagValue !== null => in_array($selectedTagValue, $tags, true),
             default => true,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $metrics
+     * @return array{key: string, label: string}|null
+     */
+    private function failureReason(string $platform, ?int $normalStatus, ?string $errorType, array $metrics): ?array
+    {
+        if ($normalStatus !== null && Monitor::publicEngagementInteractionTotal($metrics, $platform) !== null) {
+            return null;
+        }
+
+        if ($errorType === 'social_access_required') {
+            return ['key' => 'platform_access', 'label' => '平台要求登入或驗證'];
+        }
+
+        if ($errorType === 'body_too_large') {
+            return ['key' => 'response_too_large', 'label' => '回應超過讀取上限'];
+        }
+
+        if ($normalStatus === null) {
+            return match ($errorType) {
+                'dns_timeout', 'dns_no_address', 'dns_nxdomain' => ['key' => 'dns_failure', 'label' => 'DNS 解析失敗'],
+                'tls_handshake', 'tls_verify' => ['key' => 'tls_failure', 'label' => 'TLS 連線失敗'],
+                'timeout', 'connect_timeout' => ['key' => 'connection_timeout', 'label' => '連線逾時'],
+                'connection_error' => ['key' => 'connection_failure', 'label' => '連線失敗'],
+                'blocked_ssrf', 'blocked_port', 'redirect_host_not_allowed' => ['key' => 'safety_block', 'label' => '網址或重新導向遭安全規則封鎖'],
+                'queue_job_failed' => ['key' => 'check_job_failure', 'label' => '檢查工作失敗'],
+                default => ['key' => 'no_http_response', 'label' => '未取得 HTTP 回應'],
+            };
+        }
+
+        if ($normalStatus < 200 || $normalStatus >= 400) {
+            return ['key' => 'http_status_'.$normalStatus, 'label' => 'HTTP '.$normalStatus];
+        }
+
+        if ($errorType !== null) {
+            return ['key' => 'capture_error', 'label' => '擷取時發生錯誤'];
+        }
+
+        $requiredMetrics = Monitor::publicEngagementInteractionMetricKeys($platform);
+        $readMetricCount = count(array_filter(
+            $requiredMetrics,
+            static fn (string $metric): bool => isset($metrics[$metric]) && is_numeric($metrics[$metric]),
+        ));
+
+        return $readMetricCount > 0
+            ? ['key' => 'partial_metrics', 'label' => '只讀到部分互動數']
+            : ['key' => 'metrics_unrecognized', 'label' => '頁面未提供可辨識的互動數'];
     }
 }
