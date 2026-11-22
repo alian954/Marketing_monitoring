@@ -90,6 +90,9 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/social-engagement-targets/{socialEngagementTarget}/ad-spend', [SocialEngagementTargetController::class, 'updateAdSpend'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.ad-spend.update');
+    Route::put('/social-engagement-targets/{socialEngagementTarget}/budget', [SocialEngagementTargetController::class, 'updateBudget'])
+        ->whereNumber('socialEngagementTarget')
+        ->name('social-engagement-targets.budget.update');
     Route::post('/social-engagement-targets', [SocialEngagementTargetController::class, 'store'])->name('social-engagement-targets.store');
     Route::delete('/social-engagement-targets/{socialEngagementTarget}', [SocialEngagementTargetController::class, 'destroy'])->name('social-engagement-targets.destroy');
     Route::get('/integrations/google-analytics', [GoogleAnalyticsIntegrationController::class, 'show'])->name('integrations.google-analytics.edit');

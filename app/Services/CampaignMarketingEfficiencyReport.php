@@ -6,6 +6,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use Carbon\CarbonImmutable;
 
 class CampaignMarketingEfficiencyReport
 {
@@ -29,7 +30,16 @@ class CampaignMarketingEfficiencyReport
      *     google_ads_cost_per_click: float|null,
      *     google_ads_cost_per_thousand_impressions: float|null,
      *     google_ads_cost_per_conversion: float|null,
-     *     google_ads_conversion_rate_percent: float|null
+     *     google_ads_conversion_rate_percent: float|null,
+     *     campaign_budget_amount: string|null,
+     *     campaign_budget_currency: string|null,
+     *     budget_utilization_percent: float|null,
+     *     budget_elapsed_percent: float|null,
+     *     budget_expected_spend_amount: float|null,
+     *     budget_pacing_difference_amount: float|null,
+     *     budget_projected_spend_amount: float|null,
+     *     budget_projected_overrun_amount: float|null,
+     *     budget_status: string
      * }
      */
     public function build(
@@ -90,6 +100,7 @@ class CampaignMarketingEfficiencyReport
             $spendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
             default => null,
         };
+        $budgetPacing = $this->budgetPacing($target, $spendAmount, $spendCurrency, $spendSource);
 
         return [
             'ad_spend_amount' => $spendAmountValue,
@@ -144,6 +155,77 @@ class CampaignMarketingEfficiencyReport
             'google_ads_conversion_rate_percent' => $googleAdsConversions !== null && $googleAdsClicks > 0
                 ? round($googleAdsConversions / $googleAdsClicks * 100, 2)
                 : null,
+            ...$budgetPacing,
+        ];
+    }
+
+    /** @return array{campaign_budget_amount: string|null, campaign_budget_currency: string|null, budget_utilization_percent: float|null, budget_elapsed_percent: float|null, budget_expected_spend_amount: float|null, budget_pacing_difference_amount: float|null, budget_projected_spend_amount: float|null, budget_projected_overrun_amount: float|null, budget_status: string} */
+    private function budgetPacing(
+        SocialEngagementTarget $target,
+        ?float $spendAmount,
+        ?string $spendCurrency,
+        ?string $spendSource,
+    ): array {
+        $budgetAmount = $target->campaign_budget_amount;
+        $budgetCurrency = $this->currencyCode($target->campaign_budget_currency);
+        $budgetAmountValue = is_string($budgetAmount) ? $budgetAmount : null;
+        $budgetAmountNumber = $budgetAmountValue === null ? null : (float) $budgetAmountValue;
+        $currencyMatches = $spendCurrency !== null && $spendCurrency === $budgetCurrency;
+        $hasComparableSpend = $spendAmount !== null && $currencyMatches;
+        $startsOn = $target->starts_on?->timezone('Asia/Taipei')->startOfDay();
+        $endsOn = $target->ends_on?->timezone('Asia/Taipei')->startOfDay();
+        $today = CarbonImmutable::now('Asia/Taipei')->startOfDay();
+        $hasCampaignPeriod = $startsOn !== null && $endsOn !== null && ! $endsOn->lessThan($startsOn);
+        $campaignDays = $hasCampaignPeriod ? (int) $startsOn->diffInDays($endsOn) + 1 : null;
+        $campaignHasStarted = $hasCampaignPeriod && ! $today->lessThan($startsOn);
+        $campaignHasEnded = $hasCampaignPeriod && $today->greaterThan($endsOn);
+        $campaignIsInProgress = $campaignHasStarted && ! $campaignHasEnded;
+        $elapsedDays = $campaignIsInProgress
+            ? min($campaignDays, (int) $startsOn->diffInDays($today) + 1)
+            : null;
+        $elapsedFraction = $campaignIsInProgress && $campaignDays !== null && $elapsedDays !== null
+            ? $elapsedDays / $campaignDays
+            : null;
+        $expectedSpend = $campaignIsInProgress && $budgetAmountNumber !== null && $elapsedFraction !== null
+            ? round($budgetAmountNumber * $elapsedFraction, 4)
+            : null;
+        $projectedSpend = $campaignIsInProgress && $hasComparableSpend && $spendAmount !== null && $elapsedFraction !== null && $elapsedFraction > 0
+            ? round($spendAmount / $elapsedFraction, 4)
+            : null;
+        $status = match (true) {
+            $budgetAmountValue === null => 'not_set',
+            $budgetAmountNumber === 0.0 => 'zero_budget',
+            $spendSource === 'currency_mismatch' => 'platform_currency_mismatch',
+            $spendAmount === null => 'missing_spend',
+            $budgetCurrency === null => 'missing_budget_currency',
+            $spendCurrency === null => 'missing_spend_currency',
+            ! $currencyMatches => 'currency_mismatch',
+            ! $hasCampaignPeriod => 'missing_campaign_period',
+            ! $campaignHasStarted => 'not_started',
+            $campaignHasEnded => 'completed',
+            default => 'in_progress',
+        };
+
+        return [
+            'campaign_budget_amount' => $budgetAmountValue,
+            'campaign_budget_currency' => $budgetCurrency,
+            'budget_utilization_percent' => $hasComparableSpend && $budgetAmountNumber !== null && $budgetAmountNumber > 0
+                ? round($spendAmount / $budgetAmountNumber * 100, 2)
+                : null,
+            'budget_elapsed_percent' => $hasCampaignPeriod
+                ? ($campaignHasEnded ? 100.0 : ($campaignHasStarted && $campaignDays !== null && $elapsedDays !== null
+                    ? round($elapsedDays / $campaignDays * 100, 2)
+                    : 0.0))
+                : null,
+            'budget_expected_spend_amount' => $expectedSpend,
+            'budget_pacing_difference_amount' => $expectedSpend !== null && $hasComparableSpend && $spendAmount !== null
+                ? round($spendAmount - $expectedSpend, 4)
+                : null,
+            'budget_projected_spend_amount' => $projectedSpend,
+            'budget_projected_overrun_amount' => $projectedSpend !== null && $budgetAmountNumber !== null
+                ? round($projectedSpend - $budgetAmountNumber, 4)
+                : null,
+            'budget_status' => $status,
         ];
     }
 

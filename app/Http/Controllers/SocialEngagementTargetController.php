@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSocialEngagementTargetRequest;
 use App\Http\Requests\UpdateSocialEngagementTargetAdSpendRequest;
+use App\Http\Requests\UpdateSocialEngagementTargetBudgetRequest;
 use App\Models\SocialEngagementTarget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,16 @@ class SocialEngagementTargetController extends Controller
 
         return redirect()->route('social-engagement-targets.report', $socialEngagementTarget)
             ->with('status', '活動投放花費已儲存。');
+    }
+
+    public function updateBudget(
+        UpdateSocialEngagementTargetBudgetRequest $request,
+        SocialEngagementTarget $socialEngagementTarget,
+    ): RedirectResponse {
+        $socialEngagementTarget->update($request->validated());
+
+        return redirect()->route('social-engagement-targets.report', $socialEngagementTarget)
+            ->with('status', '活動總預算已儲存。');
     }
 
     /** @param array<string, mixed> $data

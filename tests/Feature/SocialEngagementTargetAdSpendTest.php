@@ -94,8 +94,136 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         ]);
     }
 
+    public function test_campaign_budget_update_requires_authentication(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+
+        $this->put(route('social-engagement-targets.budget.update', $target), [
+            'campaign_budget_amount' => '1000',
+            'campaign_budget_currency' => 'TWD',
+        ])->assertRedirect(route('login'));
+    }
+
+    public function test_campaign_budget_update_normalizes_currency_and_saves_amount(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+
+        $this->actingAs(User::factory()->create())
+            ->put(route('social-engagement-targets.budget.update', $target), [
+                'campaign_budget_amount' => '1234.5678',
+                'campaign_budget_currency' => ' twd ',
+            ])
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHas('status', '活動總預算已儲存。');
+
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'id' => $target->id,
+            'campaign_budget_amount' => '1234.5678',
+            'campaign_budget_currency' => 'TWD',
+        ]);
+    }
+
+    public function test_campaign_budget_can_be_cleared_by_submitting_both_fields_blank(): void
+    {
+        $target = SocialEngagementTarget::factory()->create([
+            'campaign_budget_amount' => '500.0000',
+            'campaign_budget_currency' => 'USD',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->put(route('social-engagement-targets.budget.update', $target), [
+                'campaign_budget_amount' => '',
+                'campaign_budget_currency' => '',
+            ])
+            ->assertRedirect(route('social-engagement-targets.report', $target));
+
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'id' => $target->id,
+            'campaign_budget_amount' => null,
+            'campaign_budget_currency' => null,
+        ]);
+    }
+
+    public function test_campaign_budget_requires_amount_and_currency_together_and_rejects_invalid_values(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+        $this->actingAs(User::factory()->create());
+
+        foreach ([
+            [['campaign_budget_amount' => '1000', 'campaign_budget_currency' => ''], ['campaign_budget_currency']],
+            [['campaign_budget_amount' => '', 'campaign_budget_currency' => 'TWD'], ['campaign_budget_amount']],
+            [['campaign_budget_amount' => '-1', 'campaign_budget_currency' => 'TWD'], ['campaign_budget_amount']],
+            [['campaign_budget_amount' => '10.12345', 'campaign_budget_currency' => 'TWD'], ['campaign_budget_amount']],
+            [['campaign_budget_amount' => '10', 'campaign_budget_currency' => 'TWD1'], ['campaign_budget_currency']],
+        ] as [$payload, $errorFields]) {
+            $this->put(route('social-engagement-targets.budget.update', $target), $payload)
+                ->assertSessionHasErrorsIn('socialEngagementBudget', $errorFields);
+        }
+
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'id' => $target->id,
+            'campaign_budget_amount' => null,
+            'campaign_budget_currency' => null,
+        ]);
+    }
+
+    public function test_campaign_budget_report_shows_pacing_and_spend_projection(): void
+    {
+        $this->travelTo('2026-11-05 12:00:00');
+        $target = SocialEngagementTarget::factory()->make([
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-10',
+            'campaign_budget_amount' => '1000.0000',
+            'campaign_budget_currency' => 'TWD',
+        ]);
+        $metaReport = new SocialEngagementTargetMetaMarketingReport;
+        $metaReport->forceFill([
+            'spend_amount' => '600.0000',
+            'currency_code' => 'TWD',
+        ]);
+
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build($target, null, null, $metaReport);
+
+        $this->assertSame(60.0, $analysis['budget_utilization_percent']);
+        $this->assertSame(50.0, $analysis['budget_elapsed_percent']);
+        $this->assertSame(500.0, $analysis['budget_expected_spend_amount']);
+        $this->assertSame(100.0, $analysis['budget_pacing_difference_amount']);
+        $this->assertSame(1200.0, $analysis['budget_projected_spend_amount']);
+        $this->assertSame(200.0, $analysis['budget_projected_overrun_amount']);
+        $this->assertSame('in_progress', $analysis['budget_status']);
+    }
+
+    public function test_campaign_budget_projection_is_unavailable_for_currency_or_period_mismatch(): void
+    {
+        $this->travelTo('2026-11-05 12:00:00');
+        $target = SocialEngagementTarget::factory()->make([
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-10',
+            'campaign_budget_amount' => '1000.0000',
+            'campaign_budget_currency' => 'USD',
+        ]);
+        $metaReport = new SocialEngagementTargetMetaMarketingReport;
+        $metaReport->forceFill(['spend_amount' => '600.0000', 'currency_code' => 'TWD']);
+
+        $currencyMismatch = app(CampaignMarketingEfficiencyReport::class)->build($target, null, null, $metaReport);
+        $this->assertNull($currencyMismatch['budget_utilization_percent']);
+        $this->assertNull($currencyMismatch['budget_projected_spend_amount']);
+        $this->assertSame('currency_mismatch', $currencyMismatch['budget_status']);
+
+        $target->starts_on = null;
+        $target->ends_on = null;
+        $target->campaign_budget_currency = 'TWD';
+
+        $missingPeriod = app(CampaignMarketingEfficiencyReport::class)->build($target, null, null, $metaReport);
+        $this->assertNull($missingPeriod['budget_elapsed_percent']);
+        $this->assertNull($missingPeriod['budget_expected_spend_amount']);
+        $this->assertNull($missingPeriod['budget_projected_spend_amount']);
+        $this->assertSame('missing_campaign_period', $missingPeriod['budget_status']);
+    }
+
     public function test_campaign_report_calculates_costs_and_roas_from_ga4_and_complete_public_interactions(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         $user = User::factory()->create();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -109,6 +237,8 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             'ends_on' => '2026-11-30',
             'ad_spend_amount' => '100.0000',
             'ad_spend_currency' => 'TWD',
+            'campaign_budget_amount' => '500.0000',
+            'campaign_budget_currency' => 'TWD',
         ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
@@ -148,6 +278,9 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             ->assertSee('0.5000 TWD')
             ->assertSee('10.0000 TWD')
             ->assertSee('0.8000 TWD')
+            ->assertSee('活動預算進度')
+            ->assertSee('依目前進度推估總花費')
+            ->assertSee('20.00%')
             ->assertSee('ROAS 為同幣別 GA4 活動營收除以投放花費');
 
         $analysis = $response->viewData('adSpendAnalysis');
@@ -155,6 +288,8 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         $this->assertSame(0.5, $analysis['cost_per_session']);
         $this->assertSame(10.0, $analysis['cost_per_key_event']);
         $this->assertSame(0.8, $analysis['cost_per_public_interaction']);
+        $this->assertSame(20.0, $analysis['budget_utilization_percent']);
+        $this->assertSame(73.33, $analysis['budget_elapsed_percent']);
     }
 
     public function test_currency_mismatch_hides_roas_while_zero_spend_does_not_divide_by_zero(): void

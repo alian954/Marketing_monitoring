@@ -669,6 +669,77 @@
             @endif
             <p class="campaign-report-secondary">ROAS 為同幣別 GA4 活動營收除以投放花費，不扣除商品成本；Meta Ads 與 Google Ads 讀值會合併，同幣別才計入總花費，尚無 API 讀值時使用人工記錄花費。</p>
 
+            <section class="spaced-top" aria-labelledby="campaign-budget-pacing-title">
+                <h3 id="campaign-budget-pacing-title">活動預算進度</h3>
+                @if ($adSpendAnalysis['campaign_budget_amount'] === null)
+                    <p class="campaign-report-secondary">尚未設定活動總預算。</p>
+                @else
+                    <dl class="campaign-report-summary campaign-efficiency-summary" aria-label="活動預算與消耗進度">
+                        <div>
+                            <dt>活動總預算</dt>
+                            <dd>{{ number_format((float) $adSpendAnalysis['campaign_budget_amount'], 2) }} {{ $adSpendAnalysis['campaign_budget_currency'] }}</dd>
+                        </div>
+                        <div>
+                            <dt>預算使用率</dt>
+                            <dd>{{ $adSpendAnalysis['budget_utilization_percent'] === null ? '—' : number_format($adSpendAnalysis['budget_utilization_percent'], 2).'%' }}</dd>
+                        </div>
+                        <div>
+                            <dt>活動期間進度</dt>
+                            <dd>{{ $adSpendAnalysis['budget_elapsed_percent'] === null ? '—' : number_format($adSpendAnalysis['budget_elapsed_percent'], 2).'%' }}</dd>
+                        </div>
+                        <div>
+                            <dt>依活動進度應有花費</dt>
+                            <dd>{{ $adSpendAnalysis['budget_expected_spend_amount'] === null ? '—' : number_format($adSpendAnalysis['budget_expected_spend_amount'], 2).' '.$adSpendAnalysis['campaign_budget_currency'] }}</dd>
+                        </div>
+                        <div>
+                            <dt>目前花費與應有進度差</dt>
+                            <dd>
+                                {{ $adSpendAnalysis['budget_pacing_difference_amount'] === null ? '—' : (($adSpendAnalysis['budget_pacing_difference_amount'] > 0 ? '+' : '').number_format($adSpendAnalysis['budget_pacing_difference_amount'], 2).' '.$adSpendAnalysis['campaign_budget_currency']) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>依目前進度推估總花費</dt>
+                            <dd>{{ $adSpendAnalysis['budget_projected_spend_amount'] === null ? '—' : number_format($adSpendAnalysis['budget_projected_spend_amount'], 2).' '.$adSpendAnalysis['campaign_budget_currency'] }}</dd>
+                        </div>
+                    </dl>
+                    <p class="campaign-report-secondary">
+                        {{ match ($adSpendAnalysis['budget_status']) {
+                            'zero_budget' => '預算為 0，無法計算使用率。',
+                            'platform_currency_mismatch' => 'Meta Ads 與 Google Ads 幣別不同，暫不比較預算。',
+                            'missing_spend' => '同步 Meta Ads／Google Ads 或輸入花費後即可比較預算。',
+                            'missing_budget_currency' => '請設定活動預算幣別。',
+                            'missing_spend_currency' => '實際花費沒有可用幣別，暫不比較預算。',
+                            'currency_mismatch' => '預算與實際花費幣別不同，暫不比較預算。',
+                            'missing_campaign_period' => '設定活動開始與結束日期後即可計算預算進度。',
+                            'not_started' => '活動尚未開始；預算使用率會在取得花費讀值後顯示。',
+                            'completed' => '活動已結束；依活動期間總花費顯示使用率，不推估後續花費。',
+                            default => '應有花費依活動日數平均估算；推估值僅供掌握目前消耗速度。',
+                        } }}
+                    </p>
+                @endif
+
+                <form action="{{ route('social-engagement-targets.budget.update', $target) }}" method="POST" class="campaign-spend-form" aria-labelledby="campaign-budget-form-title">
+                    @csrf
+                    @method('PUT')
+                    <h3 id="campaign-budget-form-title">設定活動總預算</h3>
+                    <div class="field-group">
+                        <label class="field-label" for="campaign-budget-amount">預算金額</label>
+                        <input class="field-input{{ $errors->getBag('socialEngagementBudget')->has('campaign_budget_amount') ? ' is-invalid' : '' }}" id="campaign-budget-amount" name="campaign_budget_amount" type="number" inputmode="decimal" min="0" max="999999999999999.9999" step="0.0001" value="{{ old('campaign_budget_amount', $target->campaign_budget_amount) }}" aria-describedby="campaign-budget-amount-help{{ $errors->getBag('socialEngagementBudget')->has('campaign_budget_amount') ? ' campaign-budget-amount-error' : '' }}" @if ($errors->getBag('socialEngagementBudget')->has('campaign_budget_amount')) aria-invalid="true" @endif>
+                        <p id="campaign-budget-amount-help" class="field-help">最多 4 位小數；金額與幣別留白可清除預算。</p>
+                        @error('campaign_budget_amount', 'socialEngagementBudget')<p id="campaign-budget-amount-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="campaign-budget-currency">預算幣別</label>
+                        <input class="field-input{{ $errors->getBag('socialEngagementBudget')->has('campaign_budget_currency') ? ' is-invalid' : '' }}" id="campaign-budget-currency" name="campaign_budget_currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocomplete="off" value="{{ old('campaign_budget_currency', $target->campaign_budget_currency) }}" aria-describedby="campaign-budget-currency-help{{ $errors->getBag('socialEngagementBudget')->has('campaign_budget_currency') ? ' campaign-budget-currency-error' : '' }}" @if ($errors->getBag('socialEngagementBudget')->has('campaign_budget_currency')) aria-invalid="true" @endif>
+                        <p id="campaign-budget-currency-help" class="field-help">輸入 3 個英文字母，例如 TWD、USD。</p>
+                        @error('campaign_budget_currency', 'socialEngagementBudget')<p id="campaign-budget-currency-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="campaign-spend-form-actions">
+                        <button class="button button-primary" type="submit">儲存預算</button>
+                    </div>
+                </form>
+            </section>
+
             <form action="{{ route('social-engagement-targets.ad-spend.update', $target) }}" method="POST" class="campaign-spend-form" aria-labelledby="campaign-spend-form-title">
                 @csrf
                 @method('PUT')

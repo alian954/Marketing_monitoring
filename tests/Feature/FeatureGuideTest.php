@@ -30,6 +30,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('兩平台歷史趨勢可匯出 CSV')
             ->assertSee('資料超過 24 小時未更新時會提示')
             ->assertSee('跨平台花費僅同幣別合計')
+            ->assertSee('活動平均每日消耗僅供參考')
             ->assertSee('可依平台或活動標籤篩選貼文、互動排行與彙總，並匯出 CSV')
             ->assertSee('互動數擷取覆蓋率依近 7／30 天取得 HTTP 狀態碼')
             ->assertSee('發文時間成效依台灣時間分為四個時段')

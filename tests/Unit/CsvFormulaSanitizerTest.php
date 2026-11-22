@@ -36,7 +36,7 @@ class CsvFormulaSanitizerTest extends TestCase
 
     public function test_values_without_a_formula_prefix_remain_unchanged(): void
     {
-        foreach (['', 'Campaign + launch', '  Campaign', "' =1+1", '活動更新'] as $value) {
+        foreach (['', 'Campaign + launch', '  Campaign', "' =1+1", '活動更新', '-66.6667'] as $value) {
             $this->assertSame($value, CsvFormulaSanitizer::escape($value));
         }
     }

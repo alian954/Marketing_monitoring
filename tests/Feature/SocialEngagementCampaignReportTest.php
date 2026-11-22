@@ -143,6 +143,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'ga4_source_name' => 'facebook',
             'meta_campaign_id' => '123456789012345',
             'google_ads_campaign_id' => '9876543210123456',
+            'campaign_budget_amount' => '500.0000',
+            'campaign_budget_currency' => 'TWD',
         ]);
         $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -268,6 +270,15 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('100.0000', $fields['meta_spend_amount']);
         $this->assertSame('200.0000', $fields['google_ads_spend_amount']);
         $this->assertSame('300.0000', $fields['total_ad_spend_amount']);
+        $this->assertSame('500.0000', $fields['campaign_budget_amount']);
+        $this->assertSame('TWD', $fields['campaign_budget_currency']);
+        $this->assertSame('60.00', $fields['budget_utilization_percent']);
+        $this->assertSame('73.33', $fields['budget_elapsed_percent']);
+        $this->assertSame('366.6667', $fields['budget_expected_spend_amount']);
+        $this->assertSame('-66.6667', $fields['budget_pacing_difference_amount']);
+        $this->assertSame('409.0909', $fields['budget_projected_spend_amount']);
+        $this->assertSame('-90.9091', $fields['budget_projected_overrun_amount']);
+        $this->assertSame('in_progress', $fields['budget_status']);
         $this->assertSame('3.00', $fields['roas']);
         $this->assertSame('可計算', $fields['roas_status']);
         $this->assertSame('1.5000', $fields['cost_per_session']);
