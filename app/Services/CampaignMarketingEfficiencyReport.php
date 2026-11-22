@@ -19,6 +19,9 @@ class CampaignMarketingEfficiencyReport
      *     platform_currency_mismatch: bool,
      *     roas: float|null,
      *     roas_unavailable_reason: string|null,
+     *     meta_ads_omni_purchase_value: string|null,
+     *     meta_ads_purchase_roas: float|null,
+     *     google_ads_conversion_value_roas: float|null,
      *     cost_per_session: float|null,
      *     cost_per_key_event: float|null,
      *     cost_per_public_interaction: float|null,
@@ -87,6 +90,22 @@ class CampaignMarketingEfficiencyReport
         $googleAdsImpressions = $googleAdsReport?->impressions ?? 0;
         $googleAdsClicks = $googleAdsReport?->clicks ?? 0;
         $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
+        $metaPurchaseValue = $this->metaOmniPurchaseValue($metaMarketingReport?->action_values);
+        $metaCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
+        $metaRoas = $metaPurchaseValue !== null
+            && $metaSpendAmount !== null
+            && (float) $metaSpendAmount > 0
+            && $metaCurrency !== null
+            ? round((float) $metaPurchaseValue / (float) $metaSpendAmount, 2)
+            : null;
+        $googleAdsConversionValue = $googleAdsReport?->conversions_value;
+        $googleAdsCurrency = $this->currencyCode($googleAdsReport?->currency_code);
+        $googleAdsRoas = $googleAdsConversionValue !== null
+            && $googleAdsSpendAmount !== null
+            && (float) $googleAdsSpendAmount > 0
+            && $googleAdsCurrency !== null
+            ? round((float) $googleAdsConversionValue / (float) $googleAdsSpendAmount, 2)
+            : null;
         $googleAnalyticsCurrency = is_string($googleAnalyticsReport?->currency_code) && trim($googleAnalyticsReport->currency_code) !== ''
             ? strtoupper(trim($googleAnalyticsReport->currency_code))
             : null;
@@ -119,6 +138,9 @@ class CampaignMarketingEfficiencyReport
                 ? round((float) $googleAnalyticsReport->total_revenue / $spendAmount, 2)
                 : null,
             'roas_unavailable_reason' => $roasUnavailableReason,
+            'meta_ads_omni_purchase_value' => $metaPurchaseValue,
+            'meta_ads_purchase_roas' => $metaRoas,
+            'google_ads_conversion_value_roas' => $googleAdsRoas,
             'cost_per_session' => $spendAmount !== null && $googleAnalyticsReport !== null && $googleAnalyticsReport->sessions > 0
                 ? round($spendAmount / $googleAnalyticsReport->sessions, 4)
                 : null,
@@ -234,5 +256,22 @@ class CampaignMarketingEfficiencyReport
         return is_string($currencyCode) && preg_match('/^[A-Za-z]{3}$/', trim($currencyCode)) === 1
             ? strtoupper(trim($currencyCode))
             : null;
+    }
+
+    private function metaOmniPurchaseValue(?array $actionValues): ?string
+    {
+        foreach ($actionValues ?? [] as $actionValue) {
+            if (! is_array($actionValue) || ($actionValue['action_type'] ?? null) !== 'omni_purchase') {
+                continue;
+            }
+
+            $value = $actionValue['value'] ?? null;
+
+            if (is_numeric($value)) {
+                return (string) $value;
+            }
+        }
+
+        return null;
     }
 }

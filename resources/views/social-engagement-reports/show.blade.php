@@ -132,8 +132,16 @@
                         <dt>Meta Ads CPM</dt>
                         <dd>{{ $adSpendAnalysis['meta_ads_cost_per_thousand_impressions'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_cost_per_thousand_impressions'], 4).' '.$metaMarketingReport->currency_code }}</dd>
                     </div>
+                    <div>
+                        <dt>購買轉換價值</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_omni_purchase_value'] === null ? '—' : number_format((float) $adSpendAnalysis['meta_ads_omni_purchase_value'], 4).' '.($metaMarketingReport->currency_code ?: '幣別未知') }}</dd>
+                    </div>
+                    <div>
+                        <dt>Meta Ads 購買 ROAS</dt>
+                        <dd>{{ $adSpendAnalysis['meta_ads_purchase_roas'] === null ? '—' : number_format($adSpendAnalysis['meta_ads_purchase_roas'], 2).'x' }}</dd>
+                    </div>
                 </dl>
-                <p class="campaign-report-secondary">數據來自已授權廣告帳戶；CTR 以平台點擊除以曝光計算，CPC 與 CPM 使用此活動的花費。</p>
+                <p class="campaign-report-secondary">CTR 以平台點擊除以曝光計算，CPC 與 CPM 使用此活動花費；購買 ROAS 只採用 <code>omni_purchase</code>，不混加其他可能重疊的行動類型。</p>
 
                 <h3 id="meta-marketing-actions-title">Meta Ads 行動成效</h3>
                 <p class="campaign-report-secondary">依廣告帳戶追蹤設定與歸因列出原始行動類型；不同類型可能重疊，因此不合併成單一轉換總數。</p>
@@ -353,12 +361,12 @@
                     </div>
                     <div>
                         <dt>轉換價值</dt>
-                        <dd>{{ number_format((float) $googleAdsReport->conversions_value, 2) }} {{ $googleAdsReport->currency_code }}</dd>
+                        <dd>{{ $googleAdsReport->conversions_value === null ? '—' : number_format((float) $googleAdsReport->conversions_value, 2).' '.($googleAdsReport->currency_code ?: '幣別未知') }}</dd>
                     </div>
                     <div>
                         <dt>Google Ads 轉換價值 ROAS</dt>
                         <dd>
-                            {{ (float) $googleAdsReport->spend_amount > 0 ? number_format((float) $googleAdsReport->conversions_value / (float) $googleAdsReport->spend_amount, 2).'x' : '—' }}
+                            {{ $adSpendAnalysis['google_ads_conversion_value_roas'] === null ? '—' : number_format($adSpendAnalysis['google_ads_conversion_value_roas'], 2).'x' }}
                         </dd>
                     </div>
                     <div>

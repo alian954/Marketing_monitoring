@@ -12,6 +12,7 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
@@ -141,6 +142,111 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertSee('paid_social')
             ->assertSee('GA4 活動渠道、來源與媒介的成效比較')
             ->assertSee('—');
+    }
+
+    public function test_platform_roas_uses_only_meta_omni_purchase_and_keeps_currencies_separate(): void
+    {
+        $metaReport = new SocialEngagementTargetMetaMarketingReport([
+            'spend_amount' => '100.0000',
+            'currency_code' => 'TWD',
+            'action_values' => [
+                ['action_type' => 'purchase', 'value' => '400.0000'],
+                ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '5000.0000'],
+                ['action_type' => 'omni_purchase', 'value' => '700.0000'],
+            ],
+        ]);
+        $googleAdsReport = new SocialEngagementTargetGoogleAdsReport([
+            'spend_amount' => '200.0000',
+            'conversions_value' => '600.0000',
+            'currency_code' => 'USD',
+        ]);
+
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build(
+            new SocialEngagementTarget,
+            null,
+            null,
+            $metaReport,
+            $googleAdsReport,
+        );
+
+        $this->assertSame('700.0000', $analysis['meta_ads_omni_purchase_value']);
+        $this->assertSame(7.0, $analysis['meta_ads_purchase_roas']);
+        $this->assertSame(3.0, $analysis['google_ads_conversion_value_roas']);
+        $this->assertTrue($analysis['platform_currency_mismatch']);
+    }
+
+    public function test_platform_roas_requires_values_positive_spend_and_report_currency(): void
+    {
+        $scenarios = [
+            'missing value' => [
+                new SocialEngagementTargetMetaMarketingReport([
+                    'spend_amount' => '100.0000',
+                    'currency_code' => 'TWD',
+                    'action_values' => [['action_type' => 'purchase', 'value' => '900.0000']],
+                ]),
+                new SocialEngagementTargetGoogleAdsReport([
+                    'spend_amount' => '100.0000',
+                    'currency_code' => 'USD',
+                ]),
+            ],
+            'missing spend' => [
+                new SocialEngagementTargetMetaMarketingReport([
+                    'currency_code' => 'TWD',
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '900.0000']],
+                ]),
+                new SocialEngagementTargetGoogleAdsReport([
+                    'conversions_value' => '900.0000',
+                    'currency_code' => 'USD',
+                ]),
+            ],
+            'zero spend' => [
+                new SocialEngagementTargetMetaMarketingReport([
+                    'spend_amount' => '0.0000',
+                    'currency_code' => 'TWD',
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '900.0000']],
+                ]),
+                new SocialEngagementTargetGoogleAdsReport([
+                    'spend_amount' => '0.0000',
+                    'conversions_value' => '900.0000',
+                    'currency_code' => 'USD',
+                ]),
+            ],
+            'negative spend' => [
+                new SocialEngagementTargetMetaMarketingReport([
+                    'spend_amount' => '-1.0000',
+                    'currency_code' => 'TWD',
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '900.0000']],
+                ]),
+                new SocialEngagementTargetGoogleAdsReport([
+                    'spend_amount' => '-1.0000',
+                    'conversions_value' => '900.0000',
+                    'currency_code' => 'USD',
+                ]),
+            ],
+            'missing currency' => [
+                new SocialEngagementTargetMetaMarketingReport([
+                    'spend_amount' => '100.0000',
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '900.0000']],
+                ]),
+                new SocialEngagementTargetGoogleAdsReport([
+                    'spend_amount' => '100.0000',
+                    'conversions_value' => '900.0000',
+                ]),
+            ],
+        ];
+
+        foreach ($scenarios as $scenario => [$metaReport, $googleAdsReport]) {
+            $analysis = app(CampaignMarketingEfficiencyReport::class)->build(
+                new SocialEngagementTarget,
+                null,
+                null,
+                $metaReport,
+                $googleAdsReport,
+            );
+
+            $this->assertNull($analysis['meta_ads_purchase_roas'], $scenario.' Meta ROAS');
+            $this->assertNull($analysis['google_ads_conversion_value_roas'], $scenario.' Google Ads ROAS');
+        }
     }
 
     public function test_ga4_channel_export_requires_authentication(): void
@@ -412,7 +518,11 @@ class SocialEngagementCampaignReportTest extends TestCase
             'reach' => 1500,
             'clicks' => 80,
             'actions' => [['action_type' => 'link_click', 'value' => '80.0000']],
-            'action_values' => [['action_type' => 'purchase', 'value' => '400.0000']],
+            'action_values' => [
+                ['action_type' => 'purchase', 'value' => '400.0000'],
+                ['action_type' => 'offsite_conversion.fb_pixel_purchase', 'value' => '1200.0000'],
+                ['action_type' => 'omni_purchase', 'value' => '900.0000'],
+            ],
             'currency_code' => 'TWD',
             'synced_at' => now(),
         ]);
@@ -449,6 +559,14 @@ class SocialEngagementCampaignReportTest extends TestCase
             ['likes' => 100, 'comments' => 20, 'shares' => 5, 'views' => 1000],
             '2026-11-05T08:00:00Z',
         );
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads 購買 ROAS')
+            ->assertSee('9.00x')
+            ->assertSee('Google Ads 轉換價值 ROAS')
+            ->assertSee('3.00x');
+
         $googleAnalyticsTrendReport = $this->mock(GoogleAnalyticsCampaignTrendReport::class);
         $googleAnalyticsTrendReport->shouldNotReceive('recentChanges');
         $paidMediaTrendReport = $this->mock(PaidMediaCampaignTrendReport::class);
@@ -496,7 +614,11 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('30.0000', $fields['cost_per_key_event']);
         $this->assertSame('2.4000', $fields['cost_per_public_interaction']);
         $this->assertSame('[{"action_type":"link_click","value":"80.0000"}]', $fields['meta_actions_json']);
+        $this->assertSame('[{"action_type":"purchase","value":"400.0000"},{"action_type":"offsite_conversion.fb_pixel_purchase","value":"1200.0000"},{"action_type":"omni_purchase","value":"900.0000"}]', $fields['meta_action_values_json']);
+        $this->assertSame('900.0000', $fields['meta_ads_omni_purchase_value']);
+        $this->assertSame('9.00', $fields['meta_ads_purchase_roas']);
         $this->assertSame('[{"conversion_action_id":"1234567","conversion_action_name":"Purchase","conversions":"15.0000","conversion_value":"600.0000"}]', $fields['google_ads_conversion_actions_json']);
+        $this->assertSame('3.00', $fields['google_ads_conversion_value_roas']);
         $this->assertSame('1.3333', $fields['meta_ads_frequency']);
         $this->assertSame('4.00', $fields['meta_ads_ctr_percent']);
         $this->assertSame('1.2500', $fields['meta_ads_cost_per_click']);
