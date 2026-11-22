@@ -38,6 +38,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     ],
                     'account_currency' => 'TWD',
                 ]]])
+                ->push(['data' => []])
                 ->push(['data' => [[
                     'account_id' => '123456789',
                     'campaign_id' => '987654322',
@@ -47,7 +48,8 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'reach' => '700',
                     'clicks' => '20',
                     'account_currency' => 'TWD',
-                ]]]),
+                ]]])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -86,7 +88,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'conversions' => null,
         ]);
         $this->assertStringContainsString('完成 2 個活動', Artisan::output());
-        Http::assertSentCount(2);
+        Http::assertSentCount(4);
     }
 
     public function test_scheduled_sync_skips_a_fresh_snapshot(): void
@@ -108,6 +110,14 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'reach' => 800,
             'clicks' => 40,
             'currency_code' => 'TWD',
+            'daily_metrics' => [
+                'status' => 'complete',
+                'requested_start_on' => '2026-11-01',
+                'requested_end_on' => '2026-11-30',
+                'coverage_start_on' => '2026-11-01',
+                'coverage_end_on' => '2026-11-30',
+                'rows' => [],
+            ],
             'synced_at' => now()->subHours(4),
         ]);
 
@@ -133,6 +143,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'clicks' => '40',
                     'account_currency' => 'TWD',
                 ]]])
+                ->push(['data' => []])
                 ->push(['data' => [[
                     'account_id' => '123456789',
                     'campaign_id' => '987654321',
@@ -142,7 +153,8 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'reach' => '900',
                     'clicks' => '48',
                     'account_currency' => 'TWD',
-                ]]]),
+                ]]])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -165,7 +177,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'spend_amount' => '125.5000',
         ]);
-        Http::assertSentCount(2);
+        Http::assertSentCount(4);
     }
 
     public function test_scheduled_sync_does_not_request_data_for_an_expired_token(): void

@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
     'currency_code',
     'source_medium_breakdown',
     'source_medium_breakdown_truncated',
+    'daily_metrics',
     'synced_at',
 ])]
 class SocialEngagementTargetGoogleAnalyticsReport extends Model
@@ -37,6 +38,7 @@ class SocialEngagementTargetGoogleAnalyticsReport extends Model
             'total_revenue' => 'decimal:4',
             'source_medium_breakdown' => 'array',
             'source_medium_breakdown_truncated' => 'boolean',
+            'daily_metrics' => 'array',
             'synced_at' => 'immutable_datetime',
         ];
     }

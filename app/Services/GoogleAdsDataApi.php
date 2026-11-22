@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -158,7 +159,7 @@ class GoogleAdsDataApi
         return $campaigns;
     }
 
-    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>, currency_code: string} */
+    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>, currency_code: string, daily_metrics: list<array{date: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string}>, daily_metrics_status: 'complete'|'partial'|'unsupported', daily_metrics_coverage_start_on: string|null, daily_metrics_coverage_end_on: string|null} */
     public function campaignInsights(
         string $accessToken,
         string $customerId,
@@ -187,7 +188,17 @@ class GoogleAdsDataApi
             $loginCustomerId,
         );
         $rows = $this->rowsFromStream($payload);
+
         if ($rows === []) {
+            $dailyMetrics = $this->dailyCampaignMetrics(
+                $accessToken,
+                $customerId,
+                $campaignId,
+                $startsOn,
+                $endsOn,
+                $loginCustomerId,
+                $accountCurrency,
+            );
             $conversionActions = $this->conversionActionInsights(
                 $accessToken,
                 $customerId,
@@ -207,6 +218,7 @@ class GoogleAdsDataApi
                 'conversions_value' => '0.0000',
                 'conversion_actions' => $conversionActions,
                 'currency_code' => $accountCurrency,
+                ...$dailyMetrics,
             ];
         }
 
@@ -228,6 +240,15 @@ class GoogleAdsDataApi
             throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
         }
 
+        $dailyMetrics = $this->dailyCampaignMetrics(
+            $accessToken,
+            $customerId,
+            $campaignId,
+            $startsOn,
+            $endsOn,
+            $loginCustomerId,
+            $returnedCurrency,
+        );
         $conversionActions = $this->conversionActionInsights(
             $accessToken,
             $customerId,
@@ -247,6 +268,94 @@ class GoogleAdsDataApi
             'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
             'conversion_actions' => $conversionActions,
             'currency_code' => $returnedCurrency,
+            ...$dailyMetrics,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     daily_metrics: list<array{date: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string}>,
+     *     daily_metrics_status: 'complete'|'partial'|'unsupported',
+     *     daily_metrics_coverage_start_on: string|null,
+     *     daily_metrics_coverage_end_on: string|null
+     * }
+     */
+    private function dailyCampaignMetrics(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        ?string $loginCustomerId,
+        string $expectedCurrency,
+    ): array {
+        $minimumSupportedDate = CarbonImmutable::now(config('app.timezone'))->subMonthsNoOverflow(37)->toDateString();
+
+        if ($endsOn < $minimumSupportedDate) {
+            return [
+                'daily_metrics' => [],
+                'daily_metrics_status' => 'unsupported',
+                'daily_metrics_coverage_start_on' => null,
+                'daily_metrics_coverage_end_on' => null,
+            ];
+        }
+
+        $coverageStartOn = $startsOn < $minimumSupportedDate ? $minimumSupportedDate : $startsOn;
+        $status = $coverageStartOn === $startsOn ? 'complete' : 'partial';
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$coverageStartOn}' AND '{$endsOn}' ORDER BY segments.date ASC";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $dailyMetricsByDate = [];
+
+        foreach ($this->dailyRowsFromStream($payload) as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $segments = $row['segments'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $date = is_array($segments) ? ($segments['date'] ?? null) : null;
+            $currencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($currencyCode)
+                || preg_match('/^[A-Z]{3}$/', $currencyCode) !== 1
+                || $currencyCode !== $expectedCurrency
+                || ! is_string($date)
+                || ! $this->isCalendarDate($date)
+                || $date < $coverageStartOn
+                || $date > $endsOn
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的逐日資料，未儲存讀值。');
+            }
+
+            if (isset($dailyMetricsByDate[$date])) {
+                throw new GoogleAdsApiException('Google Ads API 回傳重複日期的逐日資料，未儲存讀值。');
+            }
+
+            $dailyMetricsByDate[$date] = [
+                'date' => $date,
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        ksort($dailyMetricsByDate);
+
+        return [
+            'daily_metrics' => array_values($dailyMetricsByDate),
+            'daily_metrics_status' => $status,
+            'daily_metrics_coverage_start_on' => $coverageStartOn,
+            'daily_metrics_coverage_end_on' => $endsOn,
         ];
     }
 
@@ -362,6 +471,36 @@ class GoogleAdsDataApi
         }
 
         return array_values(array_filter($rows, 'is_array'));
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function dailyRowsFromStream(array $payload): array
+    {
+        if (array_is_list($payload)) {
+            $batches = $payload;
+        } elseif (array_key_exists('results', $payload)) {
+            $batches = [$payload];
+        } else {
+            throw new GoogleAdsApiException('Google Ads API 回傳格式無效的逐日資料，未儲存讀值。');
+        }
+
+        $rows = [];
+
+        foreach ($batches as $batch) {
+            if (! is_array($batch) || ! is_array($batch['results'] ?? null)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳格式無效的逐日資料，未儲存讀值。');
+            }
+
+            foreach ($batch['results'] as $row) {
+                if (! is_array($row)) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳格式無效的逐日資料，未儲存讀值。');
+                }
+
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
     }
 
     /** @return array<string, mixed> */

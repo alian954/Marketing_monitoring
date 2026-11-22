@@ -763,6 +763,125 @@
             </section>
         @endif
 
+        @php
+            $dailyMarketingSources = [
+                [
+                    'key' => 'google_analytics',
+                    'title' => 'GA4',
+                    'metrics' => [
+                        ['key' => 'sessions', 'label' => '工作階段', 'format' => 'integer'],
+                        ['key' => 'engaged_sessions', 'label' => '參與工作階段', 'format' => 'integer'],
+                        ['key' => 'key_events', 'label' => '重要事件', 'format' => 'decimal'],
+                        ['key' => 'total_revenue', 'label' => '總營收', 'format' => 'currency'],
+                    ],
+                ],
+                [
+                    'key' => 'meta_marketing',
+                    'title' => 'Meta Ads',
+                    'metrics' => [
+                        ['key' => 'spend_amount', 'label' => '花費', 'format' => 'currency'],
+                        ['key' => 'impressions', 'label' => '曝光', 'format' => 'integer'],
+                        ['key' => 'reach', 'label' => '觸及', 'format' => 'integer'],
+                        ['key' => 'clicks', 'label' => '點擊', 'format' => 'integer'],
+                        ['key' => 'omni_purchase_count', 'label' => '購買', 'format' => 'decimal'],
+                        ['key' => 'omni_purchase_value', 'label' => '購買價值', 'format' => 'currency'],
+                        ['key' => 'purchase_roas', 'label' => '購買 ROAS', 'format' => 'ratio'],
+                    ],
+                ],
+                [
+                    'key' => 'google_ads',
+                    'title' => 'Google Ads',
+                    'metrics' => [
+                        ['key' => 'spend_amount', 'label' => '花費', 'format' => 'currency'],
+                        ['key' => 'impressions', 'label' => '曝光', 'format' => 'integer'],
+                        ['key' => 'clicks', 'label' => '點擊', 'format' => 'integer'],
+                        ['key' => 'conversions', 'label' => '轉換', 'format' => 'decimal'],
+                        ['key' => 'conversions_value', 'label' => '轉換價值', 'format' => 'currency'],
+                        ['key' => 'conversion_value_roas', 'label' => '轉換價值 ROAS', 'format' => 'ratio'],
+                    ],
+                ],
+            ];
+            $dailyMarketingStatusLabels = [
+                'complete' => '完整',
+                'partial' => '部分涵蓋',
+                'unsupported' => '不支援',
+                'not_synced' => '尚未同步',
+            ];
+        @endphp
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-daily-marketing-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-daily-marketing-title">逐日行銷成效</h2>
+                    <p class="campaign-report-secondary">各平台依自己的日期、幣別與 API 覆蓋範圍列示，不跨平台合併。</p>
+                </div>
+                <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.daily-marketing-performance', $target) }}">匯出逐日 CSV</a>
+            </div>
+
+            @foreach ($dailyMarketingSources as $dailySource)
+                @php
+                    $sourceReport = $dailyMarketingPerformance[$dailySource['key']];
+                    $sourceStatus = $sourceReport['status'];
+                    $sourceStatusClass = match ($sourceStatus) {
+                        'complete' => 'healthy',
+                        'partial' => 'warning',
+                        'unsupported' => 'stale',
+                        default => 'warning',
+                    };
+                @endphp
+                <div class="campaign-report-daily-source">
+                    <div class="campaign-report-section-header">
+                        <h3 id="campaign-report-daily-{{ $dailySource['key'] }}-title">{{ $dailySource['title'] }} 逐日成效</h3>
+                        <span class="badge badge-{{ $sourceStatusClass }}">{{ $dailyMarketingStatusLabels[$sourceStatus] ?? '狀態未知' }}</span>
+                    </div>
+                    <p class="campaign-report-secondary">
+                        API 請求：{{ $sourceReport['requested_start_on'] ?? '—' }} 至 {{ $sourceReport['requested_end_on'] ?? '—' }}
+                        · API 涵蓋：{{ $sourceReport['coverage_start_on'] ?? '—' }} 至 {{ $sourceReport['coverage_end_on'] ?? '—' }}
+                        · 幣別：{{ $sourceReport['currency_code'] ?? '未提供' }}
+                        · 更新於：{{ $sourceReport['synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
+                    </p>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-daily-{{ $dailySource['key'] }}-title" tabindex="0">
+                        <table class="data-table campaign-report-table">
+                            <caption class="sr-only">{{ $dailySource['title'] }}逐日行銷成效及 API 資料涵蓋範圍</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">日期</th>
+                                    @foreach ($dailySource['metrics'] as $metricDefinition)
+                                        <th scope="col" class="numeric">{{ $metricDefinition['label'] }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($sourceReport['rows'] as $dailyRow)
+                                    <tr>
+                                        <th scope="row">{{ $dailyRow['date'] }}</th>
+                                        @foreach ($dailySource['metrics'] as $metricDefinition)
+                                            <td class="numeric">
+                                                @if ($dailyRow[$metricDefinition['key']] === null)
+                                                    —
+                                                @elseif ($metricDefinition['format'] === 'integer')
+                                                    {{ number_format((int) $dailyRow[$metricDefinition['key']]) }}
+                                                @elseif ($metricDefinition['format'] === 'ratio')
+                                                    {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}x
+                                                @else
+                                                    {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}
+                                                @endif
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ count($dailySource['metrics']) + 1 }}" class="campaign-report-empty-cell">
+                                            {{ $sourceReport['snapshot_available'] ? 'API 無逐日列。' : '尚未取得逐日資料。' }}
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            @endforeach
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-efficiency-title">
             <h2 id="campaign-report-efficiency-title">投放成本效率</h2>
             <dl class="campaign-report-summary campaign-efficiency-summary">

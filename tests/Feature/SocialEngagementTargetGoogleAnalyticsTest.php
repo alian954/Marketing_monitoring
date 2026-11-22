@@ -7,6 +7,7 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsCampaignReportSync;
 use App\Services\GoogleAnalyticsDataApi;
 use Carbon\CarbonImmutable;
@@ -76,7 +77,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'short-lived-access-token']),
-            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse([
                 'rows' => [[
                     'dimensionValues' => [
                         ['value' => 'spring_launch_2026'],
@@ -143,33 +144,42 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('TWD', $dailySnapshot->currency_code);
         $this->assertSame($snapshot->source_medium_breakdown, $dailySnapshot->source_medium_breakdown);
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
-            && $request->data()['dateRanges'] === [[
-                'startDate' => '2026-11-01',
-                'endDate' => '2026-11-30',
-            ]]
             && $request->data()['dimensions'] === [
                 ['name' => 'sessionManualCampaignName'],
                 ['name' => 'sessionDefaultChannelGroup'],
                 ['name' => 'sessionManualSource'],
                 ['name' => 'sessionManualMedium'],
             ]
-            && $request->data()['metrics'] === [
-                ['name' => 'sessions'],
-                ['name' => 'engagedSessions'],
-                ['name' => 'keyEvents'],
-                ['name' => 'totalRevenue'],
-            ]
-            && $request->data()['metricAggregations'] === ['TOTAL']
-            && $request->data()['limit'] === 10001
+            && $request->data()['dateRanges'] === [[
+                'startDate' => '2026-11-01',
+                'endDate' => '2026-11-30',
+            ]]
             && $request->data()['dimensionFilter']['andGroup']['expressions'][0]['filter']['stringFilter']['value'] === 'spring_launch_2026'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualSource'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'facebook_ads'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['fieldName'] === 'sessionManualMedium'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['stringFilter']['value'] === 'paid_social'
             && $request->hasHeader('Authorization', 'Bearer short-lived-access-token'));
-
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
+            && $request->data()['dimensions'] === [['name' => 'date']]
+            && $request->data()['metrics'] === [
+                ['name' => 'sessions'],
+                ['name' => 'engagedSessions'],
+                ['name' => 'keyEvents'],
+                ['name' => 'totalRevenue'],
+            ]
+            && $request->data()['dateRanges'] === [[
+                'startDate' => '2026-11-01',
+                'endDate' => '2026-11-30',
+            ]]
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][0]['filter']['stringFilter']['value'] === 'spring_launch_2026'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualSource'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'facebook_ads'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['fieldName'] === 'sessionManualMedium'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['stringFilter']['value'] === 'paid_social'
+            && $request->hasHeader('Authorization', 'Bearer short-lived-access-token'));
         $reportResponse = $this->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('GA4 導流成效')
@@ -203,14 +213,14 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertStringContainsString('ga4_source_medium_breakdown_json', $campaignCsv);
         $this->assertStringContainsString('paid_social', $campaignCsv);
 
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
     }
 
     public function test_ga4_campaign_report_preserves_large_revenue_decimal_precision(): void
     {
         Http::preventStrayRequests();
         Http::fake([
-            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse([
                 'rows' => [],
                 'totals' => [[
                     'metricValues' => [
@@ -236,7 +246,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('1.2345', $report['key_events']);
         $this->assertSame('576460752303.4235', $report['total_revenue']);
         $this->assertSame([], $report['source_medium_breakdown']);
-        Http::assertSentCount(1);
+        $this->assertSame([], $report['daily_metrics']);
+        Http::assertSentCount(2);
     }
 
     public function test_ga4_sync_matches_google_ads_auto_tagged_campaign_by_id_without_manual_utm_filters(): void
@@ -248,7 +259,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
-            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse([
                 'rows' => [[
                     'dimensionValues' => [
                         ['value' => '123456789012'],
@@ -324,6 +335,11 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             && $request->data()['dimensionFilter']['filter']['fieldName'] === 'sessionGoogleAdsCampaignId'
             && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === '123456789012'
             && $request->data()['dimensionFilter']['filter']['stringFilter']['matchType'] === 'EXACT');
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
+            && $request->data()['dimensions'] === [['name' => 'date']]
+            && $request->data()['dimensionFilter']['filter']['fieldName'] === 'sessionGoogleAdsCampaignId'
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === '123456789012'
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['matchType'] === 'EXACT');
 
         $reportPage = $this->get(route('social-engagement-targets.report', $target))
             ->assertOk()
@@ -356,7 +372,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
     {
         Http::preventStrayRequests();
         Http::fake([
-            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse([
                 'rows' => [
                     [
                         'dimensionValues' => [
@@ -447,6 +463,154 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ],
         ], $report['source_medium_breakdown']);
         $this->assertTrue($report['source_medium_breakdown_truncated']);
+        $this->assertSame([], $report['daily_metrics']);
+    }
+
+    public function test_ga4_campaign_report_returns_sorted_daily_metrics_and_keeps_aggregate_totals(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse(
+                $this->reportPayload(30, 20, '4.5', '100.25', 'TWD'),
+                [
+                    'rows' => [
+                        [
+                            'dimensionValues' => [['value' => '20261103']],
+                            'metricValues' => [
+                                ['value' => '7'],
+                                ['value' => '5'],
+                                ['value' => '1.25'],
+                                ['value' => '50.12345'],
+                            ],
+                        ],
+                        [
+                            'dimensionValues' => [['value' => '20261101']],
+                            'metricValues' => [
+                                ['value' => '11'],
+                                ['value' => '8'],
+                                ['value' => '2.5'],
+                                ['value' => '30.1'],
+                            ],
+                        ],
+                    ],
+                    'rowCount' => 2,
+                ],
+            ),
+        ]);
+
+        $report = (new GoogleAnalyticsDataApi)->campaignReport(
+            'access-token',
+            '123456789',
+            'spring-launch',
+            '2026-11-01',
+            '2026-11-03',
+            'facebook',
+            'paid_social',
+        );
+
+        $this->assertSame(30, $report['sessions']);
+        $this->assertSame(20, $report['engaged_sessions']);
+        $this->assertSame('4.5000', $report['key_events']);
+        $this->assertSame('100.2500', $report['total_revenue']);
+        $this->assertSame([
+            [
+                'date' => '2026-11-01',
+                'sessions' => 11,
+                'engaged_sessions' => 8,
+                'key_events' => '2.5000',
+                'total_revenue' => '30.1000',
+            ],
+            [
+                'date' => '2026-11-03',
+                'sessions' => 7,
+                'engaged_sessions' => 5,
+                'key_events' => '1.2500',
+                'total_revenue' => '50.1235',
+            ],
+        ], $report['daily_metrics']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
+            && $request->data()['dimensions'] === [['name' => 'date']]
+            && $request->data()['dateRanges'] === [[
+                'startDate' => '2026-11-01',
+                'endDate' => '2026-11-03',
+            ]]
+            && $request->data()['metrics'] === [
+                ['name' => 'sessions'],
+                ['name' => 'engagedSessions'],
+                ['name' => 'keyEvents'],
+                ['name' => 'totalRevenue'],
+            ]
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][0]['filter']['stringFilter']['value'] === 'spring-launch'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualSource'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'facebook'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['fieldName'] === 'sessionManualMedium'
+            && $request->data()['dimensionFilter']['andGroup']['expressions'][2]['filter']['stringFilter']['value'] === 'paid_social');
+    }
+
+    public function test_ga4_campaign_report_rejects_malformed_daily_rows(): void
+    {
+        Http::preventStrayRequests();
+        $validMetrics = [
+            ['value' => '1'],
+            ['value' => '1'],
+            ['value' => '1.5'],
+            ['value' => '2.5'],
+        ];
+        $validDailyRow = static fn (string $date): array => [
+            'dimensionValues' => [['value' => $date]],
+            'metricValues' => $validMetrics,
+        ];
+        $invalidDailyRows = [
+            'malformed date' => [$validDailyRow('20260230')],
+            'date outside range' => [$validDailyRow('20261031')],
+            'wrong metric count' => [[
+                'dimensionValues' => [['value' => '20261101']],
+                'metricValues' => array_slice($validMetrics, 0, 3),
+            ]],
+            'duplicate date' => [$validDailyRow('20261101'), $validDailyRow('20261101')],
+        ];
+
+        foreach ($invalidDailyRows as $case => $rows) {
+            Http::fake([
+                'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse(
+                    $this->reportPayload(1, 1, '1', '1', 'TWD'),
+                    ['rows' => $rows, 'rowCount' => count($rows)],
+                ),
+            ]);
+
+            try {
+                (new GoogleAnalyticsDataApi)->campaignReport(
+                    'access-token',
+                    '123456789',
+                    'spring-launch',
+                    '2026-11-01',
+                    '2026-11-30',
+                );
+                $this->fail('Expected malformed daily data to be rejected: '.$case);
+            } catch (GoogleAnalyticsApiException) {
+                Http::assertSentCount(2);
+            }
+        }
+    }
+
+    public function test_ga4_campaign_report_rejects_invalid_requested_dates_before_api_calls(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+
+        try {
+            (new GoogleAnalyticsDataApi)->campaignReport(
+                'access-token',
+                '123456789',
+                'spring-launch',
+                '2026-11-30',
+                '2026-11-01',
+            );
+            $this->fail('Expected reversed campaign dates to be rejected.');
+        } catch (GoogleAnalyticsApiException) {
+            Http::assertNothingSent();
+        }
     }
 
     public function test_ga4_report_history_ignores_snapshots_with_a_different_medium(): void
@@ -516,7 +680,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
-            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => $this->campaignReportResponse([
                 'rows' => [],
                 'metadata' => ['currencyCode' => 'JPY'],
             ]),
@@ -672,8 +836,11 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
                 ->push($this->reportPayload(100, 50, '10', '1000', 'TWD'))
+                ->push(['rows' => []])
                 ->push($this->reportPayload(130, 70, '12', '1200', 'TWD'))
-                ->push($this->reportPayload(155, 80, '16.5', '1500', 'TWD')),
+                ->push(['rows' => []])
+                ->push($this->reportPayload(155, 80, '16.5', '1500', 'TWD'))
+                ->push(['rows' => []]),
         ]);
 
         $user = User::factory()->create();
@@ -768,7 +935,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('sessions_change_since_previous', str_getcsv($csvLines[0])[5]);
         $this->assertStringContainsString(',25,', $csvLines[2]);
         $this->assertStringNotContainsString('999999', $csvResponse->streamedContent());
-        Http::assertSentCount(6);
+        Http::assertSentCount(9);
     }
 
     public function test_campaign_report_marks_ga4_read_stale_after_one_day(): void
@@ -1000,6 +1167,21 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $aggregatePayload
+     * @param  array<string, mixed>  $dailyPayload
+     */
+    private function campaignReportResponse(
+        array $aggregatePayload,
+        array $dailyPayload = ['rows' => []],
+    ): \Closure {
+        return static function (ClientRequest $request) use ($aggregatePayload, $dailyPayload) {
+            $isDailyRequest = ($request->data()['dimensions'] ?? null) === [['name' => 'date']];
+
+            return Http::response($isDailyRequest ? $dailyPayload : $aggregatePayload);
+        };
     }
 
     /** @return array<string, mixed> */

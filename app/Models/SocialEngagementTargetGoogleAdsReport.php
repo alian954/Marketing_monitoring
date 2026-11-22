@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
     'conversions',
     'conversions_value',
     'conversion_actions',
+    'daily_metrics',
     'currency_code',
     'synced_at',
 ])]
@@ -40,6 +41,7 @@ class SocialEngagementTargetGoogleAdsReport extends Model
             'conversions' => 'decimal:4',
             'conversions_value' => 'decimal:4',
             'conversion_actions' => 'array',
+            'daily_metrics' => 'array',
             'synced_at' => 'immutable_datetime',
         ];
     }

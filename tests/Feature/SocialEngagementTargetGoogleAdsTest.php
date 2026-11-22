@@ -219,6 +219,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
     public function test_google_ads_sync_saves_metrics_and_uses_google_ads_and_ga4_for_efficiency(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
@@ -235,6 +236,10 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '100000000', 'impressions' => '4000', 'clicks' => '160', 'conversions' => '4.5', 'conversions_value' => '300.25'],
+                    ['date' => '2026-11-03', 'cost_micros' => '150750000', 'impressions' => '8000', 'clicks' => '320', 'conversions' => '8', 'conversions_value' => '702.75'],
+                ], '1234567890', '987654321', 'USD'))
                 ->push($this->conversionActionsPayload([
                     ['id' => '1002', 'name' => 'Web purchase', 'conversions' => '10.5', 'value' => '900.25'],
                     ['id' => '1001', 'name' => 'Lead & form <Submit>', 'conversions' => '7', 'value' => '80.5'],
@@ -279,6 +284,31 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         ], $snapshot->conversion_actions);
         $this->assertSame('USD', $snapshot->currency_code);
         $this->assertNotNull($snapshot->synced_at);
+        $this->assertSame([
+            'status' => 'complete',
+            'requested_start_on' => '2026-11-01',
+            'requested_end_on' => '2026-11-30',
+            'coverage_start_on' => '2026-11-01',
+            'coverage_end_on' => '2026-11-30',
+            'rows' => [
+                [
+                    'date' => '2026-11-02',
+                    'spend_amount' => '100.0000',
+                    'impressions' => 4000,
+                    'clicks' => 160,
+                    'conversions' => '4.5000',
+                    'conversions_value' => '300.2500',
+                ],
+                [
+                    'date' => '2026-11-03',
+                    'spend_amount' => '150.7500',
+                    'impressions' => 8000,
+                    'clicks' => 320,
+                    'conversions' => '8.0000',
+                    'conversions_value' => '702.7500',
+                ],
+            ],
+        ], $snapshot->daily_metrics);
         $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
         $this->assertSame(SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS, $paidAdSnapshot->source);
         $this->assertSame($connection->id, $paidAdSnapshot->google_ads_connection_id);
@@ -287,7 +317,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 
@@ -296,6 +326,14 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 && $request->hasHeader('login-customer-id', '0987654321')
                 && str_contains($query, 'customer.id, customer.currency_code')
                 && str_contains($query, 'campaign.id = 987654321')
+                && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-30'");
+        });
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_ends_with($request->url(), '/customers/1234567890/googleAds:searchStream')
+                && str_contains($query, 'segments.date, metrics.cost_micros')
+                && str_contains($query, 'ORDER BY segments.date ASC')
                 && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-30'");
         });
         Http::assertSent(function (ClientRequest $request): bool {
@@ -339,6 +377,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
     public function test_google_ads_metrics_keep_decimal_precision_for_large_values(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         Http::preventStrayRequests();
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
@@ -356,6 +395,9 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '9007199254740049', 'impressions' => '1000', 'clicks' => '40', 'conversions' => '2', 'conversions_value' => '200'],
+                ], '1234567890', '987654321', 'TWD'))
                 ->push($this->conversionActionsPayload([])),
         ]);
         $user = User::factory()->create();
@@ -376,6 +418,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
     public function test_google_ads_api_preserves_large_decimal_precision_for_conversions(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         Http::preventStrayRequests();
         Http::fake([
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
@@ -392,6 +435,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push([])
                 ->push([]),
         ]);
 
@@ -406,14 +450,255 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
         $this->assertSame('576460752303.4235', $insights['conversions']);
         $this->assertSame('576460752303.4235', $insights['conversions_value']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_google_ads_daily_metrics_mark_history_before_the_37_month_window_as_partial(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Long-running campaign'],
+                        'metrics' => [
+                            'costMicros' => '1000000',
+                            'impressions' => '100',
+                            'clicks' => '4',
+                            'conversions' => '1',
+                            'conversionsValue' => '10',
+                        ],
+                    ]],
+                ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2023-10-22', 'cost_micros' => '1250000', 'impressions' => '12', 'clicks' => '2', 'conversions' => '1.5', 'conversions_value' => '3.25'],
+                ], '1234567890', '987654321', 'USD'))
+                ->push([]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2022-01-01',
+            '2026-11-30',
+            'USD',
+        );
+
+        $this->assertSame('partial', $insights['daily_metrics_status']);
+        $this->assertSame('2023-10-22', $insights['daily_metrics_coverage_start_on']);
+        $this->assertSame('2026-11-30', $insights['daily_metrics_coverage_end_on']);
+        $this->assertSame([
+            [
+                'date' => '2023-10-22',
+                'spend_amount' => '1.2500',
+                'impressions' => 12,
+                'clicks' => 2,
+                'conversions' => '1.5000',
+                'conversions_value' => '3.2500',
+            ],
+        ], $insights['daily_metrics']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_google_ads_daily_metrics_mark_a_period_before_the_37_month_window_as_unsupported(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Historical campaign'],
+                        'metrics' => [
+                            'costMicros' => '1000000',
+                            'impressions' => '100',
+                            'clicks' => '4',
+                            'conversions' => '1',
+                            'conversionsValue' => '10',
+                        ],
+                    ]],
+                ]])
+                ->push([]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2019-01-01',
+            '2019-12-31',
+            'USD',
+        );
+
+        $this->assertSame('unsupported', $insights['daily_metrics_status']);
+        $this->assertSame([], $insights['daily_metrics']);
+        $this->assertNull($insights['daily_metrics_coverage_start_on']);
+        $this->assertNull($insights['daily_metrics_coverage_end_on']);
         Http::assertSentCount(2);
+    }
+
+    public function test_google_ads_daily_metrics_reject_rows_for_a_different_campaign(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Current campaign'],
+                        'metrics' => [
+                            'costMicros' => '1000000',
+                            'impressions' => '100',
+                            'clicks' => '4',
+                            'conversions' => '1',
+                            'conversionsValue' => '10',
+                        ],
+                    ]],
+                ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ], '1234567890', '111111111', 'USD')),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'USD',
+        );
+    }
+
+    public function test_google_ads_daily_metrics_reject_a_different_currency(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload())
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ], '1234567890', '987654321', 'USD')),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+    }
+
+    public function test_google_ads_daily_metrics_reject_dates_outside_the_campaign_period(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload())
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-10-31', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+    }
+
+    public function test_google_ads_daily_metrics_reject_invalid_calendar_dates(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload())
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-02-30', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+    }
+
+    public function test_google_ads_daily_metrics_reject_duplicate_dates(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload())
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                    ['date' => '2026-11-02', 'cost_micros' => '2000000', 'impressions' => '20', 'clicks' => '2', 'conversions' => '2', 'conversions_value' => '20'],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+    }
+
+    public function test_google_ads_daily_metrics_reject_negative_integer_metrics(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload())
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '-1', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
     }
 
     public function test_google_ads_sync_saves_zero_metrics_when_no_campaign_rows_are_returned(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([])
                 ->push([])
                 ->push([]),
         ]);
@@ -434,6 +719,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('0.0000', $snapshot->conversions_value);
         $this->assertSame([], $snapshot->conversion_actions);
         $this->assertSame('TWD', $snapshot->currency_code);
+        $this->assertSame('complete', $snapshot->daily_metrics['status']);
+        $this->assertSame([], $snapshot->daily_metrics['rows']);
     }
 
     public function test_google_ads_sync_reports_missing_connection_and_customer_campaign_or_dates(): void
@@ -526,6 +813,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
     public function test_google_ads_conversion_action_rows_for_a_different_customer_preserve_the_last_successful_report(): void
     {
+        $this->travelTo('2026-11-22 12:00:00');
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
@@ -542,6 +830,9 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '100', 'clicks' => '4', 'conversions' => '1', 'conversions_value' => '10'],
+                ], '1234567890', '987654321', 'TWD'))
                 ->push($this->conversionActionsPayload([
                     ['id' => '1001', 'name' => 'Private conversion', 'conversions' => '1', 'value' => '10'],
                 ], '9999999999')),
@@ -786,6 +1077,49 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     'conversionsValue' => $action['value'],
                 ],
             ], $actions),
+        ]];
+    }
+
+    /** @return list<array{results: list<array<string, mixed>>}> */
+    private function campaignMetricsPayload(): array
+    {
+        return [[
+            'results' => [[
+                'customer' => ['id' => '1234567890', 'currencyCode' => 'TWD'],
+                'campaign' => ['id' => '987654321', 'name' => 'Current campaign'],
+                'metrics' => [
+                    'costMicros' => '1000000',
+                    'impressions' => '100',
+                    'clicks' => '4',
+                    'conversions' => '1',
+                    'conversionsValue' => '10',
+                ],
+            ]],
+        ]];
+    }
+
+    /** @param list<array{date: string, cost_micros: string, impressions: string, clicks: string, conversions: string, conversions_value: string}> $days
+     * @return list<array{results: list<array<string, mixed>>}>
+     */
+    private function dailyMetricsPayload(
+        array $days,
+        string $customerId = '1234567890',
+        string $campaignId = '987654321',
+        string $currencyCode = 'TWD',
+    ): array {
+        return [[
+            'results' => array_map(static fn (array $day): array => [
+                'customer' => ['id' => $customerId, 'currencyCode' => $currencyCode],
+                'campaign' => ['id' => $campaignId],
+                'segments' => ['date' => $day['date']],
+                'metrics' => [
+                    'costMicros' => $day['cost_micros'],
+                    'impressions' => $day['impressions'],
+                    'clicks' => $day['clicks'],
+                    'conversions' => $day['conversions'],
+                    'conversionsValue' => $day['conversions_value'],
+                ],
+            ], $days),
         ]];
     }
 

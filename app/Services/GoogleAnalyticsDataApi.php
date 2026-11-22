@@ -9,6 +9,8 @@ class GoogleAnalyticsDataApi
 {
     private const CAMPAIGN_BREAKDOWN_ROW_LIMIT = 10000;
 
+    private const CAMPAIGN_DAILY_ROW_LIMIT = 10000;
+
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
@@ -93,7 +95,14 @@ class GoogleAnalyticsDataApi
      *         key_events: string,
      *         total_revenue: string
      *     }>,
-     *     source_medium_breakdown_truncated: bool
+     *     source_medium_breakdown_truncated: bool,
+     *     daily_metrics: list<array{
+     *         date: string,
+     *         sessions: int,
+     *         engaged_sessions: int,
+     *         key_events: string,
+     *         total_revenue: string
+     *     }>
      * }
      */
     public function campaignReport(
@@ -106,6 +115,10 @@ class GoogleAnalyticsDataApi
         ?string $mediumName = null,
         ?string $googleAdsCampaignId = null,
     ): array {
+        if (! $this->isCalendarDate($startsOn) || ! $this->isCalendarDate($endsOn) || $startsOn > $endsOn) {
+            throw new GoogleAnalyticsApiException('GA4 活動日期區間無效，請重新設定開始日與結束日。');
+        }
+
         $googleAdsCampaignId = is_string($googleAdsCampaignId) ? trim($googleAdsCampaignId) : '';
         $usesGoogleAdsAutoTagging = $googleAdsCampaignId !== '';
         $campaignDimension = $usesGoogleAdsAutoTagging
@@ -229,6 +242,13 @@ class GoogleAnalyticsDataApi
         $rowCount = array_key_exists('rowCount', $payload)
             ? $this->nonNegativeInteger($payload['rowCount'])
             : count($rows);
+        $dailyMetrics = $this->dailyCampaignMetrics(
+            $accessToken,
+            $propertyId,
+            $startsOn,
+            $endsOn,
+            $dimensionFilter,
+        );
 
         return [
             ...$totalMetrics,
@@ -236,7 +256,136 @@ class GoogleAnalyticsDataApi
             'source_medium_breakdown' => array_slice($channelRows, 0, self::CAMPAIGN_BREAKDOWN_ROW_LIMIT),
             'source_medium_breakdown_truncated' => $rowCount > count($rows)
                 || count($channelRows) > self::CAMPAIGN_BREAKDOWN_ROW_LIMIT,
+            'daily_metrics' => $dailyMetrics,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return list<array{date: string, sessions: int, engaged_sessions: int, key_events: string, total_revenue: string}>
+     */
+    private function dailyCampaignMetrics(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $endsOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'date'],
+                ],
+                'metrics' => [
+                    ['name' => 'sessions'],
+                    ['name' => 'engagedSessions'],
+                    ['name' => 'keyEvents'],
+                    ['name' => 'totalRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'limit' => self::CAMPAIGN_DAILY_ROW_LIMIT + 1,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+
+        if (($payload['metadata']['subjectToThresholding'] ?? false) === true) {
+            throw new GoogleAnalyticsApiException('GA4 因資料門檻未回傳這項活動的每日數值，請直接在 GA4 查看。');
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日報表格式無效，請稍後再試。');
+        }
+
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($rows);
+
+        if ($rowCount > count($rows) || count($rows) > self::CAMPAIGN_DAILY_ROW_LIMIT) {
+            throw new GoogleAnalyticsApiException('GA4 每日資料超過可讀取上限，請縮短活動日期區間後再同步。');
+        }
+
+        $dailyMetricsByDate = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+
+            if (! is_array($dimensionValues) || ! array_is_list($dimensionValues) || count($dimensionValues) !== 1) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日日期格式無效，請稍後再試。');
+            }
+
+            $dateDimension = $dimensionValues[0];
+
+            if (! is_array($dateDimension) || ! is_string($dateDimension['value'] ?? null)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日日期格式無效，請稍後再試。');
+            }
+
+            $date = $this->dailyDate($dateDimension['value'], $startsOn, $endsOn);
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($metricValues) || ! array_is_list($metricValues) || count($metricValues) !== 4) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日指標格式無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日指標格式無效，請稍後再試。');
+                }
+            }
+
+            if (array_key_exists($date, $dailyMetricsByDate)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳了重複的每日資料，請稍後再同步。');
+            }
+
+            $dailyMetricsByDate[$date] = [
+                'date' => $date,
+                ...$this->metricsForRow($row),
+            ];
+        }
+
+        ksort($dailyMetricsByDate);
+
+        return array_values($dailyMetricsByDate);
+    }
+
+    private function dailyDate(string $value, string $startsOn, string $endsOn): string
+    {
+        if (preg_match('/^\d{8}$/D', $value) !== 1) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日日期格式無效，請稍後再試。');
+        }
+
+        $year = (int) substr($value, 0, 4);
+        $month = (int) substr($value, 4, 2);
+        $day = (int) substr($value, 6, 2);
+
+        if (! checkdate($month, $day, $year)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的每日日期格式無效，請稍後再試。');
+        }
+
+        $date = $year.'-'.str_pad((string) $month, 2, '0', STR_PAD_LEFT).'-'.str_pad((string) $day, 2, '0', STR_PAD_LEFT);
+
+        if ($date < $startsOn || $date > $endsOn) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳了活動日期區間外的每日資料，請稍後再同步。');
+        }
+
+        return $date;
+    }
+
+    private function isCalendarDate(string $value): bool
+    {
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date instanceof \DateTimeImmutable && $date->format('Y-m-d') === $value;
     }
 
     /**

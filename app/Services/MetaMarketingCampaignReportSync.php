@@ -33,9 +33,29 @@ class MetaMarketingCampaignReportSync
             $target->ends_on->toDateString(),
             $connection->currency_code,
         );
+        $startsOn = $target->starts_on->toDateString();
+        $endsOn = $target->ends_on->toDateString();
+        $dailyMetrics = [
+            'status' => $metrics['daily_metrics_status'] ?? 'complete',
+            'requested_start_on' => $startsOn,
+            'requested_end_on' => $endsOn,
+            'coverage_start_on' => array_key_exists('daily_metrics_coverage_start_on', $metrics)
+                ? $metrics['daily_metrics_coverage_start_on']
+                : $startsOn,
+            'coverage_end_on' => array_key_exists('daily_metrics_coverage_end_on', $metrics)
+                ? $metrics['daily_metrics_coverage_end_on']
+                : $endsOn,
+            'rows' => $metrics['daily_metrics'],
+        ];
+        unset(
+            $metrics['daily_metrics'],
+            $metrics['daily_metrics_status'],
+            $metrics['daily_metrics_coverage_start_on'],
+            $metrics['daily_metrics_coverage_end_on'],
+        );
         $syncedAt = CarbonImmutable::now();
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt): SocialEngagementTargetMetaMarketingReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics): SocialEngagementTargetMetaMarketingReport {
             $report = SocialEngagementTargetMetaMarketingReport::query()->updateOrCreate(
                 [
                     'meta_marketing_connection_id' => $connection->getKey(),
@@ -44,8 +64,9 @@ class MetaMarketingCampaignReportSync
                 [
                     'ad_account_id' => $connection->ad_account_id,
                     'campaign_id' => $target->meta_campaign_id,
-                    'starts_on' => $target->starts_on->toDateString(),
-                    'ends_on' => $target->ends_on->toDateString(),
+                    'starts_on' => $startsOn,
+                    'ends_on' => $endsOn,
+                    'daily_metrics' => $dailyMetrics,
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],
@@ -92,6 +113,7 @@ class MetaMarketingCampaignReportSync
             && $snapshot->campaign_id === $target->meta_campaign_id
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
+            && $snapshot->daily_metrics !== null
             && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
     }
 }

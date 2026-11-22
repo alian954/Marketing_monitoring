@@ -34,6 +34,26 @@ class GoogleAnalyticsCampaignReportSync
             $mediumName,
             $googleAdsCampaignId,
         );
+        $startsOn = $target->starts_on->toDateString();
+        $endsOn = $target->ends_on->toDateString();
+        $dailyMetrics = [
+            'status' => $metrics['daily_metrics_status'] ?? 'complete',
+            'requested_start_on' => $startsOn,
+            'requested_end_on' => $endsOn,
+            'coverage_start_on' => array_key_exists('daily_metrics_coverage_start_on', $metrics)
+                ? $metrics['daily_metrics_coverage_start_on']
+                : $startsOn,
+            'coverage_end_on' => array_key_exists('daily_metrics_coverage_end_on', $metrics)
+                ? $metrics['daily_metrics_coverage_end_on']
+                : $endsOn,
+            'rows' => $metrics['daily_metrics'],
+        ];
+        unset(
+            $metrics['daily_metrics'],
+            $metrics['daily_metrics_status'],
+            $metrics['daily_metrics_coverage_start_on'],
+            $metrics['daily_metrics_coverage_end_on'],
+        );
 
         $syncedAt = CarbonImmutable::now();
         $snapshotDate = $syncedAt->timezone('Asia/Taipei')->toDateString();
@@ -43,8 +63,9 @@ class GoogleAnalyticsCampaignReportSync
             'campaign_id' => $googleAdsCampaignId,
             'source_name' => $sourceName,
             'medium_name' => $mediumName,
-            'starts_on' => $target->starts_on->toDateString(),
-            'ends_on' => $target->ends_on->toDateString(),
+            'starts_on' => $startsOn,
+            'ends_on' => $endsOn,
+            'daily_metrics' => $dailyMetrics,
             ...$metrics,
             'synced_at' => $syncedAt,
         ];
@@ -58,13 +79,16 @@ class GoogleAnalyticsCampaignReportSync
                 $reportAttributes,
             );
 
+            $snapshotAttributes = $reportAttributes;
+            unset($snapshotAttributes['daily_metrics']);
+
             GoogleAnalyticsCampaignSnapshot::query()->updateOrCreate(
                 [
                     'google_analytics_connection_id' => $connection->getKey(),
                     'social_engagement_target_id' => $target->getKey(),
                     'snapshot_date' => $snapshotDate,
                 ],
-                $reportAttributes,
+                $snapshotAttributes,
             );
 
             return $report;
@@ -87,6 +111,7 @@ class GoogleAnalyticsCampaignReportSync
             && $snapshot->medium_name === ($usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsMediumName())
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
+            && $snapshot->daily_metrics !== null
             && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
     }
 }

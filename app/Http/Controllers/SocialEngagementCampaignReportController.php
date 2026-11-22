@@ -9,6 +9,8 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Services\CampaignDailyMarketingPerformanceReport;
+use App\Services\CampaignDailyMarketingReportCsv;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
@@ -29,6 +31,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
     ): View {
         return view('social-engagement-reports.show', $this->reportData(
             $request,
@@ -37,6 +40,7 @@ class SocialEngagementCampaignReportController extends Controller
             $googleAnalyticsTrendReport,
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
+            $dailyMarketingPerformanceReport,
         ));
     }
 
@@ -47,6 +51,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
         CampaignMarketingReportCsv $campaignMarketingReportCsv,
     ): StreamedResponse {
         $data = $this->reportData(
@@ -56,6 +61,7 @@ class SocialEngagementCampaignReportController extends Controller
             $googleAnalyticsTrendReport,
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
+            $dailyMarketingPerformanceReport,
             false,
         );
         $csv = $campaignMarketingReportCsv->build($data);
@@ -66,6 +72,42 @@ class SocialEngagementCampaignReportController extends Controller
             fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $csv['fields']), ',', '"', '');
             fclose($stream);
         }, 'campaign-report-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportDailyMarketingPerformance(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignReport $campaignReport,
+        GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
+        PaidMediaCampaignTrendReport $paidMediaTrendReport,
+        CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingReportCsv $dailyMarketingReportCsv,
+    ): StreamedResponse {
+        $data = $this->reportData(
+            $request,
+            $socialEngagementTarget,
+            $campaignReport,
+            $googleAnalyticsTrendReport,
+            $paidMediaTrendReport,
+            $marketingEfficiencyReport,
+            $dailyMarketingPerformanceReport,
+            false,
+        );
+        $csv = $dailyMarketingReportCsv->build($data['dailyMarketingPerformance']);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'campaign-daily-marketing-performance-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -90,7 +132,8 @@ class SocialEngagementCampaignReportController extends Controller
      *     googleAnalyticsSourceName: string|null,
      *     googleAnalyticsMediumName: string|null,
      *     googleAnalyticsTrend: list<array<string, mixed>>,
-     *     adSpendAnalysis: array<string, mixed>
+     *     adSpendAnalysis: array<string, mixed>,
+     *     dailyMarketingPerformance: array<string, array<string, mixed>>
      * }
      */
     private function reportData(
@@ -100,6 +143,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
         bool $includeHistoricalDetails = true,
     ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
@@ -150,6 +194,18 @@ class SocialEngagementCampaignReportController extends Controller
 
         $campaignData = $campaignReport->build($socialEngagementTarget, $includeHistoricalDetails);
         $reportFreshnessCutoff = now()->subDay();
+        $dailyMarketingPerformance = $dailyMarketingPerformanceReport->build(
+            $analyticsReport,
+            $metaMarketingReport,
+            $googleAdsReport,
+        );
+        foreach ([
+            'google_analytics' => $analyticsReport,
+            'meta_marketing' => $metaMarketingReport,
+            'google_ads' => $googleAdsReport,
+        ] as $sourceKey => $sourceReport) {
+            $dailyMarketingPerformance[$sourceKey]['snapshot_available'] = $sourceReport?->daily_metrics !== null;
+        }
 
         return [
             ...$campaignData,
@@ -195,6 +251,7 @@ class SocialEngagementCampaignReportController extends Controller
                 observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
                 comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
             ),
+            'dailyMarketingPerformance' => $dailyMarketingPerformance,
         ];
     }
 

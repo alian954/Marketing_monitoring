@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Http;
 
 class MetaMarketingDataApi
 {
+    private const DAILY_INSIGHTS_PAGE_LIMIT = 100;
+
+    private const MAX_DAILY_INSIGHTS_PAGES = 100;
+
     /** @return array{access_token: string, expires_in: int|null} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -70,7 +74,23 @@ class MetaMarketingDataApi
      *     clicks: int,
      *     actions: list<array{action_type: string, value: string}>,
      *     action_values: list<array{action_type: string, value: string}>,
-     *     currency_code: string
+     *     currency_code: string,
+     *     daily_metrics: list<array{
+     *         date: string,
+     *         account_id: string,
+     *         campaign_id: string,
+     *         campaign_name: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         reach: int,
+     *         clicks: int,
+     *         actions: list<array{action_type: string, value: string}>,
+     *         action_values: list<array{action_type: string, value: string}>,
+     *         currency_code: string
+     *     }>,
+     *     daily_metrics_status: 'complete',
+     *     daily_metrics_coverage_start_on: string,
+     *     daily_metrics_coverage_end_on: string
      * }
      */
     public function campaignInsights(
@@ -107,6 +127,15 @@ class MetaMarketingDataApi
         $row = $payload['data'][0] ?? null;
 
         if ($row === null) {
+            $dailyMetrics = $this->dailyMetrics(
+                $accessToken,
+                $adAccountId,
+                $campaignId,
+                $startsOn,
+                $endsOn,
+                $accountCurrency,
+            );
+
             return [
                 'campaign_id' => $campaignId,
                 'campaign_name' => $campaignId,
@@ -117,6 +146,7 @@ class MetaMarketingDataApi
                 'actions' => [],
                 'action_values' => [],
                 'currency_code' => $accountCurrency,
+                ...$dailyMetrics,
             ];
         }
 
@@ -136,6 +166,15 @@ class MetaMarketingDataApi
             throw new MetaMarketingApiException('Meta Ads Insights API 回傳的活動名稱或幣別無效。');
         }
 
+        $dailyMetrics = $this->dailyMetrics(
+            $accessToken,
+            $adAccountId,
+            $campaignId,
+            $startsOn,
+            $endsOn,
+            $accountCurrency,
+        );
+
         return [
             'campaign_id' => $campaignId,
             'campaign_name' => trim($campaignName),
@@ -146,7 +185,154 @@ class MetaMarketingDataApi
             'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
             'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
             'currency_code' => $currencyCode,
+            ...$dailyMetrics,
         ];
+    }
+
+    /**
+     * @return list<array{
+     *     date: string,
+     *     account_id: string,
+     *     campaign_id: string,
+     *     campaign_name: string,
+     *     spend_amount: string,
+     *     impressions: int,
+     *     reach: int,
+     *     clicks: int,
+     *     actions: list<array{action_type: string, value: string}>,
+     *     action_values: list<array{action_type: string, value: string}>,
+     *     currency_code: string
+     * }>
+     */
+    public function campaignDailyInsights(
+        string $accessToken,
+        string $adAccountId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+    ): array {
+        if (preg_match('/^\d{5,32}$/', $adAccountId) !== 1
+            || preg_match('/^\d{5,32}$/', $campaignId) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶或活動 ID 格式無效。');
+        }
+
+        if (! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn) {
+            throw new MetaMarketingApiException('Meta 活動日期區間無效，請重新設定開始日與結束日。');
+        }
+
+        if (preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶幣別格式無效，請重新連結帳戶。');
+        }
+
+        $parameters = [
+            'fields' => 'date_start,date_stop,account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,actions,action_values,account_currency',
+            'level' => 'campaign',
+            'filtering' => json_encode([[
+                'field' => 'campaign.id',
+                'operator' => 'EQUAL',
+                'value' => $campaignId,
+            ]], JSON_THROW_ON_ERROR),
+            'time_range' => json_encode([
+                'since' => $startsOn,
+                'until' => $endsOn,
+            ], JSON_THROW_ON_ERROR),
+            'time_increment' => 1,
+            'limit' => self::DAILY_INSIGHTS_PAGE_LIMIT,
+        ];
+        $dailyInsightsByDate = [];
+        $seenCursors = [];
+        $afterCursor = null;
+
+        for ($pageNumber = 1; $pageNumber <= self::MAX_DAILY_INSIGHTS_PAGES; $pageNumber++) {
+            $pageParameters = $parameters;
+
+            if ($afterCursor !== null) {
+                $pageParameters['after'] = $afterCursor;
+            }
+
+            $response = Http::withToken($accessToken)
+                ->acceptJson()
+                ->timeout(20)
+                ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
+            $payload = $this->successfulPayload($response, 'Meta Ads Insights API');
+            $rows = $payload['data'] ?? null;
+
+            if (! is_array($rows) || ! array_is_list($rows)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的每日成效格式無效。');
+            }
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的每日成效格式無效。');
+                }
+
+                $this->assertDailyInsightIdentity($row, $adAccountId, $campaignId, $accountCurrency);
+                $date = $row['date_start'] ?? null;
+                $dateStop = $row['date_stop'] ?? null;
+
+                if (! is_string($date)
+                    || ! $this->isCalendarDate($date)
+                    || $date !== $dateStop
+                    || $date < $startsOn
+                    || $date > $endsOn) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的每日日期無效。');
+                }
+
+                if (array_key_exists($date, $dailyInsightsByDate)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的每日日期。');
+                }
+
+                $campaignName = $row['campaign_name'] ?? null;
+
+                if (! is_string($campaignName) || trim($campaignName) === '') {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的活動名稱無效。');
+                }
+
+                $dailyInsightsByDate[$date] = [
+                    'date' => $date,
+                    'account_id' => $adAccountId,
+                    'campaign_id' => $campaignId,
+                    'campaign_name' => trim($campaignName),
+                    'spend_amount' => $this->decimalString($row['spend'] ?? null),
+                    'impressions' => $this->nonNegativeInteger($row['impressions'] ?? null),
+                    'reach' => $this->nonNegativeInteger($row['reach'] ?? null),
+                    'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
+                    'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
+                    'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
+                    'currency_code' => $accountCurrency,
+                ];
+            }
+
+            $nextPage = $payload['paging']['next'] ?? null;
+
+            if ($nextPage === null || $nextPage === '') {
+                ksort($dailyInsightsByDate);
+
+                return array_values($dailyInsightsByDate);
+            }
+
+            $nextCursor = $payload['paging']['cursors']['after'] ?? null;
+
+            if (! is_string($nextPage) || ! is_string($nextCursor) || trim($nextCursor) === '') {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的每日分頁資訊無效。');
+            }
+
+            if (array_key_exists($nextCursor, $seenCursors)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的每日分頁游標。');
+            }
+
+            if ($pageNumber === self::MAX_DAILY_INSIGHTS_PAGES) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 日資料超過分頁上限，未回傳完整結果。');
+            }
+
+            $seenCursors[$nextCursor] = true;
+            $afterCursor = $nextCursor;
+        }
+
+        throw new MetaMarketingApiException('Meta Ads Insights API 日資料超過分頁上限，未回傳完整結果。');
     }
 
     /** @return list<array{action_type: string, value: string}> */
@@ -176,6 +362,82 @@ class MetaMarketingDataApi
         }
 
         return $normalizedMetrics;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function assertDailyInsightIdentity(
+        array $row,
+        string $adAccountId,
+        string $campaignId,
+        string $accountCurrency,
+    ): void {
+        $returnedAccountId = $row['account_id'] ?? null;
+        $returnedCampaignId = $row['campaign_id'] ?? null;
+
+        if ((! is_string($returnedAccountId) && ! is_int($returnedAccountId))
+            || (string) $returnedAccountId !== $adAccountId
+            || (! is_string($returnedCampaignId) && ! is_int($returnedCampaignId))
+            || (string) $returnedCampaignId !== $campaignId) {
+            throw new MetaMarketingApiException('Meta Ads Insights API 回傳了不同廣告帳戶或活動的資料。');
+        }
+
+        $currencyCode = $row['account_currency'] ?? null;
+
+        if (! is_string($currencyCode)
+            || preg_match('/^[A-Z]{3}$/', $currencyCode) !== 1
+            || $currencyCode !== $accountCurrency) {
+            throw new MetaMarketingApiException('Meta Ads Insights API 回傳了不同幣別的活動資料。');
+        }
+    }
+
+    /**
+     * @return array{
+     *     daily_metrics: list<array{
+     *         date: string,
+     *         account_id: string,
+     *         campaign_id: string,
+     *         campaign_name: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         reach: int,
+     *         clicks: int,
+     *         actions: list<array{action_type: string, value: string}>,
+     *         action_values: list<array{action_type: string, value: string}>,
+     *         currency_code: string
+     *     }>,
+     *     daily_metrics_status: 'complete',
+     *     daily_metrics_coverage_start_on: string,
+     *     daily_metrics_coverage_end_on: string
+     * }
+     */
+    private function dailyMetrics(
+        string $accessToken,
+        string $adAccountId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+    ): array {
+        return [
+            'daily_metrics' => $this->campaignDailyInsights(
+                $accessToken,
+                $adAccountId,
+                $campaignId,
+                $startsOn,
+                $endsOn,
+                $accountCurrency,
+            ),
+            'daily_metrics_status' => 'complete',
+            'daily_metrics_coverage_start_on' => $startsOn,
+            'daily_metrics_coverage_end_on' => $endsOn,
+        ];
+    }
+
+    private function isCalendarDate(string $value): bool
+    {
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date instanceof \DateTimeImmutable && $date->format('Y-m-d') === $value;
     }
 
     public function revokeAccessToken(string $accessToken): void
