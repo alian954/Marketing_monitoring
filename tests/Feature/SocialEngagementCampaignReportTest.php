@@ -3,8 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
+use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -70,6 +76,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('活動成效報告')
+            ->assertSee(route('social-engagement-targets.report.export', $target))
+            ->assertSee('匯出 CSV')
             ->assertSee('列印／另存 PDF')
             ->assertSee('第一篇貼文')
             ->assertSee('資料不完整貼文')
@@ -80,6 +88,186 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertSee('30.0%')
             ->assertSee('66.7%')
             ->assertSee('另有 1 篇未取得發布時間');
+    }
+
+    public function test_campaign_report_export_requires_authentication(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+
+        $this->get(route('social-engagement-targets.report.export', $target))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_campaign_report_export_leaves_unavailable_sources_and_metrics_blank(): void
+    {
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Unconnected campaign',
+            'social_platform' => 'instagram',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report.export', $target))
+            ->assertDownload('campaign-report-'.$target->id.'.csv');
+        $rows = $this->csvRows($response->streamedContent());
+        $fields = array_combine($rows[0], $rows[1]);
+
+        $this->assertSame('', $fields['public_interactions']);
+        $this->assertSame('0', $fields['tracked_posts']);
+        $this->assertSame('', $fields['ga4_sessions']);
+        $this->assertSame('', $fields['ga4_is_stale']);
+        $this->assertSame('', $fields['meta_spend_amount']);
+        $this->assertSame('', $fields['meta_ads_is_stale']);
+        $this->assertSame('', $fields['google_ads_spend_amount']);
+        $this->assertSame('', $fields['google_ads_is_stale']);
+        $this->assertSame('', $fields['total_ad_spend_amount']);
+        $this->assertSame('', $fields['roas']);
+        $this->assertSame('缺少投放花費', $fields['roas_status']);
+    }
+
+    public function test_campaign_report_export_includes_social_analytics_and_paid_media_metrics_safely(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => '=2+2',
+            'social_platform' => 'facebook',
+            'target_interactions' => 250,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_campaign_name' => 'Spring checkout',
+            'ga4_source_name' => 'facebook',
+            'meta_campaign_id' => '123456789012345',
+            'google_ads_campaign_id' => '9876543210123456',
+        ]);
+        $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'google-analytics-refresh-token',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $googleAnalyticsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => 'Spring checkout',
+            'source_name' => 'facebook',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 200,
+            'engaged_sessions' => 150,
+            'key_events' => '10.0000',
+            'total_revenue' => '900.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+        $otherUser = User::factory()->create();
+        $otherAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $otherUser->id,
+            'property_id' => '987654321',
+            'refresh_token' => 'other-google-analytics-refresh-token',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $otherAnalyticsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => 'Spring checkout',
+            'source_name' => 'facebook',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 55555555,
+            'engaged_sessions' => 55555555,
+            'key_events' => '55555555.0000',
+            'total_revenue' => '55555555.0000',
+            'currency_code' => 'USD',
+            'synced_at' => now(),
+        ]);
+        $metaConnection = MetaMarketingConnection::factory()->create([
+            'user_id' => $user->id,
+            'ad_account_id' => 'act_12345',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => 'Meta spring campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '100.0000',
+            'impressions' => 2000,
+            'reach' => 1500,
+            'clicks' => 80,
+            'actions' => [['action_type' => 'link_click', 'value' => '80.0000']],
+            'action_values' => [['action_type' => 'purchase', 'value' => '400.0000']],
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+        $googleAdsConnection = GoogleAdsConnection::factory()->create([
+            'user_id' => $user->id,
+            'customer_id' => '1234567890',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => $googleAdsConnection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'campaign_name' => 'Google spring campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '200.0000',
+            'impressions' => 4000,
+            'clicks' => 300,
+            'conversions' => '15.0000',
+            'conversions_value' => '600.0000',
+            'conversion_actions' => [[
+                'conversion_action_id' => '1234567',
+                'conversion_action_name' => 'Purchase',
+                'conversions' => '15.0000',
+                'conversion_value' => '600.0000',
+            ]],
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+        $monitor = $this->createSocialMonitor('facebook', 'EXPORT001', '=2+2', '活動貼文');
+        $this->createMetricRun(
+            $monitor,
+            ['likes' => 100, 'comments' => 20, 'shares' => 5, 'views' => 1000],
+            '2026-11-05T08:00:00Z',
+        );
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report.export', $target))
+            ->assertDownload('campaign-report-'.$target->id.'.csv')
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $rows = $this->csvRows($response->streamedContent());
+        $this->assertCount(2, $rows);
+        $fields = array_combine($rows[0], $rows[1]);
+
+        $this->assertSame("'=2+2", $fields['campaign_tag']);
+        $this->assertSame('125', $fields['public_interactions']);
+        $this->assertSame('50.0', $fields['target_completion_percent']);
+        $this->assertSame('100.0', $fields['capture_coverage_percent']);
+        $this->assertSame('1000', $fields['views_total']);
+        $this->assertSame('100', $fields['likes_total']);
+        $this->assertSame('20', $fields['comments_total']);
+        $this->assertSame('5', $fields['shares_total']);
+        $this->assertSame('12.50', $fields['engagement_rate_percent']);
+        $this->assertSame('200', $fields['ga4_sessions']);
+        $this->assertSame('150', $fields['ga4_engaged_sessions']);
+        $this->assertSame('10.0000', $fields['ga4_key_events']);
+        $this->assertSame('900.0000', $fields['ga4_total_revenue']);
+        $this->assertSame('100.0000', $fields['meta_spend_amount']);
+        $this->assertSame('200.0000', $fields['google_ads_spend_amount']);
+        $this->assertSame('300.0000', $fields['total_ad_spend_amount']);
+        $this->assertSame('3.00', $fields['roas']);
+        $this->assertSame('可計算', $fields['roas_status']);
+        $this->assertSame('1.5000', $fields['cost_per_session']);
+        $this->assertSame('30.0000', $fields['cost_per_key_event']);
+        $this->assertSame('2.4000', $fields['cost_per_public_interaction']);
+        $this->assertSame('[{"action_type":"link_click","value":"80.0000"}]', $fields['meta_actions_json']);
+        $this->assertSame('[{"conversion_action_id":"1234567","conversion_action_name":"Purchase","conversions":"15.0000","conversion_value":"600.0000"}]', $fields['google_ads_conversion_actions_json']);
+        $this->assertSame('false', $fields['ga4_is_stale']);
+        $this->assertStringNotContainsString('55555555', $response->streamedContent());
     }
 
     public function test_report_does_not_use_metrics_from_a_stale_monitor_configuration(): void
@@ -321,6 +509,23 @@ class SocialEngagementCampaignReportTest extends TestCase
             'url_hash' => Monitor::fingerprintUrl($url),
             'label' => $tag,
         ]);
+    }
+
+    /** @return list<list<string|null>> */
+    private function csvRows(string $csv): array
+    {
+        $stream = fopen('php://temp', 'w+');
+        fwrite($stream, $csv);
+        rewind($stream);
+        $rows = [];
+
+        while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+            $rows[] = $row;
+        }
+
+        fclose($stream);
+
+        return $rows;
     }
 
     /** @param array<string, int|null> $metrics */

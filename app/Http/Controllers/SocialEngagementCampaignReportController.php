@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\CampaignMarketingEfficiencyReport;
+use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\PaidMediaCampaignTrendReport;
@@ -26,6 +30,75 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
     ): View {
+        return view('social-engagement-reports.show', $this->reportData(
+            $request,
+            $socialEngagementTarget,
+            $campaignReport,
+            $googleAnalyticsTrendReport,
+            $paidMediaTrendReport,
+            $marketingEfficiencyReport,
+        ));
+    }
+
+    public function exportCampaignSummary(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignReport $campaignReport,
+        GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
+        PaidMediaCampaignTrendReport $paidMediaTrendReport,
+        CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignMarketingReportCsv $campaignMarketingReportCsv,
+    ): StreamedResponse {
+        $data = $this->reportData(
+            $request,
+            $socialEngagementTarget,
+            $campaignReport,
+            $googleAnalyticsTrendReport,
+            $paidMediaTrendReport,
+            $marketingEfficiencyReport,
+        );
+        $csv = $campaignMarketingReportCsv->build($data);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+            fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $csv['fields']), ',', '"', '');
+            fclose($stream);
+        }, 'campaign-report-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     target: SocialEngagementTarget,
+     *     report: array<string, mixed>,
+     *     googleAnalyticsConnection: GoogleAnalyticsConnection|null,
+     *     googleAnalyticsReport: SocialEngagementTargetGoogleAnalyticsReport|null,
+     *     googleAnalyticsReportIsStale: bool,
+     *     metaMarketingConnection: MetaMarketingConnection|null,
+     *     metaMarketingReport: SocialEngagementTargetMetaMarketingReport|null,
+     *     metaMarketingReportIsStale: bool,
+     *     metaMarketingTrend: list<array<string, mixed>>,
+     *     googleAdsConnection: GoogleAdsConnection|null,
+     *     googleAdsReport: SocialEngagementTargetGoogleAdsReport|null,
+     *     googleAdsCampaignOptions: list<array{campaign_id: string, campaign_name: string, status: string, channel_type: string}>|null,
+     *     googleAdsReportIsStale: bool,
+     *     googleAdsTrend: list<array<string, mixed>>,
+     *     googleAnalyticsCampaignName: string,
+     *     googleAnalyticsSourceName: string|null,
+     *     googleAnalyticsTrend: list<array<string, mixed>>,
+     *     adSpendAnalysis: array<string, mixed>
+     * }
+     */
+    private function reportData(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignReport $campaignReport,
+        GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
+        PaidMediaCampaignTrendReport $paidMediaTrendReport,
+        CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+    ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
@@ -83,7 +156,7 @@ class SocialEngagementCampaignReportController extends Controller
         $campaignData = $campaignReport->build($socialEngagementTarget);
         $reportFreshnessCutoff = now()->subDay();
 
-        return view('social-engagement-reports.show', [
+        return [
             ...$campaignData,
             'googleAnalyticsConnection' => $googleAnalyticsConnection,
             'googleAnalyticsReport' => $analyticsReport,
@@ -117,7 +190,7 @@ class SocialEngagementCampaignReportController extends Controller
                 $metaMarketingReport,
                 $googleAdsReport,
             ),
-        ]);
+        ];
     }
 
     public function exportGoogleAnalyticsHistory(

@@ -22,6 +22,7 @@
                 </p>
             </div>
             <div class="campaign-report-actions">
+                <a class="button button-secondary" href="{{ route('social-engagement-targets.report.export', $target) }}">匯出 CSV</a>
                 <button class="button button-primary" type="button" data-print-page>列印／另存 PDF</button>
                 <a class="button button-secondary" href="{{ route('dashboard', ['engagement_platform' => $target->social_platform, 'engagement_tag' => 'tag:'.$target->tag]) }}">返回總覽</a>
             </div>
