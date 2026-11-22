@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
     'google_analytics_connection_id',
     'social_engagement_target_id',
     'campaign_name',
+    'attribution_mode',
+    'campaign_id',
     'source_name',
     'medium_name',
     'starts_on',

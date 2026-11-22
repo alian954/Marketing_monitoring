@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'social_engagement_target_id',
     'snapshot_date',
     'campaign_name',
+    'attribution_mode',
+    'campaign_id',
     'source_name',
     'medium_name',
     'starts_on',

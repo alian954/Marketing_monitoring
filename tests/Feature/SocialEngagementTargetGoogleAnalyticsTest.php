@@ -7,6 +7,7 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use App\Services\GoogleAnalyticsCampaignReportSync;
 use App\Services\GoogleAnalyticsDataApi;
 use Carbon\CarbonImmutable;
 use Database\Seeders\GoogleAnalyticsCampaignSnapshotSeeder;
@@ -236,6 +237,119 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('576460752303.4235', $report['total_revenue']);
         $this->assertSame([], $report['source_medium_breakdown']);
         Http::assertSentCount(1);
+    }
+
+    public function test_ga4_sync_matches_google_ads_auto_tagged_campaign_by_id_without_manual_utm_filters(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:30:00', 'Asia/Taipei'));
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
+            'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::response([
+                'rows' => [[
+                    'dimensionValues' => [
+                        ['value' => '123456789012'],
+                        ['value' => 'Paid Search'],
+                        ['value' => 'google'],
+                        ['value' => 'cpc'],
+                    ],
+                    'metricValues' => [
+                        ['value' => '240'],
+                        ['value' => '180'],
+                        ['value' => '12.5'],
+                        ['value' => '800.25'],
+                    ],
+                ]],
+                'totals' => [[
+                    'metricValues' => [
+                        ['value' => '240'],
+                        ['value' => '180'],
+                        ['value' => '12.5'],
+                        ['value' => '800.25'],
+                    ],
+                ]],
+                'rowCount' => 1,
+                'metadata' => ['currencyCode' => 'TWD'],
+            ]),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'ga4_campaign_name' => 'same-name-used-by-other-campaigns',
+            'ga4_source_name' => 'old_utm_source',
+            'ga4_medium_name' => 'old_utm_medium',
+            'google_ads_campaign_id' => '123456789012',
+        ]);
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+        $previousManualSnapshot = $this->createTrendSnapshot(
+            $connection->id,
+            $target,
+            '2026-11-21',
+            50,
+            '120.0000',
+            'TWD',
+        );
+        $previousManualSnapshot->update(['source_name' => null, 'medium_name' => null]);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-analytics.sync', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHas('status', 'GA4 活動成效已同步。');
+
+        $report = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $snapshot = GoogleAnalyticsCampaignSnapshot::query()
+            ->where('attribution_mode', 'google_ads_auto_tagging')
+            ->sole();
+        $this->assertSame('google_ads_auto_tagging', $report->attribution_mode);
+        $this->assertSame('123456789012', $report->campaign_id);
+        $this->assertNull($report->source_name);
+        $this->assertNull($report->medium_name);
+        $this->assertSame(240, $report->sessions);
+        $this->assertSame('google_ads_auto_tagging', $snapshot->attribution_mode);
+        $this->assertSame('123456789012', $snapshot->campaign_id);
+
+        Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
+            && $request->data()['dimensions'] === [
+                ['name' => 'sessionGoogleAdsCampaignId'],
+                ['name' => 'sessionDefaultChannelGroup'],
+                ['name' => 'sessionSource'],
+                ['name' => 'sessionMedium'],
+            ]
+            && $request->data()['dimensionFilter']['filter']['fieldName'] === 'sessionGoogleAdsCampaignId'
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === '123456789012'
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['matchType'] === 'EXACT');
+
+        $reportPage = $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('比對 Google Ads 活動 ID')
+            ->assertSee('123456789012')
+            ->assertSee('GA4 自動標記歸因')
+            ->assertSee('使用 GA4 自動標記歸因')
+            ->assertDontSee('比對活動名稱：');
+        $trend = $reportPage->viewData('googleAnalyticsTrend');
+        $this->assertCount(1, $trend);
+        $this->assertSame(240, $trend[0]['sessions']);
+        $this->assertSame('google_ads_auto_tagging', $trend[0]['attribution_mode']);
+
+        $campaignCsv = $this->get(route('social-engagement-targets.report.export', $target))
+            ->assertDownload('campaign-report-'.$target->id.'.csv')
+            ->streamedContent();
+        $this->assertStringContainsString('ga4_attribution_mode', $campaignCsv);
+        $this->assertStringContainsString('google_ads_auto_tagging', $campaignCsv);
+        $this->assertStringContainsString('123456789012', $campaignCsv);
+
+        $sync = app(GoogleAnalyticsCampaignReportSync::class);
+        $this->assertTrue($sync->isSnapshotFresh($report, $target, CarbonImmutable::now()));
+        $target->forceFill(['ga4_campaign_name' => 'changed-unused-name'])->save();
+        $this->assertTrue($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now()));
+        $target->forceFill(['google_ads_campaign_id' => '123456789013'])->save();
+        $this->assertFalse($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now()));
     }
 
     public function test_ga4_campaign_report_returns_source_medium_rows_and_marks_truncated_results(): void
@@ -651,7 +765,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertStringContainsString('ga4-campaign-trend-'.$target->id.'.csv', (string) $csvResponse->headers->get('content-disposition'));
         $csvLines = preg_split('/\r\n|\n|\r/', trim($csvResponse->streamedContent()));
         $this->assertCount(3, $csvLines);
-        $this->assertSame('sessions_change_since_previous', str_getcsv($csvLines[0])[3]);
+        $this->assertSame('sessions_change_since_previous', str_getcsv($csvLines[0])[5]);
         $this->assertStringContainsString(',25,', $csvLines[2]);
         $this->assertStringNotContainsString('999999', $csvResponse->streamedContent());
         Http::assertSentCount(6);

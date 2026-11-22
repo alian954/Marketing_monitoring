@@ -44,4 +44,11 @@ class SocialEngagementTarget extends Model
             ? trim($this->ga4_medium_name)
             : null;
     }
+
+    public function googleAnalyticsAttributionMode(): string
+    {
+        return is_string($this->google_ads_campaign_id) && trim($this->google_ads_campaign_id) !== ''
+            ? 'google_ads_auto_tagging'
+            : 'manual_utm';
+    }
 }

@@ -519,11 +519,17 @@
             <div class="campaign-report-section-header">
                 <div>
                     <h2 id="campaign-report-ga4-title">GA4 導流成效</h2>
-                    <p class="campaign-report-secondary">
-                        比對活動名稱：<code>{{ $googleAnalyticsCampaignName }}</code>
-                        · 來源：<code>{{ $googleAnalyticsSourceName ?? '所有來源' }}</code>
-                        · 媒介：<code>{{ $googleAnalyticsMediumName ?? '所有媒介' }}</code>
-                    </p>
+                    @if ($target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging')
+                        <p class="campaign-report-secondary">
+                            比對 Google Ads 活動 ID：<code>{{ $target->google_ads_campaign_id }}</code> · 使用 GA4 自動標記歸因
+                        </p>
+                    @else
+                        <p class="campaign-report-secondary">
+                            比對活動名稱：<code>{{ $googleAnalyticsCampaignName }}</code>
+                            · 來源：<code>{{ $googleAnalyticsSourceName ?? '所有來源' }}</code>
+                            · 媒介：<code>{{ $googleAnalyticsMediumName ?? '所有媒介' }}</code>
+                        </p>
+                    @endif
                 </div>
                 @if ($googleAnalyticsConnection && $googleAnalyticsConnection->property_id && $target->starts_on && $target->ends_on)
                     <form action="{{ route('social-engagement-targets.google-analytics.sync', $target) }}" method="POST" class="ga4-sync-actions">
@@ -546,6 +552,11 @@
                     資料期間 {{ $googleAnalyticsReport->starts_on->format('Y/n/j') }} 至 {{ $googleAnalyticsReport->ends_on->format('Y/n/j') }}；
                     更新於 <time datetime="{{ $googleAnalyticsReport->synced_at->toIso8601String() }}">{{ $googleAnalyticsReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                 </p>
+                @if ($googleAnalyticsReport->attribution_mode === 'google_ads_auto_tagging')
+                    <p class="campaign-report-secondary">歸因方式：Google Ads 自動標記，活動 ID <code>{{ $googleAnalyticsReport->campaign_id }}</code>；此查詢不套用 UTM 來源或媒介條件。</p>
+                @else
+                    <p class="campaign-report-secondary">歸因方式：GA4 手動活動名稱與 UTM 條件。</p>
+                @endif
                 @if ($googleAnalyticsReportIsStale)
                     <p class="campaign-report-empty">GA4 超過 24 小時未成功更新。</p>
                 @endif

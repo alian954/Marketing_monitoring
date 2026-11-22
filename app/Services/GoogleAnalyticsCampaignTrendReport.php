@@ -26,7 +26,9 @@ class GoogleAnalyticsCampaignTrendReport
      *     total_revenue: string,
      *     total_revenue_change: float|null,
      *     currency_code: string|null,
-     *     revenue_currency_comparable: bool
+     *     revenue_currency_comparable: bool,
+     *     attribution_mode: string,
+     *     campaign_id: string|null
      * }>
      */
     public function recentChanges(
@@ -35,6 +37,8 @@ class GoogleAnalyticsCampaignTrendReport
         string $campaignName,
         ?string $sourceName,
         ?string $mediumName = null,
+        ?string $attributionMode = null,
+        ?string $campaignId = null,
     ): array {
         if ($target->starts_on === null || $target->ends_on === null) {
             return [];
@@ -43,7 +47,10 @@ class GoogleAnalyticsCampaignTrendReport
         $snapshots = GoogleAnalyticsCampaignSnapshot::query()
             ->where('google_analytics_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $target->getKey())
-            ->where('campaign_name', $campaignName)
+            ->where('attribution_mode', $attributionMode ?? 'manual_utm')
+            ->when($campaignId !== null, fn (Builder $query): Builder => $query->where('campaign_id', $campaignId))
+            ->when($campaignId === null, fn (Builder $query): Builder => $query->whereNull('campaign_id'))
+            ->when(($attributionMode ?? 'manual_utm') === 'manual_utm', fn (Builder $query): Builder => $query->where('campaign_name', $campaignName))
             ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
             ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
             ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
@@ -90,6 +97,8 @@ class GoogleAnalyticsCampaignTrendReport
                     : null,
                 'currency_code' => $snapshot->currency_code,
                 'revenue_currency_comparable' => $revenueCurrencyComparable,
+                'attribution_mode' => $snapshot->attribution_mode,
+                'campaign_id' => $snapshot->campaign_id,
             ];
 
             $previousSnapshot = $snapshot;

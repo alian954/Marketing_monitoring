@@ -800,6 +800,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             'google_analytics_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->tag,
+            'attribution_mode' => 'google_ads_auto_tagging',
+            'campaign_id' => $target->google_ads_campaign_id,
             'source_name' => null,
             'starts_on' => $target->starts_on,
             'ends_on' => $target->ends_on,

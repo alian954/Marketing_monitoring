@@ -104,22 +104,31 @@ class GoogleAnalyticsDataApi
         string $endsOn,
         ?string $sourceName = null,
         ?string $mediumName = null,
+        ?string $googleAdsCampaignId = null,
     ): array {
+        $googleAdsCampaignId = is_string($googleAdsCampaignId) ? trim($googleAdsCampaignId) : '';
+        $usesGoogleAdsAutoTagging = $googleAdsCampaignId !== '';
+        $campaignDimension = $usesGoogleAdsAutoTagging
+            ? 'sessionGoogleAdsCampaignId'
+            : 'sessionManualCampaignName';
+        $sourceDimension = $usesGoogleAdsAutoTagging ? 'sessionSource' : 'sessionManualSource';
+        $mediumDimension = $usesGoogleAdsAutoTagging ? 'sessionMedium' : 'sessionManualMedium';
+        $campaignValue = $usesGoogleAdsAutoTagging ? $googleAdsCampaignId : $campaignName;
         $dimensionFilters = [[
             'filter' => [
-                'fieldName' => 'sessionManualCampaignName',
+                'fieldName' => $campaignDimension,
                 'stringFilter' => [
                     'matchType' => 'EXACT',
-                    'value' => $campaignName,
+                    'value' => $campaignValue,
                     'caseSensitive' => true,
                 ],
             ],
         ]];
 
-        if (is_string($sourceName) && trim($sourceName) !== '') {
+        if (! $usesGoogleAdsAutoTagging && is_string($sourceName) && trim($sourceName) !== '') {
             $dimensionFilters[] = [
                 'filter' => [
-                    'fieldName' => 'sessionManualSource',
+                    'fieldName' => $sourceDimension,
                     'stringFilter' => [
                         'matchType' => 'EXACT',
                         'value' => trim($sourceName),
@@ -129,10 +138,10 @@ class GoogleAnalyticsDataApi
             ];
         }
 
-        if (is_string($mediumName) && trim($mediumName) !== '') {
+        if (! $usesGoogleAdsAutoTagging && is_string($mediumName) && trim($mediumName) !== '') {
             $dimensionFilters[] = [
                 'filter' => [
-                    'fieldName' => 'sessionManualMedium',
+                    'fieldName' => $mediumDimension,
                     'stringFilter' => [
                         'matchType' => 'EXACT',
                         'value' => trim($mediumName),
@@ -154,10 +163,10 @@ class GoogleAnalyticsDataApi
                     ['startDate' => $startsOn, 'endDate' => $endsOn],
                 ],
                 'dimensions' => [
-                    ['name' => 'sessionManualCampaignName'],
+                    ['name' => $campaignDimension],
                     ['name' => 'sessionDefaultChannelGroup'],
-                    ['name' => 'sessionManualSource'],
-                    ['name' => 'sessionManualMedium'],
+                    ['name' => $sourceDimension],
+                    ['name' => $mediumDimension],
                 ],
                 'metrics' => [
                     ['name' => 'sessions'],

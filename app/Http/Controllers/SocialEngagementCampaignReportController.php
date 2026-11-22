@@ -103,8 +103,9 @@ class SocialEngagementCampaignReportController extends Controller
         bool $includeHistoricalDetails = true,
     ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
-        $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
-        $mediumName = $socialEngagementTarget->googleAnalyticsMediumName();
+        $usesGoogleAdsAutoTagging = $socialEngagementTarget->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging';
+        $sourceName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsSourceName();
+        $mediumName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsMediumName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
         $analyticsReport = $this->googleAnalyticsReportForTarget($socialEngagementTarget, $googleAnalyticsConnection);
 
@@ -181,6 +182,8 @@ class SocialEngagementCampaignReportController extends Controller
                     $campaignName,
                     $sourceName,
                     $mediumName,
+                    $socialEngagementTarget->googleAnalyticsAttributionMode(),
+                    $usesGoogleAdsAutoTagging ? trim((string) $socialEngagementTarget->google_ads_campaign_id) : null,
                 )
                 : [],
             'adSpendAnalysis' => $marketingEfficiencyReport->build(
@@ -211,6 +214,8 @@ class SocialEngagementCampaignReportController extends Controller
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
                 'campaign_name',
+                'attribution_mode',
+                'campaign_id',
                 'campaign_start',
                 'campaign_end',
                 'channel_group',
@@ -228,6 +233,8 @@ class SocialEngagementCampaignReportController extends Controller
             foreach ($rows as $row) {
                 $fields = [
                     $analyticsReport->campaign_name,
+                    $analyticsReport->attribution_mode,
+                    $analyticsReport->campaign_id ?? '',
                     $analyticsReport->starts_on->toDateString(),
                     $analyticsReport->ends_on->toDateString(),
                     $row['channel_group'] ?? '',
@@ -261,15 +268,20 @@ class SocialEngagementCampaignReportController extends Controller
 
         $sourceName = $target->googleAnalyticsSourceName();
         $mediumName = $target->googleAnalyticsMediumName();
+        $attributionMode = $target->googleAnalyticsAttributionMode();
+        $usesGoogleAdsAutoTagging = $attributionMode === 'google_ads_auto_tagging';
 
         return SocialEngagementTargetGoogleAnalyticsReport::query()
             ->where('google_analytics_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $target->getKey())
-            ->where('campaign_name', $target->googleAnalyticsCampaignName())
-            ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
-            ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
-            ->when($mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
-            ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
+            ->where('attribution_mode', $attributionMode)
+            ->when($usesGoogleAdsAutoTagging, fn (Builder $query): Builder => $query->where('campaign_id', trim((string) $target->google_ads_campaign_id)))
+            ->when(! $usesGoogleAdsAutoTagging, fn (Builder $query): Builder => $query->whereNull('campaign_id'))
+            ->when(! $usesGoogleAdsAutoTagging, fn (Builder $query): Builder => $query->where('campaign_name', $target->googleAnalyticsCampaignName()))
+            ->when(! $usesGoogleAdsAutoTagging && $sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
+            ->when(! $usesGoogleAdsAutoTagging && $sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
+            ->when(! $usesGoogleAdsAutoTagging && $mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
+            ->when(! $usesGoogleAdsAutoTagging && $mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
             ->when($target->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $target->starts_on))
             ->when($target->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $target->ends_on))
             ->first();
@@ -291,17 +303,22 @@ class SocialEngagementCampaignReportController extends Controller
             404,
         );
 
+        $usesGoogleAdsAutoTagging = $socialEngagementTarget->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging';
         $rows = $googleAnalyticsTrendReport->recentChanges(
             $connection,
             $socialEngagementTarget,
             $socialEngagementTarget->googleAnalyticsCampaignName(),
-            $socialEngagementTarget->googleAnalyticsSourceName(),
-            $socialEngagementTarget->googleAnalyticsMediumName(),
+            $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsSourceName(),
+            $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsMediumName(),
+            $socialEngagementTarget->googleAnalyticsAttributionMode(),
+            $usesGoogleAdsAutoTagging ? trim((string) $socialEngagementTarget->google_ads_campaign_id) : null,
         );
 
         return response()->streamDownload(function () use ($rows): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
+                'attribution_mode',
+                'campaign_id',
                 'snapshot_date',
                 'synced_at_asia_taipei',
                 'sessions_cumulative',
@@ -317,6 +334,8 @@ class SocialEngagementCampaignReportController extends Controller
 
             foreach ($rows as $row) {
                 $fields = [
+                    $row['attribution_mode'],
+                    $row['campaign_id'] ?? '',
                     $row['snapshot_date']->toDateString(),
                     $row['synced_at']->timezone('Asia/Taipei')->format('Y-m-d H:i:s'),
                     (string) $row['sessions'],

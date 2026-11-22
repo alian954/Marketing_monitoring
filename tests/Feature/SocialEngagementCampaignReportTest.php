@@ -312,6 +312,8 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertCount(3, $rows);
         $this->assertSame([
             'campaign_name',
+            'attribution_mode',
+            'campaign_id',
             'campaign_start',
             'campaign_end',
             'channel_group',
@@ -328,6 +330,8 @@ class SocialEngagementCampaignReportTest extends TestCase
         $firstChannel = array_combine($rows[0], $rows[1]);
 
         $this->assertSame('Channel export', $firstChannel['campaign_name']);
+        $this->assertSame('manual_utm', $firstChannel['attribution_mode']);
+        $this->assertSame('', $firstChannel['campaign_id']);
         $this->assertSame('2026-11-01', $firstChannel['campaign_start']);
         $this->assertSame('2026-11-30', $firstChannel['campaign_end']);
         $this->assertSame("'=Paid Social", $firstChannel['channel_group']);
@@ -339,7 +343,7 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('800.0000', $firstChannel['total_revenue']);
         $this->assertSame('false', $firstChannel['breakdown_truncated']);
         $this->assertSame('TWD', $firstChannel['currency_code']);
-        $this->assertSame('Email', $rows[2][3]);
+        $this->assertSame('Email', $rows[2][5]);
     }
 
     public function test_ga4_channel_export_is_rate_limited(): void
@@ -463,6 +467,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'google_analytics_connection_id' => $googleAnalyticsConnection->id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => 'Spring checkout',
+            'attribution_mode' => 'google_ads_auto_tagging',
+            'campaign_id' => $target->google_ads_campaign_id,
             'source_name' => 'facebook',
             'starts_on' => $target->starts_on,
             'ends_on' => $target->ends_on,

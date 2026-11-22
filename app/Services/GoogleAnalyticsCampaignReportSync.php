@@ -19,8 +19,11 @@ class GoogleAnalyticsCampaignReportSync
         string $accessToken,
     ): SocialEngagementTargetGoogleAnalyticsReport {
         $campaignName = $target->googleAnalyticsCampaignName();
-        $sourceName = $target->googleAnalyticsSourceName();
-        $mediumName = $target->googleAnalyticsMediumName();
+        $attributionMode = $target->googleAnalyticsAttributionMode();
+        $usesGoogleAdsAutoTagging = $attributionMode === 'google_ads_auto_tagging';
+        $googleAdsCampaignId = $usesGoogleAdsAutoTagging ? trim((string) $target->google_ads_campaign_id) : null;
+        $sourceName = $usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsSourceName();
+        $mediumName = $usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsMediumName();
         $metrics = $this->dataApi->campaignReport(
             $accessToken,
             (string) $connection->property_id,
@@ -29,12 +32,15 @@ class GoogleAnalyticsCampaignReportSync
             $target->ends_on->toDateString(),
             $sourceName,
             $mediumName,
+            $googleAdsCampaignId,
         );
 
         $syncedAt = CarbonImmutable::now();
         $snapshotDate = $syncedAt->timezone('Asia/Taipei')->toDateString();
         $reportAttributes = [
             'campaign_name' => $campaignName,
+            'attribution_mode' => $attributionMode,
+            'campaign_id' => $googleAdsCampaignId,
             'source_name' => $sourceName,
             'medium_name' => $mediumName,
             'starts_on' => $target->starts_on->toDateString(),
@@ -70,10 +76,15 @@ class GoogleAnalyticsCampaignReportSync
         SocialEngagementTarget $target,
         CarbonImmutable $asOf,
     ): bool {
+        $attributionMode = $target->googleAnalyticsAttributionMode();
+        $usesGoogleAdsAutoTagging = $attributionMode === 'google_ads_auto_tagging';
+
         return $snapshot !== null
-            && $snapshot->campaign_name === $target->googleAnalyticsCampaignName()
-            && $snapshot->source_name === $target->googleAnalyticsSourceName()
-            && $snapshot->medium_name === $target->googleAnalyticsMediumName()
+            && $snapshot->attribution_mode === $attributionMode
+            && $snapshot->campaign_id === ($usesGoogleAdsAutoTagging ? trim((string) $target->google_ads_campaign_id) : null)
+            && ($usesGoogleAdsAutoTagging || $snapshot->campaign_name === $target->googleAnalyticsCampaignName())
+            && $snapshot->source_name === ($usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsSourceName())
+            && $snapshot->medium_name === ($usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsMediumName())
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()
             && $snapshot->synced_at?->greaterThan($asOf->subDay()) === true;
