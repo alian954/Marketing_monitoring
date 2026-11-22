@@ -117,7 +117,7 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
         $csvRows = $this->csvRows($response->streamedContent());
 
-        $this->assertCount(4, $csvRows);
+        $this->assertCount(7, $csvRows);
         $this->assertSame([
             'source',
             'date',
@@ -142,6 +142,16 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'conversions',
             'conversions_value',
             'conversion_value_roas',
+            'meta_spend_amount',
+            'meta_currency_code',
+            'google_ads_spend_amount',
+            'google_ads_currency_code',
+            'combined_spend_amount',
+            'combined_spend_currency',
+            'ga4_revenue',
+            'ga4_currency_code',
+            'daily_roas',
+            'roas_status',
         ], $csvRows[0]);
 
         $fields = array_combine($csvRows[0], $csvRows[1]);
@@ -163,6 +173,11 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertSame('2026-11-06', $adsFields['date']);
         $this->assertSame('2.0000', $adsFields['conversions']);
         $this->assertSame('2026-11-01', $adsFields['requested_start_on']);
+
+        $combinedFields = array_combine($csvRows[0], $csvRows[4]);
+        $this->assertSame('每日 GA4 ROAS', $combinedFields['source']);
+        $this->assertSame('2026-11-06', $combinedFields['date']);
+        $this->assertSame('missing_spend', $combinedFields['roas_status']);
         $this->assertSame('2026-11-30', $adsFields['coverage_end_on']);
     }
 

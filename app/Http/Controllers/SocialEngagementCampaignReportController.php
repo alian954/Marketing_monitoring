@@ -9,6 +9,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Services\CampaignDailyMarketingEfficiencyReport;
 use App\Services\CampaignDailyMarketingPerformanceReport;
 use App\Services\CampaignDailyMarketingReportCsv;
 use App\Services\CampaignDailyMarketingTrendChart;
@@ -33,6 +34,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
     ): View {
         return view('social-engagement-reports.show', $this->reportData(
@@ -43,6 +45,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
         ));
     }
@@ -55,6 +58,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         CampaignMarketingReportCsv $campaignMarketingReportCsv,
     ): StreamedResponse {
@@ -66,6 +70,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
             false,
         );
@@ -89,6 +94,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         CampaignDailyMarketingReportCsv $dailyMarketingReportCsv,
     ): StreamedResponse {
@@ -100,6 +106,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
             false,
         );
@@ -151,6 +158,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         bool $includeHistoricalDetails = true,
     ): array {
@@ -225,6 +233,10 @@ class SocialEngagementCampaignReportController extends Controller
                 $chartMetric['format'],
             );
         }
+        $dailyMarketingPerformance['combined_efficiency'] = $dailyMarketingEfficiencyReport->build(
+            $socialEngagementTarget,
+            $dailyMarketingPerformance,
+        );
 
         return [
             ...$campaignData,

@@ -46,6 +46,16 @@ class CampaignDailyMarketingReportCsv
         'conversions',
         'conversions_value',
         'conversion_value_roas',
+        'meta_spend_amount',
+        'meta_currency_code',
+        'google_ads_spend_amount',
+        'google_ads_currency_code',
+        'combined_spend_amount',
+        'combined_spend_currency',
+        'ga4_revenue',
+        'ga4_currency_code',
+        'daily_roas',
+        'roas_status',
     ];
 
     /**
@@ -77,14 +87,63 @@ class CampaignDailyMarketingReportCsv
                     $this->syncedAt($source['synced_at'] ?? null),
                 ];
 
-                foreach (array_slice(self::HEADERS, 9) as $metric) {
+                foreach (array_slice(self::HEADERS, 9, 14) as $metric) {
                     $fields[] = in_array($metric, $sourceDefinition['metrics'], true)
                         ? $this->value($dailyRow[$metric] ?? null)
                         : '';
                 }
 
+                $fields = [...$fields, ...array_fill(0, 10, '')];
+
                 $rows[] = array_map($this->value(...), $fields);
             }
+        }
+
+        $combinedEfficiency = $dailyMarketingPerformance['combined_efficiency'] ?? [];
+        $combinedRows = is_array($combinedEfficiency['rows'] ?? null) ? $combinedEfficiency['rows'] : [];
+
+        foreach ($combinedRows as $combinedRow) {
+            if (! is_array($combinedRow) || ! is_string($combinedRow['date'] ?? null)) {
+                continue;
+            }
+
+            $fields = [
+                '每日 GA4 ROAS',
+                $combinedRow['date'],
+                $combinedRow['roas_status'] ?? '',
+                $combinedEfficiency['requested_start_on'] ?? '',
+                $combinedEfficiency['requested_end_on'] ?? '',
+                $combinedEfficiency['coverage_start_on'] ?? '',
+                $combinedEfficiency['coverage_end_on'] ?? '',
+                $combinedRow['ad_spend_currency'] ?? '',
+                $this->syncedAt($combinedEfficiency['latest_synced_at'] ?? null),
+            ];
+
+            $fields = [...$fields, ...array_fill(0, 14, '')];
+
+            foreach ([
+                'meta_spend_amount',
+                'meta_currency_code',
+                'google_ads_spend_amount',
+                'google_ads_currency_code',
+                'ad_spend_amount',
+                'ad_spend_currency',
+                'ga4_revenue',
+                'ga4_currency_code',
+                'roas',
+                'roas_status',
+            ] as $metric) {
+                $fields[] = $this->value(match ($metric) {
+                    'meta_currency_code' => $combinedRow['meta_currency_code'] ?? null,
+                    'google_ads_currency_code' => $combinedRow['google_ads_currency_code'] ?? null,
+                    'ad_spend_amount' => $combinedRow['ad_spend_amount'] ?? null,
+                    'ad_spend_currency' => $combinedRow['ad_spend_currency'] ?? null,
+                    'roas' => $combinedRow['roas'] ?? null,
+                    default => $combinedRow[$metric] ?? null,
+                });
+            }
+
+            $rows[] = array_map($this->value(...), $fields);
         }
 
         return ['headers' => self::HEADERS, 'rows' => $rows];

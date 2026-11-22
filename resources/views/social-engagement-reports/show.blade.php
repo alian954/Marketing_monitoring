@@ -812,7 +812,7 @@
             <div class="campaign-report-section-header">
                 <div>
                     <h2 id="campaign-report-daily-marketing-title">逐日行銷成效</h2>
-                    <p class="campaign-report-secondary">各平台依自己的日期、幣別與 API 覆蓋範圍列示，不跨平台合併。</p>
+                    <p class="campaign-report-secondary">各平台保留原始逐日數據；同日 ROAS＝GA4 活動營收 ÷ 廣告花費，只作日期對照，不代表因果。</p>
                 </div>
                 <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.daily-marketing-performance', $target) }}">匯出逐日 CSV</a>
             </div>
@@ -922,6 +922,120 @@
                     </div>
                 </div>
             @endforeach
+
+            @php
+                $dailyMarketingEfficiency = $dailyMarketingPerformance['combined_efficiency'];
+                $dailyMarketingEfficiencyStatusClass = match ($dailyMarketingEfficiency['status']) {
+                    'complete' => 'healthy',
+                    'currency_mismatch' => 'stale',
+                    'not_configured' => 'unknown',
+                    default => 'warning',
+                };
+            @endphp
+            <div class="campaign-report-daily-source" aria-labelledby="campaign-report-daily-efficiency-title">
+                <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-daily-efficiency-title">每日廣告花費與同日 ROAS</h3>
+                    <span class="badge badge-{{ $dailyMarketingEfficiencyStatusClass }}">{{ $dailyMarketingEfficiency['status_label'] }}</span>
+                </div>
+                <p class="campaign-report-secondary">
+                    活動期間：{{ $dailyMarketingEfficiency['requested_start_on'] ?? '—' }} 至 {{ $dailyMarketingEfficiency['requested_end_on'] ?? '—' }}
+                    · 更新於：{{ $dailyMarketingEfficiency['latest_synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
+                    · 花費只在已設定的廣告來源都有當日資料且幣別一致時合併；缺少日期不補零。
+                </p>
+                @if ($dailyMarketingEfficiency['trend_chart']['points'] !== [])
+                    <figure class="metric-trend-figure campaign-report-daily-trend">
+                        <svg
+                            class="metric-trend-svg"
+                            viewBox="0 0 600 196"
+                            role="img"
+                            aria-labelledby="campaign-report-daily-efficiency-chart-title campaign-report-daily-efficiency-chart-description"
+                        >
+                            <title id="campaign-report-daily-efficiency-chart-title">每日 GA4 同日 ROAS 趨勢</title>
+                            <desc id="campaign-report-daily-efficiency-chart-description">
+                                {{ $dailyMarketingEfficiency['requested_start_on'] ?? '—' }} 至 {{ $dailyMarketingEfficiency['requested_end_on'] ?? '—' }}；只繪製有完整花費與同幣別 GA4 營收的日期，缺少資料的日期不補零，精確值見下方表格。
+                            </desc>
+                            <line class="metric-trend-grid-line" x1="48" x2="576" y1="24" y2="24" />
+                            <line class="metric-trend-grid-line" x1="48" x2="576" y1="89" y2="89" />
+                            <line class="metric-trend-grid-line" x1="48" x2="576" y1="154" y2="154" />
+                            @foreach ($dailyMarketingEfficiency['trend_chart']['segments'] as $segment)
+                                <line
+                                    class="metric-trend-line"
+                                    x1="{{ number_format($segment['x1'], 2, '.', '') }}"
+                                    y1="{{ number_format($segment['y1'], 2, '.', '') }}"
+                                    x2="{{ number_format($segment['x2'], 2, '.', '') }}"
+                                    y2="{{ number_format($segment['y2'], 2, '.', '') }}"
+                                />
+                            @endforeach
+                            @foreach ($dailyMarketingEfficiency['trend_chart']['points'] as $trendPoint)
+                                <circle
+                                    class="metric-trend-point"
+                                    cx="{{ number_format($trendPoint['x'], 2, '.', '') }}"
+                                    cy="{{ number_format($trendPoint['y'], 2, '.', '') }}"
+                                    r="3.5"
+                                >
+                                    <title>{{ $trendPoint['date'] }}：ROAS {{ $trendPoint['value_label'] }}x</title>
+                                </circle>
+                            @endforeach
+                            <text class="metric-trend-axis-label" x="48" y="184">{{ $dailyMarketingEfficiency['trend_chart']['coverage_start_on'] }}</text>
+                            <text class="metric-trend-axis-label" x="576" y="184" text-anchor="end">{{ $dailyMarketingEfficiency['trend_chart']['coverage_end_on'] }}</text>
+                        </svg>
+                        <figcaption class="campaign-report-secondary campaign-report-daily-trend-caption">
+                            每日 ROAS · 最高 {{ $dailyMarketingEfficiency['trend_chart']['maximum_label'] }}x · 精確數值見表格
+                        </figcaption>
+                    </figure>
+                @endif
+                <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-daily-efficiency-title" tabindex="0">
+                    <table class="data-table campaign-report-table">
+                        <caption class="sr-only">每日 GA4 營收、Meta Ads 與 Google Ads 花費、同幣別合計花費及 ROAS</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">日期</th>
+                                <th scope="col" class="numeric">GA4 營收</th>
+                                <th scope="col" class="numeric">Meta Ads 花費</th>
+                                <th scope="col" class="numeric">Google Ads 花費</th>
+                                <th scope="col" class="numeric">合計花費</th>
+                                <th scope="col" class="numeric">GA4 ROAS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($dailyMarketingEfficiency['rows'] as $dailyEfficiencyRow)
+                                <tr>
+                                    <th scope="row">{{ $dailyEfficiencyRow['date'] }}</th>
+                                    <td class="numeric">
+                                        {{ $dailyEfficiencyRow['ga4_revenue'] === null ? '—' : number_format((float) $dailyEfficiencyRow['ga4_revenue'], 2).' '.($dailyEfficiencyRow['ga4_currency_code'] ?? '未提供幣別') }}
+                                    </td>
+                                    <td class="numeric">
+                                        {{ $dailyEfficiencyRow['meta_spend_amount'] === null ? '—' : number_format((float) $dailyEfficiencyRow['meta_spend_amount'], 2).' '.($dailyEfficiencyRow['meta_currency_code'] ?? '未提供幣別') }}
+                                    </td>
+                                    <td class="numeric">
+                                        {{ $dailyEfficiencyRow['google_ads_spend_amount'] === null ? '—' : number_format((float) $dailyEfficiencyRow['google_ads_spend_amount'], 2).' '.($dailyEfficiencyRow['google_ads_currency_code'] ?? '未提供幣別') }}
+                                    </td>
+                                    <td class="numeric">
+                                        @if ($dailyEfficiencyRow['ad_spend_amount'] !== null)
+                                            {{ number_format((float) $dailyEfficiencyRow['ad_spend_amount'], 2) }} {{ $dailyEfficiencyRow['ad_spend_currency'] ?? '未提供幣別' }}
+                                        @elseif ($dailyEfficiencyRow['spend_status'] === 'currency_mismatch')
+                                            廣告幣別不同
+                                        @elseif ($dailyEfficiencyRow['spend_status'] === 'missing_currency')
+                                            缺少花費幣別
+                                        @elseif ($dailyEfficiencyRow['spend_status'] === 'not_configured')
+                                            未設定廣告活動
+                                        @else
+                                            資料不完整
+                                        @endif
+                                    </td>
+                                    <td class="numeric">
+                                        {{ $dailyEfficiencyRow['roas'] === null ? $dailyEfficiencyRow['roas_status_label'] : number_format($dailyEfficiencyRow['roas'], 2).'x' }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="campaign-report-empty-cell">尚未取得可對齊的逐日資料。</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
 
         <section class="campaign-report-panel" aria-labelledby="campaign-report-efficiency-title">
