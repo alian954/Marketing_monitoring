@@ -167,6 +167,8 @@ class SocialEngagementTargetTest extends TestCase
             ->get(route('dashboard', ['engagement_tag' => 'tag:Summer launch']))
             ->assertOk()
             ->assertSee('活動互動目標')
+            ->assertSee('匯出目標 CSV')
+            ->assertSee(route('social-engagement-targets.export'))
             ->assertSee('已讀 1／2 篇')
             ->assertSee('20／50')
             ->assertSee('30／60');
@@ -275,6 +277,57 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame(100, $response->viewData('socialEngagementTargetFormTarget')->target_interactions);
     }
 
+    public function test_campaign_target_csv_exports_period_progress_and_read_coverage(): void
+    {
+        $withinPeriod = $this->createSocialMonitor('facebook', 'FB-REPORT-WITHIN', 'Launch report');
+        $this->createMetricRun($withinPeriod, ['likes' => 10, 'comments' => 5, 'shares' => 5], '2026-11-10 12:00:00');
+        $unknownPublicationDate = $this->createSocialMonitor('facebook', 'FB-REPORT-NODATE', 'Launch report');
+        $this->createMetricRun($unknownPublicationDate, ['likes' => 90, 'comments' => 40, 'shares' => 50]);
+        SocialEngagementTarget::factory()->create([
+            'tag' => 'Launch report',
+            'social_platform' => 'facebook',
+            'target_interactions' => 100,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $formulaTag = '=SUM(1,1)';
+        $formulaTagMonitor = $this->createSocialMonitor('instagram', 'IG-REPORT-FORMULA', $formulaTag);
+        $this->createMetricRun($formulaTagMonitor, ['likes' => 2, 'comments' => 3, 'shares' => null]);
+        SocialEngagementTarget::factory()->create([
+            'tag' => $formulaTag,
+            'social_platform' => 'instagram',
+            'target_interactions' => 10,
+        ]);
+
+        $this->get(route('social-engagement-targets.export'))
+            ->assertRedirect(route('login'));
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.export'))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $this->assertStringContainsString(
+            'social-engagement-targets-',
+            (string) $response->headers->get('content-disposition'),
+        );
+
+        $rows = $this->csvRows($response->streamedContent());
+        $this->assertCount(2, $rows);
+        $rowsByTag = collect($rows)->keyBy('campaign_tag');
+        $this->assertSame('Facebook', $rowsByTag['Launch report']['social_platform']);
+        $this->assertSame('2026-11-01', $rowsByTag['Launch report']['campaign_starts_on']);
+        $this->assertSame('2026-11-30', $rowsByTag['Launch report']['campaign_ends_on']);
+        $this->assertSame('讚＋留言＋分享', $rowsByTag['Launch report']['interaction_metric_scope']);
+        $this->assertSame('100', $rowsByTag['Launch report']['target_interactions']);
+        $this->assertSame('20', $rowsByTag['Launch report']['current_interactions']);
+        $this->assertSame('20.0', $rowsByTag['Launch report']['completion_percent']);
+        $this->assertSame('1', $rowsByTag['Launch report']['available_post_count']);
+        $this->assertSame('1', $rowsByTag['Launch report']['tracked_post_count']);
+        $this->assertSame('1', $rowsByTag['Launch report']['unknown_publication_date_count']);
+        $this->assertSame("'=SUM(1,1)", $rowsByTag["'=SUM(1,1)"]['campaign_tag']);
+    }
+
     public function test_local_target_seeder_uses_an_existing_tagged_social_post_and_is_idempotent(): void
     {
         $this->createSocialMonitor('facebook', 'UNTAGGED-POST', null);
@@ -329,5 +382,25 @@ class SocialEngagementTargetTest extends TestCase
             'response_public_engagement_metrics' => $metrics + ['views' => null, 'source' => 'json_ld'],
             'response_published_at' => $publishedAt,
         ]);
+    }
+
+    /** @return list<array<string, string|null>> */
+    private function csvRows(string $content): array
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, $content);
+        rewind($stream);
+        $headers = fgetcsv($stream, null, ',', '"', '');
+        $rows = [];
+
+        if ($headers !== false) {
+            while (($values = fgetcsv($stream, null, ',', '"', '')) !== false) {
+                $rows[] = array_combine($headers, $values);
+            }
+        }
+
+        fclose($stream);
+
+        return $rows;
     }
 }

@@ -382,6 +382,7 @@
                 <h2 id="social-engagement-targets-title" class="panel-title">活動互動目標</h2>
                 <p class="panel-description">依標籤與平台設定累計目標；目前值只加總各貼文最近一次完整、可讀取的公開互動數，括號列出讀值覆蓋篇數。</p>
             </div>
+            <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.export') }}">匯出目標 CSV</a>
         </div>
         <div class="panel-body">
             <form action="{{ route('social-engagement-targets.store') }}" method="POST" class="check-history-filter" aria-describedby="social-engagement-target-help">
