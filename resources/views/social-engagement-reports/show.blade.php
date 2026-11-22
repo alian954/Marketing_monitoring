@@ -265,11 +265,19 @@
                         活動 ID：<code>{{ $target->google_ads_campaign_id ?? '尚未設定' }}</code>
                     </p>
                 </div>
-                @if ($googleAdsConnection && $googleAdsConnection->customer_id && $target->google_ads_campaign_id && $target->starts_on && $target->ends_on)
-                    <form action="{{ route('social-engagement-targets.google-ads.sync', $target) }}" method="POST" class="ga4-sync-actions">
-                        @csrf
-                        <button class="button button-secondary button-small" type="submit">更新 Google Ads 數據</button>
-                    </form>
+                @if ($googleAdsConnection && $googleAdsConnection->customer_id)
+                    <div class="campaign-report-actions">
+                        <form action="{{ route('social-engagement-targets.google-ads.campaign-options', $target) }}" method="POST">
+                            @csrf
+                            <button class="button button-secondary button-small" type="submit">載入活動清單</button>
+                        </form>
+                        @if ($target->google_ads_campaign_id && $target->starts_on && $target->ends_on)
+                            <form action="{{ route('social-engagement-targets.google-ads.sync', $target) }}" method="POST">
+                                @csrf
+                                <button class="button button-secondary button-small" type="submit">更新 Google Ads 數據</button>
+                            </form>
+                        @endif
+                    </div>
                 @endif
             </div>
 
@@ -278,11 +286,43 @@
             @elseif (! $googleAdsConnection->customer_id)
                 <p class="campaign-report-empty">尚未設定 Google Ads 客戶帳戶。<a href="{{ route('integrations.google-ads.edit') }}">前往設定</a></p>
             @elseif (! $target->google_ads_campaign_id)
-                <p class="campaign-report-empty">在總覽的活動互動目標設定 Google Ads 活動 ID，即可同步投放成效。</p>
+                <p class="campaign-report-empty">載入活動清單選取活動，或在總覽輸入 Google Ads 活動 ID。</p>
             @elseif (! $target->starts_on || ! $target->ends_on)
                 <p class="campaign-report-empty">設定活動開始日與結束日後，即可讀取相同期間的 Google Ads 成效。</p>
             @elseif (! $googleAdsReport)
                 <p class="campaign-report-empty">尚無 Google Ads 讀值。按「更新 Google Ads 數據」開始同步。</p>
+            @endif
+
+            @if ($googleAdsCampaignOptions !== null)
+                <h3 id="google-ads-campaign-picker-title">選擇 Google Ads 活動</h3>
+                @if ($googleAdsCampaignOptions === [])
+                    <p class="campaign-report-empty">此客戶帳戶沒有可選的 Google Ads 活動。</p>
+                @else
+                    @php($currentCampaignIsAvailable = collect($googleAdsCampaignOptions)->contains('campaign_id', (string) $target->google_ads_campaign_id))
+                    <form action="{{ route('social-engagement-targets.google-ads.campaign.update', $target) }}" method="POST" class="check-history-filter" aria-labelledby="google-ads-campaign-picker-title">
+                        @csrf
+                        @method('PUT')
+                        <div class="field-group">
+                            <label class="field-label" for="google-ads-campaign-picker">廣告活動</label>
+                            <select class="field-select" id="google-ads-campaign-picker" name="google_ads_campaign_id" required aria-describedby="google-ads-campaign-picker-help">
+                                <option value="" disabled @selected(! $currentCampaignIsAvailable)>
+                                    @if ($target->google_ads_campaign_id && ! $currentCampaignIsAvailable)
+                                        目前 ID {{ $target->google_ads_campaign_id }} 不在活動清單中，請改選
+                                    @else
+                                        請選擇活動
+                                    @endif
+                                </option>
+                                @foreach ($googleAdsCampaignOptions as $campaignOption)
+                                    <option value="{{ $campaignOption['campaign_id'] }}" @selected($target->google_ads_campaign_id === $campaignOption['campaign_id'])>
+                                        {{ $campaignOption['campaign_name'] }} · {{ $campaignOption['campaign_id'] }} · {{ $campaignOption['status'] }} · {{ $campaignOption['channel_type'] }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p id="google-ads-campaign-picker-help" class="field-help">清單包含最多 500 個未移除活動。套用後，這個活動目標將改用所選活動。</p>
+                        </div>
+                        <button class="button button-secondary button-small" type="submit">套用活動</button>
+                    </form>
+                @endif
             @endif
 
             @if ($googleAdsReport)

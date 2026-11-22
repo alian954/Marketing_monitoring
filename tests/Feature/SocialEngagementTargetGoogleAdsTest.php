@@ -53,6 +53,170 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertNull($response->viewData('googleAdsReport'));
     }
 
+    public function test_google_ads_campaign_list_can_be_loaded_and_applied_to_the_current_target(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([[
+                'results' => [
+                    [
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => [
+                            'id' => '987654322',
+                            'name' => 'Winter campaign',
+                            'status' => 'ENABLED',
+                            'advertisingChannelType' => 'SEARCH',
+                        ],
+                    ],
+                    [
+                        'customer' => ['id' => '1234567890'],
+                        'campaign' => [
+                            'id' => '987654321',
+                            'name' => 'Promo <Spring> & Summer',
+                            'status' => 'PAUSED',
+                            'advertisingChannelType' => 'PERFORMANCE_MAX',
+                        ],
+                    ],
+                ],
+            ]]),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget(['google_ads_campaign_id' => '987654323']);
+        $otherTarget = $this->createTarget(['tag' => 'Other campaign', 'google_ads_campaign_id' => '987654324']);
+        $this->createConnection($user, ['login_customer_id' => '0987654321']);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.campaign-options', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHas('google_ads_campaign_options');
+
+        $response = $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('選擇 Google Ads 活動')
+            ->assertSee('Winter campaign · 987654322 · ENABLED · SEARCH')
+            ->assertSee('&lt;Spring&gt; &amp; Summer', false);
+
+        $this->assertSame([
+            [
+                'campaign_id' => '987654321',
+                'campaign_name' => 'Promo <Spring> & Summer',
+                'status' => 'PAUSED',
+                'channel_type' => 'PERFORMANCE_MAX',
+            ],
+            [
+                'campaign_id' => '987654322',
+                'campaign_name' => 'Winter campaign',
+                'status' => 'ENABLED',
+                'channel_type' => 'SEARCH',
+            ],
+        ], $response->viewData('googleAdsCampaignOptions'));
+
+        $this->from(route('social-engagement-targets.report', $target))
+            ->put(route('social-engagement-targets.google-ads.campaign.update', $target), [
+                'google_ads_campaign_id' => '987654321',
+            ])
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHas('status', 'Google Ads 活動已套用至此活動目標。');
+
+        $this->assertSame('987654321', $target->fresh()->google_ads_campaign_id);
+        $this->assertSame('987654324', $otherTarget->fresh()->google_ads_campaign_id);
+        Http::assertSentCount(2);
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_ends_with($request->url(), '/customers/1234567890/googleAds:searchStream')
+                && $request->hasHeader('Authorization', 'Bearer temporary-access-token')
+                && $request->hasHeader('login-customer-id', '0987654321')
+                && str_contains($query, 'campaign.advertising_channel_type')
+                && str_contains($query, "campaign.status != 'REMOVED'")
+                && str_contains($query, 'ORDER BY campaign.name LIMIT 500');
+        });
+    }
+
+    public function test_google_ads_campaign_list_requires_authentication(): void
+    {
+        $target = $this->createTarget();
+
+        $this->post(route('social-engagement-targets.google-ads.campaign-options', $target))
+            ->assertRedirect(route('login'));
+        $this->put(route('social-engagement-targets.google-ads.campaign.update', $target), [
+            'google_ads_campaign_id' => '987654321',
+        ])->assertRedirect(route('login'));
+
+        Http::assertNothingSent();
+    }
+
+    public function test_google_ads_campaign_list_rejects_rows_from_another_customer(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([[
+                'results' => [[
+                    'customer' => ['id' => '9999999999'],
+                    'campaign' => [
+                        'id' => '987654321',
+                        'name' => 'Unexpected customer campaign',
+                        'status' => 'ENABLED',
+                        'advertisingChannelType' => 'SEARCH',
+                    ],
+                ]],
+            ]]),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget(['google_ads_campaign_id' => '987654322']);
+        $this->createConnection($user);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.campaign-options', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHasErrors(['google_ads']);
+
+        $this->assertSame('987654322', $target->fresh()->google_ads_campaign_id);
+        Http::assertSentCount(2);
+    }
+
+    public function test_google_ads_campaign_selection_rejects_invalid_campaign_ids(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget(['google_ads_campaign_id' => '987654321']);
+
+        $this->actingAs($user)
+            ->from(route('social-engagement-targets.report', $target))
+            ->put(route('social-engagement-targets.google-ads.campaign.update', $target), [
+                'google_ads_campaign_id' => 'campaign-123',
+            ])
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHasErrors(['google_ads_campaign_id']);
+
+        $this->assertSame('987654321', $target->fresh()->google_ads_campaign_id);
+        Http::assertNothingSent();
+    }
+
+    public function test_google_ads_campaign_list_displays_when_no_active_campaigns_are_returned(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::response([]),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createConnection($user);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.campaign-options', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target));
+
+        $response = $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('此客戶帳戶沒有可選的 Google Ads 活動。');
+
+        $this->assertSame([], $response->viewData('googleAdsCampaignOptions'));
+        Http::assertSentCount(2);
+    }
+
     public function test_google_ads_sync_saves_metrics_and_uses_google_ads_and_ga4_for_efficiency(): void
     {
         Http::fake([

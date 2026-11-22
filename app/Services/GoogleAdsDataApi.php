@@ -101,6 +101,63 @@ class GoogleAdsDataApi
         ];
     }
 
+    /** @return list<array{campaign_id: string, campaign_name: string, status: string, channel_type: string}> */
+    public function campaigns(
+        string $accessToken,
+        string $customerId,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+        $query = "SELECT customer.id, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type FROM campaign WHERE campaign.status != 'REMOVED' ORDER BY campaign.name LIMIT 500";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $campaigns = [];
+
+        foreach ($this->rowsFromStream($payload) as $row) {
+            $customer = $row['customer'] ?? null;
+            $campaign = $row['campaign'] ?? null;
+            $campaignId = is_array($campaign) ? ($campaign['id'] ?? null) : null;
+            $campaignName = is_array($campaign) ? ($campaign['name'] ?? null) : null;
+            $status = is_array($campaign) ? ($campaign['status'] ?? null) : null;
+            $channelType = is_array($campaign) ? ($campaign['advertisingChannelType'] ?? null) : null;
+
+            if (! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || (! is_string($campaignId) && ! is_int($campaignId))
+                || preg_match('/^\d{5,32}$/', (string) $campaignId) !== 1
+                || ! is_string($campaignName)
+                || trim($campaignName) === ''
+                || ! is_string($status)
+                || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $status) !== 1
+                || ! is_string($channelType)
+                || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $channelType) !== 1) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同客戶或格式無效的活動資料。');
+            }
+
+            $campaigns[] = [
+                'campaign_id' => (string) $campaignId,
+                'campaign_name' => trim($campaignName),
+                'status' => $status,
+                'channel_type' => $channelType,
+            ];
+        }
+
+        usort($campaigns, static function (array $first, array $second): int {
+            $nameOrder = strcasecmp($first['campaign_name'], $second['campaign_name']);
+
+            return $nameOrder !== 0
+                ? $nameOrder
+                : strcmp($first['campaign_id'], $second['campaign_id']);
+        });
+
+        return $campaigns;
+    }
+
     /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>, currency_code: string} */
     public function campaignInsights(
         string $accessToken,

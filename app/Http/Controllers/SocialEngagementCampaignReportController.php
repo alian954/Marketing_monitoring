@@ -73,6 +73,13 @@ class SocialEngagementCampaignReportController extends Controller
                 ->whereDate('ends_on', $socialEngagementTarget->ends_on)
                 ->first();
 
+        $googleAdsCampaignOptions = session('google_ads_campaign_options');
+        $googleAdsCampaignOptions = is_array($googleAdsCampaignOptions)
+            && (string) ($googleAdsCampaignOptions['target_id'] ?? '') === (string) $socialEngagementTarget->getKey()
+            && is_array($googleAdsCampaignOptions['campaigns'] ?? null)
+            ? $googleAdsCampaignOptions['campaigns']
+            : null;
+
         $campaignData = $campaignReport->build($socialEngagementTarget);
         $reportFreshnessCutoff = now()->subDay();
 
@@ -89,6 +96,7 @@ class SocialEngagementCampaignReportController extends Controller
             'metaMarketingTrend' => $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget),
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
+            'googleAdsCampaignOptions' => $googleAdsCampaignOptions,
             'googleAdsReportIsStale' => $googleAdsReport !== null
                 && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
             'googleAdsTrend' => $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget),

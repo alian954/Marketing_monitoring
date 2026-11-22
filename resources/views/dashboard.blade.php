@@ -445,7 +445,7 @@
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-google-ads-campaign">Google Ads 活動 ID</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id') ? ' is-invalid' : '' }}" id="social-engagement-target-google-ads-campaign" name="google_ads_campaign_id" type="text" inputmode="numeric" maxlength="32" pattern="[0-9]{5,32}" value="{{ old('google_ads_campaign_id', $socialEngagementTargetFormTarget?->google_ads_campaign_id) }}" aria-describedby="social-engagement-target-google-ads-campaign-help{{ $errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id') ? ' social-engagement-target-google-ads-campaign-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('google_ads_campaign_id')) aria-invalid="true" @endif>
-                    <p id="social-engagement-target-google-ads-campaign-help" class="field-help">選填；連結 Google Ads 後，可同步此活動的花費、曝光、點擊與轉換數據。</p>
+                    <p id="social-engagement-target-google-ads-campaign-help" class="field-help">選填；可在活動報告載入並套用帳戶活動，或輸入 ID 後同步投放數據。</p>
                     @error('google_ads_campaign_id', 'socialEngagementTarget')<p id="social-engagement-target-google-ads-campaign-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
                 <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">

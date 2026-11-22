@@ -77,6 +77,13 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-ads.sync');
+    Route::post('/social-engagement-targets/{socialEngagementTarget}/google-ads/campaign-options', [SocialEngagementTargetGoogleAdsController::class, 'campaignOptions'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-ads.campaign-options');
+    Route::put('/social-engagement-targets/{socialEngagementTarget}/google-ads/campaign', [SocialEngagementTargetGoogleAdsController::class, 'updateCampaign'])
+        ->whereNumber('socialEngagementTarget')
+        ->name('social-engagement-targets.google-ads.campaign.update');
     Route::put('/social-engagement-targets/{socialEngagementTarget}/ad-spend', [SocialEngagementTargetController::class, 'updateAdSpend'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.ad-spend.update');
