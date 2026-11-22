@@ -79,6 +79,7 @@ class QueueWorkerHeartbeatTest extends TestCase
 
         $this->assertTrue($freshResponse->viewData('queueWorkerEnabled'));
         $this->assertTrue($freshResponse->viewData('workerHeartbeatFresh'));
+        $this->assertSame('healthy', $freshResponse->viewData('heartbeatStatus'));
         $this->assertSame(0, $freshResponse->viewData('queueSize'));
         $this->assertSame([
             'due_queued_count' => 0,
@@ -96,6 +97,26 @@ class QueueWorkerHeartbeatTest extends TestCase
             ->assertSee('queue worker 是否停止或佇列是否塞住');
 
         $this->assertFalse($staleResponse->viewData('workerHeartbeatFresh'));
+        $this->assertSame('healthy', $staleResponse->viewData('heartbeatStatus'));
+    }
+
+    public function test_dashboard_marks_a_recent_scheduler_failure_as_an_issue_despite_a_fresh_success(): void
+    {
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_started_at' => now(),
+            'last_succeeded_at' => now()->subMinute(),
+            'last_error' => '排程器失敗（RuntimeException）。',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('badge-issue')
+            ->assertSee('排程器失敗（RuntimeException）。');
+
+        $this->assertTrue($response->viewData('heartbeatFresh'));
+        $this->assertSame('issue', $response->viewData('heartbeatStatus'));
     }
 
     public function test_dashboard_counts_only_jobs_on_the_default_queue(): void

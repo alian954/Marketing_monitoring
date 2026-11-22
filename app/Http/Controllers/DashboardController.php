@@ -454,6 +454,12 @@ class DashboardController extends Controller
             ->get();
         $heartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-scheduler')->first();
         $heartbeatFresh = $heartbeat?->last_succeeded_at !== null && $heartbeat->last_succeeded_at->gte(now()->subMinutes(2));
+        $heartbeatError = is_string($heartbeat?->last_error) && trim($heartbeat->last_error) !== ''
+            ? trim($heartbeat->last_error)
+            : null;
+        $heartbeatStatus = $heartbeatError !== null
+            ? 'issue'
+            : ($heartbeatFresh ? 'healthy' : 'stale');
         $workerHeartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-worker')->first();
         $workerHeartbeatFresh = $workerHeartbeat?->last_succeeded_at !== null && $workerHeartbeat->last_succeeded_at->gte(now()->subMinutes(2));
         $queueWorkerEnabled = config('queue.default') !== 'sync';
@@ -508,6 +514,8 @@ class DashboardController extends Controller
             'dnsChanges' => $dnsChanges,
             'heartbeat' => $heartbeat,
             'heartbeatFresh' => $heartbeatFresh,
+            'heartbeatError' => $heartbeatError,
+            'heartbeatStatus' => $heartbeatStatus,
             'workerHeartbeat' => $workerHeartbeat,
             'workerHeartbeatFresh' => $workerHeartbeatFresh,
             'queueWorkerEnabled' => $queueWorkerEnabled,

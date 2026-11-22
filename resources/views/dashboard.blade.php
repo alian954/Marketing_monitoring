@@ -1262,9 +1262,9 @@
                     <h2 id="runtime-title" class="panel-title">執行服務</h2>
                 </div>
                 <div class="heartbeat-heading heartbeat-subheading">
-                    <span class="heartbeat-dot {{ $heartbeatFresh ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
+                    <span class="heartbeat-dot {{ $heartbeatStatus === 'healthy' ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
                     <h3 class="heartbeat-title">排程器</h3>
-                    <x-state-badge :state="$heartbeatFresh ? 'healthy' : 'stale'" />
+                    <x-state-badge :state="$heartbeatStatus" />
                 </div>
                 @if ($heartbeat?->last_succeeded_at)
                     <p class="heartbeat-copy">最近一次成功執行</p>
@@ -1274,6 +1274,9 @@
                 @endif
                 @if ($heartbeat?->last_started_at)
                     <p class="heartbeat-copy">最近啟動：<time datetime="{{ $heartbeat->last_started_at->toIso8601String() }}">{{ $heartbeat->last_started_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time></p>
+                @endif
+                @if ($heartbeatError !== null)
+                    <p class="heartbeat-copy">最近執行錯誤：{{ $heartbeatError }}</p>
                 @endif
             </div>
 
