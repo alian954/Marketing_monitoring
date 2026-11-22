@@ -266,6 +266,15 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('2.4000', $fields['cost_per_public_interaction']);
         $this->assertSame('[{"action_type":"link_click","value":"80.0000"}]', $fields['meta_actions_json']);
         $this->assertSame('[{"conversion_action_id":"1234567","conversion_action_name":"Purchase","conversions":"15.0000","conversion_value":"600.0000"}]', $fields['google_ads_conversion_actions_json']);
+        $this->assertSame('1.3333', $fields['meta_ads_frequency']);
+        $this->assertSame('4.00', $fields['meta_ads_ctr_percent']);
+        $this->assertSame('1.2500', $fields['meta_ads_cost_per_click']);
+        $this->assertSame('50.0000', $fields['meta_ads_cost_per_thousand_impressions']);
+        $this->assertSame('7.50', $fields['google_ads_ctr_percent']);
+        $this->assertSame('0.6667', $fields['google_ads_cost_per_click']);
+        $this->assertSame('50.0000', $fields['google_ads_cost_per_thousand_impressions']);
+        $this->assertSame('13.3333', $fields['google_ads_cost_per_conversion']);
+        $this->assertSame('5.00', $fields['google_ads_conversion_rate_percent']);
         $this->assertSame('false', $fields['ga4_is_stale']);
         $this->assertStringNotContainsString('55555555', $response->streamedContent());
     }
