@@ -337,6 +337,43 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame(25.075, $analysis['cost_per_key_event']);
     }
 
+    public function test_google_ads_spend_keeps_decimal_precision_for_large_micros_values(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'TWD'],
+                        'campaign' => ['id' => '987654321', 'name' => 'Large campaign'],
+                        'metrics' => [
+                            'costMicros' => '9007199254740049',
+                            'impressions' => '1000',
+                            'clicks' => '40',
+                            'conversions' => '2',
+                            'conversionsValue' => '200',
+                        ],
+                    ]],
+                ]])
+                ->push($this->conversionActionsPayload([])),
+        ]);
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createConnection($user);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.google-ads.sync', $target))
+            ->assertRedirect(route('social-engagement-targets.report', $target))
+            ->assertSessionHas('status', 'Google Ads 活動成效已同步。');
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()->sole();
+        $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
+
+        $this->assertSame('9007199254.7400', $report->spend_amount);
+        $this->assertSame('9007199254.7400', $paidAdSnapshot->spend_amount);
+    }
+
     public function test_google_ads_sync_saves_zero_metrics_when_no_campaign_rows_are_returned(): void
     {
         Http::fake([

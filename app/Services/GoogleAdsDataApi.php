@@ -408,7 +408,33 @@ class GoogleAdsDataApi
             throw new GoogleAdsApiException('Google Ads API 回傳的花費格式無效。');
         }
 
-        return number_format(((float) $value) / 1_000_000, 4, '.', '');
+        $micros = ltrim((string) $value, '0');
+        $micros = $micros === '' ? '0' : $micros;
+        $amountInTenThousandths = strlen($micros) > 2 ? substr($micros, 0, -2) : '0';
+        $remainingMicros = (int) (strlen($micros) > 2 ? substr($micros, -2) : $micros);
+
+        if ($remainingMicros >= 50) {
+            $amountInTenThousandths = $this->incrementUnsignedIntegerString($amountInTenThousandths);
+        }
+
+        $amountInTenThousandths = str_pad($amountInTenThousandths, 5, '0', STR_PAD_LEFT);
+
+        return substr($amountInTenThousandths, 0, -4).'.'.substr($amountInTenThousandths, -4);
+    }
+
+    private function incrementUnsignedIntegerString(string $value): string
+    {
+        for ($position = strlen($value) - 1; $position >= 0; $position--) {
+            if ($value[$position] !== '9') {
+                $value[$position] = (string) ((int) $value[$position] + 1);
+
+                return $value;
+            }
+
+            $value[$position] = '0';
+        }
+
+        return '1'.$value;
     }
 
     private function decimalString(mixed $value, bool $allowNegative): string
