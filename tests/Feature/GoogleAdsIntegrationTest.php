@@ -43,6 +43,10 @@ class GoogleAdsIntegrationTest extends TestCase
             ->assertSee('Demo Ads')
             ->assertSee('1234567890')
             ->assertSee('adwords')
+            ->assertSee('此範圍本身涵蓋檢視與變更權限')
+            ->assertSee('本應用只發送報表與客戶資料讀取查詢')
+            ->assertSee('讀取正式客戶資料需先取得 production access')
+            ->assertSee('現行流程不需 developer token')
             ->assertDontSee('private-refresh-token');
     }
 

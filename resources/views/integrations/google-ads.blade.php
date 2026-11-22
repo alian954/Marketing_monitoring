@@ -15,7 +15,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="google-ads-connection-title" class="panel-title">帳戶連線</h2>
-                <p class="panel-description">使用 Google Ads API 的 <code>adwords</code> 唯讀用途 OAuth 權限；同步時才向 Google 讀取數據。</p>
+                <p class="panel-description">使用 Google Ads API 的 <code>adwords</code> OAuth 範圍；此範圍本身涵蓋檢視與變更權限，但本應用只發送報表與客戶資料讀取查詢，不會修改廣告設定。</p>
             </div>
         </div>
         <div class="panel-body">
@@ -69,7 +69,8 @@
             <h2 id="google-ads-usage-title" class="panel-title">數據如何對應</h2>
             <p class="panel-description">先連結 Google 帳戶並驗證客戶 ID，再於活動互動目標填入 Google Ads 活動 ID 與活動期間，即可同步花費、曝光、點擊、轉換總計、轉換價值及轉換動作明細。日期區間依 Google Ads 帳戶時區計算。</p>
             <p class="panel-description">Google Ads 的轉換與轉換價值依該帳戶的轉換設定歸因，不等同 GA4 工作階段或 GA4 營收。活動效率會合併幣別相同的 Google Ads 與 Meta Ads 花費；若幣別不同，不會混算。</p>
-            <p class="panel-description">Google Ads API 存取層級由 Google Cloud 專案管理；目前的新流程不需要舊式 developer token。正式使用前，請完成 Google OAuth 同意畫面及受限權限的應用程式驗證。</p>
+            <p class="panel-description">Google Ads API 存取層級由 Google Cloud 專案管理；讀取正式客戶資料需先取得 production access，現行流程不需 developer token。<a href="https://developers.google.com/google-ads/api/docs/api-policy/developer-token">官方存取說明</a></p>
+            <p class="panel-description"><code>adwords</code> OAuth 範圍涵蓋廣告資料讀寫；本應用只發送讀取查詢。OAuth 審查依應用狀態與 Google 要求辦理。<a href="https://developers.google.com/identity/protocols/oauth2/scopes">OAuth 範圍說明</a></p>
         </div>
     </section>
 @endsection
