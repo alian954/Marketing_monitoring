@@ -424,6 +424,18 @@
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ends_on') ? ' is-invalid' : '' }}" id="social-engagement-target-ends-on" name="ends_on" type="date" value="{{ old('ends_on', $socialEngagementTargetFormTarget?->ends_on?->toDateString()) }}" aria-describedby="social-engagement-target-period-help{{ $errors->getBag('socialEngagementTarget')->has('ends_on') ? ' social-engagement-target-end-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ends_on')) aria-invalid="true" @endif>
                     @error('ends_on', 'socialEngagementTarget')<p id="social-engagement-target-end-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-ga4-campaign">GA4 活動名稱（utm_campaign）</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_campaign_name') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-campaign" name="ga4_campaign_name" type="text" maxlength="100" value="{{ old('ga4_campaign_name', $socialEngagementTargetFormTarget?->ga4_campaign_name) }}" aria-describedby="social-engagement-target-ga4-campaign-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_campaign_name') ? ' social-engagement-target-ga4-campaign-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_campaign_name')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-ga4-campaign-help" class="field-help">需與導流網址的 utm_campaign 相同；留空時使用活動標籤。</p>
+                    @error('ga4_campaign_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-campaign-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="social-engagement-target-ga4-source">GA4 來源（utm_source）</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_source_name') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-source" name="ga4_source_name" type="text" maxlength="100" value="{{ old('ga4_source_name', $socialEngagementTargetFormTarget?->ga4_source_name) }}" aria-describedby="social-engagement-target-ga4-source-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_source_name') ? ' social-engagement-target-ga4-source-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_source_name')) aria-invalid="true" @endif>
+                    <p id="social-engagement-target-ga4-source-help" class="field-help">選填；用來區分平台流量，例如 facebook、instagram 或 threads。</p>
+                    @error('ga4_source_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-source-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
                 <input type="hidden" name="engagement_platform" value="{{ $socialEngagementSelectedPlatform }}">
                 <input type="hidden" name="engagement_tag" value="{{ $socialEngagementSelectedTag }}">
                 <div class="check-history-filter-actions">

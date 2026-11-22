@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
+use App\Http\Controllers\GoogleAnalyticsIntegrationController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\MaintenanceWindowController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
 use App\Http\Controllers\SocialEngagementTargetController;
+use App\Http\Controllers\SocialEngagementTargetGoogleAnalyticsController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use Illuminate\Support\Facades\Route;
@@ -52,8 +54,17 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');
+    Route::post('/social-engagement-targets/{socialEngagementTarget}/google-analytics', [SocialEngagementTargetGoogleAnalyticsController::class, 'sync'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-analytics.sync');
     Route::post('/social-engagement-targets', [SocialEngagementTargetController::class, 'store'])->name('social-engagement-targets.store');
     Route::delete('/social-engagement-targets/{socialEngagementTarget}', [SocialEngagementTargetController::class, 'destroy'])->name('social-engagement-targets.destroy');
+    Route::get('/integrations/google-analytics', [GoogleAnalyticsIntegrationController::class, 'show'])->name('integrations.google-analytics.edit');
+    Route::post('/integrations/google-analytics/connect', [GoogleAnalyticsIntegrationController::class, 'connect'])->name('integrations.google-analytics.connect');
+    Route::get('/integrations/google-analytics/callback', [GoogleAnalyticsIntegrationController::class, 'callback'])->name('integrations.google-analytics.callback');
+    Route::put('/integrations/google-analytics/property', [GoogleAnalyticsIntegrationController::class, 'updateProperty'])->name('integrations.google-analytics.property.update');
+    Route::delete('/integrations/google-analytics/connection', [GoogleAnalyticsIntegrationController::class, 'disconnect'])->name('integrations.google-analytics.disconnect');
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');

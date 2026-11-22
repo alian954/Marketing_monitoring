@@ -38,6 +38,8 @@ class SocialEngagementTargetTest extends TestCase
                 'target_interactions' => 2500,
                 'starts_on' => '2026-11-01',
                 'ends_on' => '2026-11-30',
+                'ga4_campaign_name' => 'summer_launch_2026',
+                'ga4_source_name' => 'facebook',
                 'engagement_platform' => 'facebook',
                 'engagement_tag' => 'tag:Summer launch',
             ])
@@ -50,17 +52,23 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame(2500, $target->target_interactions);
         $this->assertSame('2026-11-01', $target->starts_on?->toDateString());
         $this->assertSame('2026-11-30', $target->ends_on?->toDateString());
+        $this->assertSame('summer_launch_2026', $target->ga4_campaign_name);
+        $this->assertSame('facebook', $target->ga4_source_name);
 
         $this->actingAs($user)
             ->post(route('social-engagement-targets.store'), [
                 'tag' => 'Summer launch',
                 'social_platform' => 'facebook',
                 'target_interactions' => 3000,
+                'ga4_campaign_name' => 'summer_launch_refresh',
+                'ga4_source_name' => 'fb',
             ])
             ->assertRedirect(route('dashboard', ['engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']));
 
         $this->assertDatabaseCount('social_engagement_targets', 1);
         $this->assertSame(3000, $target->fresh()->target_interactions);
+        $this->assertSame('summer_launch_refresh', $target->fresh()->ga4_campaign_name);
+        $this->assertSame('fb', $target->fresh()->ga4_source_name);
         $this->assertNull($target->fresh()->starts_on);
         $this->assertNull($target->fresh()->ends_on);
     }

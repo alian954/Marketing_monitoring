@@ -60,6 +60,58 @@
             </dl>
         </section>
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-ga4-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-ga4-title">GA4 導流成效</h2>
+                    <p class="campaign-report-secondary">
+                        比對活動名稱：<code>{{ $googleAnalyticsCampaignName }}</code>
+                        · 來源：<code>{{ $googleAnalyticsSourceName ?? '所有來源' }}</code>
+                    </p>
+                </div>
+                @if ($googleAnalyticsConnection && $googleAnalyticsConnection->property_id && $target->starts_on && $target->ends_on)
+                    <form action="{{ route('social-engagement-targets.google-analytics.sync', $target) }}" method="POST" class="ga4-sync-actions">
+                        @csrf
+                        <button class="button button-secondary button-small" type="submit">更新 GA4 數據</button>
+                    </form>
+                @endif
+            </div>
+
+            @if (! $googleAnalyticsConnection)
+                <p class="campaign-report-empty">尚未連結 GA4。<a href="{{ route('integrations.google-analytics.edit') }}">設定 Google Analytics</a></p>
+            @elseif (! $googleAnalyticsConnection->property_id)
+                <p class="campaign-report-empty">尚未設定 GA4 資源 ID。<a href="{{ route('integrations.google-analytics.edit') }}">前往設定</a></p>
+            @elseif (! $target->starts_on || ! $target->ends_on)
+                <p class="campaign-report-empty">設定活動開始日與結束日後，即可讀取相同期間的 GA4 成效。</p>
+            @elseif (! $googleAnalyticsReport)
+                <p class="campaign-report-empty">尚無 GA4 讀值。按「更新 GA4 數據」開始同步。</p>
+            @else
+                <p class="campaign-report-secondary">
+                    資料期間 {{ $googleAnalyticsReport->starts_on->format('Y/n/j') }} 至 {{ $googleAnalyticsReport->ends_on->format('Y/n/j') }}；
+                    更新於 <time datetime="{{ $googleAnalyticsReport->synced_at->toIso8601String() }}">{{ $googleAnalyticsReport->synced_at->format('Y/n/j H:i') }}</time>
+                </p>
+                <dl class="campaign-report-summary ga4-report-summary">
+                    <div>
+                        <dt>工作階段</dt>
+                        <dd>{{ number_format($googleAnalyticsReport->sessions) }}</dd>
+                    </div>
+                    <div>
+                        <dt>參與工作階段</dt>
+                        <dd>{{ number_format($googleAnalyticsReport->engaged_sessions) }}</dd>
+                    </div>
+                    <div>
+                        <dt>重要事件</dt>
+                        <dd>{{ number_format((float) $googleAnalyticsReport->key_events, 2) }}</dd>
+                    </div>
+                    <div>
+                        <dt>總營收 <span class="campaign-report-secondary">{{ $googleAnalyticsReport->currency_code ?? '幣別未知' }}</span></dt>
+                        <dd>{{ number_format((float) $googleAnalyticsReport->total_revenue, 2) }}</dd>
+                    </div>
+                </dl>
+                <p class="campaign-report-secondary">GA4 的「重要事件」依該資源標記的事件計算；營收採該資源報告幣別。</p>
+            @endif
+        </section>
+
         @if ($target->starts_on && $target->ends_on)
             <section class="campaign-report-panel" aria-labelledby="campaign-report-weekly-growth-title">
                 <h2 id="campaign-report-weekly-growth-title">每週觀測互動變化</h2>

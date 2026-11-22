@@ -2193,6 +2193,36 @@ a.platform-chip:hover {
     font-weight: 720;
 }
 
+.campaign-report-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.campaign-report-section-header h2 {
+    margin-bottom: 8px;
+}
+
+.campaign-report-section-header p {
+    margin: 0 0 12px;
+}
+
+.ga4-report-summary {
+    margin-top: 10px;
+}
+
+.connection-status {
+    margin: 14px 0;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.integration-disconnect-form {
+    margin-top: 18px;
+}
+
 .campaign-report-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2259,6 +2289,14 @@ a.platform-chip:hover {
 }
 
 @media (max-width: 760px) {
+    .campaign-report-section-header {
+        flex-direction: column;
+    }
+
+    .campaign-report-section-header .button {
+        width: 100%;
+    }
+
     .campaign-report-header {
         flex-direction: column;
         gap: 16px;
@@ -2293,7 +2331,8 @@ a.platform-chip:hover {
     .site-header,
     .page-footer,
     .skip-link,
-    .campaign-report-actions {
+    .campaign-report-actions,
+    .ga4-sync-actions {
         display: none !important;
     }
 

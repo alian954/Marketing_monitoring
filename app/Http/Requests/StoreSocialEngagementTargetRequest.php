@@ -34,6 +34,8 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'target_interactions' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'starts_on' => ['nullable', 'date_format:Y-m-d'],
             'ends_on' => ['nullable', 'date_format:Y-m-d'],
+            'ga4_campaign_name' => ['nullable', 'string', 'max:100'],
+            'ga4_source_name' => ['nullable', 'string', 'max:100'],
             'engagement_platform' => ['nullable', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
             'engagement_tag' => ['nullable', 'string', 'max:110'],
         ];
@@ -96,6 +98,8 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'target_interactions.max' => '互動目標不可超過 1,000,000,000。',
             'starts_on.date_format' => '活動開始日格式無效。',
             'ends_on.date_format' => '活動結束日格式無效。',
+            'ga4_campaign_name.max' => 'GA4 活動名稱不可超過 100 個字元。',
+            'ga4_source_name.max' => 'GA4 來源名稱不可超過 100 個字元。',
         ];
     }
 }
