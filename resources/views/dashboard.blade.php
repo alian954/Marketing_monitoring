@@ -571,6 +571,65 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="social-post-maturity-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="social-post-maturity-title" class="panel-title">貼文年齡成效</h2>
+                <p class="panel-description">比較發文後 24 小時、7 天與 30 天的互動表現；採目標時間前後 6 小時內最近的完整讀值，並列出樣本數。</p>
+            </div>
+            <a class="strong-link" href="{{ route('social-post-maturity.export', [
+                'engagement_platform' => $socialEngagementSelectedPlatform,
+                'engagement_tag' => $socialEngagementSelectedTag,
+            ]) }}">匯出同齡比較 CSV <span aria-hidden="true">↓</span></a>
+        </div>
+        @if ($socialPostMaturityRows === [])
+            <div class="empty-state">
+                <h3 class="empty-title">尚無貼文年齡成效資料</h3>
+                <p class="empty-copy">貼文需有公開發布時間，且目標年齡前後 6 小時內讀到平台所需的完整互動數。</p>
+            </div>
+        @else
+            <div class="data-table-wrap" role="region" aria-labelledby="social-post-maturity-title" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">各平台貼文在發文後 24 小時、7 天與 30 天的平均互動、平均觀看數和觀看互動率</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">貼文年齡</th>
+                            <th scope="col">平台與口徑</th>
+                            <th scope="col">平均互動／篇</th>
+                            <th scope="col">平均觀看／篇</th>
+                            <th scope="col">觀看互動率</th>
+                            <th scope="col">互動樣本</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($socialPostMaturityRows as $maturityRow)
+                            <tr>
+                                <th scope="row">{{ $maturityRow['maturity_label'] }}</th>
+                                <td>
+                                    {{ $maturityRow['platform'] }}
+                                    <span class="secondary-text">（{{ $maturityRow['interaction_scope_label'] }}）</span>
+                                </td>
+                                <td class="numeric">{{ number_format($maturityRow['average_interactions_per_post'], 1) }}</td>
+                                <td class="numeric">
+                                    @if ($maturityRow['average_views_per_post'] !== null)
+                                        {{ number_format($maturityRow['average_views_per_post'], 1) }}
+                                        <span class="secondary-text">{{ number_format($maturityRow['view_sample_count']) }} 篇</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    {{ $maturityRow['engagement_rate_percent'] === null ? '—' : number_format($maturityRow['engagement_rate_percent'], 2).'%' }}
+                                </td>
+                                <td class="numeric">{{ number_format($maturityRow['post_count']) }} 篇</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="cross-platform-engagement-title">
         <div class="panel-header">
             <div>

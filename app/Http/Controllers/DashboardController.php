@@ -13,6 +13,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\FleetAvailabilityReport;
+use App\Services\SocialPostMaturityReport;
 use App\Services\UrlMasker;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -63,8 +64,12 @@ class DashboardController extends Controller
 
     private const TLS_OBSERVATION_STALE_AFTER_HOURS = 48;
 
-    public function index(Request $request, UrlMasker $urlMasker, FleetAvailabilityReport $availabilityReport): View
-    {
+    public function index(
+        Request $request,
+        UrlMasker $urlMasker,
+        FleetAvailabilityReport $availabilityReport,
+        SocialPostMaturityReport $socialPostMaturityReport,
+    ): View {
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
         $maintenanceSummary = $this->maintenanceSummary($asOf);
@@ -419,6 +424,13 @@ class DashboardController extends Controller
         );
         $socialEngagementChangeSummaries = $socialEngagementChangeData['summaries'];
         $socialEngagementGrowthPosts = $socialEngagementChangeData['growth_posts'];
+        $socialPostMaturityRows = $socialPostMaturityReport->build(
+            $asOf,
+            $socialEngagementPlatform,
+            $socialEngagementSelectedTag,
+            $socialEngagementSelectedTagValue,
+            $socialEngagementRetentionDays,
+        );
 
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
@@ -507,6 +519,7 @@ class DashboardController extends Controller
             'socialEngagementTopPosts' => $socialEngagementTopPosts,
             'socialEngagementPublishingDaySummaries' => $socialEngagementPublishingDaySummaries,
             'socialEngagementPublishingTimeSummaries' => $socialEngagementPublishingTimeSummaries,
+            'socialPostMaturityRows' => $socialPostMaturityRows,
             'socialEngagementTargets' => $socialEngagementTargets,
             'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
             'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,
@@ -653,6 +666,68 @@ class DashboardController extends Controller
                     $growthPost['period_interaction_change_difference'] === null ? '' : (string) $growthPost['period_interaction_change_difference'],
                     (string) $growthPost['period_comparable_metrics'],
                     $growthPost['finished_at']->utc()->toIso8601String(),
+                ];
+
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function exportSocialPostMaturity(Request $request, SocialPostMaturityReport $socialPostMaturityReport): StreamedResponse
+    {
+        $requestedPlatform = $request->query('engagement_platform');
+        $platform = is_string($requestedPlatform) && in_array($requestedPlatform, ['facebook', 'instagram', 'threads', 'dcard'], true)
+            ? $requestedPlatform
+            : null;
+        $requestedTag = $request->query('engagement_tag');
+        $selectedTag = 'all';
+        $selectedTagValue = null;
+
+        if ($requestedTag === 'unlabeled') {
+            $selectedTag = 'unlabeled';
+        } elseif (is_string($requestedTag) && str_starts_with($requestedTag, 'tag:')) {
+            $candidateTag = substr($requestedTag, 4);
+
+            if ($candidateTag !== '') {
+                $selectedTag = $requestedTag;
+                $selectedTagValue = $candidateTag;
+            }
+        }
+
+        $rows = $socialPostMaturityReport->build(
+            now()->toImmutable(),
+            $platform,
+            $selectedTag,
+            $selectedTagValue,
+            max(1, (int) config('monitoring.retention_days')),
+        );
+        $filename = 'social-post-maturity-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($rows): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'maturity_age',
+                'social_platform',
+                'interaction_metric_scope',
+                'average_interactions_per_post',
+                'average_views_per_post',
+                'view_sample_post_count',
+                'weighted_engagement_rate_percent',
+                'interaction_sample_post_count',
+            ], ',', '"', '');
+
+            foreach ($rows as $row) {
+                $fields = [
+                    $row['maturity_label'],
+                    $row['platform'],
+                    $row['interaction_scope_label'],
+                    number_format($row['average_interactions_per_post'], 1, '.', ''),
+                    $row['average_views_per_post'] === null ? '' : number_format($row['average_views_per_post'], 1, '.', ''),
+                    (string) $row['view_sample_count'],
+                    $row['engagement_rate_percent'] === null ? '' : number_format($row['engagement_rate_percent'], 2, '.', ''),
+                    (string) $row['post_count'],
                 ];
 
                 fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');

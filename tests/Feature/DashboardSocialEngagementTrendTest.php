@@ -83,6 +83,170 @@ class DashboardSocialEngagementTrendTest extends TestCase
         $this->assertSame(0, collect($response->viewData('socialEngagementTrend'))->sum('posts'));
     }
 
+    public function test_dashboard_compares_public_engagement_at_comparable_post_ages(): void
+    {
+        $this->travelTo('2026-11-22 20:00:00');
+        $facebook24HourPost = $this->createSocialMonitor('facebook', 'MATURITY24FB', 'campaign');
+        $facebookSevenDayPost = $this->createSocialMonitor('facebook', 'MATURITY7FB', 'campaign');
+        $facebookThirtyDayPost = $this->createSocialMonitor('facebook', 'MATURITY30FB', 'campaign');
+        $instagram24HourPost = $this->createSocialMonitor('instagram', 'MATURITY24IG', 'campaign');
+        $facebookBoundaryPost = $this->createSocialMonitor('facebook', 'MATURITYBOUNDARY', 'campaign');
+        $facebookWithoutViewsPost = $this->createSocialMonitor('facebook', 'MATURITYNOVIEWS', 'campaign');
+        $facebookBeyondBoundaryPost = $this->createSocialMonitor('facebook', 'MATURITYOUTSIDE', 'campaign');
+        $otherTagPost = $this->createSocialMonitor('facebook', 'MATURITYOTHER', 'other');
+        $incompletePost = $this->createSocialMonitor('facebook', 'MATURITYINCOMPLETE', 'campaign');
+
+        $this->createPublishedMetricRun($facebook24HourPost, '2026-11-21 12:00:00', '2026-11-22 12:00:00', [
+            'views' => 100,
+            'likes' => 10,
+            'comments' => 2,
+            'shares' => 3,
+        ]);
+        $this->createPublishedMetricRun($facebook24HourPost, '2026-11-21 12:00:00', '2026-11-22 14:00:00', [
+            'views' => 200,
+            'likes' => 20,
+            'comments' => 5,
+            'shares' => 5,
+        ]);
+        $this->createPublishedMetricRun($facebookSevenDayPost, '2026-11-15 12:00:00', '2026-11-22 11:00:00', [
+            'views' => 120,
+            'likes' => 10,
+            'comments' => 1,
+            'shares' => 1,
+        ]);
+        $this->createPublishedMetricRun($facebookSevenDayPost, '2026-11-15 12:00:00', '2026-11-22 13:00:00', [
+            'views' => 300,
+            'likes' => 25,
+            'comments' => 2,
+            'shares' => 3,
+        ]);
+        $this->createPublishedMetricRun($facebookThirtyDayPost, '2026-10-23 12:00:00', '2026-11-22 10:00:00', [
+            'views' => 1000,
+            'likes' => 40,
+            'comments' => 4,
+            'shares' => 2,
+        ]);
+        $this->createPublishedMetricRun($facebookThirtyDayPost, '2026-10-23 12:00:00', '2026-11-22 14:00:00', [
+            'views' => 2000,
+            'likes' => 90,
+            'comments' => 5,
+            'shares' => 5,
+        ]);
+        $this->createPublishedMetricRun($instagram24HourPost, '2026-11-21 12:00:00', '2026-11-22 12:30:00', [
+            'views' => 500,
+            'likes' => 80,
+            'comments' => 20,
+            'shares' => null,
+        ]);
+        $this->createPublishedMetricRun($facebookBoundaryPost, '2026-11-21 12:00:00', '2026-11-22 18:00:00', [
+            'views' => 300,
+            'likes' => 10,
+            'comments' => 1,
+            'shares' => 2,
+        ]);
+        $this->createPublishedMetricRun($facebookWithoutViewsPost, '2026-11-21 12:00:00', '2026-11-22 13:00:00', [
+            'views' => null,
+            'likes' => 1,
+            'comments' => 1,
+            'shares' => 1,
+        ]);
+        $this->createPublishedMetricRun($facebookBeyondBoundaryPost, '2026-11-21 12:00:00', '2026-11-22 18:00:01', [
+            'views' => null,
+            'likes' => 1000,
+            'comments' => 100,
+            'shares' => 100,
+        ]);
+        $this->createPublishedMetricRun($otherTagPost, '2026-11-21 12:00:00', '2026-11-22 12:00:00', [
+            'views' => null,
+            'likes' => 1000,
+            'comments' => 100,
+            'shares' => 100,
+        ]);
+        $this->createPublishedMetricRun($incompletePost, '2026-11-21 12:00:00', '2026-11-22 12:00:00', [
+            'views' => 10_000,
+            'likes' => 1000,
+            'comments' => 100,
+            'shares' => null,
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', ['engagement_tag' => 'tag:campaign']))
+            ->assertOk()
+            ->assertSee('貼文年齡成效')
+            ->assertSee('目標時間前後 6 小時內最近的完整讀值')
+            ->assertSee('<th scope="col">貼文年齡</th>', false)
+            ->assertSee('<th scope="col">互動樣本</th>', false)
+            ->assertSee(e(route('social-post-maturity.export', [
+                'engagement_platform' => 'all',
+                'engagement_tag' => 'tag:campaign',
+            ])), false);
+
+        $maturityRows = collect($response->viewData('socialPostMaturityRows'))
+            ->keyBy('maturity_label');
+        $dayOneRows = collect($response->viewData('socialPostMaturityRows'))
+            ->where('maturity_label', '發文後 24 小時')
+            ->keyBy('platform_key');
+
+        $this->assertSame(['facebook', 'instagram'], $dayOneRows->keys()->all());
+        $this->assertSame(10.3, $dayOneRows['facebook']['average_interactions_per_post']);
+        $this->assertSame(200.0, $dayOneRows['facebook']['average_views_per_post']);
+        $this->assertSame(2, $dayOneRows['facebook']['view_sample_count']);
+        $this->assertSame(7.0, $dayOneRows['facebook']['engagement_rate_percent']);
+        $this->assertSame(3, $dayOneRows['facebook']['post_count']);
+        $this->assertSame(100.0, $dayOneRows['instagram']['average_interactions_per_post']);
+        $this->assertSame(20.0, $dayOneRows['instagram']['engagement_rate_percent']);
+        $this->assertSame(1, $dayOneRows['instagram']['post_count']);
+        $this->assertSame(12.0, $maturityRows['發文後 7 天']['average_interactions_per_post']);
+        $this->assertSame(10.0, $maturityRows['發文後 7 天']['engagement_rate_percent']);
+        $this->assertSame(46.0, $maturityRows['發文後 30 天']['average_interactions_per_post']);
+        $this->assertSame(1, $maturityRows['發文後 30 天']['post_count']);
+
+        $facebookResponse = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:campaign',
+            ]))
+            ->assertOk();
+
+        $this->assertSame(
+            ['facebook'],
+            array_values(array_unique(array_column($facebookResponse->viewData('socialPostMaturityRows'), 'platform_key'))),
+        );
+        $this->assertSame(10.3, $facebookResponse->viewData('socialPostMaturityRows')[0]['average_interactions_per_post']);
+
+        $csvResponse = $this->actingAs(User::factory()->create())
+            ->get(route('social-post-maturity.export', [
+                'engagement_platform' => 'facebook',
+                'engagement_tag' => 'tag:campaign',
+            ]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename=social-post-maturity-2026-11-22.csv');
+        $csvRows = $this->csvRows($csvResponse->streamedContent());
+
+        $this->assertSame(['發文後 24 小時', '發文後 7 天', '發文後 30 天'], array_column($csvRows, 'maturity_age'));
+        $this->assertSame(['Facebook', 'Facebook', 'Facebook'], array_column($csvRows, 'social_platform'));
+        $this->assertSame('10.3', $csvRows[0]['average_interactions_per_post']);
+        $this->assertSame('7.00', $csvRows[0]['weighted_engagement_rate_percent']);
+        $this->assertSame('3', $csvRows[0]['interaction_sample_post_count']);
+    }
+
+    public function test_dashboard_shows_empty_post_maturity_state_without_matured_metric_samples(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('尚無貼文年齡成效資料')
+            ->assertSee('貼文需有公開發布時間');
+
+        $this->assertSame([], $response->viewData('socialPostMaturityRows'));
+    }
+
+    public function test_post_maturity_csv_export_requires_authentication(): void
+    {
+        $this->get(route('social-post-maturity.export'))
+            ->assertRedirect(route('login'));
+    }
+
     public function test_dcard_daily_trend_uses_available_likes_and_comments_without_shares(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
@@ -534,7 +698,7 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->assertRedirect(route('login'));
     }
 
-    /** @param array{likes: int|null, comments: int|null, shares: int|null} $metrics */
+    /** @param array{likes: int|null, comments: int|null, shares: int|null, views?: int|null} $metrics */
     private function createMetricRun(Monitor $monitor, string $finishedAt, array $metrics): CheckRun
     {
         $timestamp = CarbonImmutable::parse($finishedAt, 'Asia/Taipei');
@@ -545,11 +709,23 @@ class DashboardSocialEngagementTrendTest extends TestCase
             'started_at' => $timestamp,
             'scheduled_at' => $timestamp,
             'response_public_engagement_metrics' => [
-                'views' => null,
+                'views' => $metrics['views'] ?? null,
                 ...$metrics,
                 'source' => 'rendered_dom',
             ],
         ]);
+    }
+
+    /** @param array{likes: int|null, comments: int|null, shares: int|null, views?: int|null} $metrics */
+    private function createPublishedMetricRun(Monitor $monitor, string $publishedAt, string $finishedAt, array $metrics): CheckRun
+    {
+        $run = $this->createMetricRun($monitor, $finishedAt, $metrics);
+
+        $run->forceFill([
+            'response_published_at' => CarbonImmutable::parse($publishedAt, 'Asia/Taipei'),
+        ])->save();
+
+        return $run;
     }
 
     private function createSocialMonitor(string $platform, string $postId, string $tag): Monitor
