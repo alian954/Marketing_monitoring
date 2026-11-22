@@ -931,6 +931,13 @@
                     'not_configured' => 'unknown',
                     default => 'warning',
                 };
+                $dailyMarketingPeriodComparison = $dailyMarketingEfficiency['period_comparison'];
+                $dailyMarketingPeriodStatusClass = match ($dailyMarketingPeriodComparison['status']) {
+                    'complete' => 'healthy',
+                    'currency_mismatch' => 'stale',
+                    'not_configured' => 'unknown',
+                    default => 'warning',
+                };
             @endphp
             <div class="campaign-report-daily-source" aria-labelledby="campaign-report-daily-efficiency-title">
                 <div class="campaign-report-section-header">
@@ -942,6 +949,84 @@
                     · 更新於：{{ $dailyMarketingEfficiency['latest_synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
                     · 花費只在已設定的廣告來源都有當日資料且幣別一致時合併；缺少日期不補零。
                 </p>
+                <div class="campaign-report-section-header">
+                    <h4>近 7 天與前 7 天</h4>
+                    <span class="badge badge-{{ $dailyMarketingPeriodStatusClass }}">{{ $dailyMarketingPeriodComparison['status_label'] }}</span>
+                </div>
+                <p class="campaign-report-secondary">
+                    近期：{{ $dailyMarketingPeriodComparison['current_period']['start_on'] ?? '—' }} 至 {{ $dailyMarketingPeriodComparison['current_period']['end_on'] ?? '—' }}
+                    · 前期：{{ $dailyMarketingPeriodComparison['previous_period']['start_on'] ?? '—' }} 至 {{ $dailyMarketingPeriodComparison['previous_period']['end_on'] ?? '—' }}
+                    · 依最近已結束日（台灣時間）切成兩段；以期間營收總和除以花費總和計算 ROAS，兩期需有完整逐日資料且幣別一致。
+                </p>
+                <div class="data-table-wrap campaign-report-daily-period-comparison" role="region" aria-label="近七天與前七天成效比較" tabindex="0">
+                    <table class="data-table campaign-report-table">
+                        <caption class="sr-only">近 7 天與前 7 天的 GA4 營收、廣告花費、ROAS 與差異</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">指標</th>
+                                <th scope="col" class="numeric">近 7 天</th>
+                                <th scope="col" class="numeric">前 7 天</th>
+                                <th scope="col" class="numeric">差異</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ([
+                                ['key' => 'revenue', 'label' => 'GA4 營收'],
+                                ['key' => 'spend', 'label' => '廣告花費'],
+                                ['key' => 'roas', 'label' => 'GA4 ROAS'],
+                            ] as $periodMetric)
+                                @php
+                                    $currentPeriod = $dailyMarketingPeriodComparison['current_period'];
+                                    $previousPeriod = $dailyMarketingPeriodComparison['previous_period'];
+                                    $periodChange = match ($periodMetric['key']) {
+                                        'revenue' => $dailyMarketingPeriodComparison['changes']['revenue_amount'],
+                                        'spend' => $dailyMarketingPeriodComparison['changes']['spend_amount'],
+                                        default => $dailyMarketingPeriodComparison['changes']['roas'],
+                                    };
+                                    $periodChangePercent = match ($periodMetric['key']) {
+                                        'revenue' => $dailyMarketingPeriodComparison['changes']['revenue_percent'],
+                                        'spend' => $dailyMarketingPeriodComparison['changes']['spend_percent'],
+                                        default => null,
+                                    };
+                                @endphp
+                                <tr>
+                                    <th scope="row">{{ $periodMetric['label'] }}</th>
+                                    @foreach ([$currentPeriod, $previousPeriod] as $periodValues)
+                                        <td class="numeric">
+                                            @if ($periodMetric['key'] === 'revenue' && $periodValues['revenue_amount'] !== null)
+                                                {{ number_format((float) $periodValues['revenue_amount'], 2) }} {{ $periodValues['currency'] }}
+                                            @elseif ($periodMetric['key'] === 'spend' && $periodValues['spend_amount'] !== null)
+                                                {{ number_format((float) $periodValues['spend_amount'], 2) }} {{ $periodValues['currency'] }}
+                                            @elseif ($periodMetric['key'] === 'roas' && $periodValues['roas'] !== null)
+                                                {{ number_format($periodValues['roas'], 2) }}x
+                                            @else
+                                                {{ match ($periodValues['status']) {
+                                                    'partial' => '資料不完整',
+                                                    'currency_mismatch' => '幣別不同',
+                                                    default => '—',
+                                                } }}
+                                            @endif
+                                        </td>
+                                    @endforeach
+                                    <td class="numeric">
+                                        @if ($periodChange === null)
+                                            —
+                                        @elseif ($periodMetric['key'] === 'roas')
+                                            {{ $periodChange > 0 ? '+' : '' }}{{ number_format($periodChange, 2) }}x
+                                        @else
+                                            {{ (float) $periodChange > 0 ? '+' : '' }}{{ number_format((float) $periodChange, 2) }} {{ $currentPeriod['currency'] }}
+                                            @if ($periodChangePercent !== null)
+                                                <span class="campaign-report-secondary">({{ $periodChangePercent > 0 ? '+' : '' }}{{ number_format($periodChangePercent, 2) }}%)</span>
+                                            @else
+                                                <span class="campaign-report-secondary">(前期為 0，無法計算百分比)</span>
+                                            @endif
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
                 @if ($dailyMarketingEfficiency['trend_chart']['points'] !== [])
                     <figure class="metric-trend-figure campaign-report-daily-trend">
                         <svg

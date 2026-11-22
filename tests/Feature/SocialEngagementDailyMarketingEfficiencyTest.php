@@ -10,6 +10,7 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -169,6 +170,172 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertSame('2026-11-02', $efficiency['rows'][0]['date']);
     }
 
+    public function test_report_compares_equal_seven_day_periods_using_period_totals_for_roas(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $dateString = $date->toDateString();
+            $isCurrentPeriod = $dateString >= '2026-11-24';
+            $dailyMetrics[$dateString] = [
+                'spend' => $isCurrentPeriod
+                    ? ($dateString === '2026-11-30' ? '100.0000' : '1.0000')
+                    : '10.0000',
+                'revenue' => $isCurrentPeriod
+                    ? ($dateString === '2026-11-30' ? '100.0000' : '0.0000')
+                    : '5.0000',
+            ];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics));
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('近 7 天與前 7 天')
+            ->assertSee('0.94x');
+        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+
+        $this->assertSame('complete', $comparison['status']);
+        $this->assertSame('2026-11-24', $comparison['current_period']['start_on']);
+        $this->assertSame('2026-11-30', $comparison['current_period']['end_on']);
+        $this->assertSame('106.0000', $comparison['current_period']['spend_amount']);
+        $this->assertSame('100.0000', $comparison['current_period']['revenue_amount']);
+        $this->assertSame(0.94, $comparison['current_period']['roas']);
+        $this->assertSame('2026-11-17', $comparison['previous_period']['start_on']);
+        $this->assertSame('70.0000', $comparison['previous_period']['spend_amount']);
+        $this->assertSame(0.5, $comparison['previous_period']['roas']);
+        $this->assertSame('36.0000', $comparison['changes']['spend_amount']);
+        $this->assertSame(51.43, $comparison['changes']['spend_percent']);
+        $this->assertSame('65.0000', $comparison['changes']['revenue_amount']);
+        $this->assertSame(0.44, $comparison['changes']['roas']);
+    }
+
+    public function test_period_comparison_does_not_calculate_change_when_a_calendar_date_is_missing(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $dailyMetrics[$date->toDateString()] = ['spend' => '10.0000', 'revenue' => '20.0000'];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics, ['2026-11-25']));
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk();
+        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+
+        $this->assertSame('partial', $comparison['status']);
+        $this->assertSame('complete', $comparison['previous_period']['status']);
+        $this->assertSame('partial', $comparison['current_period']['status']);
+        $this->assertNull($comparison['current_period']['spend_amount']);
+        $this->assertNull($comparison['changes']['spend_amount']);
+        $this->assertNull($comparison['changes']['revenue_amount']);
+    }
+
+    public function test_period_comparison_handles_zero_previous_spend_without_dividing_by_zero(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $isCurrentPeriod = $date->toDateString() >= '2026-11-24';
+            $dailyMetrics[$date->toDateString()] = [
+                'spend' => $isCurrentPeriod ? '10.0000' : '0.0000',
+                'revenue' => $isCurrentPeriod ? '20.0000' : '0.0000',
+            ];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics));
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('前期為 0，無法計算百分比');
+        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+
+        $this->assertSame('complete', $comparison['status']);
+        $this->assertSame('0.0000', $comparison['previous_period']['spend_amount']);
+        $this->assertNull($comparison['previous_period']['roas']);
+        $this->assertNull($comparison['changes']['spend_percent']);
+        $this->assertNull($comparison['changes']['roas']);
+    }
+
+    public function test_period_comparison_does_not_combine_different_paid_media_currencies(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $dailyMetrics[$date->toDateString()] = ['spend' => '10.0000', 'revenue' => '20.0000'];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics) + ['ads_currency' => 'USD']);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk();
+        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+
+        $this->assertSame('currency_mismatch', $comparison['status']);
+        $this->assertSame('currency_mismatch', $comparison['current_period']['status']);
+        $this->assertSame('currency_mismatch', $comparison['previous_period']['status']);
+        $this->assertNull($comparison['changes']['spend_amount']);
+        $this->assertNull($comparison['changes']['revenue_amount']);
+        $this->assertNull($comparison['changes']['roas']);
+    }
+
+    public function test_period_comparison_does_not_shift_back_when_recent_days_are_missing(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-01'); $date->toDateString() <= '2026-11-16'; $date = $date->addDay()) {
+            $dailyMetrics[$date->toDateString()] = ['spend' => '10.0000', 'revenue' => '20.0000'];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics));
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk();
+        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+
+        $this->assertSame('partial', $comparison['status']);
+        $this->assertSame('2026-11-24', $comparison['current_period']['start_on']);
+        $this->assertSame('2026-11-30', $comparison['current_period']['end_on']);
+        $this->assertSame('partial', $comparison['current_period']['status']);
+        $this->assertNull($comparison['changes']['spend_amount']);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -322,6 +489,33 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'clicks' => 10,
             'conversions' => '1.0000',
             'conversions_value' => '50.0000',
+        ];
+    }
+
+    /**
+     * @param  array<string, array{spend: string, revenue: string}>  $dailyMetrics
+     * @param  list<string>  $datesWithoutGa4
+     * @return array{ga_rows: list<array<string, mixed>>, meta_rows: list<array<string, mixed>>, ads_rows: list<array<string, mixed>>}
+     */
+    private function periodRows(array $dailyMetrics, array $datesWithoutGa4 = []): array
+    {
+        $gaRows = [];
+        $metaRows = [];
+        $adsRows = [];
+
+        foreach ($dailyMetrics as $date => $metrics) {
+            if (! in_array($date, $datesWithoutGa4, true)) {
+                $gaRows[] = $this->gaRow($date, $metrics['revenue']);
+            }
+
+            $metaRows[] = $this->metaRow($date, $metrics['spend']);
+            $adsRows[] = $this->adsRow($date, '0.0000');
+        }
+
+        return [
+            'ga_rows' => $gaRows,
+            'meta_rows' => $metaRows,
+            'ads_rows' => $adsRows,
         ];
     }
 

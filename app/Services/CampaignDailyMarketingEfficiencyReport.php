@@ -7,7 +7,10 @@ use Carbon\CarbonImmutable;
 
 class CampaignDailyMarketingEfficiencyReport
 {
-    public function __construct(private CampaignDailyMarketingTrendChart $trendChart) {}
+    public function __construct(
+        private CampaignDailyMarketingTrendChart $trendChart,
+        private CampaignDailyMarketingPeriodComparison $periodComparison,
+    ) {}
 
     /**
      * @param  array<string, array<string, mixed>>  $dailyMarketingPerformance
@@ -19,6 +22,7 @@ class CampaignDailyMarketingEfficiencyReport
      *     coverage_start_on: string|null,
      *     coverage_end_on: string|null,
      *     latest_synced_at: CarbonImmutable|null,
+     *     period_comparison: array<string, mixed>,
      *     rows: list<array{
      *         date: string,
      *         meta_spend_amount: string|null,
@@ -152,6 +156,7 @@ class CampaignDailyMarketingEfficiencyReport
             $hasCompleteSourceCoverage,
             $hasEveryCalendarDate,
         );
+        $periodComparison = $this->periodComparison->build($target, $rows);
         $latestSyncedAt = $this->latestSyncedAt([
             $googleAnalyticsSource['synced_at'] ?? null,
             $metaSource['synced_at'] ?? null,
@@ -172,6 +177,7 @@ class CampaignDailyMarketingEfficiencyReport
             'coverage_start_on' => $coverageStartOn,
             'coverage_end_on' => $coverageEndOn,
             'latest_synced_at' => $latestSyncedAt,
+            'period_comparison' => $periodComparison,
             'rows' => array_reverse($rows),
             'trend_chart' => $trendChart,
         ];
