@@ -55,6 +55,9 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             ->assertSee('GA4 逐日成效')
             ->assertSee('Meta Ads 逐日成效')
             ->assertSee('Google Ads 逐日成效')
+            ->assertSee('GA4 每日工作階段趨勢')
+            ->assertSee('Meta Ads 每日花費趨勢')
+            ->assertSee('未回傳的日期不補為零')
             ->assertSee('部分涵蓋')
             ->assertSee('不支援')
             ->assertSee('2026-11-04 至 2026-11-28')
@@ -161,6 +164,38 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertSame('2.0000', $adsFields['conversions']);
         $this->assertSame('2026-11-01', $adsFields['requested_start_on']);
         $this->assertSame('2026-11-30', $adsFields['coverage_end_on']);
+    }
+
+    public function test_report_renders_google_ads_daily_trend_with_accessible_svg_labels(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'ads_status' => 'complete',
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '30.0000',
+                'impressions' => 300,
+                'clicks' => 10,
+                'conversions' => '2.0000',
+                'conversions_value' => '90.0000',
+            ]],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Google Ads 每日花費趨勢')
+            ->assertSee('2026-11-06：花費 TWD 30.00')
+            ->assertSee('role="img"', false)
+            ->assertSee(
+                'aria-labelledby="campaign-report-daily-google_ads-chart-title campaign-report-daily-google_ads-chart-description"',
+                false,
+            );
+
+        $trendChart = $response->viewData('dailyMarketingPerformance')['google_ads']['trend_chart'];
+        $this->assertSame(['2026-11-06'], array_column($trendChart['points'], 'date'));
+        $this->assertSame('TWD 30.00', $trendChart['maximum_label']);
     }
 
     public function test_report_does_not_expose_daily_metrics_from_another_users_connections(): void

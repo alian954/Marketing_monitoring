@@ -11,6 +11,7 @@ use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\CampaignDailyMarketingPerformanceReport;
 use App\Services\CampaignDailyMarketingReportCsv;
+use App\Services\CampaignDailyMarketingTrendChart;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
@@ -32,6 +33,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
     ): View {
         return view('social-engagement-reports.show', $this->reportData(
             $request,
@@ -41,6 +43,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingTrendChart,
         ));
     }
 
@@ -52,6 +55,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         CampaignMarketingReportCsv $campaignMarketingReportCsv,
     ): StreamedResponse {
         $data = $this->reportData(
@@ -62,6 +66,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingTrendChart,
             false,
         );
         $csv = $campaignMarketingReportCsv->build($data);
@@ -84,6 +89,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         CampaignDailyMarketingReportCsv $dailyMarketingReportCsv,
     ): StreamedResponse {
         $data = $this->reportData(
@@ -94,6 +100,7 @@ class SocialEngagementCampaignReportController extends Controller
             $paidMediaTrendReport,
             $marketingEfficiencyReport,
             $dailyMarketingPerformanceReport,
+            $dailyMarketingTrendChart,
             false,
         );
         $csv = $dailyMarketingReportCsv->build($data['dailyMarketingPerformance']);
@@ -144,6 +151,7 @@ class SocialEngagementCampaignReportController extends Controller
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
+        CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         bool $includeHistoricalDetails = true,
     ): array {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
@@ -205,6 +213,17 @@ class SocialEngagementCampaignReportController extends Controller
             'google_ads' => $googleAdsReport,
         ] as $sourceKey => $sourceReport) {
             $dailyMarketingPerformance[$sourceKey]['snapshot_available'] = $sourceReport?->daily_metrics !== null;
+
+            $chartMetric = match ($sourceKey) {
+                'google_analytics' => ['key' => 'sessions', 'label' => '工作階段', 'format' => 'integer'],
+                'meta_marketing', 'google_ads' => ['key' => 'spend_amount', 'label' => '花費', 'format' => 'currency'],
+            };
+            $dailyMarketingPerformance[$sourceKey]['trend_chart'] = $dailyMarketingTrendChart->build(
+                $dailyMarketingPerformance[$sourceKey],
+                $chartMetric['key'],
+                $chartMetric['label'],
+                $chartMetric['format'],
+            );
         }
 
         return [

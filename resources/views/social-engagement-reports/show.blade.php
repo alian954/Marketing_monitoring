@@ -839,6 +839,48 @@
                         · 幣別：{{ $sourceReport['currency_code'] ?? '未提供' }}
                         · 更新於：{{ $sourceReport['synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
                     </p>
+                    @if ($sourceReport['trend_chart']['points'] !== [])
+                        <figure class="metric-trend-figure campaign-report-daily-trend">
+                            <svg
+                                class="metric-trend-svg"
+                                viewBox="0 0 600 196"
+                                role="img"
+                                aria-labelledby="campaign-report-daily-{{ $dailySource['key'] }}-chart-title campaign-report-daily-{{ $dailySource['key'] }}-chart-description"
+                            >
+                                <title id="campaign-report-daily-{{ $dailySource['key'] }}-chart-title">{{ $dailySource['title'] }} 每日{{ $sourceReport['trend_chart']['metric_label'] }}趨勢</title>
+                                <desc id="campaign-report-daily-{{ $dailySource['key'] }}-chart-description">
+                                    {{ $sourceReport['trend_chart']['coverage_start_on'] }} 至 {{ $sourceReport['trend_chart']['coverage_end_on'] }}，{{ $sourceReport['trend_chart']['metric_label'] }}最高為 {{ $sourceReport['trend_chart']['maximum_label'] }}。未回傳的日期不補為零，折線只連接連續日期；精確數值見下方表格。
+                                </desc>
+                                <line class="metric-trend-grid-line" x1="48" x2="576" y1="24" y2="24" />
+                                <line class="metric-trend-grid-line" x1="48" x2="576" y1="89" y2="89" />
+                                <line class="metric-trend-grid-line" x1="48" x2="576" y1="154" y2="154" />
+                                @foreach ($sourceReport['trend_chart']['segments'] as $segment)
+                                    <line
+                                        class="metric-trend-line"
+                                        x1="{{ number_format($segment['x1'], 2, '.', '') }}"
+                                        y1="{{ number_format($segment['y1'], 2, '.', '') }}"
+                                        x2="{{ number_format($segment['x2'], 2, '.', '') }}"
+                                        y2="{{ number_format($segment['y2'], 2, '.', '') }}"
+                                    />
+                                @endforeach
+                                @foreach ($sourceReport['trend_chart']['points'] as $trendPoint)
+                                    <circle
+                                        class="metric-trend-point"
+                                        cx="{{ number_format($trendPoint['x'], 2, '.', '') }}"
+                                        cy="{{ number_format($trendPoint['y'], 2, '.', '') }}"
+                                        r="3.5"
+                                    >
+                                        <title>{{ $trendPoint['date'] }}：{{ $sourceReport['trend_chart']['metric_label'] }} {{ $trendPoint['value_label'] }}</title>
+                                    </circle>
+                                @endforeach
+                                <text class="metric-trend-axis-label" x="48" y="184">{{ $sourceReport['trend_chart']['coverage_start_on'] }}</text>
+                                <text class="metric-trend-axis-label" x="576" y="184" text-anchor="end">{{ $sourceReport['trend_chart']['coverage_end_on'] }}</text>
+                            </svg>
+                            <figcaption class="campaign-report-secondary campaign-report-daily-trend-caption">
+                                每日{{ $sourceReport['trend_chart']['metric_label'] }} · 最高 {{ $sourceReport['trend_chart']['maximum_label'] }} · 未回傳日期不視為 0
+                            </figcaption>
+                        </figure>
+                    @endif
                     <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-daily-{{ $dailySource['key'] }}-title" tabindex="0">
                         <table class="data-table campaign-report-table">
                             <caption class="sr-only">{{ $dailySource['title'] }}逐日行銷成效及 API 資料涵蓋範圍</caption>

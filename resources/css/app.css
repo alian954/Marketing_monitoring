@@ -2289,6 +2289,14 @@ a.platform-chip:hover {
     font-weight: 500;
 }
 
+.campaign-report-daily-trend {
+    margin: 12px 0 18px;
+}
+
+.campaign-report-daily-trend-caption {
+    margin: 3px 0 0;
+}
+
 .campaign-report-table {
     min-width: 0;
 }
