@@ -94,6 +94,168 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertSee('另有 1 篇未取得發布時間');
     }
 
+    public function test_campaign_report_projects_interaction_goal_from_comparable_fresh_post_reads(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Forecast campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 250,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+
+        foreach (range(1, 3) as $index) {
+            $monitor = $this->createSocialMonitor('facebook', 'FORECAST00'.$index, 'Forecast campaign', '預測貼文 '.$index);
+            $this->createMetricRun($monitor, ['likes' => 10, 'comments' => 1, 'shares' => 1], '2026-11-02T08:00:00Z', null, '2026-11-08T09:00:00Z');
+            $this->createMetricRun($monitor, ['likes' => 20, 'comments' => 2, 'shares' => 2], '2026-11-02T08:00:00Z', null, '2026-11-10T09:00:00Z');
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('互動目標預測')
+            ->assertSee('依目前速度推估可達標')
+            ->assertSee('推估期末互動');
+
+        $forecast = $response->viewData('report')['goal_forecast'];
+
+        $this->assertSame('on_track', $forecast['status']);
+        $this->assertSame(3, $forecast['comparable_post_count']);
+        $this->assertSame(100.0, $forecast['sample_coverage_percent']);
+        $this->assertSame(18.0, $forecast['average_daily_interaction_change']);
+        $this->assertSame(255, $forecast['projected_interaction_total']);
+        $this->assertSame(102.0, $forecast['projected_completion_percent']);
+        $this->assertSame('有限樣本', $forecast['confidence_label']);
+    }
+
+    public function test_campaign_goal_forecast_uses_platform_interaction_scope_and_nets_decreases(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Declining campaign',
+            'social_platform' => 'instagram',
+            'target_interactions' => 500,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+
+        foreach (range(1, 3) as $index) {
+            $monitor = $this->createSocialMonitor('instagram', 'DECLINE00'.$index, 'Declining campaign', '下降貼文 '.$index);
+            $this->createMetricRun($monitor, ['likes' => 100, 'comments' => 20, 'shares' => 100], '2026-11-02T08:00:00Z', null, '2026-11-08T09:00:00Z');
+            $this->createMetricRun($monitor, ['likes' => 90, 'comments' => 20, 'shares' => 0], '2026-11-02T08:00:00Z', null, '2026-11-10T09:00:00Z');
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('依目前速度推估未達標');
+        $forecast = $response->viewData('report')['goal_forecast'];
+
+        $this->assertSame('at_risk', $forecast['status']);
+        $this->assertSame(-15.0, $forecast['average_daily_interaction_change']);
+        $this->assertSame(178, $forecast['projected_interaction_total']);
+    }
+
+    public function test_campaign_goal_forecast_reports_a_freshly_achieved_goal_without_a_growth_sample(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Achieved campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 20,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+        $monitor = $this->createSocialMonitor('facebook', 'ACHIEVED001', 'Achieved campaign', '已達標貼文');
+        $this->createMetricRun($monitor, ['likes' => 23, 'comments' => 2, 'shares' => 5], '2026-11-02T08:00:00Z', null, '2026-11-10T09:00:00Z');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('目前已達成互動目標');
+        $forecast = $response->viewData('report')['goal_forecast'];
+
+        $this->assertSame('achieved', $forecast['status']);
+        $this->assertNull($forecast['projected_interaction_total']);
+    }
+
+    public function test_campaign_goal_forecast_requires_enough_fresh_comparable_posts(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Limited forecast campaign',
+            'social_platform' => 'threads',
+            'target_interactions' => 100,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+        $monitor = $this->createSocialMonitor('threads', 'LIMITED001', 'Limited forecast campaign', '樣本不足貼文');
+        $this->createMetricRun($monitor, ['likes' => 10, 'comments' => 2, 'shares' => 1], '2026-11-02T08:00:00Z', null, '2026-11-08T09:00:00Z');
+        $this->createMetricRun($monitor, ['likes' => 15, 'comments' => 3, 'shares' => 2], '2026-11-02T08:00:00Z', null, '2026-11-10T09:00:00Z');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('資料不足，暫不推估');
+        $forecast = $response->viewData('report')['goal_forecast'];
+
+        $this->assertSame('insufficient_data', $forecast['status']);
+        $this->assertSame(1, $forecast['comparable_post_count']);
+        $this->assertNull($forecast['projected_interaction_total']);
+    }
+
+    public function test_campaign_goal_forecast_requires_recent_complete_reads_across_the_campaign(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Stale forecast campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 50,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+
+        foreach (range(1, 3) as $index) {
+            $monitor = $this->createSocialMonitor('facebook', 'STALEFORECAST00'.$index, 'Stale forecast campaign', '舊讀值貼文 '.$index);
+            $this->createMetricRun($monitor, ['likes' => 10, 'comments' => 1, 'shares' => 1], '2026-11-02T08:00:00Z', null, '2026-11-07T09:00:00Z');
+            $this->createMetricRun($monitor, ['likes' => 20, 'comments' => 2, 'shares' => 2], '2026-11-02T08:00:00Z', null, '2026-11-09T09:00:00Z');
+        }
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('資料不足，暫不推估');
+        $forecast = $response->viewData('report')['goal_forecast'];
+
+        $this->assertSame('insufficient_data', $forecast['status']);
+        $this->assertSame(0.0, $forecast['sample_coverage_percent']);
+        $this->assertSame(0.0, $forecast['fresh_read_coverage_percent']);
+        $this->assertNull($forecast['projected_interaction_total']);
+    }
+
+    public function test_campaign_goal_forecast_distinguishes_unstarted_and_ended_campaigns(): void
+    {
+        $this->travelTo('2026-11-10 12:00:00');
+        $user = User::factory()->create();
+        $unstartedTarget = SocialEngagementTarget::factory()->create([
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-11',
+            'ends_on' => '2026-11-20',
+        ]);
+        $endedTarget = SocialEngagementTarget::factory()->create([
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-09',
+        ]);
+
+        $unstartedResponse = $this->actingAs($user)->get(route('social-engagement-targets.report', $unstartedTarget))->assertOk();
+        $endedResponse = $this->actingAs($user)->get(route('social-engagement-targets.report', $endedTarget))->assertOk();
+
+        $this->assertSame('not_started', $unstartedResponse->viewData('report')['goal_forecast']['status']);
+        $this->assertSame('ended', $endedResponse->viewData('report')['goal_forecast']['status']);
+    }
+
     public function test_report_renders_legacy_ga4_breakdown_without_channel_group(): void
     {
         $user = User::factory()->create();
@@ -433,6 +595,8 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('', $fields['ga4_is_stale']);
         $this->assertSame('', $fields['meta_spend_amount']);
         $this->assertSame('', $fields['cost_per_campaign_interaction_change']);
+        $this->assertSame('資料不足，暫不推估', $fields['interaction_goal_forecast_status']);
+        $this->assertSame('', $fields['interaction_goal_forecast_projected_interactions']);
         $this->assertSame('', $fields['meta_ads_is_stale']);
         $this->assertSame('', $fields['google_ads_spend_amount']);
         $this->assertSame('', $fields['google_ads_is_stale']);
@@ -752,6 +916,7 @@ class SocialEngagementCampaignReportTest extends TestCase
             $this->assertSame($fullReport[$metric], $summaryReport[$metric]);
         }
 
+        $this->assertEquals($fullReport['goal_forecast'], $summaryReport['goal_forecast']);
         $this->assertSame([], $summaryReport['top_posts']);
         $this->assertSame([], $summaryReport['weekly_interaction_changes']);
         $this->assertCount(1, $fullReport['top_posts']);

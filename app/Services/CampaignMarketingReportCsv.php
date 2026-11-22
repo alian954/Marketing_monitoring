@@ -32,6 +32,7 @@ class CampaignMarketingReportCsv
         $target = $data['target'];
         $report = $data['report'];
         $metrics = $report['metrics'];
+        $goalForecast = $report['goal_forecast'];
         $analyticsReport = $data['googleAnalyticsReport'];
         $metaMarketingReport = $data['metaMarketingReport'];
         $googleAdsReport = $data['googleAdsReport'];
@@ -59,6 +60,16 @@ class CampaignMarketingReportCsv
             'observed_campaign_interaction_change',
             'comparable_interaction_posts',
             'target_completion_percent',
+            'interaction_goal_forecast_status',
+            'interaction_goal_forecast_confidence',
+            'interaction_goal_forecast_comparable_posts',
+            'interaction_goal_forecast_sample_coverage_percent',
+            'interaction_goal_forecast_fresh_read_coverage_percent',
+            'interaction_goal_forecast_average_daily_change',
+            'interaction_goal_forecast_projected_interactions',
+            'interaction_goal_forecast_projected_completion_percent',
+            'interaction_goal_forecast_remaining_days',
+            'interaction_goal_forecast_latest_read_at',
             'tracked_posts',
             'complete_read_posts',
             'posts_without_publication_date',
@@ -152,6 +163,16 @@ class CampaignMarketingReportCsv
             $report['observed_interaction_change'] === null ? '' : (string) $report['observed_interaction_change'],
             (string) $report['comparable_interaction_post_count'],
             $this->formatDecimal($report['target_completion_percent'], 1),
+            $goalForecast['status_label'],
+            $goalForecast['confidence_label'] ?? '',
+            (string) $goalForecast['comparable_post_count'],
+            $this->formatDecimal($goalForecast['sample_coverage_percent'], 1),
+            $this->formatDecimal($goalForecast['fresh_read_coverage_percent'], 1),
+            $this->formatDecimal($goalForecast['average_daily_interaction_change'], 1),
+            $goalForecast['projected_interaction_total'] === null ? '' : (string) $goalForecast['projected_interaction_total'],
+            $this->formatDecimal($goalForecast['projected_completion_percent'], 1),
+            $this->formatDecimal($goalForecast['remaining_days'], 1),
+            $this->formatDateTime($goalForecast['latest_observed_at']),
             (string) $report['tracked_post_count'],
             (string) $report['complete_read_count'],
             (string) $report['unknown_publication_date_count'],

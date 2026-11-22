@@ -13,6 +13,16 @@ class SocialEngagementCampaignReport
 {
     private const HISTORY_TIMEZONE = 'Asia/Taipei';
 
+    private const MIN_FORECAST_COMPARABLE_POSTS = 3;
+
+    private const MIN_FORECAST_SAMPLE_COVERAGE_PERCENT = 50.0;
+
+    private const MIN_FORECAST_FRESH_READ_COVERAGE_PERCENT = 80.0;
+
+    private const HIGH_FORECAST_COMPARABLE_POSTS = 5;
+
+    private const HIGH_FORECAST_SAMPLE_COVERAGE_PERCENT = 80.0;
+
     private const PLATFORM_LABELS = [
         'facebook' => 'Facebook',
         'instagram' => 'Instagram',
@@ -35,6 +45,19 @@ class SocialEngagementCampaignReport
      *         observed_interaction_change: int|null,
      *         comparable_interaction_post_count: int,
      *         target_completion_percent: float|null,
+     *         goal_forecast: array{
+     *             status: string,
+     *             status_label: string,
+     *             confidence_label: string|null,
+     *             comparable_post_count: int,
+     *             sample_coverage_percent: float|null,
+     *             fresh_read_coverage_percent: float|null,
+     *             average_daily_interaction_change: float|null,
+     *             projected_interaction_total: int|null,
+     *             projected_completion_percent: float|null,
+     *             remaining_days: float|null,
+     *             latest_observed_at: CarbonImmutable|null
+     *         },
      *         average_interactions_per_post: float|null,
      *         engagement_rate_percent: float|null,
      *         metrics: array<string, array{total: int|null, available: int, tracked: int}>,
@@ -70,6 +93,7 @@ class SocialEngagementCampaignReport
         $hasCampaignPeriod = $campaignStart !== null && $campaignEnd !== null;
         $trackedPostCount = 0;
         $completeReadCount = 0;
+        $freshCompleteReadCount = 0;
         $unknownPublicationDateCount = 0;
         $interactionTotal = 0;
         $engagementRateInteractions = 0;
@@ -109,6 +133,7 @@ class SocialEngagementCampaignReport
         $monitors->chunkById(250, function (EloquentCollection $monitorBatch) use (
             &$trackedPostCount,
             &$completeReadCount,
+            &$freshCompleteReadCount,
             &$unknownPublicationDateCount,
             &$interactionTotal,
             &$engagementRateInteractions,
@@ -121,6 +146,7 @@ class SocialEngagementCampaignReport
             $campaignEnd,
             $hasCampaignPeriod,
             $includeHistoricalDetails,
+            $asOf,
             $sortPosts,
         ): void {
             foreach ($monitorBatch as $monitor) {
@@ -161,6 +187,10 @@ class SocialEngagementCampaignReport
                 if ($postInteractionTotal !== null) {
                     $completeReadCount++;
                     $interactionTotal += $postInteractionTotal;
+
+                    if ($engagementRun?->finished_at?->greaterThanOrEqualTo($asOf->utc()->subDay())) {
+                        $freshCompleteReadCount++;
+                    }
 
                     if ($views !== null && $views > 0) {
                         $engagementRateInteractions += $postInteractionTotal;
@@ -214,6 +244,15 @@ class SocialEngagementCampaignReport
             $campaignEnd,
             $asOf,
         );
+        $currentInteractionTotal = $completeReadCount > 0 ? $interactionTotal : null;
+        $goalForecast = $this->goalForecast(
+            $target,
+            $currentInteractionTotal,
+            $trackedPostCount,
+            $freshCompleteReadCount,
+            $observedInteractionSummary,
+            $asOf,
+        );
 
         foreach ($metricTotals as $metric => $summary) {
             $metricTotals[$metric] = [
@@ -235,9 +274,10 @@ class SocialEngagementCampaignReport
                     ? round($completeReadCount / $trackedPostCount * 100, 1)
                     : null,
                 'unknown_publication_date_count' => $unknownPublicationDateCount,
-                'interaction_total' => $completeReadCount > 0 ? $interactionTotal : null,
+                'interaction_total' => $currentInteractionTotal,
                 'observed_interaction_change' => $observedInteractionSummary['interaction_change'],
                 'comparable_interaction_post_count' => $observedInteractionSummary['comparable_post_count'],
+                'goal_forecast' => $goalForecast,
                 'target_completion_percent' => $completeReadCount > 0
                     ? round($interactionTotal / (int) $target->target_interactions * 100, 1)
                     : null,
@@ -262,7 +302,13 @@ class SocialEngagementCampaignReport
     }
 
     /**
-     * @return array{interaction_change: int|null, comparable_post_count: int}
+     * @return array{
+     *     interaction_change: int|null,
+     *     comparable_post_count: int,
+     *     average_daily_interaction_change: float|null,
+     *     forecast_comparable_post_count: int,
+     *     latest_observed_at: CarbonImmutable|null
+     * }
      */
     private function observedCampaignInteractionChange(
         SocialEngagementTarget $target,
@@ -271,7 +317,13 @@ class SocialEngagementCampaignReport
         CarbonImmutable $asOf,
     ): array {
         if ($campaignStart === null || $campaignEnd === null) {
-            return ['interaction_change' => null, 'comparable_post_count' => 0];
+            return [
+                'interaction_change' => null,
+                'comparable_post_count' => 0,
+                'average_daily_interaction_change' => null,
+                'forecast_comparable_post_count' => 0,
+                'latest_observed_at' => null,
+            ];
         }
 
         $campaignStartsAt = CarbonImmutable::parse($campaignStart, self::HISTORY_TIMEZONE)->startOfDay()->utc();
@@ -280,7 +332,13 @@ class SocialEngagementCampaignReport
         $observationsEndAt = $campaignEndsAt->lessThan($asOfUtc) ? $campaignEndsAt : $asOfUtc;
 
         if ($campaignStartsAt->greaterThanOrEqualTo($observationsEndAt)) {
-            return ['interaction_change' => null, 'comparable_post_count' => 0];
+            return [
+                'interaction_change' => null,
+                'comparable_post_count' => 0,
+                'average_daily_interaction_change' => null,
+                'forecast_comparable_post_count' => 0,
+                'latest_observed_at' => null,
+            ];
         }
 
         $observationsByMonitor = [];
@@ -323,6 +381,7 @@ class SocialEngagementCampaignReport
                 $monitorId = (int) $run->monitor_id;
                 $observation = [
                     'id' => (int) $run->id,
+                    'finished_at' => $run->finished_at->toImmutable(),
                     'interaction_total' => $interactionTotal,
                 ];
                 $observationsByMonitor[$monitorId]['first'] ??= $observation;
@@ -331,19 +390,165 @@ class SocialEngagementCampaignReport
 
         $interactionChange = 0;
         $comparablePostCount = 0;
+        $dailyInteractionChange = 0.0;
+        $forecastComparablePostCount = 0;
+        $latestObservedAt = null;
 
         foreach ($observationsByMonitor as $observations) {
+            $latestObservedAt = $latestObservedAt === null
+                || $observations['last']['finished_at']->greaterThan($latestObservedAt)
+                ? $observations['last']['finished_at']
+                : $latestObservedAt;
+
             if ($observations['first']['id'] === $observations['last']['id']) {
                 continue;
             }
 
-            $interactionChange += $observations['last']['interaction_total'] - $observations['first']['interaction_total'];
+            $postInteractionChange = $observations['last']['interaction_total'] - $observations['first']['interaction_total'];
+            $interactionChange += $postInteractionChange;
             $comparablePostCount++;
+            $observedSeconds = $observations['last']['finished_at']->getTimestamp()
+                - $observations['first']['finished_at']->getTimestamp();
+
+            if ($observedSeconds >= 86400
+                && $asOf->utc()->getTimestamp() - $observations['last']['finished_at']->utc()->getTimestamp() <= 86400) {
+                $dailyInteractionChange += $postInteractionChange / ($observedSeconds / 86400);
+                $forecastComparablePostCount++;
+            }
         }
 
         return [
             'interaction_change' => $comparablePostCount > 0 ? $interactionChange : null,
             'comparable_post_count' => $comparablePostCount,
+            'average_daily_interaction_change' => $forecastComparablePostCount > 0
+                ? round($dailyInteractionChange, 1)
+                : null,
+            'forecast_comparable_post_count' => $forecastComparablePostCount,
+            'latest_observed_at' => $latestObservedAt,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     interaction_change: int|null,
+     *     comparable_post_count: int,
+     *     average_daily_interaction_change: float|null,
+     *     forecast_comparable_post_count: int,
+     *     latest_observed_at: CarbonImmutable|null
+     * } $observations
+     * @return array{
+     *     status: string,
+     *     status_label: string,
+     *     confidence_label: string|null,
+     *     comparable_post_count: int,
+     *     sample_coverage_percent: float|null,
+     *     fresh_read_coverage_percent: float|null,
+     *     average_daily_interaction_change: float|null,
+     *     projected_interaction_total: int|null,
+     *     projected_completion_percent: float|null,
+     *     remaining_days: float|null,
+     *     latest_observed_at: CarbonImmutable|null
+     * }
+     */
+    private function goalForecast(
+        SocialEngagementTarget $target,
+        ?int $currentInteractionTotal,
+        int $trackedPostCount,
+        int $freshCompleteReadCount,
+        array $observations,
+        CarbonImmutable $asOf,
+    ): array {
+        $comparablePostCount = $observations['forecast_comparable_post_count'];
+        $sampleCoveragePercent = $trackedPostCount > 0
+            ? round($comparablePostCount / $trackedPostCount * 100, 1)
+            : null;
+        $freshReadCoveragePercent = $trackedPostCount > 0
+            ? round($freshCompleteReadCount / $trackedPostCount * 100, 1)
+            : null;
+        $base = [
+            'confidence_label' => null,
+            'comparable_post_count' => $comparablePostCount,
+            'sample_coverage_percent' => $sampleCoveragePercent,
+            'fresh_read_coverage_percent' => $freshReadCoveragePercent,
+            'average_daily_interaction_change' => $observations['average_daily_interaction_change'],
+            'projected_interaction_total' => null,
+            'projected_completion_percent' => null,
+            'remaining_days' => null,
+            'latest_observed_at' => $observations['latest_observed_at'],
+        ];
+        $startsOn = $target->starts_on?->toDateString();
+        $endsOn = $target->ends_on?->toDateString();
+
+        if ($startsOn === null || $endsOn === null || $endsOn < $startsOn) {
+            return ['status' => 'missing_period', 'status_label' => '請先設定有效的活動日期'] + $base;
+        }
+
+        $campaignStartsAt = CarbonImmutable::parse($startsOn, self::HISTORY_TIMEZONE)->startOfDay();
+        $campaignEndsAt = CarbonImmutable::parse($endsOn, self::HISTORY_TIMEZONE)->endOfDay();
+
+        if ($asOf->lessThan($campaignStartsAt)) {
+            return ['status' => 'not_started', 'status_label' => '活動尚未開始'] + $base;
+        }
+
+        if ($asOf->greaterThan($campaignEndsAt)) {
+            return ['status' => 'ended', 'status_label' => '活動已結束'] + $base;
+        }
+
+        $latestObservedAt = $observations['latest_observed_at'];
+        $latestObservationIsFresh = $latestObservedAt !== null
+            && $asOf->utc()->getTimestamp() - $latestObservedAt->utc()->getTimestamp() <= 86400;
+        $currentGoalIsReached = $currentInteractionTotal !== null
+            && $currentInteractionTotal >= $target->target_interactions;
+        $currentDataIsFresh = $freshReadCoveragePercent !== null
+            && $freshReadCoveragePercent >= self::MIN_FORECAST_FRESH_READ_COVERAGE_PERCENT;
+
+        if ($currentGoalIsReached && $currentDataIsFresh) {
+            return ['status' => 'achieved', 'status_label' => '目前已達成互動目標'] + $base;
+        }
+
+        if ($currentGoalIsReached && ! $currentDataIsFresh) {
+            return ['status' => 'insufficient_data', 'status_label' => '資料不足，暫不推估'] + $base;
+        }
+
+        $sampleIsSufficient = $comparablePostCount >= self::MIN_FORECAST_COMPARABLE_POSTS
+            && $sampleCoveragePercent !== null
+            && $sampleCoveragePercent >= self::MIN_FORECAST_SAMPLE_COVERAGE_PERCENT
+            && $freshReadCoveragePercent !== null
+            && $freshReadCoveragePercent >= self::MIN_FORECAST_FRESH_READ_COVERAGE_PERCENT;
+
+        if ($currentInteractionTotal === null
+            || $observations['average_daily_interaction_change'] === null
+            || ! $sampleIsSufficient
+            || ! $latestObservationIsFresh) {
+            return ['status' => 'insufficient_data', 'status_label' => '資料不足，暫不推估'] + $base;
+        }
+
+        $asOfUtc = $asOf->utc();
+        $remainingDays = max(0, ($campaignEndsAt->utc()->getTimestamp() - $asOfUtc->getTimestamp()) / 86400);
+        $projectedInteractionTotal = max(0, (int) round(
+            $currentInteractionTotal + $observations['average_daily_interaction_change'] * $remainingDays,
+        ));
+        $confidenceLabel = $comparablePostCount >= self::HIGH_FORECAST_COMPARABLE_POSTS
+            && $sampleCoveragePercent >= self::HIGH_FORECAST_SAMPLE_COVERAGE_PERCENT
+            ? '較穩定'
+            : '有限樣本';
+        $willReachGoal = $projectedInteractionTotal >= $target->target_interactions;
+
+        return [
+            'status' => $willReachGoal ? 'on_track' : 'at_risk',
+            'status_label' => $willReachGoal ? '依目前速度推估可達標' : '依目前速度推估未達標',
+            'confidence_label' => $confidenceLabel,
+            'comparable_post_count' => $comparablePostCount,
+            'sample_coverage_percent' => $sampleCoveragePercent,
+            'fresh_read_coverage_percent' => $freshReadCoveragePercent,
+            'average_daily_interaction_change' => $observations['average_daily_interaction_change'],
+            'projected_interaction_total' => $projectedInteractionTotal,
+            'projected_completion_percent' => round(
+                $projectedInteractionTotal / $target->target_interactions * 100,
+                1,
+            ),
+            'remaining_days' => round($remainingDays, 1),
+            'latest_observed_at' => $latestObservedAt,
         ];
     }
 

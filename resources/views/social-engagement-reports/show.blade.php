@@ -61,6 +61,75 @@
             </dl>
         </section>
 
+        @php
+            $goalForecast = $report['goal_forecast'];
+            $goalForecastBadgeState = match ($goalForecast['status']) {
+                'on_track', 'achieved' => 'healthy',
+                'at_risk' => 'issue',
+                'insufficient_data', 'missing_period' => 'warning',
+                default => 'stale',
+            };
+        @endphp
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-goal-forecast-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-goal-forecast-title">互動目標預測</h2>
+                    <p class="campaign-report-secondary">依各貼文活動期間首末完整讀值的每日淨變化，線性推估活動結束時的互動總數。</p>
+                </div>
+                <span class="badge badge-{{ $goalForecastBadgeState }}">{{ $goalForecast['status_label'] }}</span>
+            </div>
+            @if ($goalForecast['projected_interaction_total'] !== null)
+                <dl class="campaign-report-summary campaign-efficiency-summary">
+                    <div>
+                        <dt>推估期末互動</dt>
+                        <dd>{{ number_format($goalForecast['projected_interaction_total']) }}</dd>
+                    </div>
+                    <div>
+                        <dt>推估目標達成率</dt>
+                        <dd>{{ number_format($goalForecast['projected_completion_percent'], 1) }}%</dd>
+                    </div>
+                    <div>
+                        <dt>平均每日淨變化</dt>
+                        <dd>{{ number_format($goalForecast['average_daily_interaction_change'], 1) }}</dd>
+                    </div>
+                    <div>
+                        <dt>推估可信度</dt>
+                        <dd>{{ $goalForecast['confidence_label'] }}</dd>
+                    </div>
+                </dl>
+            @else
+                <p class="campaign-report-empty">
+                    @switch($goalForecast['status'])
+                        @case('missing_period')
+                            設定有效的活動開始日與結束日後即可推估。
+                            @break
+                        @case('not_started')
+                            活動開始後，累積可比較的公開互動讀值即可推估。
+                            @break
+                        @case('ended')
+                            活動已結束，請參考目前互動總數與歷史變化。
+                            @break
+                        @case('achieved')
+                            目前公開互動數已達目標。
+                            @break
+                        @default
+                            至少需 3 篇貼文有相隔一天以上的完整讀值、樣本覆蓋達 50%、近 24 小時完整讀值覆蓋達 80%。
+                    @endswitch
+                </p>
+            @endif
+            <p class="campaign-report-secondary">
+                可比較 {{ number_format($goalForecast['comparable_post_count']) }}／{{ number_format($report['tracked_post_count']) }} 篇
+                （{{ $goalForecast['sample_coverage_percent'] === null ? '—' : number_format($goalForecast['sample_coverage_percent'], 1).'%' }}）
+                · 近 24 小時完整讀值覆蓋 {{ $goalForecast['fresh_read_coverage_percent'] === null ? '—' : number_format($goalForecast['fresh_read_coverage_percent'], 1).'%' }}
+                @if ($goalForecast['average_daily_interaction_change'] !== null)
+                    · 平均每日淨變化 {{ number_format($goalForecast['average_daily_interaction_change'], 1) }}
+                @endif
+                @if ($goalForecast['latest_observed_at'] !== null)
+                    · 最近讀值 <time datetime="{{ $goalForecast['latest_observed_at']->toIso8601String() }}">{{ $goalForecast['latest_observed_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                @endif
+            </p>
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-meta-title">
             <div class="campaign-report-section-header">
                 <div>
