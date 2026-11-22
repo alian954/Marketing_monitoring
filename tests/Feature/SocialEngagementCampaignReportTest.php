@@ -168,6 +168,143 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertDontSee('排行貼文 02');
     }
 
+    public function test_report_groups_observed_campaign_interaction_changes_by_week(): void
+    {
+        $this->travelTo('2026-11-20 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Weekly campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $campaignPost = $this->createSocialMonitor('facebook', 'WEEKLY001', 'Weekly campaign', '活動貼文');
+        $this->createMetricRun(
+            $campaignPost,
+            ['likes' => 10, 'comments' => 2, 'shares' => 1],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-02T09:00:00Z',
+        );
+        $this->createMetricRun(
+            $campaignPost,
+            ['likes' => 15, 'comments' => 3, 'shares' => 3],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-04T09:00:00Z',
+        );
+        $this->createMetricRun(
+            $campaignPost,
+            ['likes' => 16, 'comments' => 8, 'shares' => 5],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-10T09:00:00Z',
+        );
+
+        $otherCampaignPost = $this->createSocialMonitor('facebook', 'WEEKLY002', 'Other campaign', '其他活動貼文');
+        $this->createMetricRun(
+            $otherCampaignPost,
+            ['likes' => 1, 'comments' => 1, 'shares' => 1],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-02T09:00:00Z',
+        );
+        $this->createMetricRun(
+            $otherCampaignPost,
+            ['likes' => 1000, 'comments' => 1000, 'shares' => 1000],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-10T09:00:00Z',
+        );
+
+        $outsidePeriodPost = $this->createSocialMonitor('facebook', 'WEEKLY003', 'Weekly campaign', '期間外貼文');
+        $this->createMetricRun(
+            $outsidePeriodPost,
+            ['likes' => 1, 'comments' => 1, 'shares' => 1],
+            '2026-10-31T08:00:00Z',
+            null,
+            '2026-11-02T09:00:00Z',
+        );
+        $this->createMetricRun(
+            $outsidePeriodPost,
+            ['likes' => 1000, 'comments' => 1000, 'shares' => 1000],
+            '2026-10-31T08:00:00Z',
+            null,
+            '2026-11-10T09:00:00Z',
+        );
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('每週觀測互動變化')
+            ->assertSee('<th scope="col">活動週</th>', false)
+            ->assertSee('11/2–11/8')
+            ->assertSee('11/9–11/15')
+            ->assertSee('首次讀值只作基準');
+
+        $weeklyChanges = $response->viewData('report')['weekly_interaction_changes'];
+
+        $this->assertSame(2, count($weeklyChanges));
+        $this->assertSame(8, $weeklyChanges[0]['interaction_change']);
+        $this->assertSame(1, $weeklyChanges[0]['compared_post_count']);
+        $this->assertSame(8, $weeklyChanges[1]['interaction_change']);
+        $this->assertSame(1, $weeklyChanges[1]['compared_post_count']);
+    }
+
+    public function test_report_does_not_treat_the_first_complete_read_as_zero_growth(): void
+    {
+        $this->travelTo('2026-11-20 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Baseline campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $monitor = $this->createSocialMonitor('facebook', 'BASELINE001', 'Baseline campaign', '基準貼文');
+        $this->createMetricRun(
+            $monitor,
+            ['likes' => 100, 'comments' => 20, 'shares' => null],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-02T09:00:00Z',
+        );
+        $this->createMetricRun(
+            $monitor,
+            ['likes' => 10, 'comments' => 2, 'shares' => 1],
+            '2026-11-02T08:00:00Z',
+            null,
+            '2026-11-04T09:00:00Z',
+        );
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('保留期間內尚無可比較的前後讀值。');
+
+        $this->assertSame([], $response->viewData('report')['weekly_interaction_changes']);
+    }
+
+    public function test_campaign_weekly_growth_ignores_reads_from_a_stale_configuration(): void
+    {
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Current campaign',
+            'social_platform' => 'threads',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $monitor = $this->createSocialMonitor('threads', 'STALE002', 'Current campaign', '舊設定週趨勢貼文');
+        $monitor->forceFill(['config_version' => 2])->save();
+        $this->createMetricRun($monitor, ['likes' => 100, 'comments' => 20, 'shares' => 10], '2026-11-04T08:00:00Z', 1, '2026-11-05T09:00:00Z');
+        $this->createMetricRun($monitor, ['likes' => 150, 'comments' => 25, 'shares' => 20], '2026-11-04T08:00:00Z', 1, '2026-11-06T09:00:00Z');
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('保留期間內尚無可比較的前後讀值。')
+            ->assertDontSee('舊設定週趨勢貼文');
+
+        $this->assertSame([], $response->viewData('report')['weekly_interaction_changes']);
+    }
+
     private function createSocialMonitor(string $platform, string $postId, string $tag, string $name): Monitor
     {
         $url = match ($platform) {
@@ -192,11 +329,18 @@ class SocialEngagementCampaignReportTest extends TestCase
         array $metrics,
         ?string $publishedAt = null,
         ?int $configVersion = null,
+        ?string $finishedAt = null,
     ): CheckRun {
-        return CheckRun::factory()->for($monitor)->create([
+        $attributes = [
             'config_version' => $configVersion ?? $monitor->config_version,
             'response_public_engagement_metrics' => $metrics + ['views' => null, 'source' => 'json_ld'],
             'response_published_at' => $publishedAt,
-        ]);
+        ];
+
+        if ($finishedAt !== null) {
+            $attributes['finished_at'] = $finishedAt;
+        }
+
+        return CheckRun::factory()->for($monitor)->create($attributes);
     }
 }

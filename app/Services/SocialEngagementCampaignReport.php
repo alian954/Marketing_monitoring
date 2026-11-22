@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use Carbon\CarbonImmutable;
@@ -35,6 +36,13 @@ class SocialEngagementCampaignReport
      *         average_interactions_per_post: float|null,
      *         engagement_rate_percent: float|null,
      *         metrics: array<string, array{total: int|null, available: int, tracked: int}>,
+     *         weekly_interaction_changes: list<array{
+     *             week_start: string,
+     *             week_end: string,
+     *             label: string,
+     *             interaction_change: int,
+     *             compared_post_count: int
+     *         }>,
      *         top_posts: list<array{
      *             id: int,
      *             name: string,
@@ -52,6 +60,7 @@ class SocialEngagementCampaignReport
      */
     public function build(SocialEngagementTarget $target): array
     {
+        $asOf = CarbonImmutable::now(self::HISTORY_TIMEZONE);
         $platform = $target->social_platform;
         $campaignStart = $target->starts_on?->toDateString();
         $campaignEnd = $target->ends_on?->toDateString();
@@ -190,7 +199,7 @@ class SocialEngagementCampaignReport
             'report' => [
                 'platform_label' => self::PLATFORM_LABELS[$platform],
                 'interaction_scope_label' => Monitor::publicEngagementInteractionScopeLabel($platform),
-                'generated_at' => CarbonImmutable::now(self::HISTORY_TIMEZONE),
+                'generated_at' => $asOf,
                 'tracked_post_count' => $trackedPostCount,
                 'complete_read_count' => $completeReadCount,
                 'capture_coverage_percent' => $trackedPostCount > 0
@@ -208,8 +217,148 @@ class SocialEngagementCampaignReport
                     ? round($engagementRateInteractions / $engagementRateViews * 100, 2)
                     : null,
                 'metrics' => $metricTotals,
+                'weekly_interaction_changes' => $this->weeklyInteractionChanges(
+                    $target,
+                    $campaignStart,
+                    $campaignEnd,
+                    $asOf,
+                ),
                 'top_posts' => $posts,
             ],
         ];
+    }
+
+    /**
+     * @return list<array{
+     *     week_start: string,
+     *     week_end: string,
+     *     label: string,
+     *     interaction_change: int,
+     *     compared_post_count: int
+     * }>
+     */
+    private function weeklyInteractionChanges(
+        SocialEngagementTarget $target,
+        ?string $campaignStart,
+        ?string $campaignEnd,
+        CarbonImmutable $asOf,
+    ): array {
+        if ($campaignStart === null || $campaignEnd === null) {
+            return [];
+        }
+
+        $campaignStartsAt = CarbonImmutable::parse($campaignStart, self::HISTORY_TIMEZONE)->startOfDay()->utc();
+        $campaignEndsAt = CarbonImmutable::parse($campaignEnd, self::HISTORY_TIMEZONE)->endOfDay()->utc();
+        $asOfUtc = $asOf->utc();
+        $observationsEndAt = $campaignEndsAt->lessThan($asOfUtc) ? $campaignEndsAt : $asOfUtc;
+
+        if ($campaignStartsAt->greaterThan($observationsEndAt)) {
+            return [];
+        }
+
+        $retentionStartsAt = $asOfUtc->subDays(max(1, (int) config('monitoring.retention_days')));
+        $observationsStartAt = $campaignStartsAt->greaterThan($retentionStartsAt)
+            ? $campaignStartsAt
+            : $retentionStartsAt;
+
+        if ($observationsStartAt->greaterThan($observationsEndAt)) {
+            return [];
+        }
+
+        $observationsByMonitor = [];
+
+        CheckRun::query()
+            ->select([
+                'check_runs.id',
+                'check_runs.monitor_id',
+                'check_runs.finished_at',
+                'check_runs.response_published_at',
+                'check_runs.response_public_engagement_metrics',
+            ])
+            ->where('check_runs.status', 'completed')
+            ->whereNotNull('check_runs.finished_at')
+            ->whereBetween('check_runs.finished_at', [$observationsStartAt, $observationsEndAt])
+            ->whereBetween('check_runs.response_published_at', [$campaignStartsAt, $observationsEndAt])
+            ->whereNotNull('check_runs.response_public_engagement_metrics')
+            ->whereNotIn('check_runs.source', ['tls_daily', 'domain_daily'])
+            ->whereHas('monitor', static function (Builder $query) use ($target): void {
+                $query->where('social_platform', $target->social_platform)
+                    ->whereColumn('check_runs.config_version', 'monitors.config_version')
+                    ->where(function (Builder $tagQuery) use ($target): void {
+                        $tagQuery->whereJsonContains('tags', $target->tag)
+                            ->orWhere('label', $target->tag);
+                    });
+            })
+            ->lazyById(500)
+            ->each(function (CheckRun $run) use (&$observationsByMonitor, $target, $campaignStart, $campaignEnd): void {
+                $publishedDate = $run->response_published_at?->timezone(self::HISTORY_TIMEZONE)->toDateString();
+
+                if ($publishedDate === null || $publishedDate < $campaignStart || $publishedDate > $campaignEnd) {
+                    return;
+                }
+
+                $interactionTotal = Monitor::publicEngagementInteractionTotal(
+                    $run->response_public_engagement_metrics ?? [],
+                    $target->social_platform,
+                );
+
+                if ($interactionTotal === null || $run->finished_at === null) {
+                    return;
+                }
+
+                $date = $run->finished_at->timezone(self::HISTORY_TIMEZONE)->toDateString();
+                $monitorId = (int) $run->monitor_id;
+                $sample = [
+                    'id' => (int) $run->id,
+                    'finished_at' => $run->finished_at,
+                    'interaction_total' => $interactionTotal,
+                ];
+                $existing = $observationsByMonitor[$monitorId][$date] ?? null;
+
+                if ($existing === null
+                    || $sample['finished_at']->greaterThan($existing['finished_at'])
+                    || ($sample['finished_at']->equalTo($existing['finished_at']) && $sample['id'] > $existing['id'])) {
+                    $observationsByMonitor[$monitorId][$date] = $sample;
+                }
+            });
+
+        $weeklyChanges = [];
+
+        foreach ($observationsByMonitor as $monitorId => $dailyObservations) {
+            ksort($dailyObservations);
+            $previousInteractionTotal = null;
+
+            foreach ($dailyObservations as $date => $observation) {
+                if ($previousInteractionTotal !== null) {
+                    $day = CarbonImmutable::parse($date, self::HISTORY_TIMEZONE);
+                    $weekStart = $day->subDays((int) $day->format('N') - 1)->toDateString();
+                    $weeklyChanges[$weekStart] ??= [
+                        'week_start' => $weekStart,
+                        'week_end' => CarbonImmutable::parse($weekStart, self::HISTORY_TIMEZONE)->addDays(6)->toDateString(),
+                        'interaction_change' => 0,
+                        'post_ids' => [],
+                    ];
+                    $weeklyChanges[$weekStart]['interaction_change'] += $observation['interaction_total'] - $previousInteractionTotal;
+                    $weeklyChanges[$weekStart]['post_ids'][$monitorId] = true;
+                }
+
+                $previousInteractionTotal = $observation['interaction_total'];
+            }
+        }
+
+        ksort($weeklyChanges);
+
+        return array_values(array_map(static function (array $summary): array {
+            $weekStart = CarbonImmutable::parse($summary['week_start'], self::HISTORY_TIMEZONE);
+            $weekEnd = CarbonImmutable::parse($summary['week_end'], self::HISTORY_TIMEZONE);
+
+            return [
+                'week_start' => $summary['week_start'],
+                'week_end' => $summary['week_end'],
+                'label' => $weekStart->format('n/j').'–'.$weekEnd->format('n/j'),
+                'interaction_change' => $summary['interaction_change'],
+                'compared_post_count' => count($summary['post_ids']),
+            ];
+        }, $weeklyChanges));
     }
 }

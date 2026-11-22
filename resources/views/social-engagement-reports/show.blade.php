@@ -60,6 +60,38 @@
             </dl>
         </section>
 
+        @if ($target->starts_on && $target->ends_on)
+            <section class="campaign-report-panel" aria-labelledby="campaign-report-weekly-growth-title">
+                <h2 id="campaign-report-weekly-growth-title">每週觀測互動變化</h2>
+                <p class="campaign-report-secondary">依活動期間內的貼文與已保存的完整讀值計算；首次讀值只作基準。若沒有前後讀值可比，該週不列為 0。</p>
+                @if ($report['weekly_interaction_changes'] === [])
+                    <p class="campaign-report-empty">保留期間內尚無可比較的前後讀值。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-weekly-growth-title" tabindex="0">
+                        <table class="data-table campaign-report-table">
+                            <caption>活動期間內，貼文公開互動數逐週的觀測淨變化；口徑為{{ $report['interaction_scope_label'] }}</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">活動週</th>
+                                    <th scope="col">觀測互動淨變化</th>
+                                    <th scope="col">可比較貼文</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($report['weekly_interaction_changes'] as $weeklyChange)
+                                    <tr>
+                                        <th scope="row">{{ $weeklyChange['label'] }}</th>
+                                        <td class="numeric">{{ number_format($weeklyChange['interaction_change']) }}</td>
+                                        <td class="numeric">{{ number_format($weeklyChange['compared_post_count']) }} 篇</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
+        @endif
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-metrics-title">
             <h2 id="campaign-report-metrics-title">公開指標</h2>
                 <div class="data-table-wrap">
