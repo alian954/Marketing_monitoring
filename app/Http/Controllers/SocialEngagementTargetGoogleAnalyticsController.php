@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\SocialEngagementTarget;
-use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Services\GoogleAnalyticsApiException;
+use App\Services\GoogleAnalyticsCampaignReportSync;
 use App\Services\GoogleAnalyticsDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -16,6 +16,7 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
         Request $request,
         SocialEngagementTarget $socialEngagementTarget,
         GoogleAnalyticsDataApi $dataApi,
+        GoogleAnalyticsCampaignReportSync $campaignReportSync,
     ): RedirectResponse {
         $connection = $request->user()->googleAnalyticsConnection;
 
@@ -34,25 +35,9 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
                 ->withErrors(['google_analytics' => '請先為活動設定開始日與結束日，再同步 GA4 成效。']);
         }
 
-        $campaignName = is_string($socialEngagementTarget->ga4_campaign_name)
-            && trim($socialEngagementTarget->ga4_campaign_name) !== ''
-                ? trim($socialEngagementTarget->ga4_campaign_name)
-                : $socialEngagementTarget->tag;
-        $sourceName = is_string($socialEngagementTarget->ga4_source_name)
-            && trim($socialEngagementTarget->ga4_source_name) !== ''
-                ? trim($socialEngagementTarget->ga4_source_name)
-                : null;
-
         try {
             $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
-            $metrics = $dataApi->campaignReport(
-                $accessToken,
-                $connection->property_id,
-                $campaignName,
-                $socialEngagementTarget->starts_on->toDateString(),
-                $socialEngagementTarget->ends_on->toDateString(),
-                $sourceName,
-            );
+            $campaignReportSync->sync($connection, $socialEngagementTarget, $accessToken);
         } catch (GoogleAnalyticsApiException $exception) {
             return $this->reportRedirect($socialEngagementTarget)
                 ->withErrors(['google_analytics' => $exception->getMessage()]);
@@ -60,21 +45,6 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
             return $this->reportRedirect($socialEngagementTarget)
                 ->withErrors(['google_analytics' => '目前無法連線至 Google Analytics，請稍後再試。']);
         }
-
-        SocialEngagementTargetGoogleAnalyticsReport::query()->updateOrCreate(
-            [
-                'google_analytics_connection_id' => $connection->getKey(),
-                'social_engagement_target_id' => $socialEngagementTarget->getKey(),
-            ],
-            [
-                'campaign_name' => $campaignName,
-                'source_name' => $sourceName,
-                'starts_on' => $socialEngagementTarget->starts_on->toDateString(),
-                'ends_on' => $socialEngagementTarget->ends_on->toDateString(),
-                ...$metrics,
-                'synced_at' => now(),
-            ],
-        );
 
         return $this->reportRedirect($socialEngagementTarget)
             ->with('status', 'GA4 活動成效已同步。');
