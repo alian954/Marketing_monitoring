@@ -85,6 +85,7 @@ class GoogleAnalyticsDataApi
      *     total_revenue: string,
      *     currency_code: ?string,
      *     source_medium_breakdown: list<array{
+     *         channel_group: string,
      *         source_name: string,
      *         medium_name: string,
      *         sessions: int,
@@ -154,6 +155,7 @@ class GoogleAnalyticsDataApi
                 ],
                 'dimensions' => [
                     ['name' => 'sessionManualCampaignName'],
+                    ['name' => 'sessionDefaultChannelGroup'],
                     ['name' => 'sessionManualSource'],
                     ['name' => 'sessionManualMedium'],
                 ],
@@ -202,14 +204,15 @@ class GoogleAnalyticsDataApi
 
             $dimensionValues = $row['dimensionValues'] ?? null;
 
-            if (! is_array($dimensionValues) || count($dimensionValues) !== 3) {
+            if (! is_array($dimensionValues) || count($dimensionValues) !== 4) {
                 throw new GoogleAnalyticsApiException('Google Analytics 回傳的來源／媒介格式無效，請稍後再試。');
             }
 
             $channelMetrics = $this->metricsForRow($row);
             $channelRows[] = [
-                'source_name' => $this->dimensionValue($dimensionValues[1] ?? null),
-                'medium_name' => $this->dimensionValue($dimensionValues[2] ?? null),
+                'channel_group' => $this->dimensionValue($dimensionValues[1] ?? null),
+                'source_name' => $this->dimensionValue($dimensionValues[2] ?? null),
+                'medium_name' => $this->dimensionValue($dimensionValues[3] ?? null),
                 ...$channelMetrics,
             ];
         }

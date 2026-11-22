@@ -549,7 +549,7 @@
                 </dl>
                 <p class="campaign-report-secondary">GA4 的「重要事件」依該資源標記的事件計算；營收採該資源報告幣別。</p>
 
-                <h3 id="campaign-report-ga4-channel-title">來源／媒介成效</h3>
+                <h3 id="campaign-report-ga4-channel-title">渠道、來源與媒介成效</h3>
                 @if ($googleAnalyticsReport->source_medium_breakdown === null)
                     <p class="campaign-report-empty">這筆 GA4 讀值尚未包含渠道明細，更新數據後即可查看。</p>
                 @elseif ($googleAnalyticsReport->source_medium_breakdown === [])
@@ -560,9 +560,10 @@
                     @endif
                     <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-channel-title" tabindex="0">
                         <table class="data-table campaign-report-table campaign-report-ga4-channel-table">
-                            <caption>GA4 活動來源與媒介的成效比較</caption>
+                            <caption>GA4 活動渠道、來源與媒介的成效比較</caption>
                             <thead>
                                 <tr>
+                                    <th scope="col">預設渠道</th>
                                     <th scope="col">來源</th>
                                     <th scope="col">媒介</th>
                                     <th scope="col" class="numeric">工作階段</th>
@@ -574,7 +575,8 @@
                             <tbody>
                                 @foreach ($googleAnalyticsReport->source_medium_breakdown as $channel)
                                     <tr>
-                                        <th scope="row">{{ $channel['source_name'] }}</th>
+                                        <th scope="row">{{ $channel['channel_group'] ?? '—' }}</th>
+                                        <td>{{ $channel['source_name'] }}</td>
                                         <td>{{ $channel['medium_name'] }}</td>
                                         <td class="numeric">{{ number_format($channel['sessions']) }}</td>
                                         <td class="numeric">{{ number_format($channel['engaged_sessions']) }}</td>

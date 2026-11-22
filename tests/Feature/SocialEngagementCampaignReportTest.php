@@ -93,6 +93,56 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertSee('另有 1 篇未取得發布時間');
     }
 
+    public function test_report_renders_legacy_ga4_breakdown_without_channel_group(): void
+    {
+        $user = User::factory()->create();
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Legacy campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_source_name' => 'facebook',
+            'ga4_medium_name' => 'paid_social',
+        ]);
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'google-analytics-refresh-token',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => 'Legacy campaign',
+            'source_name' => 'facebook',
+            'medium_name' => 'paid_social',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 20,
+            'engaged_sessions' => 15,
+            'key_events' => '2.0000',
+            'total_revenue' => '100.0000',
+            'source_medium_breakdown' => [[
+                'source_name' => 'facebook',
+                'medium_name' => 'paid_social',
+                'sessions' => 20,
+                'engaged_sessions' => 15,
+                'key_events' => '2.0000',
+                'total_revenue' => '100.0000',
+            ]],
+            'source_medium_breakdown_truncated' => false,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('facebook')
+            ->assertSee('paid_social')
+            ->assertSee('GA4 活動渠道、來源與媒介的成效比較')
+            ->assertSee('—');
+    }
+
     public function test_campaign_report_export_requires_authentication(): void
     {
         $target = SocialEngagementTarget::factory()->create();
@@ -163,6 +213,7 @@ class SocialEngagementCampaignReportTest extends TestCase
             'key_events' => '10.0000',
             'total_revenue' => '900.0000',
             'source_medium_breakdown' => [[
+                'channel_group' => 'Paid Social',
                 'source_name' => 'facebook',
                 'medium_name' => 'paid_social',
                 'sessions' => 200,
@@ -273,7 +324,7 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('5', $fields['shares_total']);
         $this->assertSame('12.50', $fields['engagement_rate_percent']);
         $this->assertSame('200', $fields['ga4_sessions']);
-        $this->assertSame('[{"source_name":"facebook","medium_name":"paid_social","sessions":200,"engaged_sessions":150,"key_events":"10.0000","total_revenue":"900.0000"}]', $fields['ga4_source_medium_breakdown_json']);
+        $this->assertSame('[{"channel_group":"Paid Social","source_name":"facebook","medium_name":"paid_social","sessions":200,"engaged_sessions":150,"key_events":"10.0000","total_revenue":"900.0000"}]', $fields['ga4_source_medium_breakdown_json']);
         $this->assertSame('false', $fields['ga4_source_medium_breakdown_truncated']);
         $this->assertSame('150', $fields['ga4_engaged_sessions']);
         $this->assertSame('10.0000', $fields['ga4_key_events']);

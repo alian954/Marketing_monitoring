@@ -79,6 +79,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                 'rows' => [[
                     'dimensionValues' => [
                         ['value' => 'spring_launch_2026'],
+                        ['value' => 'Paid Social'],
                         ['value' => 'facebook_ads'],
                         ['value' => 'paid_social'],
                     ],
@@ -129,6 +130,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('37.5000', $snapshot->key_events);
         $this->assertSame('12890.2500', $snapshot->total_revenue);
         $this->assertSame('TWD', $snapshot->currency_code);
+        $this->assertSame('Paid Social', $snapshot->source_medium_breakdown[0]['channel_group']);
         $this->assertSame('facebook_ads', $snapshot->source_medium_breakdown[0]['source_name']);
         $this->assertSame('paid_social', $snapshot->source_medium_breakdown[0]['medium_name']);
         $this->assertSame(2400, $snapshot->source_medium_breakdown[0]['sessions']);
@@ -148,6 +150,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ]]
             && $request->data()['dimensions'] === [
                 ['name' => 'sessionManualCampaignName'],
+                ['name' => 'sessionDefaultChannelGroup'],
                 ['name' => 'sessionManualSource'],
                 ['name' => 'sessionManualMedium'],
             ]
@@ -177,7 +180,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('spring_launch_2026')
             ->assertSee('facebook_ads')
             ->assertSee('paid_social')
-            ->assertSee('來源／媒介成效')
+            ->assertSee('渠道、來源與媒介成效')
+            ->assertSee('Paid Social')
             ->assertSee('工作階段')
             ->assertSee('facebook_ads')
             ->assertSee('GA4 累計成效變化')
@@ -241,6 +245,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                     [
                         'dimensionValues' => [
                             ['value' => 'spring-launch'],
+                            ['value' => 'Paid Social'],
                             ['value' => 'facebook'],
                             ['value' => 'paid_social'],
                         ],
@@ -254,6 +259,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                     [
                         'dimensionValues' => [
                             ['value' => 'spring-launch'],
+                            ['value' => 'Email'],
                             ['value' => 'newsletter'],
                             ['value' => 'email'],
                         ],
@@ -266,6 +272,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                     ],
                     [
                         'dimensionValues' => [
+                            ['value' => 'RESERVED_TOTAL'],
                             ['value' => 'RESERVED_TOTAL'],
                             ['value' => 'RESERVED_TOTAL'],
                             ['value' => 'RESERVED_TOTAL'],
@@ -305,6 +312,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('200.7500', $report['total_revenue']);
         $this->assertSame([
             [
+                'channel_group' => 'Paid Social',
                 'source_name' => 'facebook',
                 'medium_name' => 'paid_social',
                 'sessions' => 24,
@@ -313,6 +321,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                 'total_revenue' => '120.2500',
             ],
             [
+                'channel_group' => 'Email',
                 'source_name' => 'newsletter',
                 'medium_name' => 'email',
                 'sessions' => 16,
@@ -735,6 +744,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
     {
         $target = $this->createTarget(['tag' => 'Seed campaign']);
         $breakdown = [[
+            'channel_group' => 'Paid Social',
             'source_name' => 'facebook',
             'medium_name' => 'paid_social',
             'sessions' => 200,
@@ -883,6 +893,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'rows' => [[
                 'dimensionValues' => [
                     ['value' => 'campaign'],
+                    ['value' => 'Direct'],
                     ['value' => '(not set)'],
                     ['value' => '(not set)'],
                 ],
