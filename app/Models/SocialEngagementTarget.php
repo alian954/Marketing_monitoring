@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['tag', 'social_platform', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name'])]
+#[Fillable(['tag', 'social_platform', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ad_spend_amount', 'ad_spend_currency'])]
 class SocialEngagementTarget extends Model
 {
     /** @use HasFactory<SocialEngagementTargetFactory> */
@@ -17,6 +17,7 @@ class SocialEngagementTarget extends Model
     {
         return [
             'target_interactions' => 'integer',
+            'ad_spend_amount' => 'decimal:4',
             'starts_on' => 'immutable_date',
             'ends_on' => 'immutable_date',
         ];

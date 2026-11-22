@@ -179,6 +179,79 @@
             </section>
         @endif
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-efficiency-title">
+            <h2 id="campaign-report-efficiency-title">投放成本效率</h2>
+            <dl class="campaign-report-summary campaign-efficiency-summary">
+                <div>
+                    <dt>人工記錄花費</dt>
+                    <dd>
+                        @if ($adSpendAnalysis['ad_spend_amount'] === null)
+                            —
+                        @else
+                            {{ number_format((float) $adSpendAnalysis['ad_spend_amount'], 4) }} {{ $adSpendAnalysis['ad_spend_currency'] }}
+                        @endif
+                    </dd>
+                </div>
+                <div>
+                    <dt>GA4 營收 ROAS</dt>
+                    <dd>{{ $adSpendAnalysis['roas'] === null ? '—' : number_format($adSpendAnalysis['roas'], 2).'x' }}</dd>
+                </div>
+                <div>
+                    <dt>每工作階段成本</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['cost_per_session'] === null ? '—' : number_format($adSpendAnalysis['cost_per_session'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                    </dd>
+                </div>
+                <div>
+                    <dt>每重要事件成本</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['cost_per_key_event'] === null ? '—' : number_format($adSpendAnalysis['cost_per_key_event'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                    </dd>
+                </div>
+                <div>
+                    <dt>每公開互動成本</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['cost_per_public_interaction'] === null ? '—' : number_format($adSpendAnalysis['cost_per_public_interaction'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                    </dd>
+                </div>
+            </dl>
+            @if ($adSpendAnalysis['roas'] === null)
+                <p class="campaign-report-secondary">
+                    {{ match ($adSpendAnalysis['roas_unavailable_reason']) {
+                        'missing_spend' => '輸入投放花費後即可計算 ROAS。',
+                        'zero_spend' => '投放花費須大於 0 才可計算 ROAS。',
+                        'missing_ga4' => '同步 GA4 活動數據後即可計算 ROAS。',
+                        'missing_spend_currency' => '請輸入花費幣別後再計算 ROAS。',
+                        'missing_ga4_currency' => 'GA4 未提供營收幣別，暫不計算 ROAS。',
+                        'currency_mismatch' => '花費與 GA4 營收幣別不同，暫不計算 ROAS。',
+                        default => '目前無法計算 ROAS。',
+                    } }}
+                </p>
+            @endif
+            <p class="campaign-report-secondary">ROAS 為同幣別 GA4 活動營收除以人工記錄花費，不扣除商品成本；每次成本依 GA4 工作階段／重要事件或完整公開互動數計算。</p>
+
+            <form action="{{ route('social-engagement-targets.ad-spend.update', $target) }}" method="POST" class="campaign-spend-form" aria-labelledby="campaign-spend-form-title">
+                @csrf
+                @method('PUT')
+                <h3 id="campaign-spend-form-title">設定活動投放花費</h3>
+                <div class="field-group">
+                    <label class="field-label" for="campaign-ad-spend-amount">花費金額</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_amount') ? ' is-invalid' : '' }}" id="campaign-ad-spend-amount" name="ad_spend_amount" type="number" inputmode="decimal" min="0" max="999999999999999.9999" step="0.0001" value="{{ old('ad_spend_amount', $target->ad_spend_amount) }}" aria-describedby="campaign-ad-spend-amount-help{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_amount') ? ' campaign-ad-spend-amount-error' : '' }}" @if ($errors->getBag('socialEngagementSpend')->has('ad_spend_amount')) aria-invalid="true" @endif>
+                    <p id="campaign-ad-spend-amount-help" class="field-help">最多 4 位小數；兩欄留白可清除花費。</p>
+                    @error('ad_spend_amount', 'socialEngagementSpend')<p id="campaign-ad-spend-amount-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="field-group">
+                    <label class="field-label" for="campaign-ad-spend-currency">花費幣別</label>
+                    <input class="field-input{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_currency') ? ' is-invalid' : '' }}" id="campaign-ad-spend-currency" name="ad_spend_currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocomplete="off" value="{{ old('ad_spend_currency', $target->ad_spend_currency) }}" aria-describedby="campaign-ad-spend-currency-help{{ $errors->getBag('socialEngagementSpend')->has('ad_spend_currency') ? ' campaign-ad-spend-currency-error' : '' }}" @if ($errors->getBag('socialEngagementSpend')->has('ad_spend_currency')) aria-invalid="true" @endif>
+                    <p id="campaign-ad-spend-currency-help" class="field-help">輸入 3 個英文字母，例如 TWD、USD；兩欄留白可清除。</p>
+                    @error('ad_spend_currency', 'socialEngagementSpend')<p id="campaign-ad-spend-currency-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                </div>
+                <div class="campaign-spend-form-actions">
+                    <button class="button button-primary" type="submit">儲存花費</button>
+                </div>
+            </form>
+        </section>
+
         @if ($target->starts_on && $target->ends_on)
             <section class="campaign-report-panel" aria-labelledby="campaign-report-weekly-growth-title">
                 <h2 id="campaign-report-weekly-growth-title">每週觀測互動變化</h2>

@@ -15,7 +15,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-monitoring-title" class="panel-title">監測範圍</h2>
-                <p class="panel-description">這是網站與貼文健康檢查，也會追蹤頁面公開的互動數；不提供帳號洞察，例如觸及、曝光、點擊、轉換或廣告花費。</p>
+                <p class="panel-description">貼文監測讀取頁面公開互動數；活動報告可連結 GA4 API，查看導流、重要事件與營收，並手動記錄投放花費。只有花費與 GA4 營收幣別相同時才計算 ROAS；此數值未扣除商品成本。</p>
                 <p class="panel-description">支援網站、Facebook、Instagram、Threads 與 Dcard 公開網址；Dcard 先讀公開 HTML，互動數不完整且未遇限制時才以 Playwright Chromium 渲染。無需平台 API 金鑰或帳號授權；不保存完整頁面或截圖，遇到驗證時不會自動處理，預設延後 6 小時再檢查。取得監測同意後，可向 Dcard 提供背景工作出口 IP 申請放行。</p>
                 <p class="panel-description">若平台只回傳登入頁或動態載入外殼，系統無法確認貼文內容。HTTP 檢查正常只代表收到回應，不代表貼文一定成功發布或仍對所有人可見。</p>
                 <p class="panel-description">若原始回應含明確的觀看、讚、留言或分享數，會記錄每次檢查並呈現保存範圍內的趨勢與前次變化；前次為 0 時不計比例，缺值會標示無法比較。</p>
@@ -24,6 +24,7 @@
                 <p class="panel-description">發文時間成效依台灣時間分為四個時段（00–05、06–11、12–17、18–23），並按星期與平台口徑計算平均互動及篇數；只有發布時間與互動數完整的貼文會納入。結果反映目前樣本，不代表發文時間造成成效差異。</p>
                 <p class="panel-description">貼文年齡成效比較發文後 24 小時、7 天及 30 天的平均與中位數互動、觀看互動率；取目標時間前後 6 小時內最近一次完整讀值，沿用目前平台與標籤篩選並可匯出 CSV。</p>
                 <p class="panel-description">活動互動目標可依標籤與平台設定期間，只計入期間內發布的貼文；未提供發布日期的貼文另列。進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位。尚未開始則按活動日數分配目標；進行中資料不足、已達成或活動結束時不估算。目標、達成進度與每日所需互動可匯出 CSV。</p>
+                <p class="panel-description">活動效率報告列出每工作階段、每 GA4 重要事件及每筆完整公開互動成本。目前尚未接入 Meta API；若接入，需授權粉專或專業 IG 帳號，不能讀取任意第三方貼文的帳號私有數據。</p>
             </div>
         </div>
     </section>

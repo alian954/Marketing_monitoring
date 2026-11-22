@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
@@ -19,6 +20,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementTarget $socialEngagementTarget,
         SocialEngagementCampaignReport $campaignReport,
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
+        CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
     ): View {
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
@@ -35,8 +37,10 @@ class SocialEngagementCampaignReportController extends Controller
                 ->when($socialEngagementTarget->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $socialEngagementTarget->ends_on))
                 ->first();
 
+        $campaignData = $campaignReport->build($socialEngagementTarget);
+
         return view('social-engagement-reports.show', [
-            ...$campaignReport->build($socialEngagementTarget),
+            ...$campaignData,
             'googleAnalyticsConnection' => $connection,
             'googleAnalyticsReport' => $analyticsReport,
             'googleAnalyticsCampaignName' => $campaignName,
@@ -49,6 +53,11 @@ class SocialEngagementCampaignReportController extends Controller
                     $sourceName,
                 )
                 : [],
+            'adSpendAnalysis' => $marketingEfficiencyReport->build(
+                $socialEngagementTarget,
+                $analyticsReport,
+                $campaignData['report']['interaction_total'],
+            ),
         ]);
     }
 

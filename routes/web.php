@@ -61,6 +61,9 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-analytics.sync');
+    Route::put('/social-engagement-targets/{socialEngagementTarget}/ad-spend', [SocialEngagementTargetController::class, 'updateAdSpend'])
+        ->whereNumber('socialEngagementTarget')
+        ->name('social-engagement-targets.ad-spend.update');
     Route::post('/social-engagement-targets', [SocialEngagementTargetController::class, 'store'])->name('social-engagement-targets.store');
     Route::delete('/social-engagement-targets/{socialEngagementTarget}', [SocialEngagementTargetController::class, 'destroy'])->name('social-engagement-targets.destroy');
     Route::get('/integrations/google-analytics', [GoogleAnalyticsIntegrationController::class, 'show'])->name('integrations.google-analytics.edit');

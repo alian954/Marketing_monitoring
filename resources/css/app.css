@@ -2212,6 +2212,36 @@ a.platform-chip:hover {
     margin-top: 10px;
 }
 
+.campaign-spend-form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+
+.campaign-spend-form h3,
+.campaign-spend-form-actions {
+    grid-column: 1 / -1;
+}
+
+.campaign-spend-form h3 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 13px;
+}
+
+.campaign-spend-form .field-input {
+    font-size: max(1rem, 1em);
+}
+
+.campaign-spend-form-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
 .connection-status {
     margin: 14px 0;
     color: var(--green);
@@ -2313,6 +2343,17 @@ a.platform-chip:hover {
     .campaign-report-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .campaign-spend-form {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (pointer: coarse) {
+    .campaign-spend-form .field-input,
+    .campaign-spend-form-actions .button {
+        min-height: 48px;
+    }
 }
 
 @media print {
@@ -2332,7 +2373,8 @@ a.platform-chip:hover {
     .page-footer,
     .skip-link,
     .campaign-report-actions,
-    .ga4-sync-actions {
+    .ga4-sync-actions,
+    .campaign-spend-form {
         display: none !important;
     }
 

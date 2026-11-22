@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSocialEngagementTargetRequest;
+use App\Http\Requests\UpdateSocialEngagementTargetAdSpendRequest;
 use App\Models\SocialEngagementTarget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,6 +44,16 @@ class SocialEngagementTargetController extends Controller
             'engagement_tag',
         ])))
             ->with('status', '活動互動目標已刪除。');
+    }
+
+    public function updateAdSpend(
+        UpdateSocialEngagementTargetAdSpendRequest $request,
+        SocialEngagementTarget $socialEngagementTarget,
+    ): RedirectResponse {
+        $socialEngagementTarget->update($request->validated());
+
+        return redirect()->route('social-engagement-targets.report', $socialEngagementTarget)
+            ->with('status', '活動投放花費已儲存。');
     }
 
     /** @param array<string, mixed> $data
