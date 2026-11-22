@@ -713,12 +713,22 @@
                     </dd>
                 </div>
                 <div>
-                    <dt>每公開互動成本</dt>
+                    <dt>依最新累積數估算的每互動成本</dt>
                     <dd>
                         {{ $adSpendAnalysis['cost_per_public_interaction'] === null ? '—' : number_format($adSpendAnalysis['cost_per_public_interaction'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
                     </dd>
                 </div>
+                <div>
+                    <dt>活動期間每次淨增互動成本</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['cost_per_campaign_interaction_change'] === null ? '—' : number_format($adSpendAnalysis['cost_per_campaign_interaction_change'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
+                        <span class="campaign-report-secondary">
+                            淨增互動 {{ $adSpendAnalysis['observed_campaign_interaction_change'] === null ? '—' : number_format($adSpendAnalysis['observed_campaign_interaction_change']) }} · 可比較 {{ number_format($adSpendAnalysis['comparable_interaction_post_count']) }} 篇
+                        </span>
+                    </dd>
+                </div>
             </dl>
+            <p class="campaign-report-secondary">活動期間互動增量以每篇貼文在活動日期內的首、末完整讀值相減；至少兩次完整讀值才納入，下降的數量會抵銷增量。</p>
             @if ($adSpendAnalysis['roas'] === null)
                 <p class="campaign-report-secondary">
                     {{ match ($adSpendAnalysis['roas_unavailable_reason']) {

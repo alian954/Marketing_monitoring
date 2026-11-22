@@ -422,10 +422,13 @@ class SocialEngagementCampaignReportTest extends TestCase
         $fields = array_combine($rows[0], $rows[1]);
 
         $this->assertSame('', $fields['public_interactions']);
+        $this->assertSame('', $fields['observed_campaign_interaction_change']);
+        $this->assertSame('0', $fields['comparable_interaction_posts']);
         $this->assertSame('0', $fields['tracked_posts']);
         $this->assertSame('', $fields['ga4_sessions']);
         $this->assertSame('', $fields['ga4_is_stale']);
         $this->assertSame('', $fields['meta_spend_amount']);
+        $this->assertSame('', $fields['cost_per_campaign_interaction_change']);
         $this->assertSame('', $fields['meta_ads_is_stale']);
         $this->assertSame('', $fields['google_ads_spend_amount']);
         $this->assertSame('', $fields['google_ads_is_stale']);
@@ -558,6 +561,15 @@ class SocialEngagementCampaignReportTest extends TestCase
             $monitor,
             ['likes' => 100, 'comments' => 20, 'shares' => 5, 'views' => 1000],
             '2026-11-05T08:00:00Z',
+            null,
+            '2026-11-05 09:00:00',
+        );
+        $this->createMetricRun(
+            $monitor,
+            ['likes' => 100, 'comments' => 20, 'shares' => 5, 'views' => 1000],
+            '2026-11-05T08:00:00Z',
+            null,
+            '2026-11-19 09:00:00',
         );
         $this->actingAs($user)
             ->get(route('social-engagement-targets.report', $target))
@@ -583,6 +595,8 @@ class SocialEngagementCampaignReportTest extends TestCase
 
         $this->assertSame("'=2+2", $fields['campaign_tag']);
         $this->assertSame('125', $fields['public_interactions']);
+        $this->assertSame('0', $fields['observed_campaign_interaction_change']);
+        $this->assertSame('1', $fields['comparable_interaction_posts']);
         $this->assertSame('50.0', $fields['target_completion_percent']);
         $this->assertSame('100.0', $fields['capture_coverage_percent']);
         $this->assertSame('1000', $fields['views_total']);
@@ -613,6 +627,7 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame('1.5000', $fields['cost_per_session']);
         $this->assertSame('30.0000', $fields['cost_per_key_event']);
         $this->assertSame('2.4000', $fields['cost_per_public_interaction']);
+        $this->assertSame('', $fields['cost_per_campaign_interaction_change']);
         $this->assertSame('[{"action_type":"link_click","value":"80.0000"}]', $fields['meta_actions_json']);
         $this->assertSame('[{"action_type":"purchase","value":"400.0000"},{"action_type":"offsite_conversion.fb_pixel_purchase","value":"1200.0000"},{"action_type":"omni_purchase","value":"900.0000"}]', $fields['meta_action_values_json']);
         $this->assertSame('900.0000', $fields['meta_ads_omni_purchase_value']);
@@ -721,6 +736,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'capture_coverage_percent',
             'unknown_publication_date_count',
             'interaction_total',
+            'observed_interaction_change',
+            'comparable_interaction_post_count',
             'target_completion_percent',
             'average_interactions_per_post',
             'engagement_rate_percent',
@@ -733,6 +750,62 @@ class SocialEngagementCampaignReportTest extends TestCase
         $this->assertSame([], $summaryReport['weekly_interaction_changes']);
         $this->assertCount(1, $fullReport['top_posts']);
         $this->assertNotEmpty($fullReport['weekly_interaction_changes']);
+    }
+
+    public function test_campaign_interaction_change_uses_complete_period_reads_and_nets_decreases(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Interaction delta campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+
+        $growingPost = $this->createSocialMonitor('facebook', 'DELTA001', 'Interaction delta campaign', '成長貼文');
+        $this->createMetricRun($growingPost, ['likes' => 10, 'comments' => 2, 'shares' => 1], '2026-11-05T08:00:00Z', null, '2026-11-05 09:00:00');
+        $this->createMetricRun($growingPost, ['likes' => 15, 'comments' => 4, 'shares' => 2], '2026-11-05T08:00:00Z', null, '2026-11-19 09:00:00');
+        $this->createMetricRun($growingPost, ['likes' => 30, 'comments' => 8, 'shares' => 4], '2026-11-05T08:00:00Z', null, '2026-11-21 09:00:00');
+
+        $decliningPost = $this->createSocialMonitor('facebook', 'DELTA002', 'Interaction delta campaign', '下降貼文');
+        $this->createMetricRun($decliningPost, ['likes' => 20, 'comments' => 3, 'shares' => 2], '2026-11-06T08:00:00Z', null, '2026-11-06 09:00:00');
+        $this->createMetricRun($decliningPost, ['likes' => 18, 'comments' => 2, 'shares' => 1], '2026-11-06T08:00:00Z', null, '2026-11-18 09:00:00');
+
+        $incompletePost = $this->createSocialMonitor('facebook', 'DELTA003', 'Interaction delta campaign', '缺少完整成對讀值');
+        $this->createMetricRun($incompletePost, ['likes' => 5, 'comments' => 1, 'shares' => 1], '2026-11-07T08:00:00Z', null, '2026-11-07 09:00:00');
+        $this->createMetricRun($incompletePost, ['likes' => 9, 'comments' => null, 'shares' => 2], '2026-11-07T08:00:00Z', null, '2026-11-17 09:00:00');
+
+        $singleReadPost = $this->createSocialMonitor('facebook', 'DELTA004', 'Interaction delta campaign', '只有一次讀值');
+        $this->createMetricRun($singleReadPost, ['likes' => 100, 'comments' => 10, 'shares' => 5], '2026-11-08T08:00:00Z', null, '2026-11-16 09:00:00');
+
+        $afterCampaignPost = $this->createSocialMonitor('facebook', 'DELTA005', 'Interaction delta campaign', '活動後貼文');
+        $this->createMetricRun($afterCampaignPost, ['likes' => 100, 'comments' => 10, 'shares' => 5], '2026-11-21T08:00:00Z', null, '2026-11-21 09:00:00');
+        $this->createMetricRun($afterCampaignPost, ['likes' => 200, 'comments' => 20, 'shares' => 10], '2026-11-21T08:00:00Z', null, '2026-11-22 09:00:00');
+
+        $report = app(SocialEngagementCampaignReport::class)->build($target)['report'];
+
+        $this->assertSame(4, $report['observed_interaction_change']);
+        $this->assertSame(2, $report['comparable_interaction_post_count']);
+        $this->assertSame(4, $report['tracked_post_count']);
+        $this->assertNotContains('活動後貼文', array_column($report['top_posts'], 'name'));
+    }
+
+    public function test_campaign_interaction_change_is_unavailable_without_a_comparable_pair(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'No comparison campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-20',
+        ]);
+        $monitor = $this->createSocialMonitor('facebook', 'NOPAIR001', 'No comparison campaign', '單一快照');
+        $this->createMetricRun($monitor, ['likes' => 10, 'comments' => 2, 'shares' => 1], '2026-11-05T08:00:00Z', null, '2026-11-05 09:00:00');
+
+        $report = app(SocialEngagementCampaignReport::class)->build($target)['report'];
+
+        $this->assertNull($report['observed_interaction_change']);
+        $this->assertSame(0, $report['comparable_interaction_post_count']);
     }
 
     public function test_report_keeps_only_the_ten_highest_interaction_posts(): void

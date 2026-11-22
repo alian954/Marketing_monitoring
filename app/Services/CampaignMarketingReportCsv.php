@@ -56,6 +56,8 @@ class CampaignMarketingReportCsv
             'campaign_end',
             'target_interactions',
             'public_interactions',
+            'observed_campaign_interaction_change',
+            'comparable_interaction_posts',
             'target_completion_percent',
             'tracked_posts',
             'complete_read_posts',
@@ -134,6 +136,7 @@ class CampaignMarketingReportCsv
             'cost_per_session',
             'cost_per_key_event',
             'cost_per_public_interaction',
+            'cost_per_campaign_interaction_change',
         ];
         $fields = [
             $target->tag,
@@ -144,6 +147,8 @@ class CampaignMarketingReportCsv
             $target->ends_on?->toDateString() ?? '',
             (string) $target->target_interactions,
             $report['interaction_total'] === null ? '' : (string) $report['interaction_total'],
+            $report['observed_interaction_change'] === null ? '' : (string) $report['observed_interaction_change'],
+            (string) $report['comparable_interaction_post_count'],
             $this->formatDecimal($report['target_completion_percent'], 1),
             (string) $report['tracked_post_count'],
             (string) $report['complete_read_count'],
@@ -224,6 +229,7 @@ class CampaignMarketingReportCsv
             $this->formatDecimal($adSpendAnalysis['cost_per_session'], 4),
             $this->formatDecimal($adSpendAnalysis['cost_per_key_event'], 4),
             $this->formatDecimal($adSpendAnalysis['cost_per_public_interaction'], 4),
+            $this->formatDecimal($adSpendAnalysis['cost_per_campaign_interaction_change'], 4),
         ];
 
         return [

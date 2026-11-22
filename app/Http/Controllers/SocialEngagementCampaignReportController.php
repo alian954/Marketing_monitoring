@@ -189,6 +189,8 @@ class SocialEngagementCampaignReportController extends Controller
                 $campaignData['report']['interaction_total'],
                 $metaMarketingReport,
                 $googleAdsReport,
+                observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
+                comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
             ),
         ];
     }

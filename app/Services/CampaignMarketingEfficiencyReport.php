@@ -25,6 +25,9 @@ class CampaignMarketingEfficiencyReport
      *     cost_per_session: float|null,
      *     cost_per_key_event: float|null,
      *     cost_per_public_interaction: float|null,
+     *     observed_campaign_interaction_change: int|null,
+     *     comparable_interaction_post_count: int,
+     *     cost_per_campaign_interaction_change: float|null,
      *     meta_ads_frequency: float|null,
      *     meta_ads_ctr_percent: float|null,
      *     meta_ads_cost_per_click: float|null,
@@ -51,6 +54,8 @@ class CampaignMarketingEfficiencyReport
         ?int $publicInteractionTotal,
         ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport = null,
         ?SocialEngagementTargetGoogleAdsReport $googleAdsReport = null,
+        ?int $observedCampaignInteractionChange = null,
+        int $comparableInteractionPostCount = 0,
     ): array {
         $metaSpendAmount = $metaMarketingReport?->spend_amount;
         $metaSpendCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
@@ -150,6 +155,13 @@ class CampaignMarketingEfficiencyReport
             'cost_per_public_interaction' => $spendAmount !== null && $publicInteractionTotal !== null && $publicInteractionTotal > 0
                 ? round($spendAmount / $publicInteractionTotal, 4)
                 : null,
+            'observed_campaign_interaction_change' => $observedCampaignInteractionChange,
+            'comparable_interaction_post_count' => $comparableInteractionPostCount,
+            'cost_per_campaign_interaction_change' => $spendAmount !== null
+                && $observedCampaignInteractionChange !== null
+                && $observedCampaignInteractionChange > 0
+                    ? round($spendAmount / $observedCampaignInteractionChange, 4)
+                    : null,
             'meta_ads_frequency' => $metaReach > 0
                 ? round($metaImpressions / $metaReach, 4)
                 : null,

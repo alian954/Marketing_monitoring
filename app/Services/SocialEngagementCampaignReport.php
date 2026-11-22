@@ -32,6 +32,8 @@ class SocialEngagementCampaignReport
      *         capture_coverage_percent: float|null,
      *         unknown_publication_date_count: int,
      *         interaction_total: int|null,
+     *         observed_interaction_change: int|null,
+     *         comparable_interaction_post_count: int,
      *         target_completion_percent: float|null,
      *         average_interactions_per_post: float|null,
      *         engagement_rate_percent: float|null,
@@ -206,6 +208,13 @@ class SocialEngagementCampaignReport
             usort($posts, $sortPosts);
         }
 
+        $observedInteractionSummary = $this->observedCampaignInteractionChange(
+            $target,
+            $campaignStart,
+            $campaignEnd,
+            $asOf,
+        );
+
         foreach ($metricTotals as $metric => $summary) {
             $metricTotals[$metric] = [
                 'total' => $summary['available'] > 0 ? $summary['total'] : null,
@@ -227,6 +236,8 @@ class SocialEngagementCampaignReport
                     : null,
                 'unknown_publication_date_count' => $unknownPublicationDateCount,
                 'interaction_total' => $completeReadCount > 0 ? $interactionTotal : null,
+                'observed_interaction_change' => $observedInteractionSummary['interaction_change'],
+                'comparable_interaction_post_count' => $observedInteractionSummary['comparable_post_count'],
                 'target_completion_percent' => $completeReadCount > 0
                     ? round($interactionTotal / (int) $target->target_interactions * 100, 1)
                     : null,
@@ -247,6 +258,92 @@ class SocialEngagementCampaignReport
                     : [],
                 'top_posts' => $posts,
             ],
+        ];
+    }
+
+    /**
+     * @return array{interaction_change: int|null, comparable_post_count: int}
+     */
+    private function observedCampaignInteractionChange(
+        SocialEngagementTarget $target,
+        ?string $campaignStart,
+        ?string $campaignEnd,
+        CarbonImmutable $asOf,
+    ): array {
+        if ($campaignStart === null || $campaignEnd === null) {
+            return ['interaction_change' => null, 'comparable_post_count' => 0];
+        }
+
+        $campaignStartsAt = CarbonImmutable::parse($campaignStart, self::HISTORY_TIMEZONE)->startOfDay()->utc();
+        $campaignEndsAt = CarbonImmutable::parse($campaignEnd, self::HISTORY_TIMEZONE)->endOfDay()->utc();
+        $asOfUtc = $asOf->utc();
+        $observationsEndAt = $campaignEndsAt->lessThan($asOfUtc) ? $campaignEndsAt : $asOfUtc;
+
+        if ($campaignStartsAt->greaterThanOrEqualTo($observationsEndAt)) {
+            return ['interaction_change' => null, 'comparable_post_count' => 0];
+        }
+
+        $observationsByMonitor = [];
+
+        CheckRun::query()
+            ->select([
+                'check_runs.id',
+                'check_runs.monitor_id',
+                'check_runs.finished_at',
+                'check_runs.response_published_at',
+                'check_runs.response_public_engagement_metrics',
+            ])
+            ->where('check_runs.status', 'completed')
+            ->whereNotNull('check_runs.finished_at')
+            ->whereBetween('check_runs.finished_at', [$campaignStartsAt, $observationsEndAt])
+            ->whereBetween('check_runs.response_published_at', [$campaignStartsAt, $campaignEndsAt])
+            ->whereNotNull('check_runs.response_public_engagement_metrics')
+            ->whereNotIn('check_runs.source', ['tls_daily', 'domain_daily'])
+            ->whereHas('monitor', static function (Builder $query) use ($target): void {
+                $query->where('social_platform', $target->social_platform)
+                    ->whereColumn('check_runs.config_version', 'monitors.config_version')
+                    ->where(function (Builder $tagQuery) use ($target): void {
+                        $tagQuery->whereJsonContains('tags', $target->tag)
+                            ->orWhere('label', $target->tag);
+                    });
+            })
+            ->orderBy('check_runs.finished_at')
+            ->orderBy('check_runs.id')
+            ->cursor()
+            ->each(function (CheckRun $run) use ($target, &$observationsByMonitor): void {
+                $interactionTotal = Monitor::publicEngagementInteractionTotal(
+                    $run->response_public_engagement_metrics ?? [],
+                    $target->social_platform,
+                );
+
+                if ($interactionTotal === null || $run->finished_at === null) {
+                    return;
+                }
+
+                $monitorId = (int) $run->monitor_id;
+                $observation = [
+                    'id' => (int) $run->id,
+                    'interaction_total' => $interactionTotal,
+                ];
+                $observationsByMonitor[$monitorId]['first'] ??= $observation;
+                $observationsByMonitor[$monitorId]['last'] = $observation;
+            });
+
+        $interactionChange = 0;
+        $comparablePostCount = 0;
+
+        foreach ($observationsByMonitor as $observations) {
+            if ($observations['first']['id'] === $observations['last']['id']) {
+                continue;
+            }
+
+            $interactionChange += $observations['last']['interaction_total'] - $observations['first']['interaction_total'];
+            $comparablePostCount++;
+        }
+
+        return [
+            'interaction_change' => $comparablePostCount > 0 ? $interactionChange : null,
+            'comparable_post_count' => $comparablePostCount,
         ];
     }
 

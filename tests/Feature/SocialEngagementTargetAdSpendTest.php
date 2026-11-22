@@ -260,12 +260,24 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             'label' => 'Spring launch',
         ]);
         CheckRun::factory()->for($monitor)->create([
+            'finished_at' => '2026-11-05 09:00:00',
             'response_published_at' => '2026-11-05T08:00:00Z',
             'response_public_engagement_metrics' => [
                 'likes' => 100,
                 'comments' => 20,
                 'shares' => 5,
                 'views' => 1000,
+                'source' => 'json_ld',
+            ],
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'finished_at' => '2026-11-21 09:00:00',
+            'response_published_at' => '2026-11-05T08:00:00Z',
+            'response_public_engagement_metrics' => [
+                'likes' => 130,
+                'comments' => 30,
+                'shares' => 15,
+                'views' => 1200,
                 'source' => 'json_ld',
             ],
         ]);
@@ -277,7 +289,11 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             ->assertSee('6.50x')
             ->assertSee('0.5000 TWD')
             ->assertSee('10.0000 TWD')
-            ->assertSee('0.8000 TWD')
+            ->assertSee('0.5714 TWD')
+            ->assertSee('活動期間每次淨增互動成本')
+            ->assertSee('2.0000 TWD')
+            ->assertSee('淨增互動 50 · 可比較 1 篇')
+            ->assertSee('下降的數量會抵銷增量')
             ->assertSee('活動預算進度')
             ->assertSee('依目前進度推估總花費')
             ->assertSee('20.00%')
@@ -287,7 +303,10 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         $this->assertSame(6.5, $analysis['roas']);
         $this->assertSame(0.5, $analysis['cost_per_session']);
         $this->assertSame(10.0, $analysis['cost_per_key_event']);
-        $this->assertSame(0.8, $analysis['cost_per_public_interaction']);
+        $this->assertSame(0.5714, $analysis['cost_per_public_interaction']);
+        $this->assertSame(50, $analysis['observed_campaign_interaction_change']);
+        $this->assertSame(1, $analysis['comparable_interaction_post_count']);
+        $this->assertSame(2.0, $analysis['cost_per_campaign_interaction_change']);
         $this->assertSame(20.0, $analysis['budget_utilization_percent']);
         $this->assertSame(73.33, $analysis['budget_elapsed_percent']);
     }
@@ -334,6 +353,37 @@ class SocialEngagementTargetAdSpendTest extends TestCase
         $this->assertNull($unavailableCosts['cost_per_session']);
         $this->assertNull($unavailableCosts['cost_per_key_event']);
         $this->assertNull($unavailableCosts['cost_per_public_interaction']);
+    }
+
+    public function test_campaign_interaction_cost_uses_net_growth_and_requires_comparable_reads(): void
+    {
+        $target = SocialEngagementTarget::factory()->make([
+            'ad_spend_amount' => '120.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
+        $service = app(CampaignMarketingEfficiencyReport::class);
+
+        $growing = $service->build(
+            $target,
+            null,
+            100,
+            observedCampaignInteractionChange: 30,
+            comparableInteractionPostCount: 4,
+        );
+        $this->assertSame(30, $growing['observed_campaign_interaction_change']);
+        $this->assertSame(4, $growing['comparable_interaction_post_count']);
+        $this->assertSame(4.0, $growing['cost_per_campaign_interaction_change']);
+
+        $unchanged = $service->build($target, null, 100, observedCampaignInteractionChange: 0, comparableInteractionPostCount: 2);
+        $this->assertNull($unchanged['cost_per_campaign_interaction_change']);
+
+        $declining = $service->build($target, null, 100, observedCampaignInteractionChange: -5, comparableInteractionPostCount: 1);
+        $this->assertNull($declining['cost_per_campaign_interaction_change']);
+
+        $withoutPairs = $service->build($target, null, 100);
+        $this->assertNull($withoutPairs['observed_campaign_interaction_change']);
+        $this->assertSame(0, $withoutPairs['comparable_interaction_post_count']);
+        $this->assertNull($withoutPairs['cost_per_campaign_interaction_change']);
     }
 
     public function test_campaign_report_displays_channel_specific_ad_efficiency_metrics(): void
