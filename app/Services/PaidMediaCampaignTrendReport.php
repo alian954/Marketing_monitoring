@@ -26,12 +26,22 @@ class PaidMediaCampaignTrendReport
      *     reach_change: int|null,
      *     frequency: float|null,
      *     frequency_change: float|null,
+     *     ctr_percent: float|null,
+     *     ctr_change_percentage_points: float|null,
+     *     cost_per_click: float|null,
+     *     cost_per_click_change: float|null,
+     *     cost_per_thousand_impressions: float|null,
+     *     cost_per_thousand_impressions_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     cost_per_conversion: float|null,
+     *     cost_per_conversion_change: float|null,
+     *     conversion_rate_percent: float|null,
+     *     conversion_rate_change_percentage_points: float|null,
      *     has_previous_snapshot: bool
      * }>
      */
@@ -67,12 +77,22 @@ class PaidMediaCampaignTrendReport
      *     reach_change: int|null,
      *     frequency: float|null,
      *     frequency_change: float|null,
+     *     ctr_percent: float|null,
+     *     ctr_change_percentage_points: float|null,
+     *     cost_per_click: float|null,
+     *     cost_per_click_change: float|null,
+     *     cost_per_thousand_impressions: float|null,
+     *     cost_per_thousand_impressions_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     cost_per_conversion: float|null,
+     *     cost_per_conversion_change: float|null,
+     *     conversion_rate_percent: float|null,
+     *     conversion_rate_change_percentage_points: float|null,
      *     has_previous_snapshot: bool
      * }>
      */
@@ -108,12 +128,22 @@ class PaidMediaCampaignTrendReport
      *     reach_change: int|null,
      *     frequency: float|null,
      *     frequency_change: float|null,
+     *     ctr_percent: float|null,
+     *     ctr_change_percentage_points: float|null,
+     *     cost_per_click: float|null,
+     *     cost_per_click_change: float|null,
+     *     cost_per_thousand_impressions: float|null,
+     *     cost_per_thousand_impressions_change: float|null,
      *     clicks: int,
      *     clicks_change: int|null,
      *     conversions: string|null,
      *     conversions_change: float|null,
      *     conversions_value: string|null,
      *     conversions_value_change: float|null,
+     *     cost_per_conversion: float|null,
+     *     cost_per_conversion_change: float|null,
+     *     conversion_rate_percent: float|null,
+     *     conversion_rate_change_percentage_points: float|null,
      *     has_previous_snapshot: bool
      * }>
      */
@@ -153,6 +183,36 @@ class PaidMediaCampaignTrendReport
             $previousFrequency = $previousSnapshot === null
                 ? null
                 : $this->frequency($previousSnapshot->impressions, $previousSnapshot->reach);
+            $ctrPercent = $snapshot->impressions > 0
+                ? round($snapshot->clicks / $snapshot->impressions * 100, 2)
+                : null;
+            $previousCtrPercent = $previousSnapshot !== null && $previousSnapshot->impressions > 0
+                ? round($previousSnapshot->clicks / $previousSnapshot->impressions * 100, 2)
+                : null;
+            $costPerClick = $snapshot->clicks > 0
+                ? round((float) $snapshot->spend_amount / $snapshot->clicks, 4)
+                : null;
+            $previousCostPerClick = $previousSnapshot !== null && $previousSnapshot->clicks > 0
+                ? round((float) $previousSnapshot->spend_amount / $previousSnapshot->clicks, 4)
+                : null;
+            $costPerThousandImpressions = $snapshot->impressions > 0
+                ? round((float) $snapshot->spend_amount / $snapshot->impressions * 1000, 4)
+                : null;
+            $previousCostPerThousandImpressions = $previousSnapshot !== null && $previousSnapshot->impressions > 0
+                ? round((float) $previousSnapshot->spend_amount / $previousSnapshot->impressions * 1000, 4)
+                : null;
+            $costPerConversion = $snapshot->conversions !== null && (float) $snapshot->conversions > 0
+                ? round((float) $snapshot->spend_amount / (float) $snapshot->conversions, 4)
+                : null;
+            $previousCostPerConversion = $previousSnapshot?->conversions !== null && (float) $previousSnapshot->conversions > 0
+                ? round((float) $previousSnapshot->spend_amount / (float) $previousSnapshot->conversions, 4)
+                : null;
+            $conversionRatePercent = $snapshot->conversions !== null && $snapshot->clicks > 0
+                ? round((float) $snapshot->conversions / $snapshot->clicks * 100, 2)
+                : null;
+            $previousConversionRatePercent = $previousSnapshot?->conversions !== null && $previousSnapshot->clicks > 0
+                ? round((float) $previousSnapshot->conversions / $previousSnapshot->clicks * 100, 2)
+                : null;
             $currenciesMatch = $hasPreviousSnapshot
                 && $previousSnapshot->currency_code === $snapshot->currency_code;
             $moneyIsComparable = $currenciesMatch;
@@ -178,6 +238,18 @@ class PaidMediaCampaignTrendReport
                 'frequency_change' => $frequency !== null && $previousFrequency !== null
                     ? round($frequency - $previousFrequency, 4)
                     : null,
+                'ctr_percent' => $ctrPercent,
+                'ctr_change_percentage_points' => $ctrPercent !== null && $previousCtrPercent !== null
+                    ? round($ctrPercent - $previousCtrPercent, 2)
+                    : null,
+                'cost_per_click' => $costPerClick,
+                'cost_per_click_change' => $moneyIsComparable && $costPerClick !== null && $previousCostPerClick !== null
+                    ? round($costPerClick - $previousCostPerClick, 4)
+                    : null,
+                'cost_per_thousand_impressions' => $costPerThousandImpressions,
+                'cost_per_thousand_impressions_change' => $moneyIsComparable && $costPerThousandImpressions !== null && $previousCostPerThousandImpressions !== null
+                    ? round($costPerThousandImpressions - $previousCostPerThousandImpressions, 4)
+                    : null,
                 'clicks' => $snapshot->clicks,
                 'clicks_change' => $hasPreviousSnapshot
                     ? $snapshot->clicks - $previousSnapshot->clicks
@@ -189,6 +261,14 @@ class PaidMediaCampaignTrendReport
                 'conversions_value' => $snapshot->conversions_value,
                 'conversions_value_change' => $moneyIsComparable
                     ? $this->optionalDecimalChange($snapshot->conversions_value, $previousSnapshot->conversions_value)
+                    : null,
+                'cost_per_conversion' => $costPerConversion,
+                'cost_per_conversion_change' => $moneyIsComparable && $costPerConversion !== null && $previousCostPerConversion !== null
+                    ? round($costPerConversion - $previousCostPerConversion, 4)
+                    : null,
+                'conversion_rate_percent' => $conversionRatePercent,
+                'conversion_rate_change_percentage_points' => $conversionRatePercent !== null && $previousConversionRatePercent !== null
+                    ? round($conversionRatePercent - $previousConversionRatePercent, 2)
                     : null,
                 'has_previous_snapshot' => $hasPreviousSnapshot,
             ];

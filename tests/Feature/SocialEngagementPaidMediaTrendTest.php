@@ -111,6 +111,10 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             ->assertSee('Google Ads 歷史讀值')
             ->assertSee('Meta Ads 最近 30 次累計成效讀值與前次差異')
             ->assertSee('Google Ads 最近 30 次累計成效讀值與前次差異')
+            ->assertSee('<th scope="col">CTR</th>', false)
+            ->assertSee('<th scope="col">CPC</th>', false)
+            ->assertSee('<th scope="col">CPM</th>', false)
+            ->assertSee('<th scope="col">每次轉換成本</th>', false)
             ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']), false)
             ->assertSee(route('social-engagement-targets.paid-media.history', [$target, 'google-ads']), false)
             ->assertSee('<th scope="col">讀值時間</th>', false)
@@ -125,8 +129,15 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame(1.6, $metaTrend[1]['frequency']);
         $this->assertSame(0.35, $metaTrend[1]['frequency_change']);
         $this->assertSame(15, $metaTrend[1]['clicks_change']);
+        $this->assertSame(2.19, $metaTrend[1]['ctr_percent']);
+        $this->assertSame(0.19, $metaTrend[1]['ctr_change_percentage_points']);
+        $this->assertSame(4.2857, $metaTrend[1]['cost_per_click']);
+        $this->assertSame(-0.7143, $metaTrend[1]['cost_per_click_change']);
+        $this->assertSame(93.75, $metaTrend[1]['cost_per_thousand_impressions']);
+        $this->assertSame(-6.25, $metaTrend[1]['cost_per_thousand_impressions_change']);
         $this->assertFalse($metaTrend[2]['currency_comparable']);
         $this->assertNull($metaTrend[2]['spend_change']);
+        $this->assertNull($metaTrend[2]['cost_per_click_change']);
         $this->assertSame(400, $metaTrend[2]['impressions_change']);
 
         $googleAdsTrend = $response->viewData('googleAdsTrend');
@@ -137,6 +148,16 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame(12, $googleAdsTrend[1]['clicks_change']);
         $this->assertSame(3.0, $googleAdsTrend[1]['conversions_change']);
         $this->assertSame(60.0, $googleAdsTrend[1]['conversions_value_change']);
+        $this->assertSame(2.75, $googleAdsTrend[1]['ctr_percent']);
+        $this->assertSame(0.75, $googleAdsTrend[1]['ctr_change_percentage_points']);
+        $this->assertSame(3.4091, $googleAdsTrend[1]['cost_per_click']);
+        $this->assertSame(-1.5909, $googleAdsTrend[1]['cost_per_click_change']);
+        $this->assertSame(93.75, $googleAdsTrend[1]['cost_per_thousand_impressions']);
+        $this->assertSame(-6.25, $googleAdsTrend[1]['cost_per_thousand_impressions_change']);
+        $this->assertSame(18.75, $googleAdsTrend[1]['cost_per_conversion']);
+        $this->assertSame(-31.25, $googleAdsTrend[1]['cost_per_conversion_change']);
+        $this->assertSame(18.18, $googleAdsTrend[1]['conversion_rate_percent']);
+        $this->assertSame(8.18, $googleAdsTrend[1]['conversion_rate_change_percentage_points']);
     }
 
     public function test_campaign_report_keeps_only_the_latest_thirty_snapshots_in_time_order(): void
@@ -169,6 +190,60 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('102.0000', $metaTrend[0]['spend_amount']);
         $this->assertSame('131.0000', $metaTrend[29]['spend_amount']);
         $this->assertTrue($metaTrend[0]['synced_at']->lessThan($metaTrend[29]['synced_at']));
+    }
+
+    public function test_paid_media_history_shows_unavailable_changes_when_metrics_have_zero_denominators(): void
+    {
+        $user = User::factory()->create();
+        $connection = MetaMarketingConnection::factory()->create(['user_id' => $user->id]);
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Zero denominator campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '987654321',
+        ]);
+        $this->createMetaSnapshot($target, $connection, '2026-11-20 06:00:00', [
+            'spend_amount' => '0.0000',
+            'impressions' => 0,
+            'reach' => 0,
+            'clicks' => 0,
+        ]);
+        $this->createMetaSnapshot($target, $connection, '2026-11-21 06:00:00', [
+            'spend_amount' => '0.0000',
+            'impressions' => 0,
+            'reach' => 0,
+            'clicks' => 0,
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => $connection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => 'Zero denominator campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '0.0000',
+            'impressions' => 0,
+            'reach' => 0,
+            'clicks' => 0,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('無法比較');
+        $metaTrend = $response->viewData('metaMarketingTrend');
+
+        $this->assertCount(2, $metaTrend);
+        $this->assertNull($metaTrend[1]['frequency']);
+        $this->assertNull($metaTrend[1]['frequency_change']);
+        $this->assertNull($metaTrend[1]['ctr_percent']);
+        $this->assertNull($metaTrend[1]['ctr_change_percentage_points']);
+        $this->assertNull($metaTrend[1]['cost_per_click']);
+        $this->assertNull($metaTrend[1]['cost_per_thousand_impressions']);
     }
 
     public function test_meta_paid_media_history_export_is_scoped_and_formula_safe(): void
@@ -219,10 +294,19 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('50.0000', $csvRows[2][4]);
         $frequencyIndex = array_search('frequency_cumulative', $csvRows[0], true);
         $frequencyChangeIndex = array_search('frequency_change_since_previous', $csvRows[0], true);
+        $ctrIndex = array_search('ctr_percent', $csvRows[0], true);
+        $cpcChangeIndex = array_search('cost_per_click_change_since_previous', $csvRows[0], true);
+        $cpmChangeIndex = array_search('cost_per_thousand_impressions_change_since_previous', $csvRows[0], true);
         $this->assertIsInt($frequencyIndex);
         $this->assertIsInt($frequencyChangeIndex);
+        $this->assertIsInt($ctrIndex);
+        $this->assertIsInt($cpcChangeIndex);
+        $this->assertIsInt($cpmChangeIndex);
         $this->assertSame('1.2500', $csvRows[1][$frequencyIndex]);
         $this->assertSame('0.0000', $csvRows[2][$frequencyChangeIndex]);
+        $this->assertSame('2.00', $csvRows[1][$ctrIndex]);
+        $this->assertSame('2.5000', $csvRows[2][$cpcChangeIndex]);
+        $this->assertSame('50.0000', $csvRows[2][$cpmChangeIndex]);
         $this->assertStringNotContainsString('Private other account', $response->streamedContent());
         $this->assertStringNotContainsString('Different campaign', $response->streamedContent());
     }
@@ -259,10 +343,19 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertSame('Google Ads', $csvRows[1][0]);
         $conversionChangeIndex = array_search('conversions_change_since_previous', $csvRows[0], true);
         $conversionValueChangeIndex = array_search('conversions_value_change_since_previous', $csvRows[0], true);
+        $conversionCostChangeIndex = array_search('cost_per_conversion_change_since_previous', $csvRows[0], true);
+        $conversionRateIndex = array_search('conversion_rate_percent', $csvRows[0], true);
+        $clickCostChangeIndex = array_search('cost_per_click_change_since_previous', $csvRows[0], true);
         $this->assertIsInt($conversionChangeIndex);
         $this->assertIsInt($conversionValueChangeIndex);
+        $this->assertIsInt($conversionCostChangeIndex);
+        $this->assertIsInt($conversionRateIndex);
+        $this->assertIsInt($clickCostChangeIndex);
         $this->assertSame('3.0000', $csvRows[2][$conversionChangeIndex]);
         $this->assertSame('120.0000', $csvRows[2][$conversionValueChangeIndex]);
+        $this->assertSame("'-20.0000", $csvRows[2][$conversionCostChangeIndex]);
+        $this->assertSame('50.00', $csvRows[2][$conversionRateIndex]);
+        $this->assertSame('5.0000', $csvRows[2][$clickCostChangeIndex]);
     }
 
     public function test_paid_media_history_export_requires_authentication_and_rejects_unknown_sources(): void

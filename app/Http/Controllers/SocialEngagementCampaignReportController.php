@@ -211,6 +211,16 @@ class SocialEngagementCampaignReportController extends Controller
                 'conversions_change_since_previous',
                 'conversions_value_cumulative',
                 'conversions_value_change_since_previous',
+                'ctr_percent',
+                'ctr_change_percentage_points_since_previous',
+                'cost_per_click',
+                'cost_per_click_change_since_previous',
+                'cost_per_thousand_impressions',
+                'cost_per_thousand_impressions_change_since_previous',
+                'cost_per_conversion',
+                'cost_per_conversion_change_since_previous',
+                'conversion_rate_percent',
+                'conversion_rate_change_percentage_points_since_previous',
             ], ',', '"', '');
 
             foreach ($rows as $row) {
@@ -233,6 +243,16 @@ class SocialEngagementCampaignReportController extends Controller
                     $row['conversions_change'] === null ? '' : number_format($row['conversions_change'], 4, '.', ''),
                     $row['conversions_value'] ?? '',
                     $row['conversions_value_change'] === null ? '' : number_format($row['conversions_value_change'], 4, '.', ''),
+                    $row['ctr_percent'] === null ? '' : number_format($row['ctr_percent'], 2, '.', ''),
+                    $row['ctr_change_percentage_points'] === null ? '' : number_format($row['ctr_change_percentage_points'], 2, '.', ''),
+                    $row['cost_per_click'] === null ? '' : number_format($row['cost_per_click'], 4, '.', ''),
+                    $row['cost_per_click_change'] === null ? '' : number_format($row['cost_per_click_change'], 4, '.', ''),
+                    $row['cost_per_thousand_impressions'] === null ? '' : number_format($row['cost_per_thousand_impressions'], 4, '.', ''),
+                    $row['cost_per_thousand_impressions_change'] === null ? '' : number_format($row['cost_per_thousand_impressions_change'], 4, '.', ''),
+                    $row['cost_per_conversion'] === null ? '' : number_format($row['cost_per_conversion'], 4, '.', ''),
+                    $row['cost_per_conversion_change'] === null ? '' : number_format($row['cost_per_conversion_change'], 4, '.', ''),
+                    $row['conversion_rate_percent'] === null ? '' : number_format($row['conversion_rate_percent'], 2, '.', ''),
+                    $row['conversion_rate_change_percentage_points'] === null ? '' : number_format($row['conversion_rate_change_percentage_points'], 2, '.', ''),
                 ];
 
                 fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');

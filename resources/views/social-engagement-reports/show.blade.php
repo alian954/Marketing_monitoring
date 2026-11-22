@@ -152,6 +152,9 @@
                                     <th scope="col">觸及</th>
                                     <th scope="col">頻率</th>
                                     <th scope="col">點擊</th>
+                                    <th scope="col">CTR</th>
+                                    <th scope="col">CPC</th>
+                                    <th scope="col">CPM</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -170,15 +173,27 @@
                                         </td>
                                         <td class="numeric">
                                             {{ number_format($snapshot['reach'] ?? 0) }}
-                                            <span class="campaign-report-secondary">({{ $snapshot['reach_change'] === null ? '基準' : ($snapshot['reach_change'] > 0 ? '+' : '').number_format($snapshot['reach_change']) }})</span>
+                                            <span class="campaign-report-secondary">({{ $snapshot['reach_change'] === null ? ($snapshot['has_previous_snapshot'] ? '無法比較' : '基準') : ($snapshot['reach_change'] > 0 ? '+' : '').number_format($snapshot['reach_change']) }})</span>
                                         </td>
                                         <td class="numeric">
                                             {{ $snapshot['frequency'] === null ? '—' : number_format($snapshot['frequency'], 2).' 次／人' }}
-                                            <span class="campaign-report-secondary">({{ $snapshot['frequency_change'] === null ? '基準' : ($snapshot['frequency_change'] > 0 ? '+' : '').number_format($snapshot['frequency_change'], 2) }})</span>
+                                            <span class="campaign-report-secondary">({{ $snapshot['frequency_change'] === null ? ($snapshot['has_previous_snapshot'] ? '無法比較' : '基準') : ($snapshot['frequency_change'] > 0 ? '+' : '').number_format($snapshot['frequency_change'], 2) }})</span>
                                         </td>
                                         <td class="numeric">
                                             {{ number_format($snapshot['clicks']) }}
                                             <span class="campaign-report-secondary">({{ $snapshot['clicks_change'] === null ? '基準' : ($snapshot['clicks_change'] > 0 ? '+' : '').number_format($snapshot['clicks_change']) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['ctr_percent'] === null ? '—' : number_format($snapshot['ctr_percent'], 2).'%' }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['ctr_change_percentage_points'] === null ? ($snapshot['has_previous_snapshot'] ? '無法比較' : '基準') : ($snapshot['ctr_change_percentage_points'] > 0 ? '+' : '').number_format($snapshot['ctr_change_percentage_points'], 2).' pp' }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['cost_per_click'] === null ? '—' : number_format($snapshot['cost_per_click'], 4).' '.$snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['cost_per_click_change'] === null ? '無法比較' : ($snapshot['cost_per_click_change'] > 0 ? '+' : '').number_format($snapshot['cost_per_click_change'], 4).' '.$snapshot['currency_code'])) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['cost_per_thousand_impressions'] === null ? '—' : number_format($snapshot['cost_per_thousand_impressions'], 4).' '.$snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['cost_per_thousand_impressions_change'] === null ? '無法比較' : ($snapshot['cost_per_thousand_impressions_change'] > 0 ? '+' : '').number_format($snapshot['cost_per_thousand_impressions_change'], 4).' '.$snapshot['currency_code'])) }})</span>
                                         </td>
                                     </tr>
                                 @endforeach
@@ -293,6 +308,11 @@
                                     <th scope="col">點擊</th>
                                     <th scope="col">轉換</th>
                                     <th scope="col">轉換價值</th>
+                                    <th scope="col">CTR</th>
+                                    <th scope="col">CPC</th>
+                                    <th scope="col">CPM</th>
+                                    <th scope="col">每次轉換成本</th>
+                                    <th scope="col">點擊轉換率</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -320,6 +340,26 @@
                                         <td class="numeric">
                                             {{ number_format((float) $snapshot['conversions_value'], 2) }} {{ $snapshot['currency_code'] }}
                                             <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : (($snapshot['conversions_value_change'] > 0 ? '+' : '').number_format($snapshot['conversions_value_change'], 2))) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['ctr_percent'] === null ? '—' : number_format($snapshot['ctr_percent'], 2).'%' }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['ctr_change_percentage_points'] === null ? ($snapshot['has_previous_snapshot'] ? '無法比較' : '基準') : ($snapshot['ctr_change_percentage_points'] > 0 ? '+' : '').number_format($snapshot['ctr_change_percentage_points'], 2).' pp' }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['cost_per_click'] === null ? '—' : number_format($snapshot['cost_per_click'], 4).' '.$snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['cost_per_click_change'] === null ? '無法比較' : ($snapshot['cost_per_click_change'] > 0 ? '+' : '').number_format($snapshot['cost_per_click_change'], 4).' '.$snapshot['currency_code'])) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['cost_per_thousand_impressions'] === null ? '—' : number_format($snapshot['cost_per_thousand_impressions'], 4).' '.$snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['cost_per_thousand_impressions_change'] === null ? '無法比較' : ($snapshot['cost_per_thousand_impressions_change'] > 0 ? '+' : '').number_format($snapshot['cost_per_thousand_impressions_change'], 4).' '.$snapshot['currency_code'])) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['cost_per_conversion'] === null ? '—' : number_format($snapshot['cost_per_conversion'], 4).' '.$snapshot['currency_code'] }}
+                                            <span class="campaign-report-secondary">({{ ! $snapshot['has_previous_snapshot'] ? '基準' : (! $snapshot['currency_comparable'] ? '幣別不同' : ($snapshot['cost_per_conversion_change'] === null ? '無法比較' : ($snapshot['cost_per_conversion_change'] > 0 ? '+' : '').number_format($snapshot['cost_per_conversion_change'], 4).' '.$snapshot['currency_code'])) }})</span>
+                                        </td>
+                                        <td class="numeric">
+                                            {{ $snapshot['conversion_rate_percent'] === null ? '—' : number_format($snapshot['conversion_rate_percent'], 2).'%' }}
+                                            <span class="campaign-report-secondary">({{ $snapshot['conversion_rate_change_percentage_points'] === null ? ($snapshot['has_previous_snapshot'] ? '無法比較' : '基準') : ($snapshot['conversion_rate_change_percentage_points'] > 0 ? '+' : '').number_format($snapshot['conversion_rate_change_percentage_points'], 2).' pp' }})</span>
                                         </td>
                                     </tr>
                                 @endforeach
