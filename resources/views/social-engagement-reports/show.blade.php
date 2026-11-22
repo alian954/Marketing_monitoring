@@ -549,7 +549,12 @@
                 </dl>
                 <p class="campaign-report-secondary">GA4 的「重要事件」依該資源標記的事件計算；營收採該資源報告幣別。</p>
 
-                <h3 id="campaign-report-ga4-channel-title">渠道、來源與媒介成效</h3>
+                <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-channel-title">渠道、來源與媒介成效</h3>
+                    @if ($googleAnalyticsReport->source_medium_breakdown !== null && $googleAnalyticsReport->source_medium_breakdown !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.channels', $target) }}">匯出明細 CSV</a>
+                    @endif
+                </div>
                 @if ($googleAnalyticsReport->source_medium_breakdown === null)
                     <p class="campaign-report-empty">這筆 GA4 讀值尚未包含渠道明細，更新數據後即可查看。</p>
                 @elseif ($googleAnalyticsReport->source_medium_breakdown === [])

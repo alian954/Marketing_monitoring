@@ -106,19 +106,7 @@ class SocialEngagementCampaignReportController extends Controller
         $sourceName = $socialEngagementTarget->googleAnalyticsSourceName();
         $mediumName = $socialEngagementTarget->googleAnalyticsMediumName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
-        $analyticsReport = $googleAnalyticsConnection === null
-            ? null
-            : SocialEngagementTargetGoogleAnalyticsReport::query()
-                ->where('google_analytics_connection_id', $googleAnalyticsConnection->getKey())
-                ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-                ->where('campaign_name', $campaignName)
-                ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
-                ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
-                ->when($mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
-                ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
-                ->when($socialEngagementTarget->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $socialEngagementTarget->starts_on))
-                ->when($socialEngagementTarget->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $socialEngagementTarget->ends_on))
-                ->first();
+        $analyticsReport = $this->googleAnalyticsReportForTarget($socialEngagementTarget, $googleAnalyticsConnection);
 
         $metaMarketingConnection = $request->user()->metaMarketingConnection;
         $metaMarketingReport = $metaMarketingConnection === null
@@ -203,6 +191,86 @@ class SocialEngagementCampaignReportController extends Controller
                 $googleAdsReport,
             ),
         ];
+    }
+
+    public function exportGoogleAnalyticsChannelBreakdown(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        $rows = $analyticsReport?->source_medium_breakdown;
+
+        abort_if(! is_array($rows) || $rows === [], 404);
+
+        return response()->streamDownload(function () use ($analyticsReport, $rows): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, [
+                'campaign_name',
+                'campaign_start',
+                'campaign_end',
+                'channel_group',
+                'source',
+                'medium',
+                'sessions',
+                'engaged_sessions',
+                'key_events',
+                'total_revenue',
+                'breakdown_truncated',
+                'currency_code',
+                'synced_at_asia_taipei',
+            ], ',', '"', '');
+
+            foreach ($rows as $row) {
+                $fields = [
+                    $analyticsReport->campaign_name,
+                    $analyticsReport->starts_on->toDateString(),
+                    $analyticsReport->ends_on->toDateString(),
+                    $row['channel_group'] ?? '',
+                    $row['source_name'] ?? '',
+                    $row['medium_name'] ?? '',
+                    (string) ($row['sessions'] ?? ''),
+                    (string) ($row['engaged_sessions'] ?? ''),
+                    (string) ($row['key_events'] ?? ''),
+                    (string) ($row['total_revenue'] ?? ''),
+                    $analyticsReport->source_medium_breakdown_truncated ? 'true' : 'false',
+                    $analyticsReport->currency_code ?? '',
+                    $analyticsReport->synced_at?->timezone('Asia/Taipei')->format('Y-m-d H:i:s') ?? '',
+                ];
+
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $fields), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-channel-breakdown-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function googleAnalyticsReportForTarget(
+        SocialEngagementTarget $target,
+        ?GoogleAnalyticsConnection $connection,
+    ): ?SocialEngagementTargetGoogleAnalyticsReport {
+        if ($connection === null) {
+            return null;
+        }
+
+        $sourceName = $target->googleAnalyticsSourceName();
+        $mediumName = $target->googleAnalyticsMediumName();
+
+        return SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('google_analytics_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $target->getKey())
+            ->where('campaign_name', $target->googleAnalyticsCampaignName())
+            ->when($sourceName !== null, fn (Builder $query): Builder => $query->where('source_name', $sourceName))
+            ->when($sourceName === null, fn (Builder $query): Builder => $query->whereNull('source_name'))
+            ->when($mediumName !== null, fn (Builder $query): Builder => $query->where('medium_name', $mediumName))
+            ->when($mediumName === null, fn (Builder $query): Builder => $query->whereNull('medium_name'))
+            ->when($target->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $target->starts_on))
+            ->when($target->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $target->ends_on))
+            ->first();
     }
 
     public function exportGoogleAnalyticsHistory(

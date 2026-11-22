@@ -143,6 +143,155 @@ class SocialEngagementCampaignReportTest extends TestCase
             ->assertSee('—');
     }
 
+    public function test_ga4_channel_export_requires_authentication(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+
+        $this->get(route('social-engagement-targets.google-analytics.channels', $target))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_ga4_channel_export_flattens_rows_and_sanitizes_formula_values(): void
+    {
+        $user = User::factory()->create();
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Channel export',
+            'ga4_campaign_name' => 'Channel export',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'google-analytics-refresh-token',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => 'Channel export',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 240,
+            'engaged_sessions' => 180,
+            'key_events' => '12.0000',
+            'total_revenue' => '800.0000',
+            'source_medium_breakdown' => [[
+                'channel_group' => '=Paid Social',
+                'source_name' => 'facebook',
+                'medium_name' => 'paid_social',
+                'sessions' => 240,
+                'engaged_sessions' => 180,
+                'key_events' => '12.0000',
+                'total_revenue' => '800.0000',
+            ], [
+                'channel_group' => 'Email',
+                'source_name' => 'newsletter',
+                'medium_name' => 'email',
+                'sessions' => 60,
+                'engaged_sessions' => 48,
+                'key_events' => '3.0000',
+                'total_revenue' => '200.0000',
+            ]],
+            'source_medium_breakdown_truncated' => false,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.google-analytics.channels', $target))
+            ->assertDownload('ga4-channel-breakdown-'.$target->id.'.csv')
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $rows = $this->csvRows($response->streamedContent());
+
+        $this->assertCount(3, $rows);
+        $this->assertSame([
+            'campaign_name',
+            'campaign_start',
+            'campaign_end',
+            'channel_group',
+            'source',
+            'medium',
+            'sessions',
+            'engaged_sessions',
+            'key_events',
+            'total_revenue',
+            'breakdown_truncated',
+            'currency_code',
+            'synced_at_asia_taipei',
+        ], $rows[0]);
+        $firstChannel = array_combine($rows[0], $rows[1]);
+
+        $this->assertSame('Channel export', $firstChannel['campaign_name']);
+        $this->assertSame('2026-11-01', $firstChannel['campaign_start']);
+        $this->assertSame('2026-11-30', $firstChannel['campaign_end']);
+        $this->assertSame("'=Paid Social", $firstChannel['channel_group']);
+        $this->assertSame('facebook', $firstChannel['source']);
+        $this->assertSame('paid_social', $firstChannel['medium']);
+        $this->assertSame('240', $firstChannel['sessions']);
+        $this->assertSame('180', $firstChannel['engaged_sessions']);
+        $this->assertSame('12.0000', $firstChannel['key_events']);
+        $this->assertSame('800.0000', $firstChannel['total_revenue']);
+        $this->assertSame('false', $firstChannel['breakdown_truncated']);
+        $this->assertSame('TWD', $firstChannel['currency_code']);
+        $this->assertSame('Email', $rows[2][3]);
+    }
+
+    public function test_ga4_channel_export_is_rate_limited(): void
+    {
+        $target = SocialEngagementTarget::factory()->create();
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $route = route('social-engagement-targets.google-analytics.channels', $target);
+
+        for ($requestNumber = 0; $requestNumber < 10; $requestNumber++) {
+            $this->get($route)->assertNotFound();
+        }
+
+        $this->get($route)->assertTooManyRequests();
+    }
+
+    public function test_ga4_channel_export_does_not_expose_another_users_report(): void
+    {
+        $target = SocialEngagementTarget::factory()->create([
+            'ga4_campaign_name' => 'Private campaign',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $otherUser = User::factory()->create();
+        $otherConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $otherUser->id,
+            'property_id' => '987654321',
+            'refresh_token' => 'other-google-analytics-refresh-token',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $otherConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => 'Private campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 999,
+            'engaged_sessions' => 999,
+            'key_events' => '99.0000',
+            'total_revenue' => '9999.0000',
+            'source_medium_breakdown' => [[
+                'channel_group' => 'Organic Social',
+                'source_name' => 'private-source',
+                'medium_name' => 'social',
+                'sessions' => 999,
+                'engaged_sessions' => 999,
+                'key_events' => '99.0000',
+                'total_revenue' => '9999.0000',
+            ]],
+            'source_medium_breakdown_truncated' => false,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('social-engagement-targets.google-analytics.channels', $target))
+            ->assertNotFound();
+    }
+
     public function test_campaign_report_export_requires_authentication(): void
     {
         $target = SocialEngagementTarget::factory()->create();

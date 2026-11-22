@@ -184,6 +184,8 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ->assertSee('Paid Social')
             ->assertSee('工作階段')
             ->assertSee('facebook_ads')
+            ->assertSee(route('social-engagement-targets.google-analytics.channels', $target))
+            ->assertSee('匯出明細 CSV')
             ->assertSee('GA4 累計成效變化')
             ->assertSee('更新於')
             ->assertSee('2026/11/22 06:30')
