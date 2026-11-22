@@ -246,6 +246,41 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         $this->assertNull($metaTrend[1]['cost_per_thousand_impressions']);
     }
 
+    public function test_campaign_report_marks_meta_and_google_ads_reads_stale_after_one_day(): void
+    {
+        $this->travelTo('2026-11-22 08:00:00');
+        $user = User::factory()->create();
+        $metaConnection = MetaMarketingConnection::factory()->create(['user_id' => $user->id]);
+        $googleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $user->id]);
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Freshness campaign',
+            'social_platform' => 'facebook',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '987654321',
+            'google_ads_campaign_id' => '987654322',
+        ]);
+        $this->createCurrentReports($target, $metaConnection, $googleAdsConnection);
+        $metaReport = SocialEngagementTargetMetaMarketingReport::query()->sole();
+        $googleAdsReport = SocialEngagementTargetGoogleAdsReport::query()->sole();
+        $metaReport->update(['synced_at' => now()->subDay()->subSecond()]);
+        $googleAdsReport->update(['synced_at' => now()->subDay()->subSecond()]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads 超過 24 小時未成功更新')
+            ->assertSee('Google Ads 超過 24 小時未成功更新');
+
+        $metaReport->update(['synced_at' => now()->subDay()->addSecond()]);
+        $googleAdsReport->update(['synced_at' => now()->subDay()->addSecond()]);
+
+        $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertDontSee('Meta Ads 超過 24 小時未成功更新')
+            ->assertDontSee('Google Ads 超過 24 小時未成功更新');
+    }
+
     public function test_meta_paid_media_history_export_is_scoped_and_formula_safe(): void
     {
         $user = User::factory()->create();

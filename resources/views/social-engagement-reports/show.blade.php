@@ -95,6 +95,9 @@
                     {{ $metaMarketingReport->campaign_name }} · {{ $metaMarketingReport->currency_code }}；
                     更新於 <time datetime="{{ $metaMarketingReport->synced_at->toIso8601String() }}">{{ $metaMarketingReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                 </p>
+                @if ($metaMarketingReportIsStale)
+                    <p class="campaign-report-empty">Meta Ads 超過 24 小時未成功更新。</p>
+                @endif
                 <dl class="campaign-report-summary ga4-report-summary">
                     <div>
                         <dt>投放花費</dt>
@@ -237,6 +240,9 @@
                     {{ $googleAdsReport->campaign_name }} · {{ $googleAdsReport->currency_code }}；
                     更新於 <time datetime="{{ $googleAdsReport->synced_at->toIso8601String() }}">{{ $googleAdsReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                 </p>
+                @if ($googleAdsReportIsStale)
+                    <p class="campaign-report-empty">Google Ads 超過 24 小時未成功更新。</p>
+                @endif
                 <dl class="campaign-report-summary ga4-report-summary">
                     <div>
                         <dt>投放花費</dt>
@@ -400,6 +406,9 @@
                     資料期間 {{ $googleAnalyticsReport->starts_on->format('Y/n/j') }} 至 {{ $googleAnalyticsReport->ends_on->format('Y/n/j') }}；
                     更新於 <time datetime="{{ $googleAnalyticsReport->synced_at->toIso8601String() }}">{{ $googleAnalyticsReport->synced_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
                 </p>
+                @if ($googleAnalyticsReportIsStale)
+                    <p class="campaign-report-empty">GA4 超過 24 小時未成功更新。</p>
+                @endif
                 <dl class="campaign-report-summary ga4-report-summary">
                     <div>
                         <dt>工作階段</dt>

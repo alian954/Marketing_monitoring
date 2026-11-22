@@ -420,6 +420,43 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         Http::assertSentCount(6);
     }
 
+    public function test_campaign_report_marks_ga4_read_stale_after_one_day(): void
+    {
+        $this->travelTo('2026-11-22 08:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+        $report = SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 100,
+            'engaged_sessions' => 80,
+            'key_events' => '3.0000',
+            'total_revenue' => '1000.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subDay()->subSecond(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('GA4 超過 24 小時未成功更新');
+
+        $report->update(['synced_at' => now()->subDay()->addSecond()]);
+
+        $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertDontSee('GA4 超過 24 小時未成功更新');
+    }
+
     public function test_ga4_trend_does_not_compare_revenue_when_currency_changes(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-21 06:30:00', 'Asia/Taipei'));

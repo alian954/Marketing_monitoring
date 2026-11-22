@@ -74,16 +74,23 @@ class SocialEngagementCampaignReportController extends Controller
                 ->first();
 
         $campaignData = $campaignReport->build($socialEngagementTarget);
+        $reportFreshnessCutoff = now()->subDay();
 
         return view('social-engagement-reports.show', [
             ...$campaignData,
             'googleAnalyticsConnection' => $googleAnalyticsConnection,
             'googleAnalyticsReport' => $analyticsReport,
+            'googleAnalyticsReportIsStale' => $analyticsReport !== null
+                && $analyticsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
             'metaMarketingConnection' => $metaMarketingConnection,
             'metaMarketingReport' => $metaMarketingReport,
+            'metaMarketingReportIsStale' => $metaMarketingReport !== null
+                && $metaMarketingReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
             'metaMarketingTrend' => $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget),
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
+            'googleAdsReportIsStale' => $googleAdsReport !== null
+                && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
             'googleAdsTrend' => $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget),
             'googleAnalyticsCampaignName' => $campaignName,
             'googleAnalyticsSourceName' => $sourceName,
