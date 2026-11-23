@@ -282,6 +282,20 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                             'conversionsValue' => '50',
                         ],
                     ]],
+                ]])
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321'],
+                        'adGroup' => ['id' => '555555555', 'name' => 'Brand terms', 'status' => 'ENABLED'],
+                        'metrics' => [
+                            'costMicros' => '25000000',
+                            'impressions' => '1000',
+                            'clicks' => '50',
+                            'conversions' => '2',
+                            'conversionsValue' => '120',
+                        ],
+                    ]],
                 ]]),
         ]);
         $user = User::factory()->create();
@@ -344,6 +358,26 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertStringNotContainsString('winter gift box', $snapshot->getRawOriginal('search_terms_data'));
         $this->assertSame([
             'status' => 'complete',
+            'window_start_on' => '2026-11-01',
+            'window_end_on' => '2026-11-21',
+            'currency_code' => 'USD',
+            'unit_type' => 'ad_group',
+            'truncated' => false,
+            'rows' => [[
+                'unit_id' => '555555555',
+                'unit_name' => 'Brand terms',
+                'status' => 'ENABLED',
+                'impressions' => 1000,
+                'clicks' => 50,
+                'spend_amount' => '25.0000',
+                'conversions' => '2.0000',
+                'conversions_value' => '120.0000',
+            ]],
+        ], $snapshot->delivery_unit_performance);
+        $this->assertTrue($snapshot->delivery_unit_performance_expires_at->isFuture());
+        $this->assertStringNotContainsString('Brand terms', $snapshot->getRawOriginal('delivery_unit_performance'));
+        $this->assertSame([
+            'status' => 'complete',
             'campaign_channel_type' => 'SEARCH',
             'requested_start_on' => '2026-11-01',
             'requested_end_on' => '2026-11-30',
@@ -382,7 +416,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 

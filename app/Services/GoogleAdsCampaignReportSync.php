@@ -57,6 +57,34 @@ class GoogleAdsCampaignReportSync
                 'rows' => [],
             ];
         }
+        $deliveryUnitPerformance = [
+            'status' => 'unavailable',
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $metrics['currency_code'],
+            'unit_type' => $metrics['campaign_channel_type'] === 'PERFORMANCE_MAX' ? 'asset_group' : 'ad_group',
+            'truncated' => false,
+            'rows' => [],
+        ];
+
+        if ($metrics['campaign_channel_type'] === null) {
+            $deliveryUnitPerformance['message'] = 'Google Ads 尚未回傳活動類型，暫無法選擇廣告群組或資產群組。';
+        } else {
+            try {
+                $deliveryUnitPerformance = $this->dataApi->campaignDeliveryUnitInsights(
+                    $accessToken,
+                    $connection->customer_id,
+                    $target->google_ads_campaign_id,
+                    $target->starts_on->toDateString(),
+                    $target->ends_on->toDateString(),
+                    $metrics['currency_code'],
+                    $metrics['campaign_channel_type'],
+                    $connection->login_customer_id,
+                );
+            } catch (GoogleAdsApiException|ConnectionException $exception) {
+                $deliveryUnitPerformance['message'] = $exception->getMessage();
+            }
+        }
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -83,8 +111,11 @@ class GoogleAdsCampaignReportSync
         $searchTermsExpiresAt = $searchTermsData['status'] === 'complete'
             ? $syncedAt->addDays(30)
             : null;
+        $deliveryUnitPerformanceExpiresAt = $deliveryUnitPerformance['status'] === 'complete'
+            ? $syncedAt->addDays(30)
+            : null;
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt): SocialEngagementTargetGoogleAdsReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt): SocialEngagementTargetGoogleAdsReport {
             $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
                 [
                     'google_ads_connection_id' => $connection->getKey(),
@@ -98,6 +129,8 @@ class GoogleAdsCampaignReportSync
                     'daily_metrics' => $dailyMetrics,
                     'search_terms_data' => $searchTermsData,
                     'search_terms_expires_at' => $searchTermsExpiresAt,
+                    'delivery_unit_performance' => $deliveryUnitPerformance,
+                    'delivery_unit_performance_expires_at' => $deliveryUnitPerformanceExpiresAt,
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],

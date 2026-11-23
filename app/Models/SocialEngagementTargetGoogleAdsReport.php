@@ -25,10 +25,12 @@ use Illuminate\Database\Eloquent\Model;
     'daily_metrics',
     'search_terms_data',
     'search_terms_expires_at',
+    'delivery_unit_performance',
+    'delivery_unit_performance_expires_at',
     'currency_code',
     'synced_at',
 ])]
-#[Hidden(['search_terms_data', 'search_terms_expires_at'])]
+#[Hidden(['search_terms_data', 'search_terms_expires_at', 'delivery_unit_performance', 'delivery_unit_performance_expires_at'])]
 class SocialEngagementTargetGoogleAdsReport extends Model
 {
     /** @use HasFactory<SocialEngagementTargetGoogleAdsReportFactory> */
@@ -48,6 +50,8 @@ class SocialEngagementTargetGoogleAdsReport extends Model
             'daily_metrics' => 'array',
             'search_terms_data' => 'encrypted:array',
             'search_terms_expires_at' => 'immutable_datetime',
+            'delivery_unit_performance' => 'encrypted:array',
+            'delivery_unit_performance_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }

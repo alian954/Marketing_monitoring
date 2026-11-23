@@ -658,6 +658,86 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-delivery-units-title">Google Ads 投放單位成效</h3>
+                    @if ($googleAdsDeliveryUnitReport['status'] === 'complete' && $googleAdsDeliveryUnitReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.delivery-units', $target) }}">匯出投放單位 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsDeliveryUnitReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚無投放單位明細；更新 Google Ads 數據後即可查看。</p>
+                @elseif ($googleAdsDeliveryUnitReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">投放單位明細暫時無法讀取，活動摘要仍可使用。{{ $googleAdsDeliveryUnitReport['message'] }}</p>
+                @elseif ($googleAdsDeliveryUnitReport['status'] === 'expired')
+                    <p class="campaign-report-empty">投放單位明細已超過 30 天保存期限，更新 Google Ads 數據後可重新讀取。</p>
+                @elseif ($googleAdsDeliveryUnitReport['status'] === 'unsupported')
+                    <p class="campaign-report-empty">此活動沒有可支援的完整日期區間。</p>
+                @elseif ($googleAdsDeliveryUnitReport['status'] === 'no_complete_days')
+                    <p class="campaign-report-empty">尚無完整日期可供投放單位分析。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAdsDeliveryUnitReport['window_start_on'] }} 至 {{ $googleAdsDeliveryUnitReport['window_end_on'] }} ·
+                        {{ $googleAdsDeliveryUnitReport['unit_type'] === 'asset_group' ? 'Performance Max 資產群組' : '廣告群組' }} ·
+                        最多列出花費最高的 200 筆，明細加密保存 30 天。
+                    </p>
+                    @if ($googleAdsDeliveryUnitReport['truncated'])
+                        <p class="campaign-report-note">投放單位超過 200 筆，表格僅列出花費最高的 200 筆。</p>
+                    @endif
+                    @if ($googleAdsDeliveryUnitReport['rows'] === [])
+                        <p class="campaign-report-empty">此期間沒有可用的投放單位明細。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                            <label for="google-ads-delivery-unit-sort">排序</label>
+                            <select id="google-ads-delivery-unit-sort" name="delivery_unit_sort">
+                                <option value="spend" @selected($googleAdsDeliveryUnitReport['sort'] === 'spend')>花費</option>
+                                <option value="conversions" @selected($googleAdsDeliveryUnitReport['sort'] === 'conversions')>轉換</option>
+                                <option value="roas" @selected($googleAdsDeliveryUnitReport['sort'] === 'roas')>ROAS</option>
+                                <option value="ctr" @selected($googleAdsDeliveryUnitReport['sort'] === 'ctr')>CTR</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-delivery-units-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads {{ $googleAdsDeliveryUnitReport['unit_type'] === 'asset_group' ? 'Performance Max 資產群組' : '廣告群組' }}成效（{{ $googleAdsDeliveryUnitReport['currency_code'] }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">投放單位</th>
+                                        <th scope="col">狀態</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">轉換</th>
+                                        <th scope="col" class="numeric">CPA</th>
+                                        <th scope="col" class="numeric">轉換價值</th>
+                                        <th scope="col" class="numeric">ROAS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsDeliveryUnitReport['rows'] as $unitRow)
+                                        <tr>
+                                            <th scope="row">{{ $unitRow['unit_name'] }}<br><span class="campaign-report-secondary"><code>{{ $unitRow['unit_id'] }}</code></span></th>
+                                            <td><code>{{ $unitRow['status'] }}</code></td>
+                                            <td class="numeric">{{ number_format((int) $unitRow['impressions']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $unitRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $unitRow['ctr_percent'] === null ? '—' : number_format($unitRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $unitRow['spend_amount'], 2) }} {{ $googleAdsDeliveryUnitReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $unitRow['cost_per_click'] === null ? '—' : number_format($unitRow['cost_per_click'], 4).' '.$googleAdsDeliveryUnitReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $unitRow['conversions'], 2) }}</td>
+                                            <td class="numeric">{{ $unitRow['cost_per_conversion'] === null ? '—' : number_format($unitRow['cost_per_conversion'], 4).' '.$googleAdsDeliveryUnitReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $unitRow['conversions_value'], 2) }} {{ $googleAdsDeliveryUnitReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $unitRow['roas'] === null ? '—' : number_format($unitRow['roas'], 2).'x' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">CTR、CPC、CPA 與 ROAS 依各投放單位成效計算；轉換只含帳戶設定納入 Google Ads「轉換」欄的動作。狀態顯示目前資源狀態。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                     @if ($googleAdsTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'google-ads']) }}">匯出趨勢 CSV</a>

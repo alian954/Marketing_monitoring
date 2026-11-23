@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Http;
 
 class GoogleAdsDataApi
 {
+    private const DELIVERY_UNIT_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, refresh_token: ?string} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -452,6 +454,144 @@ class GoogleAdsDataApi
             'currency_code' => $accountCurrency,
             'truncated' => count($rows) > 200,
             'rows' => array_slice($rows, 0, 200),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
+     *     unit_type: 'ad_group'|'asset_group',
+     *     truncated: bool,
+     *     rows: list<array{
+     *         unit_id: string,
+     *         unit_name: string,
+     *         status: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         spend_amount: string,
+     *         conversions: string,
+     *         conversions_value: string
+     *     }>
+     * }
+     */
+    public function campaignDeliveryUnitInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $campaignChannelType,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads 投放單位報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        $unitType = $campaignChannelType === 'PERFORMANCE_MAX' ? 'asset_group' : 'ad_group';
+        $unitResource = $unitType;
+        $unitResponseKey = $unitType === 'asset_group' ? 'assetGroup' : 'adGroup';
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return $this->emptyDeliveryUnitReport('unsupported', $accountCurrency, $unitType);
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyDeliveryUnitReport('no_complete_days', $accountCurrency, $unitType);
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, {$unitResource}.id, {$unitResource}.name, {$unitResource}.status, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM {$unitResource} WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.cost_micros DESC, {$unitResource}.id ASC LIMIT 201";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > self::DELIVERY_UNIT_REPORT_LIMIT + 1) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超過投放單位讀取上限，未儲存讀值。');
+        }
+
+        $rows = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $deliveryUnit = $row[$unitResponseKey] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $unitId = is_array($deliveryUnit) ? ($deliveryUnit['id'] ?? null) : null;
+            $unitName = is_array($deliveryUnit) ? ($deliveryUnit['name'] ?? null) : null;
+            $unitStatus = is_array($deliveryUnit) ? ($deliveryUnit['status'] ?? null) : null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || $rowCurrencyCode !== $accountCurrency
+                || (! is_string($unitId) && ! is_int($unitId))
+                || preg_match('/^\d{1,32}$/', (string) $unitId) !== 1
+                || ! is_string($unitName)
+                || trim($unitName) === ''
+                || strlen($unitName) > 1024
+                || ! is_string($unitStatus)
+                || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $unitStatus) !== 1
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的投放單位資料，未儲存讀值。');
+            }
+
+            $rows[] = [
+                'unit_id' => (string) $unitId,
+                'unit_name' => trim($unitName),
+                'status' => $unitStatus,
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'unit_type' => $unitType,
+            'truncated' => count($rows) > self::DELIVERY_UNIT_REPORT_LIMIT,
+            'rows' => array_slice($rows, 0, self::DELIVERY_UNIT_REPORT_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, unit_type: 'ad_group'|'asset_group', truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyDeliveryUnitReport(string $status, string $currencyCode, string $unitType): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $currencyCode,
+            'unit_type' => $unitType,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 
