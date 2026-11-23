@@ -45,7 +45,106 @@ class SocialEngagementTargetTest extends TestCase
             ->assertSee('name="ga4_goal_metric"', false)
             ->assertSee('name="ga4_goal_value"', false)
             ->assertSee('name="ga4_goal_currency"', false)
+            ->assertSee('付費媒體 ROAS 目標')
+            ->assertSee('name="paid_media_goal_source"', false)
+            ->assertSee('name="paid_media_goal_roas"', false)
             ->assertSee('營收目標需填', false);
+    }
+
+    public function test_authenticated_user_can_create_and_clear_a_paid_media_roas_goal(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-ROAS-01', 'Spring launch');
+        $user = User::factory()->create();
+        $payload = [
+            'tag' => 'Spring launch',
+            'social_platform' => 'instagram',
+            'target_interactions' => 1000,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ];
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => 'google_ads',
+                'paid_media_goal_roas' => '2.5000',
+            ])
+            ->assertRedirect();
+
+        $target = SocialEngagementTarget::query()->sole();
+        $this->assertSame('google_ads', $target->paid_media_goal_source);
+        $this->assertSame('2.5000', $target->paid_media_goal_roas);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => '',
+                'paid_media_goal_roas' => '2.5000',
+            ])
+            ->assertRedirect();
+
+        $target->refresh();
+        $this->assertNull($target->paid_media_goal_source);
+        $this->assertNull($target->paid_media_goal_roas);
+    }
+
+    public function test_paid_media_roas_goal_requires_a_valid_source_positive_value_and_campaign_period(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-ROAS-02', 'Spring launch');
+        $user = User::factory()->create();
+        $payload = [
+            'tag' => 'Spring launch',
+            'social_platform' => 'instagram',
+            'target_interactions' => 1000,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ];
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => 'meta_ads',
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['paid_media_goal_roas' => '請輸入付費媒體 ROAS 目標。']);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => 'meta_ads',
+                'paid_media_goal_roas' => '0',
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['paid_media_goal_roas' => '付費媒體 ROAS 目標必須大於 0。']);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => 'meta_ads',
+                'paid_media_goal_roas' => '2.12345',
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['paid_media_goal_roas' => '付費媒體 ROAS 目標最多可輸入 4 位小數。']);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'paid_media_goal_source' => 'invalid',
+                'paid_media_goal_roas' => '2.5',
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['paid_media_goal_source' => '付費媒體 ROAS 目標來源無效。']);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'starts_on' => null,
+                'ends_on' => null,
+                'paid_media_goal_source' => 'google_ads',
+                'paid_media_goal_roas' => '2.5',
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['paid_media_goal_source' => '設定付費媒體 ROAS 目標前，請先設定活動期間。']);
     }
 
     public function test_authenticated_user_can_create_and_update_a_ga4_business_goal(): void

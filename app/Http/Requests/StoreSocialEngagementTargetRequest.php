@@ -40,6 +40,8 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ga4_goal_metric' => ['nullable', 'string', Rule::in(['key_events', 'total_revenue'])],
             'ga4_goal_value' => ['nullable', 'numeric', 'decimal:0,4', 'gt:0', 'max:9999999999999999'],
             'ga4_goal_currency' => ['nullable', 'string', 'regex:/^[A-Z]{3}$/'],
+            'paid_media_goal_source' => ['nullable', 'string', Rule::in(['ga4', 'meta_ads', 'google_ads'])],
+            'paid_media_goal_roas' => ['nullable', 'numeric', 'decimal:0,4', 'gt:0', 'max:9999999999999999'],
             'meta_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
             'google_ads_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
             'engagement_platform' => ['nullable', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
@@ -75,22 +77,29 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             $goalValue = $this->input('ga4_goal_value');
             $goalCurrency = $this->input('ga4_goal_currency');
 
-            if ($goalMetric === null) {
-                return;
+            if ($goalMetric !== null) {
+                if ($goalValue === null) {
+                    $validator->errors()->add('ga4_goal_value', '請輸入 GA4 商業目標數值。');
+                }
+
+                if ($startsOn === null || $endsOn === null) {
+                    $validator->errors()->add('ga4_goal_metric', '設定 GA4 商業目標前，請先設定活動期間。');
+                }
+
+                if ($goalMetric === 'total_revenue' && $goalCurrency === null) {
+                    $validator->errors()->add('ga4_goal_currency', '營收目標需要設定幣別。');
+                }
             }
 
-            if ($goalValue === null) {
-                $validator->errors()->add('ga4_goal_value', '請輸入 GA4 商業目標數值。');
+            $paidMediaGoalSource = $this->input('paid_media_goal_source');
+
+            if ($paidMediaGoalSource !== null && $this->input('paid_media_goal_roas') === null) {
+                $validator->errors()->add('paid_media_goal_roas', '請輸入付費媒體 ROAS 目標。');
             }
 
-            if ($startsOn === null || $endsOn === null) {
-                $validator->errors()->add('ga4_goal_metric', '設定 GA4 商業目標前，請先設定活動期間。');
+            if ($paidMediaGoalSource !== null && ($startsOn === null || $endsOn === null)) {
+                $validator->errors()->add('paid_media_goal_source', '設定付費媒體 ROAS 目標前，請先設定活動期間。');
             }
-
-            if ($goalMetric === 'total_revenue' && $goalCurrency === null) {
-                $validator->errors()->add('ga4_goal_currency', '營收目標需要設定幣別。');
-            }
-
         }];
     }
 
@@ -136,6 +145,11 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ga4_goal_value.gt' => 'GA4 商業目標必須大於 0。',
             'ga4_goal_value.max' => 'GA4 商業目標數值過大。',
             'ga4_goal_currency.regex' => '營收目標幣別請使用 3 位大寫代碼，例如 TWD。',
+            'paid_media_goal_source.in' => '付費媒體 ROAS 目標來源無效。',
+            'paid_media_goal_roas.numeric' => '付費媒體 ROAS 目標必須是數字。',
+            'paid_media_goal_roas.decimal' => '付費媒體 ROAS 目標最多可輸入 4 位小數。',
+            'paid_media_goal_roas.gt' => '付費媒體 ROAS 目標必須大於 0。',
+            'paid_media_goal_roas.max' => '付費媒體 ROAS 目標數值過大。',
             'meta_campaign_id.between' => 'Meta 活動 ID 需為 5 至 32 位數字。',
             'meta_campaign_id.regex' => 'Meta 活動 ID 必須是數字。',
             'google_ads_campaign_id.between' => 'Google Ads 活動 ID 需為 5 至 32 位數字。',

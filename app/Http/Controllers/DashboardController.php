@@ -16,6 +16,7 @@ use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DashboardCampaignMarketingSummary;
 use App\Services\FleetAvailabilityReport;
+use App\Services\SocialEngagementCampaignPaidMediaRoasGoalReport;
 use App\Services\SocialEngagementDataCoverageReport;
 use App\Services\SocialPostMaturityReport;
 use App\Services\UrlMasker;
@@ -76,6 +77,7 @@ class DashboardController extends Controller
         SocialPostMaturityReport $socialPostMaturityReport,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummaryBuilder,
+        SocialEngagementCampaignPaidMediaRoasGoalReport $paidMediaRoasGoalReport,
     ): View {
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
@@ -422,6 +424,18 @@ class DashboardController extends Controller
 
         foreach ($campaignPortfolioMarketingSummary['campaign_interaction_cost_ranks'] as $targetId => $sourceRanks) {
             $socialEngagementMarketingSummaries[$targetId]['efficiency']['portfolio_interaction_cost_ranks'] = $sourceRanks;
+        }
+
+        foreach ($socialEngagementTargetModels as $target) {
+            $marketing = $socialEngagementMarketingSummaries[$target->getKey()] ?? [];
+            $efficiency = is_array($marketing['efficiency'] ?? null) ? $marketing['efficiency'] : [];
+            $socialEngagementMarketingSummaries[$target->getKey()]['efficiency']['paid_media_roas_goal'] = $paidMediaRoasGoalReport->build(
+                $target,
+                $efficiency,
+                ($marketing['google_analytics']['status'] ?? null) === 'stale',
+                ($marketing['meta_marketing']['status'] ?? null) === 'stale',
+                ($marketing['google_ads']['status'] ?? null) === 'stale',
+            );
         }
 
         $socialEngagementTargets = $socialEngagementTargetModels

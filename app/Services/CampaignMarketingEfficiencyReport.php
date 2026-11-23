@@ -23,6 +23,7 @@ class CampaignMarketingEfficiencyReport
      *     roas_spend_source: string|null,
      *     roas_spend_source_label: string|null,
      *     roas_unavailable_reason: string|null,
+     *     roas_unrounded: float|null,
      *     paid_ad_clicks: int|null,
      *     paid_click_source: string|null,
      *     paid_click_source_label: string|null,
@@ -31,7 +32,9 @@ class CampaignMarketingEfficiencyReport
      *     paid_click_session_status_label: string,
      *     meta_ads_omni_purchase_value: string|null,
      *     meta_ads_purchase_roas: float|null,
+     *     meta_ads_purchase_roas_unrounded: float|null,
      *     google_ads_conversion_value_roas: float|null,
+     *     google_ads_conversion_value_roas_unrounded: float|null,
      *     cost_per_session: float|null,
      *     cost_per_key_event: float|null,
      *     cost_per_public_interaction: float|null,
@@ -121,20 +124,22 @@ class CampaignMarketingEfficiencyReport
         $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
         $metaPurchaseValue = $this->metaOmniPurchaseValue($metaMarketingReport?->action_values);
         $metaCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
-        $metaRoas = $metaPurchaseValue !== null
+        $metaRoasUnrounded = $metaPurchaseValue !== null
             && $metaSpendAmount !== null
             && (float) $metaSpendAmount > 0
             && $metaCurrency !== null
-            ? round((float) $metaPurchaseValue / (float) $metaSpendAmount, 2)
+            ? (float) $metaPurchaseValue / (float) $metaSpendAmount
             : null;
+        $metaRoas = $metaRoasUnrounded === null ? null : round($metaRoasUnrounded, 2);
         $googleAdsConversionValue = $googleAdsReport?->conversions_value;
         $googleAdsCurrency = $this->currencyCode($googleAdsReport?->currency_code);
-        $googleAdsRoas = $googleAdsConversionValue !== null
+        $googleAdsRoasUnrounded = $googleAdsConversionValue !== null
             && $googleAdsSpendAmount !== null
             && (float) $googleAdsSpendAmount > 0
             && $googleAdsCurrency !== null
-            ? round((float) $googleAdsConversionValue / (float) $googleAdsSpendAmount, 2)
+            ? (float) $googleAdsConversionValue / (float) $googleAdsSpendAmount
             : null;
+        $googleAdsRoas = $googleAdsRoasUnrounded === null ? null : round($googleAdsRoasUnrounded, 2);
         $googleAnalyticsCurrency = is_string($googleAnalyticsReport?->currency_code) && trim($googleAnalyticsReport->currency_code) !== ''
             ? strtoupper(trim($googleAnalyticsReport->currency_code))
             : null;
@@ -147,6 +152,9 @@ class CampaignMarketingEfficiencyReport
             $roasSpendCurrency !== $googleAnalyticsCurrency => 'currency_mismatch',
             default => null,
         };
+        $roasUnrounded = $roasUnavailableReason === null && $googleAnalyticsReport !== null && $roasSpendAmount !== null
+            ? (float) $googleAnalyticsReport->total_revenue / (float) $roasSpendAmount
+            : null;
         $budgetPacing = $this->budgetPacing($target, $spendAmount, $spendCurrency, $spendSource);
 
         return [
@@ -175,10 +183,13 @@ class CampaignMarketingEfficiencyReport
                 default => null,
             },
             'roas_unavailable_reason' => $roasUnavailableReason,
+            'roas_unrounded' => $roasUnrounded,
             ...$paidClickSessionDiagnostic,
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
+            'meta_ads_purchase_roas_unrounded' => $metaRoasUnrounded,
             'google_ads_conversion_value_roas' => $googleAdsRoas,
+            'google_ads_conversion_value_roas_unrounded' => $googleAdsRoasUnrounded,
             'cost_per_session' => $roasSpendAmount !== null && $googleAnalyticsReport !== null && $googleAnalyticsReport->sessions > 0
                 ? round((float) $roasSpendAmount / $googleAnalyticsReport->sessions, 4)
                 : null,

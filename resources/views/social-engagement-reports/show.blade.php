@@ -198,6 +198,56 @@
             @endif
         </section>
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-paid-media-goal-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-paid-media-goal-title">付費媒體 ROAS 目標</h2>
+                    <p class="campaign-report-secondary">依所選來源比較活動目標與實際 ROAS；資料過期或缺少配對數據時不計達成度。</p>
+                </div>
+                <span class="badge badge-{{ $paidMediaRoasGoal['status'] === 'available' ? 'healthy' : 'warning' }}">{{ $paidMediaRoasGoal['status_label'] }}</span>
+            </div>
+            @if ($paidMediaRoasGoal['status'] === 'not_configured')
+                <p class="campaign-report-empty">尚未設定付費媒體 ROAS 目標。<a href="{{ route('dashboard', ['engagement_platform' => $target->social_platform, 'engagement_tag' => 'tag:'.$target->tag]) }}">前往活動目標設定</a></p>
+            @else
+                <dl class="campaign-report-summary campaign-efficiency-summary">
+                    <div>
+                        <dt>目標來源</dt>
+                        <dd>{{ $paidMediaRoasGoal['source_label'] }}</dd>
+                    </div>
+                    <div>
+                        <dt>目標 ROAS</dt>
+                        <dd>{{ number_format($paidMediaRoasGoal['target_roas'], 4) }}x</dd>
+                    </div>
+                    <div>
+                        <dt>實際 ROAS</dt>
+                        <dd>{{ $paidMediaRoasGoal['actual_roas'] === null ? '—' : number_format($paidMediaRoasGoal['actual_roas'], 4).'x' }}</dd>
+                        @if ($paidMediaRoasGoal['spend_source_label'] !== null)
+                            <span class="campaign-report-secondary">分母：{{ $paidMediaRoasGoal['spend_source_label'] }}</span>
+                        @endif
+                    </div>
+                    <div>
+                        <dt>達成率</dt>
+                        <dd>{{ $paidMediaRoasGoal['attainment_percent'] === null ? '—' : number_format($paidMediaRoasGoal['attainment_percent'], 1).'%' }}</dd>
+                    </div>
+                    <div>
+                        <dt>與目標差額</dt>
+                        <dd>
+                            @if ($paidMediaRoasGoal['difference_roas'] === null)
+                                —
+                            @elseif ($paidMediaRoasGoal['difference_roas'] >= 0)
+                                超過 {{ number_format($paidMediaRoasGoal['difference_roas'], 4) }}x
+                            @else
+                                尚差 {{ number_format(abs($paidMediaRoasGoal['difference_roas']), 4) }}x
+                            @endif
+                        </dd>
+                    </div>
+                </dl>
+                @if ($paidMediaRoasGoal['status'] !== 'available')
+                    <p class="campaign-report-empty">{{ $paidMediaRoasGoal['status_label'] }}</p>
+                @endif
+            @endif
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-meta-title">
             <div class="campaign-report-section-header">
                 <div>

@@ -162,6 +162,74 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('available', $response->viewData('businessGoal')['status']);
     }
 
+    public function test_campaign_report_displays_paid_media_roas_goal_attainment(): void
+    {
+        $user = User::factory()->create();
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'encrypted-token',
+        ]);
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $target->update([
+            'paid_media_goal_source' => 'ga4',
+            'paid_media_goal_roas' => '2.0000',
+            'ad_spend_amount' => '200.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
+        $this->storeCampaignAnalyticsReport($connection, $target, [
+            'key_events' => '12.5000',
+            'total_revenue' => '500.2500',
+            'currency_code' => 'TWD',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('付費媒體 ROAS 目標')
+            ->assertSee('GA4 ROAS')
+            ->assertSee('2.0000x')
+            ->assertSee('2.5013x')
+            ->assertSee('125.1%')
+            ->assertSee('超過 0.5013x')
+            ->assertSee('人工記錄花費');
+
+        $this->assertSame('available', $response->viewData('paidMediaRoasGoal')['status']);
+        $this->assertSame(125.1, $response->viewData('paidMediaRoasGoal')['attainment_percent']);
+    }
+
+    public function test_dashboard_displays_paid_media_roas_goal_attainment_for_the_campaign(): void
+    {
+        $user = User::factory()->create();
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'encrypted-token',
+        ]);
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $target->update([
+            'paid_media_goal_source' => 'ga4',
+            'paid_media_goal_roas' => '2.0000',
+            'ad_spend_amount' => '200.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
+        $this->storeCampaignAnalyticsReport($connection, $target, [
+            'key_events' => '12.5000',
+            'total_revenue' => '500.2500',
+            'currency_code' => 'TWD',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('GA4 ROAS目標 2.0000x')
+            ->assertSee('達成率 125.1%');
+
+        $goal = $response->viewData('socialEngagementTargets')[0]['marketing']['efficiency']['paid_media_roas_goal'];
+        $this->assertSame('available', $goal['status']);
+        $this->assertSame(125.1, $goal['attainment_percent']);
+    }
+
     public function test_campaign_summary_csv_exports_the_configured_ga4_goal(): void
     {
         $user = User::factory()->create();
@@ -171,6 +239,12 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
             'refresh_token' => 'encrypted-token',
         ]);
         $target = $this->businessGoalTarget('total_revenue', '1000.0000', 'TWD');
+        $target->update([
+            'paid_media_goal_source' => 'ga4',
+            'paid_media_goal_roas' => '2.0000',
+            'ad_spend_amount' => '200.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
         $this->storeCampaignAnalyticsReport($connection, $target, [
             'key_events' => '12.5000',
             'total_revenue' => '800.0000',
@@ -192,6 +266,14 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('800.0000', $fields['ga4_business_goal_actual_value']);
         $this->assertSame('80.0', $fields['ga4_business_goal_completion_percent']);
         $this->assertSame('進度可用', $fields['ga4_business_goal_status']);
+        $this->assertSame('ga4', $fields['paid_media_roas_goal_source']);
+        $this->assertSame('GA4 ROAS', $fields['paid_media_roas_goal_source_label']);
+        $this->assertSame('人工記錄花費', $fields['paid_media_roas_goal_spend_source']);
+        $this->assertSame('2.0000', $fields['paid_media_roas_goal_target']);
+        $this->assertSame('4.0000', $fields['paid_media_roas_actual']);
+        $this->assertSame('200.0', $fields['paid_media_roas_attainment_percent']);
+        $this->assertSame('2.0000', $fields['paid_media_roas_difference']);
+        $this->assertSame('達成度可用', $fields['paid_media_roas_goal_status']);
     }
 
     private function businessGoalTarget(

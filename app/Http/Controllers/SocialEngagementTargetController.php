@@ -34,6 +34,10 @@ class SocialEngagementTargetController extends Controller
                 'ga4_goal_currency' => ($data['ga4_goal_metric'] ?? null) === 'total_revenue'
                     ? $data['ga4_goal_currency']
                     : null,
+                'paid_media_goal_source' => $data['paid_media_goal_source'] ?? null,
+                'paid_media_goal_roas' => ($data['paid_media_goal_source'] ?? null) !== null
+                    ? $data['paid_media_goal_roas']
+                    : null,
                 'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
                 'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
             ],

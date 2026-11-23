@@ -24,6 +24,7 @@ class CampaignMarketingReportCsv
      *     googleAnalyticsSourceName: string|null,
      *     googleAnalyticsMediumName: string|null,
      *     businessGoal: array<string, mixed>,
+     *     paidMediaRoasGoal: array<string, mixed>,
      *     adSpendAnalysis: array<string, mixed>
      * }  $data
      * @return array{headers: list<string>, fields: list<string>}
@@ -36,6 +37,7 @@ class CampaignMarketingReportCsv
         $goalForecast = $report['goal_forecast'];
         $analyticsReport = $data['googleAnalyticsReport'];
         $businessGoal = $data['businessGoal'];
+        $paidMediaRoasGoal = $data['paidMediaRoasGoal'];
         $metaMarketingReport = $data['metaMarketingReport'];
         $googleAdsReport = $data['googleAdsReport'];
         $adSpendAnalysis = $data['adSpendAnalysis'];
@@ -103,6 +105,14 @@ class CampaignMarketingReportCsv
             'ga4_business_goal_completion_percent',
             'ga4_business_goal_remaining_value',
             'ga4_business_goal_status',
+            'paid_media_roas_goal_source',
+            'paid_media_roas_goal_source_label',
+            'paid_media_roas_goal_spend_source',
+            'paid_media_roas_goal_target',
+            'paid_media_roas_actual',
+            'paid_media_roas_attainment_percent',
+            'paid_media_roas_difference',
+            'paid_media_roas_goal_status',
             'ga4_source_medium_breakdown_json',
             'ga4_source_medium_breakdown_truncated',
             'ga4_currency_code',
@@ -221,6 +231,14 @@ class CampaignMarketingReportCsv
             $this->formatDecimal($businessGoal['completion_percent'] ?? null, 1),
             $this->formatDecimal($businessGoal['remaining_value'] ?? null, 4),
             $businessGoal['status_label'] ?? '',
+            $paidMediaRoasGoal['source'] ?? '',
+            $paidMediaRoasGoal['source_label'] ?? '',
+            $paidMediaRoasGoal['spend_source_label'] ?? '',
+            $this->formatDecimal($paidMediaRoasGoal['target_roas'] ?? null, 4),
+            $this->formatDecimal($paidMediaRoasGoal['actual_roas'] ?? null, 4),
+            $this->formatDecimal($paidMediaRoasGoal['attainment_percent'] ?? null, 1),
+            $this->formatDecimal($paidMediaRoasGoal['difference_roas'] ?? null, 4),
+            $paidMediaRoasGoal['status_label'] ?? '',
             $analyticsReport?->source_medium_breakdown === null
                 ? ''
                 : $this->encodeJson($analyticsReport->source_medium_breakdown),

@@ -458,6 +458,28 @@
                         </div>
                     </div>
                 </fieldset>
+                <fieldset class="campaign-business-goal-fields">
+                    <legend>付費媒體 ROAS 目標</legend>
+                    <div class="campaign-business-goal-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-paid-media-goal-source">目標來源</label>
+                            <select class="field-select{{ $errors->getBag('socialEngagementTarget')->has('paid_media_goal_source') ? ' is-invalid' : '' }}" id="social-engagement-target-paid-media-goal-source" name="paid_media_goal_source" aria-describedby="social-engagement-target-paid-media-goal-source-help{{ $errors->getBag('socialEngagementTarget')->has('paid_media_goal_source') ? ' social-engagement-target-paid-media-goal-source-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('paid_media_goal_source')) aria-invalid="true" @endif>
+                                <option value="" @selected(old('paid_media_goal_source', $socialEngagementTargetFormTarget?->paid_media_goal_source) === null)>不設定</option>
+                                <option value="ga4" @selected(old('paid_media_goal_source', $socialEngagementTargetFormTarget?->paid_media_goal_source) === 'ga4')>GA4 ROAS</option>
+                                <option value="meta_ads" @selected(old('paid_media_goal_source', $socialEngagementTargetFormTarget?->paid_media_goal_source) === 'meta_ads')>Meta Ads 購買 ROAS</option>
+                                <option value="google_ads" @selected(old('paid_media_goal_source', $socialEngagementTargetFormTarget?->paid_media_goal_source) === 'google_ads')>Google Ads 轉換價值 ROAS</option>
+                            </select>
+                            <p id="social-engagement-target-paid-media-goal-source-help" class="field-help">只選一種來源；GA4 ROAS 使用活動目前配對的花費來源。</p>
+                            @error('paid_media_goal_source', 'socialEngagementTarget')<p id="social-engagement-target-paid-media-goal-source-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-paid-media-goal-roas">目標 ROAS</label>
+                            <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('paid_media_goal_roas') ? ' is-invalid' : '' }}" id="social-engagement-target-paid-media-goal-roas" name="paid_media_goal_roas" type="number" inputmode="decimal" min="0.0001" max="9999999999999999" step="0.0001" value="{{ old('paid_media_goal_roas', $socialEngagementTargetFormTarget?->paid_media_goal_roas) }}" aria-describedby="social-engagement-target-paid-media-goal-roas-help{{ $errors->getBag('socialEngagementTarget')->has('paid_media_goal_roas') ? ' social-engagement-target-paid-media-goal-roas-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('paid_media_goal_roas')) aria-invalid="true" @endif>
+                            <p id="social-engagement-target-paid-media-goal-roas-help" class="field-help">例如 2.5 代表每 1 元花費帶來 2.5 元轉換價值；需大於 0。</p>
+                            @error('paid_media_goal_roas', 'socialEngagementTarget')<p id="social-engagement-target-paid-media-goal-roas-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                </fieldset>
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-starts-on">活動開始日</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' is-invalid' : '' }}" id="social-engagement-target-starts-on" name="starts_on" type="date" value="{{ old('starts_on', $socialEngagementTargetFormTarget?->starts_on?->toDateString()) }}" aria-describedby="social-engagement-target-period-help{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' social-engagement-target-start-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('starts_on')) aria-invalid="true" @endif>
@@ -816,6 +838,7 @@
                             @php
                                 $marketing = $socialEngagementTarget['marketing'];
                                 $efficiency = $marketing['efficiency'];
+                                $paidMediaRoasGoal = $efficiency['paid_media_roas_goal'] ?? null;
                                 $roasUnavailableLabel = match ($efficiency['roas_unavailable_reason']) {
                                     'ad_platform_currency_mismatch' => '廣告幣別不同',
                                     'currency_mismatch' => '營收與花費幣別不同',
@@ -868,6 +891,9 @@
                                         <span class="secondary-text">分母：{{ $efficiency['roas_spend_source_label'] ?? '—' }} {{ number_format((float) $efficiency['roas_spend_amount'], 2) }} {{ $efficiency['roas_spend_currency'] ?? '' }}</span>
                                     @else
                                         {{ $roasUnavailableLabel }}
+                                    @endif
+                                    @if ($paidMediaRoasGoal !== null && $paidMediaRoasGoal['status'] !== 'not_configured')
+                                        <span class="secondary-text">{{ $paidMediaRoasGoal['source_label'] }}目標 {{ number_format($paidMediaRoasGoal['target_roas'], 4) }}x · 實際 {{ $paidMediaRoasGoal['actual_roas'] === null ? '—' : number_format($paidMediaRoasGoal['actual_roas'], 4).'x' }}{{ $paidMediaRoasGoal['attainment_percent'] === null ? ' · '.$paidMediaRoasGoal['status_label'] : ' · 達成率 '.number_format($paidMediaRoasGoal['attainment_percent'], 1).'%' }}</span>
                                     @endif
                                 </td>
                                 <td class="numeric">
