@@ -45,6 +45,8 @@ class FeatureGuideTest extends TestCase
             ->assertSee('互動數擷取覆蓋率依近 7／30 天取得 HTTP 狀態碼')
             ->assertSee('發文時間成效依台灣時間分為四個時段')
             ->assertSee('貼文年齡成效比較發文後 24 小時、7 天及 30 天')
+            ->assertSee('目標時間前後 6 小時內最近一次完整讀值')
+            ->assertSee('頁面可用率與互動數擷取覆蓋率是不同指標')
             ->assertSee('平均與中位數互動、觀看互動率')
             ->assertSee('活動互動目標可依標籤與平台設定期間')
             ->assertSee('進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位')

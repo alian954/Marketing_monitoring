@@ -180,7 +180,6 @@ class DashboardSocialEngagementTrendTest extends TestCase
             ->get(route('dashboard', ['engagement_tag' => 'tag:campaign']))
             ->assertOk()
             ->assertSee('貼文年齡成效')
-            ->assertSee('目標時間前後 6 小時內最近的完整讀值')
             ->assertSee('<th scope="col">貼文年齡</th>', false)
             ->assertSee('<th scope="col">中位數互動／篇</th>', false)
             ->assertSee('<th scope="col">互動樣本</th>', false)

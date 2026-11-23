@@ -9,11 +9,10 @@
 
     <div class="page-heading">
         <div class="heading-copy">
-            <p class="eyebrow">監測總覽</p>
-            <h1 class="page-title">{{ now()->timezone('Asia/Taipei')->format('A') === 'AM' ? '早安' : '您好' }}</h1>
-            <p class="page-description">監測狀態、事件與執行服務。</p>
+            <h1 class="page-title">監測總覽</h1>
         </div>
         <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('features.index') }}">功能說明</a>
             <a class="button button-secondary" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
             <a class="button button-secondary" href="{{ route('monitors.export') }}">匯出 CSV</a>
             <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
@@ -24,35 +23,220 @@
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">正常</span><x-state-badge state="healthy" /></div>
             <strong class="stat-value">{{ $counts['healthy'] ?? 0 }}</strong>
-            <p class="stat-hint">網站或貼文回應正常</p>
         </article>
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">需留意</span><x-state-badge state="issue" /></div>
             <strong class="stat-value">{{ $counts['issue'] ?? 0 }}</strong>
-            <p class="stat-hint">異常已確認或仍在確認中</p>
         </article>
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">效能警告</span><x-state-badge state="warning" /></div>
             <strong class="stat-value">{{ $counts['warning'] ?? 0 }}</strong>
-            <p class="stat-hint">回應變慢或檢查受到限制</p>
         </article>
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">資料逾時</span><x-state-badge state="stale" /></div>
             <strong class="stat-value">{{ $counts['stale'] ?? 0 }}</strong>
-            <p class="stat-hint">最近沒有完成的檢查</p>
         </article>
         <article class="stat-card">
             <div class="stat-topline"><span class="stat-label">已暫停</span><x-state-badge state="paused" /></div>
             <strong class="stat-value">{{ $counts['paused'] ?? 0 }}</strong>
-            <p class="stat-hint">目前未執行監測</p>
         </article>
     </section>
 
+    <section class="dashboard-focus-grid" aria-label="快速摘要">
+        <a class="dashboard-focus-card panel" href="{{ route('incidents.index') }}">
+            <span class="dashboard-focus-label">進行中的事件</span>
+            <strong class="dashboard-focus-value">{{ number_format($incidents->count()) }}</strong>
+            <span class="dashboard-focus-action">查看事件 <span aria-hidden="true">→</span></span>
+        </a>
+        <a class="dashboard-focus-card panel" href="{{ route('monitors.index') }}">
+            <span class="dashboard-focus-label">監測項目</span>
+            <strong class="dashboard-focus-value">{{ number_format($totalMonitors) }}</strong>
+            <span class="dashboard-focus-action">管理監測 <span aria-hidden="true">→</span></span>
+        </a>
+        <a class="dashboard-focus-card panel" href="#dashboard-marketing-summary">
+            <span class="dashboard-focus-label">社群貼文</span>
+            <strong class="dashboard-focus-value">{{ number_format(collect($platformCounts)->sum('total')) }}</strong>
+            <span class="dashboard-focus-action">查看行銷數據 <span aria-hidden="true">→</span></span>
+        </a>
+    </section>
+
+    <div class="dashboard-top">
+        <section class="panel" id="dashboard-monitors">
+            <div class="panel-header">
+                <div>
+                    <h2 class="panel-title">監測項目</h2>
+                </div>
+                <a class="strong-link" href="{{ route('monitors.index') }}">查看全部 <span aria-hidden="true">→</span></a>
+            </div>
+
+            @if ($monitors->isEmpty())
+                <div class="empty-state">
+                    <h3 class="empty-title">目前沒有監測項目</h3>
+                    <p class="empty-copy">新增網站或公開貼文網址，即可開始檢查連線狀態與指定內容。</p>
+                    <a class="button button-primary" href="{{ route('monitors.create') }}">新增第一個監測項目</a>
+                </div>
+            @else
+                <div class="data-table-wrap">
+                    <table class="data-table">
+                        <caption class="sr-only">監測項目狀態與最近一次檢查</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">監測項目</th>
+                                <th scope="col">狀態</th>
+                                <th scope="col">最近檢查</th>
+                                <th scope="col"><span class="sr-only">操作</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($monitors->take(8) as $monitor)
+                                <tr>
+                                    <td>
+                                        <a class="monitor-name-link" href="{{ route('monitors.show', $monitor) }}">{{ $monitor->name }}</a>
+                                        @if ($monitor->label)
+                                            <span class="secondary-text">{{ $monitor->label }}</span>
+                                        @endif
+                                        @if ($monitor->socialPlatform())
+                                            <span class="platform-chip platform-chip--{{ $monitor->social_platform }}">
+                                                <span class="platform-chip__dot" aria-hidden="true"></span>
+                                                {{ $monitor->socialPlatform() }} 公開貼文
+                                            </span>
+                                        @endif
+                                        @if ($monitor->getAttribute('masked_url'))
+                                            <span class="secondary-text masked-url">{{ $monitor->getAttribute('masked_url') }}</span>
+                                        @endif
+                                    </td>
+                                    <td><x-state-badge :state="$monitor->health_state" /></td>
+                                    <td>
+                                        @if ($monitor->last_checked_at)
+                                            <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
+                                            @if ($monitor->latestCheckRun?->normal_status !== null)
+                                                <span class="secondary-text">HTTP {{ $monitor->latestCheckRun->normal_status }}</span>
+                                            @elseif ($monitor->latestCheckRun?->error_type)
+                                                <span class="secondary-text">{{ $monitor->latestCheckRun->error_type }}</span>
+                                            @endif
+                                        @else
+                                                <span class="secondary-text">等待首次檢查</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <div class="row-actions">
+                                            <form class="inline-form" action="{{ route('monitors.toggle', $monitor) }}" method="POST">
+                                                @csrf
+                                                <button class="button button-quiet button-small" type="submit" aria-label="{{ $monitor->enabled ? '暫停' : '恢復' }}{{ $monitor->name }}的監測">
+                                                    {{ $monitor->enabled ? '暫停' : '恢復' }}
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </section>
+
+        <section class="panel heartbeat-panel" aria-labelledby="runtime-title">
+            <div class="heartbeat-item">
+                <div class="heartbeat-heading">
+                    <h2 id="runtime-title" class="panel-title">執行服務</h2>
+                </div>
+                <div class="heartbeat-heading heartbeat-subheading">
+                    <span class="heartbeat-dot {{ $heartbeatStatus === 'healthy' ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
+                    <h3 class="heartbeat-title">排程器</h3>
+                    <x-state-badge :state="$heartbeatStatus" />
+                </div>
+                @if ($heartbeat?->last_succeeded_at)
+                    <p class="heartbeat-copy">最近一次成功執行</p>
+                    <time class="heartbeat-time" datetime="{{ $heartbeat->last_succeeded_at->toIso8601String() }}">{{ $heartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
+                @else
+                    <p class="heartbeat-copy">尚未記錄成功的排程器執行。</p>
+                @endif
+                @if ($heartbeat?->last_started_at)
+                    <p class="heartbeat-copy">最近啟動：<time datetime="{{ $heartbeat->last_started_at->toIso8601String() }}">{{ $heartbeat->last_started_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time></p>
+                @endif
+                @if ($heartbeatError !== null)
+                    <p class="heartbeat-copy">最近執行錯誤：{{ $heartbeatError }}</p>
+                @endif
+            </div>
+
+            <div class="heartbeat-item">
+                <div class="heartbeat-heading heartbeat-subheading">
+                    <h3 class="heartbeat-title">Queue worker</h3>
+                    @if ($queueWorkerEnabled)
+                        <span class="heartbeat-dot {{ $workerHeartbeatFresh ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
+                        <x-state-badge :state="$workerHeartbeatFresh ? 'healthy' : 'stale'" />
+                    @endif
+                </div>
+                @if (! $queueWorkerEnabled)
+                    <p class="heartbeat-copy">目前使用 sync 同步佇列，工作由目前程序直接執行，沒有獨立 worker 心跳。</p>
+                @else
+                    @if ($queueSize === null)
+                        <p class="heartbeat-copy">目前無法取得佇列工作數。</p>
+                    @else
+                        <p class="heartbeat-copy">目前佇列工作總數：{{ number_format($queueSize) }} 筆（包含延遲與處理中的工作）</p>
+                    @endif
+                    @if ($queueStateCounts !== null)
+                        <p class="heartbeat-copy">可立即處理 {{ number_format($queueStateCounts['pending']) }} 筆、延遲等待 {{ number_format($queueStateCounts['delayed']) }} 筆、保留中 {{ number_format($queueStateCounts['reserved']) }} 筆。</p>
+                    @endif
+                    @if ($checkRunQueueHealth !== null)
+                        <p class="heartbeat-copy">監測檢查：到期排隊 {{ number_format($checkRunQueueHealth['due_queued_count']) }} 筆、執行中 {{ number_format($checkRunQueueHealth['running_count']) }} 筆。</p>
+                        @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null || $checkRunQueueHealth['longest_running_seconds'] !== null)
+                            <p class="heartbeat-copy">
+                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null)
+                                    最久等待 {{ number_format($checkRunQueueHealth['oldest_due_wait_seconds'] / 60, 1) }} 分鐘
+                                @endif
+                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null && $checkRunQueueHealth['longest_running_seconds'] !== null)
+                                    ；
+                                @endif
+                                @if ($checkRunQueueHealth['longest_running_seconds'] !== null)
+                                    最久執行 {{ number_format($checkRunQueueHealth['longest_running_seconds'] / 60, 1) }} 分鐘
+                                @endif
+                            </p>
+                        @endif
+                        @if ($checkRunQueueHealth['queued_warning'])
+                            <p class="heartbeat-copy">有到期檢查已等待超過 2 分鐘，請確認佇列處理狀況。</p>
+                        @endif
+                        @if ($checkRunQueueHealth['running_warning'])
+                            <p class="heartbeat-copy">有檢查已執行超過 3 分鐘，請查看 worker 與該次檢查紀錄。</p>
+                        @endif
+                    @endif
+                    @if ($workerHeartbeat?->last_succeeded_at)
+                        <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
+                        <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
+                        @unless ($workerHeartbeatFresh)
+                            <p class="heartbeat-copy">超過 2 分鐘沒有心跳，請檢查 queue worker 是否停止或佇列是否塞住。</p>
+                        @endunless
+                    @else
+                        <p class="heartbeat-copy">尚未收到 worker 心跳；請確認 queue worker 已啟動且佇列能正常處理工作。</p>
+                    @endif
+                @endif
+            </div>
+            @if ($failedQueueJobStorageSupported)
+                <div class="heartbeat-item">
+                    <div class="heartbeat-heading heartbeat-subheading">
+                        <h3 class="heartbeat-title">失敗佇列工作</h3>
+                    </div>
+                    @if ($failedQueueJobCount === null)
+                        <p class="heartbeat-copy">目前無法取得失敗佇列工作數。</p>
+                    @else
+                        <p class="heartbeat-copy">目前記錄 {{ number_format($failedQueueJobCount) }} 件失敗工作。</p>
+                    @endif
+                </div>
+            @endif
+        </section>
+    </div>
+
+    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-marketing-summary" @if ($socialEngagementSelectedPlatform !== 'all' || $socialEngagementSelectedTag !== 'all' || $socialEngagementChangePeriodDays !== 7) open @endif>
+        <summary>
+            <span id="dashboard-marketing-summary">行銷數據</span>
+            <span class="dashboard-disclosure-meta">公開互動、活動成效與趨勢</span>
+        </summary>
+        <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="social-platform-summary-title">
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
-                <p class="panel-description">顯示各平台貼文狀態，以及啟用貼文最近一次檢查讀到互動數的篇數。</p>
             </div>
         </div>
         @if (collect($platformCounts)->sum('total') === 0)
@@ -106,7 +290,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="public-engagement-title" class="panel-title">公開互動數</h2>
-                <p class="panel-description">最近可讀取的貼文觀看、讚、留言與分享數；依最近檢查時間排序，每頁 50 篇。</p>
             </div>
             <div class="row-actions">
                 <a class="strong-link" href="{{ route('monitors.social-engagement.export', ['engagement_platform' => $socialEngagementSelectedPlatform, 'engagement_tag' => $socialEngagementSelectedTag]) }}">最新值 CSV <span aria-hidden="true">↓</span></a>
@@ -228,7 +411,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="top-engagement-posts-title" class="panel-title">互動量排行</h2>
-                <p class="panel-description">可依互動合計或觀看互動率排序前五篇，並標示資料時間。全部平台時只比較 Facebook／Threads 的完整三項數據；Instagram／Dcard 請篩選平台，以讚＋留言排行。</p>
             </div>
             @if ($socialEngagementTopPosts !== [])
                 <nav class="heading-actions" aria-label="互動量排行排序">
@@ -303,7 +485,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-title" class="panel-title">標籤成效比較</h2>
-                <p class="panel-description">本次／前次擷取篇數另列。全部平台時，平均互動與觀看互動率只計 Facebook／Threads 的完整三項數據；篩選 Instagram／Dcard 時以讚＋留言計。觀看互動率＝同口徑互動合計÷觀看數，只計觀看大於 0 的貼文；跨標籤可能重複計入。</p>
             </div>
             @if ($socialEngagementSummaries !== [])
                 <nav class="heading-actions" aria-label="標籤成效排序">
@@ -397,7 +578,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-engagement-targets-title" class="panel-title">活動互動目標</h2>
-                <p class="panel-description">目前值依各貼文最近一次完整讀值加總，括號列出資料覆蓋篇數；進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位。尚未開始則按活動日數分配目標；進行中資料不足、已達成或活動結束時不估算。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.export') }}">匯出目標 CSV</a>
         </div>
@@ -602,7 +782,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="campaign-marketing-overview-title" class="panel-title">活動行銷成效</h2>
-                <p class="panel-description">查看 GA4 工作階段與營收、廣告花費、ROAS 和預算使用率。缺少或過期的資料會標示狀態。</p>
             </div>
         </div>
         @if ($socialEngagementTargets === [])
@@ -621,9 +800,6 @@
                     'google_ads' => 'Google Ads',
                 ];
             @endphp
-            <p class="panel-description">
-                目前篩選的 {{ number_format($campaignPortfolioMarketingSummary['target_count']) }} 個活動期間累計；期間依各活動設定，金額依幣別分列，包含可用的過期快照。
-            </p>
             @if ($ga4BusinessGoalCoverage['configured_campaigns'] > 0)
                 <p class="campaign-report-secondary">
                     GA4 目標：已設定 {{ number_format($ga4BusinessGoalCoverage['configured_campaigns']) }} 個，可比較 {{ number_format($ga4BusinessGoalCoverage['available_campaigns']) }} 個；領先 {{ number_format($ga4BusinessGoalCoverage['ahead_campaigns']) }}、落後 {{ number_format($ga4BusinessGoalCoverage['behind_campaigns']) }}、符合進度 {{ number_format($ga4BusinessGoalCoverage['on_track_campaigns']) }}、尚未開始 {{ number_format($ga4BusinessGoalCoverage['not_started_campaigns']) }}、已結束 {{ number_format($ga4BusinessGoalCoverage['completed_campaigns']) }}、進度資料不足 {{ number_format($ga4BusinessGoalCoverage['data_unavailable_campaigns']) }}。進度依活動日數線性比較。
@@ -1153,7 +1329,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="publishing-day-engagement-title" class="panel-title">發文週期成效</h2>
-                <p class="panel-description">依台灣時間的公開發布時間，列出各平台每週各日與四個時段的平均互動及篇數。只反映目前追蹤樣本，不代表發文時間造成成效差異。</p>
             </div>
         </div>
         @if ($socialEngagementPublishingDaySummaries === [])
@@ -1236,7 +1411,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-post-maturity-title" class="panel-title">貼文年齡成效</h2>
-                <p class="panel-description">比較發文後 24 小時、7 天與 30 天的互動表現；採目標時間前後 6 小時內最近的完整讀值，並列出平均值、中位數與樣本數。</p>
             </div>
             <a class="strong-link" href="{{ route('social-post-maturity.export', [
                 'engagement_platform' => $socialEngagementSelectedPlatform,
@@ -1297,7 +1471,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="cross-platform-engagement-title" class="panel-title">活動標籤跨平台比較</h2>
-                <p class="panel-description">依標籤並列各平台最近可讀數字，並標示本次讀取與沿用前次資料的篇數。</p>
             </div>
         </div>
         @if ($socialEngagementComparisonSummaries === [])
@@ -1359,7 +1532,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="tagged-engagement-change-title" class="panel-title">近 {{ $socialEngagementChangePeriodDays }} 天互動變化</h2>
-                <p class="panel-description">圖表逐篇比較每個可讀取指標與前次數值；兩次都有讀值的讚、留言或分享會分別計入，首筆不計，下降保留。</p>
                 <p class="secondary-text">下表只計有兩次讀值的貼文；前期比較限同時有兩期讀值的貼文。</p>
                 @if (! $socialEngagementChangeComparisonAvailable)
                     <p class="secondary-text">前期比較需保留 {{ $socialEngagementChangePeriodDays * 2 }} 天；目前設定保留 {{ $socialEngagementRetentionDays }} 天。</p>
@@ -1446,10 +1618,6 @@
             </div>
             <div class="spaced-top" aria-labelledby="social-engagement-growth-title">
                 <h3 id="social-engagement-growth-title" class="panel-title">單篇互動變化排行</h3>
-                <p class="panel-description">{{ $socialEngagementGrowthPostSort === 'growth_rate' ? '依互動成長率由高到低排序；期初為 0 的貼文列在最後。' : '依互動淨變化由高到低排序。' }} 成長率＝淨變化÷期初互動量；期初為 0 時無法計算，缺少的指標不當成 0。</p>
-                @if ($socialEngagementChangeComparisonAvailable)
-                    <p class="panel-description">較前期變化差＝本期增量減前期增量，只計兩期都有讀值的相同指標。</p>
-                @endif
                 @if ($socialEngagementGrowthPosts === [])
                     <div class="empty-state">
                         <h4 class="empty-title">尚無單篇互動變化</h4>
@@ -1574,7 +1742,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-engagement-data-coverage-title" class="panel-title">互動數擷取覆蓋</h2>
-                <p class="panel-description">檢查次數可重複計入同一貼文；覆蓋率只以取得 HTTP 回應（含 4xx／5xx）的檢查計算，無回應與未完整擷取原因會另外列出。</p>
             </div>
         </div>
         @if ($socialEngagementDataCoverageRows === [])
@@ -1633,7 +1800,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="social-platform-availability-title" class="panel-title">受監測貼文歷史品質</h2>
-                <p class="panel-description">依實際觀測估算；空窗與維護時段不計，覆蓋率另列。結果只代表受監測樣本。</p>
             </div>
         </div>
         @if (collect($fleetAvailability['social_platform_statistics'])->sum('monitor_count') === 0)
@@ -1679,11 +1845,19 @@
         @endif
     </section>
 
+        </div>
+    </details>
+
+    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-operations-summary">
+        <summary>
+            <span id="dashboard-operations-summary">服務品質與維運</span>
+            <span class="dashboard-disclosure-meta">可用率、SLO、憑證與網域</span>
+        </summary>
+        <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
         <div class="panel-header">
             <div>
                 <h2 id="fleet-availability-title" class="panel-title">整體監測品質</h2>
-                <p class="panel-description">比較近 24 小時、7 天與 30 天的實際觀測。</p>
             </div>
             <div class="heading-actions">
                 <span class="secondary-text">{{ $fleetAvailability['monitor_count'] }} 個啟用項目</span>
@@ -1730,7 +1904,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="fleet-slo-title" class="panel-title">SLO 錯誤預算狀態</h2>
-                <p class="panel-description">查看近 30 天錯誤預算與資料覆蓋率；資料不足時會提示。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('monitors.availability.export.fleet') }}">匯出完整 SLO CSV</a>
         </div>
@@ -1744,17 +1917,14 @@
                 <article class="stat-card">
                     <div class="stat-topline"><span class="stat-label">已超出預算</span><span class="badge badge-issue">需處理</span></div>
                     <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['exceeded_count'] }}</strong>
-                    <p class="stat-hint">觀測到的不可用時間已超過目標允許值</p>
                 </article>
                 <article class="stat-card">
                     <div class="stat-topline"><span class="stat-label">預算高用量</span><span class="badge badge-warning">≥ 80%</span></div>
                     <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['high_usage_count'] }}</strong>
-                    <p class="stat-hint">已使用至少 80% 的錯誤預算</p>
                 </article>
                 <article class="stat-card">
                     <div class="stat-topline"><span class="stat-label">資料覆蓋不足</span><span class="badge badge-unknown">待補觀測</span></div>
                     <strong class="stat-value">{{ $fleetAvailability['slo_budget_summary']['insufficient_coverage_count'] }}</strong>
-                    <p class="stat-hint">無可用觀測，或最近 30 天覆蓋率低於 90%</p>
                 </article>
             </div>
 
@@ -1812,185 +1982,16 @@
                     </table>
                 </div>
                 @if ($fleetAvailability['slo_budget_summary']['flagged_monitor_count'] > count($fleetAvailability['slo_budget_summary']['priority_monitors']))
-                    <p class="panel-description spaced-top">顯示最需留意的前 {{ count($fleetAvailability['slo_budget_summary']['priority_monitors']) }} 項；共 {{ $fleetAvailability['slo_budget_summary']['flagged_monitor_count'] }} 項有提醒。</p>
+                    <p class="secondary-text spaced-top">另有 {{ $fleetAvailability['slo_budget_summary']['flagged_monitor_count'] - count($fleetAvailability['slo_budget_summary']['priority_monitors']) }} 項需留意。</p>
                 @endif
             @endif
         @endif
     </section>
 
-    <div class="dashboard-top">
-        <section class="panel">
-            <div class="panel-header">
-                <div>
-                    <h2 class="panel-title">監測項目</h2>
-                    <p class="panel-description">目前共 {{ $totalMonitors }} 個網站或公開貼文</p>
-                </div>
-                <a class="strong-link" href="{{ route('monitors.index') }}">查看全部 <span aria-hidden="true">→</span></a>
-            </div>
-
-            @if ($monitors->isEmpty())
-                <div class="empty-state">
-                    <h3 class="empty-title">目前沒有監測項目</h3>
-                    <p class="empty-copy">新增網站或公開貼文網址，即可開始檢查連線狀態與指定內容。</p>
-                    <a class="button button-primary" href="{{ route('monitors.create') }}">新增第一個監測項目</a>
-                </div>
-            @else
-                <div class="data-table-wrap">
-                    <table class="data-table">
-                        <caption class="sr-only">監測項目狀態與最近一次檢查</caption>
-                        <thead>
-                            <tr>
-                                <th scope="col">監測項目</th>
-                                <th scope="col">狀態</th>
-                                <th scope="col">最近檢查</th>
-                                <th scope="col"><span class="sr-only">操作</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($monitors->take(8) as $monitor)
-                                <tr>
-                                    <td>
-                                        <a class="monitor-name-link" href="{{ route('monitors.show', $monitor) }}">{{ $monitor->name }}</a>
-                                        @if ($monitor->label)
-                                            <span class="secondary-text">{{ $monitor->label }}</span>
-                                        @endif
-                                        @if ($monitor->socialPlatform())
-                                            <span class="platform-chip platform-chip--{{ $monitor->social_platform }}">
-                                                <span class="platform-chip__dot" aria-hidden="true"></span>
-                                                {{ $monitor->socialPlatform() }} 公開貼文
-                                            </span>
-                                        @endif
-                                        @if ($monitor->getAttribute('masked_url'))
-                                            <span class="secondary-text masked-url">{{ $monitor->getAttribute('masked_url') }}</span>
-                                        @endif
-                                    </td>
-                                    <td><x-state-badge :state="$monitor->health_state" /></td>
-                                    <td>
-                                        @if ($monitor->last_checked_at)
-                                            <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
-                                            @if ($monitor->latestCheckRun?->normal_status !== null)
-                                                <span class="secondary-text">HTTP {{ $monitor->latestCheckRun->normal_status }}</span>
-                                            @elseif ($monitor->latestCheckRun?->error_type)
-                                                <span class="secondary-text">{{ $monitor->latestCheckRun->error_type }}</span>
-                                            @endif
-                                        @else
-                                                <span class="secondary-text">等待首次檢查</span>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        <div class="row-actions">
-                                            <form class="inline-form" action="{{ route('monitors.toggle', $monitor) }}" method="POST">
-                                                @csrf
-                                                <button class="button button-quiet button-small" type="submit" aria-label="{{ $monitor->enabled ? '暫停' : '恢復' }}{{ $monitor->name }}的監測">
-                                                    {{ $monitor->enabled ? '暫停' : '恢復' }}
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        </section>
-
-        <section class="panel heartbeat-panel" aria-labelledby="runtime-title">
-            <div class="heartbeat-item">
-                <div class="heartbeat-heading">
-                    <h2 id="runtime-title" class="panel-title">執行服務</h2>
-                </div>
-                <div class="heartbeat-heading heartbeat-subheading">
-                    <span class="heartbeat-dot {{ $heartbeatStatus === 'healthy' ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
-                    <h3 class="heartbeat-title">排程器</h3>
-                    <x-state-badge :state="$heartbeatStatus" />
-                </div>
-                @if ($heartbeat?->last_succeeded_at)
-                    <p class="heartbeat-copy">最近一次成功執行</p>
-                    <time class="heartbeat-time" datetime="{{ $heartbeat->last_succeeded_at->toIso8601String() }}">{{ $heartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
-                @else
-                    <p class="heartbeat-copy">尚未記錄成功的排程器執行。</p>
-                @endif
-                @if ($heartbeat?->last_started_at)
-                    <p class="heartbeat-copy">最近啟動：<time datetime="{{ $heartbeat->last_started_at->toIso8601String() }}">{{ $heartbeat->last_started_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time></p>
-                @endif
-                @if ($heartbeatError !== null)
-                    <p class="heartbeat-copy">最近執行錯誤：{{ $heartbeatError }}</p>
-                @endif
-            </div>
-
-            <div class="heartbeat-item">
-                <div class="heartbeat-heading heartbeat-subheading">
-                    <h3 class="heartbeat-title">Queue worker</h3>
-                    @if ($queueWorkerEnabled)
-                        <span class="heartbeat-dot {{ $workerHeartbeatFresh ? 'is-fresh' : 'is-stale' }}" aria-hidden="true"></span>
-                        <x-state-badge :state="$workerHeartbeatFresh ? 'healthy' : 'stale'" />
-                    @endif
-                </div>
-                @if (! $queueWorkerEnabled)
-                    <p class="heartbeat-copy">目前使用 sync 同步佇列，工作由目前程序直接執行，沒有獨立 worker 心跳。</p>
-                @else
-                    @if ($queueSize === null)
-                        <p class="heartbeat-copy">目前無法取得佇列工作數。</p>
-                    @else
-                        <p class="heartbeat-copy">目前佇列工作總數：{{ number_format($queueSize) }} 筆（包含延遲與處理中的工作）</p>
-                    @endif
-                    @if ($queueStateCounts !== null)
-                        <p class="heartbeat-copy">可立即處理 {{ number_format($queueStateCounts['pending']) }} 筆、延遲等待 {{ number_format($queueStateCounts['delayed']) }} 筆、保留中 {{ number_format($queueStateCounts['reserved']) }} 筆。</p>
-                    @endif
-                    @if ($checkRunQueueHealth !== null)
-                        <p class="heartbeat-copy">監測檢查：到期排隊 {{ number_format($checkRunQueueHealth['due_queued_count']) }} 筆、執行中 {{ number_format($checkRunQueueHealth['running_count']) }} 筆。</p>
-                        @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null || $checkRunQueueHealth['longest_running_seconds'] !== null)
-                            <p class="heartbeat-copy">
-                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null)
-                                    最久等待 {{ number_format($checkRunQueueHealth['oldest_due_wait_seconds'] / 60, 1) }} 分鐘
-                                @endif
-                                @if ($checkRunQueueHealth['oldest_due_wait_seconds'] !== null && $checkRunQueueHealth['longest_running_seconds'] !== null)
-                                    ；
-                                @endif
-                                @if ($checkRunQueueHealth['longest_running_seconds'] !== null)
-                                    最久執行 {{ number_format($checkRunQueueHealth['longest_running_seconds'] / 60, 1) }} 分鐘
-                                @endif
-                            </p>
-                        @endif
-                        @if ($checkRunQueueHealth['queued_warning'])
-                            <p class="heartbeat-copy">有到期檢查已等待超過 2 分鐘，請確認佇列處理狀況。</p>
-                        @endif
-                        @if ($checkRunQueueHealth['running_warning'])
-                            <p class="heartbeat-copy">有檢查已執行超過 3 分鐘，請查看 worker 與該次檢查紀錄。</p>
-                        @endif
-                    @endif
-                    @if ($workerHeartbeat?->last_succeeded_at)
-                        <p class="heartbeat-copy">最近成功處理佇列工作的時間</p>
-                        <time class="heartbeat-time" datetime="{{ $workerHeartbeat->last_succeeded_at->toIso8601String() }}">{{ $workerHeartbeat->last_succeeded_at->timezone('Asia/Taipei')->format('Y/n/j · H:i:s') }}</time>
-                        @unless ($workerHeartbeatFresh)
-                            <p class="heartbeat-copy">超過 2 分鐘沒有心跳，請檢查 queue worker 是否停止或佇列是否塞住。</p>
-                        @endunless
-                    @else
-                        <p class="heartbeat-copy">尚未收到 worker 心跳；請確認 queue worker 已啟動且佇列能正常處理工作。</p>
-                    @endif
-                @endif
-            </div>
-            @if ($failedQueueJobStorageSupported)
-                <div class="heartbeat-item">
-                    <div class="heartbeat-heading heartbeat-subheading">
-                        <h3 class="heartbeat-title">失敗佇列工作</h3>
-                    </div>
-                    @if ($failedQueueJobCount === null)
-                        <p class="heartbeat-copy">目前無法取得失敗佇列工作數。</p>
-                    @else
-                        <p class="heartbeat-copy">目前記錄 {{ number_format($failedQueueJobCount) }} 件失敗工作。</p>
-                    @endif
-                </div>
-            @endif
-        </section>
-    </div>
-
     <section class="panel spaced-top" aria-labelledby="dashboard-maintenance-title">
         <div class="panel-header">
             <div>
                 <h2 id="dashboard-maintenance-title" class="panel-title">近期預定維護</h2>
-                <p class="panel-description">顯示進行中的維護，以及未來 30 天內即將開始的維護時段。</p>
             </div>
             @if ($maintenanceSummary['count'] > count($maintenanceSummary['items']))
                 <span class="secondary-text">近 30 天共有 {{ number_format($maintenanceSummary['count']) }} 段（顯示最近 {{ count($maintenanceSummary['items']) }} 段）</span>
@@ -2030,11 +2031,10 @@
         @endif
     </section>
 
-    <section class="panel spaced-top" aria-labelledby="incidents-title">
+    <section class="panel" aria-labelledby="incidents-title">
         <div class="panel-header">
             <div>
                 <h2 id="incidents-title" class="panel-title">進行中的事件</h2>
-                <p class="panel-description">異常會經過多次檢查確認後才會成立；認領事件可標示已有人接手。</p>
             </div>
             <a class="button button-secondary button-small" href="{{ route('incidents.index') }}">查看所有事件</a>
         </div>
@@ -2089,7 +2089,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="tls-expiry-title" class="panel-title">TLS 憑證期限</h2>
-                <p class="panel-description">列出已過期或 30 天內到期的 HTTPS 憑證；觀測逾 48 小時標示逾時。</p>
             </div>
             @if ($expiringCertificateCount > 0)
                 <span class="secondary-text">{{ $expiringCertificateCount }} 張</span>
@@ -2139,7 +2138,7 @@
                 </table>
             </div>
             @if ($expiringCertificateCount > $expiringCertificates->count())
-                <p class="panel-description">另有 {{ $expiringCertificateCount - $expiringCertificates->count() }} 張憑證未列出；此處先顯示最早到期的 10 張。</p>
+                <p class="secondary-text spaced-top">另有 {{ $expiringCertificateCount - $expiringCertificates->count() }} 張憑證未列出。</p>
             @endif
         @endif
     </section>
@@ -2148,7 +2147,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="domain-expiry-title" class="panel-title">網域註冊期限</h2>
-                <p class="panel-description">每日查詢網域到期日；部分註冊機構不提供資料，觀測逾 48 小時標示逾時。</p>
             </div>
             @if ($expiringDomainCount > 0)
                 <span class="secondary-text">{{ $expiringDomainCount }} 個</span>
@@ -2202,7 +2200,7 @@
                 </table>
             </div>
             @if ($expiringDomainCount > $expiringDomains->count())
-                <p class="panel-description">另有 {{ $expiringDomainCount - $expiringDomains->count() }} 個網域未列出；此處先顯示最早到期的 10 個。</p>
+                <p class="secondary-text spaced-top">另有 {{ $expiringDomainCount - $expiringDomains->count() }} 個網域未列出。</p>
             @endif
         @endif
     </section>
@@ -2211,7 +2209,6 @@
         <div class="panel-header">
             <div>
                 <h2 id="dns-changes-title" class="panel-title">DNS 記錄變更</h2>
-                <p class="panel-description">追蹤監測主機的 DNS 記錄與變更。</p>
             </div>
         </div>
         @if ($dnsChanges->isEmpty())
@@ -2261,4 +2258,7 @@
             </div>
         @endif
     </section>
+        </div>
+    </details>
+
 @endsection

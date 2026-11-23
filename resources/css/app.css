@@ -694,6 +694,111 @@ textarea {
     padding: 20px;
 }
 
+.dashboard-focus-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 16px;
+}
+
+.stat-grid[aria-label="監測項目摘要"] .stat-card {
+    min-height: 92px;
+}
+
+.dashboard-focus-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 18px;
+    color: var(--ink);
+    text-decoration: none;
+    transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+.dashboard-focus-card:hover {
+    transform: translateY(-1px);
+    border-color: var(--blue);
+    background: var(--surface-hover);
+}
+
+.dashboard-focus-card:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.dashboard-focus-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.dashboard-focus-value {
+    font-size: 25px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.dashboard-focus-action {
+    color: var(--blue-dark);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.dashboard-disclosure {
+    overflow: clip;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.dashboard-disclosure > summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 60px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 720;
+}
+
+.dashboard-disclosure > summary::before {
+    content: "▸";
+    color: var(--muted);
+}
+
+.dashboard-disclosure[open] > summary::before {
+    content: "▾";
+}
+
+.dashboard-disclosure > summary::marker {
+    content: "";
+}
+
+.dashboard-disclosure[open] > summary {
+    border-bottom: 1px solid var(--line);
+}
+
+.dashboard-disclosure-meta {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+}
+
+.dashboard-disclosure-content {
+    padding: 0 20px 20px;
+}
+
+.dashboard-disclosure-content > .panel:first-child {
+    margin-top: 16px;
+}
+
 .dashboard-top {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr);
@@ -1978,6 +2083,10 @@ a.platform-chip:hover {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .dashboard-focus-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .heartbeat-panel {
         min-height: 132px;
     }
@@ -2063,6 +2172,44 @@ a.platform-chip:hover {
     .stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 9px;
+    }
+
+    .dashboard-focus-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .dashboard-focus-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 4px 12px;
+        padding: 13px 15px;
+    }
+
+    .dashboard-focus-value {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        font-size: 22px;
+    }
+
+    .dashboard-focus-action {
+        grid-column: 1;
+    }
+
+    .dashboard-disclosure > summary {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 5px 10px;
+        padding: 15px;
+    }
+
+    .dashboard-disclosure-meta {
+        grid-column: 2;
+        text-align: left;
+    }
+
+    .dashboard-disclosure-content {
+        padding: 0 12px 12px;
     }
 
     .monitor-availability-grid {

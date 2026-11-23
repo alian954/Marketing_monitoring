@@ -68,7 +68,7 @@ class DashboardScalabilityTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('目前共 501 個網站或公開貼文');
+            ->assertSee('<strong class="dashboard-focus-value">501</strong>', false);
 
         $this->assertSame(501, $response->viewData('monitorCount'));
         $this->assertSame(501, $response->viewData('fleetAvailability')['monitor_count']);

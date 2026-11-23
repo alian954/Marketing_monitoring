@@ -447,9 +447,7 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->get(route('dashboard', ['engagement_platform' => 'instagram']))
             ->assertOk()
             ->assertSee('標籤成效比較')
-            ->assertSee('本次／前次擷取篇數另列')
-            ->assertSee('跨標籤可能重複計入')
-            ->assertSee('觀看互動率＝同口徑互動合計÷觀看數')
+            ->assertSee('aria-labelledby="dashboard-marketing-summary"', false)
             ->assertSee('engagement_tag=tag%3Asummer', false)
             ->assertSee('<th scope="col">留言</th>', false)
             ->assertSee('2,000')
@@ -459,6 +457,8 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('未標籤');
 
         $summaries = collect($response->viewData('socialEngagementSummaries'))->keyBy('tag');
+
+        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $response->getContent()));
 
         $this->assertCount(3, $summaries);
         $this->assertSame(2, $summaries['summer']['monitor_count']);
@@ -597,12 +597,14 @@ class MonitorPublicEngagementMetricsTest extends TestCase
             ->assertSee('發文時段成效')
             ->assertSee('週一')
             ->assertSee('週二')
-            ->assertSee('依台灣時間的公開發布時間')
+            ->assertSee('aria-labelledby="dashboard-marketing-summary"', false)
             ->assertSee('<div class="data-table-wrap" role="region" aria-labelledby="publishing-day-engagement-title" tabindex="0">', false)
             ->assertSee('<caption class="sr-only">依公開發布時間的星期分組、按平台口徑計算的每篇平均互動與貼文數</caption>', false)
             ->assertSee('<caption class="sr-only">依台灣時間發布時段，按平台口徑計算的每篇平均互動與貼文數</caption>', false)
             ->assertSee('00–05 時')
             ->assertSee('18–23 時');
+
+        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $response->getContent()));
 
         $summaries = collect($response->viewData('socialEngagementPublishingDaySummaries'))
             ->keyBy('platform_key');
