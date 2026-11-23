@@ -129,6 +129,10 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-analytics.ad-content');
+    Route::get('/social-engagement-targets/{socialEngagementTarget}/google-analytics-new-vs-returning.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAnalyticsNewVsReturning'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-analytics.new-vs-returning');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/google-analytics-history.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAnalyticsHistory'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.google-analytics.history');

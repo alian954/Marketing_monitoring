@@ -31,10 +31,12 @@ use Illuminate\Database\Eloquent\Model;
     'item_report_expires_at',
     'ad_content_report',
     'ad_content_report_expires_at',
+    'new_vs_returning_report',
+    'new_vs_returning_report_expires_at',
     'daily_metrics',
     'synced_at',
 ])]
-#[Hidden(['landing_page_report', 'landing_page_expires_at', 'event_name_report', 'event_name_expires_at', 'item_report', 'item_report_expires_at', 'ad_content_report', 'ad_content_report_expires_at'])]
+#[Hidden(['landing_page_report', 'landing_page_expires_at', 'event_name_report', 'event_name_expires_at', 'item_report', 'item_report_expires_at', 'ad_content_report', 'ad_content_report_expires_at', 'new_vs_returning_report', 'new_vs_returning_report_expires_at'])]
 class SocialEngagementTargetGoogleAnalyticsReport extends Model
 {
     protected function casts(): array
@@ -56,6 +58,8 @@ class SocialEngagementTargetGoogleAnalyticsReport extends Model
             'item_report_expires_at' => 'immutable_datetime',
             'ad_content_report' => 'encrypted:array',
             'ad_content_report_expires_at' => 'immutable_datetime',
+            'new_vs_returning_report' => 'encrypted:array',
+            'new_vs_returning_report_expires_at' => 'immutable_datetime',
             'daily_metrics' => 'array',
             'synced_at' => 'immutable_datetime',
         ];

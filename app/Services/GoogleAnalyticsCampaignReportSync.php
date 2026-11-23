@@ -54,6 +54,11 @@ class GoogleAnalyticsCampaignReportSync
             ? CarbonImmutable::now()->addDays(30)
             : null;
         unset($metrics['ad_content_report']);
+        $newVsReturningReport = $metrics['new_vs_returning_report'];
+        $newVsReturningReportExpiresAt = $newVsReturningReport['status'] === 'complete'
+            ? CarbonImmutable::now()->addDays(30)
+            : null;
+        unset($metrics['new_vs_returning_report']);
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -94,6 +99,8 @@ class GoogleAnalyticsCampaignReportSync
             'item_report_expires_at' => $itemReportExpiresAt,
             'ad_content_report' => $adContentReport,
             'ad_content_report_expires_at' => $adContentReportExpiresAt,
+            'new_vs_returning_report' => $newVsReturningReport,
+            'new_vs_returning_report_expires_at' => $newVsReturningReportExpiresAt,
             ...$metrics,
             'synced_at' => $syncedAt,
         ];
@@ -118,6 +125,8 @@ class GoogleAnalyticsCampaignReportSync
                 $snapshotAttributes['item_report_expires_at'],
                 $snapshotAttributes['ad_content_report'],
                 $snapshotAttributes['ad_content_report_expires_at'],
+                $snapshotAttributes['new_vs_returning_report'],
+                $snapshotAttributes['new_vs_returning_report_expires_at'],
             );
 
             GoogleAnalyticsCampaignSnapshot::query()->updateOrCreate(

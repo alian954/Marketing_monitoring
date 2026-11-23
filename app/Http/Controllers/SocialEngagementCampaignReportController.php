@@ -39,6 +39,8 @@ use App\Services\GoogleAnalyticsItemPerformanceReport;
 use App\Services\GoogleAnalyticsItemReportCsv;
 use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
 use App\Services\GoogleAnalyticsLandingPageReportCsv;
+use App\Services\GoogleAnalyticsNewVsReturningPerformanceReport;
+use App\Services\GoogleAnalyticsNewVsReturningReportCsv;
 use App\Services\MetaMarketingAdPerformanceReport;
 use App\Services\MetaMarketingAdReportCsv;
 use App\Services\MetaMarketingAdSetPerformanceReport;
@@ -81,6 +83,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
         GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
         GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
+        GoogleAnalyticsNewVsReturningPerformanceReport $googleAnalyticsNewVsReturningPerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -122,6 +125,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReport']?->ad_content_report,
             $viewData['googleAnalyticsReport']?->ad_content_report_expires_at,
             (string) $request->query('ad_content_sort', 'total_revenue'),
+        );
+        $viewData['googleAnalyticsNewVsReturningReport'] = $googleAnalyticsNewVsReturningPerformanceReport->build(
+            $viewData['googleAnalyticsReport']?->new_vs_returning_report,
+            $viewData['googleAnalyticsReport']?->new_vs_returning_report_expires_at,
+            (string) $request->query('new_vs_returning_sort', 'sessions'),
         );
         $viewData['metaMarketingAdReport'] = $metaMarketingAdPerformanceReport->build(
             $viewData['metaMarketingReport']?->ad_insights,
@@ -1247,6 +1255,44 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'ga4-ad-content-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAnalyticsNewVsReturning(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAnalyticsNewVsReturningPerformanceReport $googleAnalyticsNewVsReturningPerformanceReport,
+        GoogleAnalyticsNewVsReturningReportCsv $googleAnalyticsNewVsReturningReportCsv,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        abort_if(
+            $analyticsReport === null
+                || ! is_array($analyticsReport->new_vs_returning_report)
+                || $analyticsReport->new_vs_returning_report_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $newVsReturningReport = $googleAnalyticsNewVsReturningPerformanceReport->build(
+            $analyticsReport->new_vs_returning_report,
+            $analyticsReport->new_vs_returning_report_expires_at,
+        );
+        abort_if($newVsReturningReport['status'] !== 'complete' || $newVsReturningReport['rows'] === [], 404);
+        $csv = $googleAnalyticsNewVsReturningReportCsv->build($newVsReturningReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-new-vs-returning-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

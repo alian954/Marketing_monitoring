@@ -30,6 +30,7 @@ class SyncDueGoogleAnalyticsReports extends Command
         $this->clearExpiredEventNameReports($asOf);
         $this->clearExpiredItemReports($asOf);
         $this->clearExpiredAdContentReports($asOf);
+        $this->clearExpiredNewVsReturningReports($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 GA4 的活動。');
@@ -182,6 +183,17 @@ class SyncDueGoogleAnalyticsReports extends Command
             ->update([
                 'ad_content_report' => null,
                 'ad_content_report_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredNewVsReturningReports(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->whereNotNull('new_vs_returning_report_expires_at')
+            ->where('new_vs_returning_report_expires_at', '<=', $asOf)
+            ->update([
+                'new_vs_returning_report' => null,
+                'new_vs_returning_report_expires_at' => null,
             ]);
     }
 }

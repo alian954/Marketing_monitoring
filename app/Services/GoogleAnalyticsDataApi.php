@@ -137,6 +137,13 @@ class GoogleAnalyticsDataApi
      *         truncated: bool,
      *         rows: list<array{ad_content: string, sessions: int, engaged_sessions: int, engagement_rate: string, key_events: string, total_revenue: string}>
      *     },
+     *     new_vs_returning_report: array{
+     *         status: 'complete'|'thresholded'|'unavailable',
+     *         window_start_on: ?string,
+     *         window_end_on: ?string,
+     *         currency_code: ?string,
+     *         rows: list<array{visitor_type: string, sessions: int, engaged_sessions: int, key_events: string, total_revenue: string}>
+     *     },
      *     daily_metrics: list<array{
      *         date: string,
      *         sessions: int,
@@ -346,6 +353,21 @@ class GoogleAnalyticsDataApi
                 );
             }
         }
+        try {
+            $newVsReturningReport = $this->campaignNewVsReturningBreakdown(
+                $accessToken,
+                $propertyId,
+                $startsOn,
+                $endsOn,
+                $dimensionFilter,
+            );
+        } catch (GoogleAnalyticsApiException|ConnectionException) {
+            $newVsReturningReport = $this->emptyNewVsReturningReport(
+                'unavailable',
+                $startsOn,
+                min($endsOn, now('Asia/Taipei')->subDay()->toDateString()),
+            );
+        }
 
         return [
             ...$totalMetrics,
@@ -357,7 +379,133 @@ class GoogleAnalyticsDataApi
             'event_name_report' => $eventNameReport,
             'item_report' => $itemReport,
             'ad_content_report' => $adContentReport,
+            'new_vs_returning_report' => $newVsReturningReport,
             'daily_metrics' => $dailyMetrics,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return array{
+     *     status: 'complete'|'thresholded'|'unavailable',
+     *     window_start_on: ?string,
+     *     window_end_on: ?string,
+     *     currency_code: ?string,
+     *     rows: list<array{visitor_type: string, sessions: int, engaged_sessions: int, key_events: string, total_revenue: string}>
+     * }
+     */
+    private function campaignNewVsReturningBreakdown(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $windowEndOn = min($endsOn, now('Asia/Taipei')->subDay()->toDateString());
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyNewVsReturningReport('unavailable', null, null);
+        }
+
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $windowEndOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'newVsReturning'],
+                ],
+                'metrics' => [
+                    ['name' => 'sessions'],
+                    ['name' => 'engagedSessions'],
+                    ['name' => 'keyEvents'],
+                    ['name' => 'totalRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'orderBys' => [
+                    ['metric' => ['metricName' => 'sessions'], 'desc' => true],
+                    ['dimension' => ['dimensionName' => 'newVsReturning']],
+                ],
+                'limit' => 3,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+        $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $currencyCode = $this->currencyCode($metadata['currencyCode'] ?? null);
+
+        if (($metadata['subjectToThresholding'] ?? false) === true) {
+            return [
+                ...$this->emptyNewVsReturningReport('thresholded', $startsOn, $windowEndOn),
+                'currency_code' => $currencyCode,
+            ];
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows) || count($rows) > 3) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的新客／回訪客報表格式無效，請稍後再試。');
+        }
+
+        $visitorRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的新客／回訪客報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($dimensionValues)
+                || ! array_is_list($dimensionValues)
+                || count($dimensionValues) !== 1
+                || ! is_array($metricValues)
+                || ! array_is_list($metricValues)
+                || count($metricValues) !== 4) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的新客／回訪客欄位數量無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的新客／回訪客指標格式無效，請稍後再試。');
+                }
+            }
+
+            $visitorType = $this->dimensionValue($dimensionValues[0]);
+
+            if (! in_array($visitorType, ['new', 'returning'], true) || array_key_exists($visitorType, $visitorRows)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的新客／回訪客分類無效，請稍後再試。');
+            }
+
+            $visitorRows[$visitorType] = [
+                'visitor_type' => $visitorType,
+                'sessions' => $this->nonNegativeInteger($metricValues[0]['value']),
+                'engaged_sessions' => $this->nonNegativeInteger($metricValues[1]['value']),
+                'key_events' => $this->decimalString($metricValues[2]['value'], false),
+                'total_revenue' => $this->decimalString($metricValues[3]['value'], true),
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $currencyCode,
+            'rows' => array_values($visitorRows),
+        ];
+    }
+
+    /** @return array{status: 'unavailable'|'thresholded', window_start_on: ?string, window_end_on: ?string, currency_code: null, rows: list<array<string, mixed>>} */
+    private function emptyNewVsReturningReport(string $status, ?string $startsOn, ?string $endsOn): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => null,
+            'rows' => [],
         ];
     }
 

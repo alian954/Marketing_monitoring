@@ -59,7 +59,7 @@ class GoogleAnalyticsAdContentPerformanceReportTest extends TestCase
             ],
         ], $report['ad_content_report']);
 
-        Http::assertSentCount(6);
+        Http::assertSentCount(7);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dateRanges'] === [[
                 'startDate' => '2026-11-01',
@@ -160,7 +160,7 @@ class GoogleAnalyticsAdContentPerformanceReportTest extends TestCase
             'truncated' => false,
             'rows' => [],
         ], $report['ad_content_report']);
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
         Http::assertNotSent(fn (ClientRequest $request): bool => ($request->data()['dimensions'] ?? null) === [['name' => 'sessionManualAdContent']]);
     }
 

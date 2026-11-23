@@ -47,7 +47,7 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         $this->assertStringNotContainsString('/campaign/spring', $encryptedReport);
         $this->assertStringNotContainsString('private@example.com', $encryptedReport);
 
-        Http::assertSentCount(7);
+        Http::assertSentCount(8);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dimensions'] === [['name' => 'landingPage']]
             && $request->data()['metrics'] === [

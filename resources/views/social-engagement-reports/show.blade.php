@@ -1698,6 +1698,69 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-new-vs-returning-title">新客與回訪客成效</h3>
+                    @if ($googleAnalyticsNewVsReturningReport['status'] === 'complete' && $googleAnalyticsNewVsReturningReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.new-vs-returning', $target) }}">匯出 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAnalyticsNewVsReturningReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含新客與回訪客明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsNewVsReturningReport['status'] === 'thresholded')
+                    <p class="campaign-report-empty">GA4 因資料門檻未提供新客與回訪客數據。</p>
+                @elseif ($googleAnalyticsNewVsReturningReport['status'] === 'unavailable' && $googleAnalyticsNewVsReturningReport['window_start_on'] === null)
+                    <p class="campaign-report-empty">目前沒有已完成日期可供新客與回訪客分析。</p>
+                @elseif ($googleAnalyticsNewVsReturningReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">目前無法讀取新客與回訪客明細；活動總成效仍可查看。</p>
+                @elseif ($googleAnalyticsNewVsReturningReport['status'] === 'expired')
+                    <p class="campaign-report-empty">新客與回訪客明細已超過 30 天保存期限，更新數據後可重新讀取。</p>
+                @elseif ($googleAnalyticsNewVsReturningReport['rows'] === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的新客與回訪客數據。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAnalyticsNewVsReturningReport['window_start_on'] }} 至 {{ $googleAnalyticsNewVsReturningReport['window_end_on'] }} · 新客表示過去沒有工作階段，回訪客表示過去至少有一次工作階段。明細加密保存 30 天。
+                    </p>
+                    <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                        <label for="ga4-new-vs-returning-sort">排序</label>
+                        <select id="ga4-new-vs-returning-sort" name="new_vs_returning_sort">
+                            <option value="sessions" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'sessions')>工作階段</option>
+                            <option value="engaged_sessions" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'engaged_sessions')>參與工作階段</option>
+                            <option value="engagement_rate" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'engagement_rate')>參與率</option>
+                            <option value="key_events" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'key_events')>重要事件</option>
+                            <option value="total_revenue" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'total_revenue')>營收</option>
+                            <option value="visitor_type" @selected($googleAnalyticsNewVsReturningReport['sort'] === 'visitor_type')>新客／回訪客</option>
+                        </select>
+                        <button class="button button-secondary button-small" type="submit">套用</button>
+                    </form>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-new-vs-returning-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-new-vs-returning-table">
+                            <caption>GA4 新客與回訪客的工作階段、參與、重要事件與營收（{{ $googleAnalyticsNewVsReturningReport['currency_code'] ?? '幣別未知' }}）</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">訪客類型</th>
+                                    <th scope="col" class="numeric">工作階段</th>
+                                    <th scope="col" class="numeric">參與工作階段</th>
+                                    <th scope="col" class="numeric">參與率</th>
+                                    <th scope="col" class="numeric">重要事件</th>
+                                    <th scope="col" class="numeric">營收</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsNewVsReturningReport['rows'] as $visitorRow)
+                                    <tr>
+                                        <th scope="row">{{ $visitorRow['visitor_label'] }}</th>
+                                        <td class="numeric">{{ number_format((int) $visitorRow['sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((int) $visitorRow['engaged_sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $visitorRow['engagement_rate'] * 100, 2) }}%</td>
+                                        <td class="numeric">{{ number_format((float) $visitorRow['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $visitorRow['total_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="campaign-report-ga4-event-name-title">重要事件名稱成效</h3>
                     @if ($googleAnalyticsEventNameReport['status'] === 'complete' && $googleAnalyticsEventNameReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.events', $target) }}">匯出事件 CSV</a>
