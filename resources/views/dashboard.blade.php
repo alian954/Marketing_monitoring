@@ -736,6 +736,55 @@
                     Google Ads：{{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['comparable_campaigns']) }} / {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['configured_campaigns']) }} 個可比較，缺漏 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['missing_campaigns']) }}，排除重複映射 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['duplicate_mappings_excluded']) }} 筆。
                 </p>
             </section>
+            <section class="spaced-top" aria-labelledby="campaign-mapping-audit-title">
+                <h3 id="campaign-mapping-audit-title" class="panel-title">活動共用映射</h3>
+                <p class="campaign-report-secondary">共用的廣告活動 ID 或 GA4 歸因條件會合併計算。清單列出共用標籤與目前採用的資料狀態。</p>
+                @if ($campaignPortfolioMarketingSummary['mapping_audit_rows'] === [])
+                    <p class="campaign-report-secondary">目前沒有共用映射。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-mapping-audit-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">共用廣告平台活動 ID 與 GA4 歸因條件的合併狀況</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">映射條件</th>
+                                    <th scope="col">活動標籤</th>
+                                    <th scope="col">採用資料</th>
+                                    <th scope="col" class="numeric">合併數</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($campaignPortfolioMarketingSummary['mapping_audit_rows'] as $mappingAuditRow)
+                                    <tr>
+                                        <th scope="row">
+                                            {{ $mappingAuditRow['type_label'] }}
+                                            @foreach ($mappingAuditRow['mappings'] as $mapping)
+                                                @if ($mapping['attribution_mode'] === 'manual_utm')
+                                                    <span class="secondary-text">GA4 UTM：活動 {{ $mapping['campaign_name'] ?? '—' }} · 來源 {{ $mapping['source_name'] ?? '未設定' }} · 媒介 {{ $mapping['medium_name'] ?? '未設定' }}</span>
+                                                @elseif ($mapping['attribution_mode'] === 'google_ads_auto_tagging')
+                                                    <span class="secondary-text">{{ $mapping['source_label'] }} 自動標記活動 ID：<code>{{ $mapping['campaign_id'] ?? '—' }}</code></span>
+                                                @else
+                                                    <span class="secondary-text">{{ $mapping['source_label'] }} 活動 ID：<code>{{ $mapping['campaign_id'] ?? '—' }}</code></span>
+                                                @endif
+                                            @endforeach
+                                        </th>
+                                        <td>{{ implode('、', $mappingAuditRow['target_tags']) }}</td>
+                                        <td>
+                                            @foreach ($mappingAuditRow['mappings'] as $mapping)
+                                                <span class="secondary-text">{{ $mapping['source_label'] }}：{{ $mapping['preferred_tag'] }} · {{ $mapping['freshness_label'] }}</span>
+                                            @endforeach
+                                        </td>
+                                        <td class="numeric">
+                                            {{ number_format(count($mappingAuditRow['target_tags'])) }} 個標籤
+                                            <span class="secondary-text">已合併 {{ number_format($mappingAuditRow['merged_count']) }} 筆</span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
             <section class="spaced-top" aria-labelledby="campaign-budget-pacing-overview-title">
                 <h3 id="campaign-budget-pacing-overview-title" class="panel-title">跨活動預算節奏</h3>
                 <p class="campaign-report-secondary">

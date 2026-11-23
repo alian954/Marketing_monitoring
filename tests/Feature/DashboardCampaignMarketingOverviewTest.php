@@ -460,6 +460,220 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['duplicate_mappings_excluded']);
         $this->assertSame(1, $portfolio['campaign_ranks'][$freshTarget->id]['rank']);
         $this->assertArrayNotHasKey($staleTarget->id, $portfolio['campaign_ranks']);
+
+        $mappingAuditRows = collect($portfolio['mapping_audit_rows']);
+        $this->assertCount(2, $mappingAuditRows);
+        $paidMapping = $mappingAuditRows->firstWhere('type', 'paid_media');
+        $this->assertSame(['Portfolio duplicate stale', 'Portfolio duplicate fresh'], $paidMapping['target_tags']);
+        $this->assertSame(1, $paidMapping['merged_count']);
+        $paidMappingIds = array_column($paidMapping['mappings'], 'campaign_id');
+        sort($paidMappingIds);
+        $this->assertSame(['ads-duplicate', 'meta-duplicate'], $paidMappingIds);
+        $this->assertSame(['Portfolio duplicate fresh', 'Portfolio duplicate fresh'], array_column($paidMapping['mappings'], 'preferred_tag'));
+        $this->assertSame(['fresh', 'fresh'], array_column($paidMapping['mappings'], 'freshness_status'));
+
+        $ga4Mapping = $mappingAuditRows->firstWhere('type', 'google_analytics');
+        $this->assertSame('ads-duplicate', $ga4Mapping['mappings'][0]['campaign_id']);
+        $this->assertSame('google_ads_auto_tagging', $ga4Mapping['mappings'][0]['attribution_mode']);
+        $this->assertSame('Portfolio duplicate fresh', $ga4Mapping['mappings'][0]['preferred_tag']);
+    }
+
+    public function test_campaign_portfolio_audits_shared_manual_ga4_utm_tuple(): void
+    {
+        $firstTarget = $this->createTarget([
+            'tag' => 'Manual UTM first',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_campaign_name' => 'spring-launch',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+        $secondTarget = $this->createTarget([
+            'tag' => 'Manual UTM second',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_campaign_name' => 'spring-launch',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+        $thirdTarget = $this->createTarget([
+            'tag' => 'Manual UTM separate',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_campaign_name' => 'spring-launch',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'social',
+        ]);
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection([$firstTarget, $secondTarget, $thirdTarget]),
+            [
+                $firstTarget->id => $this->portfolioMarketingSummary(['status' => 'fresh', 'revenue' => '100.0000', 'currency_code' => 'TWD']),
+                $secondTarget->id => $this->portfolioMarketingSummary(['status' => 'stale', 'revenue' => '900.0000', 'currency_code' => 'TWD']),
+                $thirdTarget->id => $this->portfolioMarketingSummary(['status' => 'fresh', 'revenue' => '50.0000', 'currency_code' => 'TWD']),
+            ],
+        );
+
+        $mappingRows = collect($portfolio['mapping_audit_rows']);
+        $this->assertCount(1, $mappingRows);
+        $mapping = $mappingRows->sole();
+        $this->assertSame('google_analytics', $mapping['type']);
+        $this->assertSame(['Manual UTM first', 'Manual UTM second'], $mapping['target_tags']);
+        $this->assertSame(1, $mapping['merged_count']);
+        $this->assertSame([
+            'attribution_mode' => 'manual_utm',
+            'campaign_name' => 'spring-launch',
+            'source_name' => 'newsletter',
+            'medium_name' => 'email',
+        ], array_intersect_key($mapping['mappings'][0], array_flip([
+            'attribution_mode',
+            'campaign_name',
+            'source_name',
+            'medium_name',
+        ])));
+        $this->assertSame('Manual UTM first', $mapping['mappings'][0]['preferred_tag']);
+        $this->assertSame(150.0, $portfolio['currency_groups'][0]['ga4_revenue']);
+        $this->assertSame(2, $portfolio['coverage']['google_analytics']['configured_campaigns']);
+    }
+
+    public function test_campaign_portfolio_merges_overlapping_paid_ids_into_one_logical_mapping(): void
+    {
+        $firstTarget = $this->createTarget([
+            'tag' => 'Overlap first',
+            'meta_campaign_id' => 'meta-overlap-first',
+            'google_ads_campaign_id' => 'ads-overlap-first',
+        ]);
+        $secondTarget = $this->createTarget([
+            'tag' => 'Overlap middle',
+            'meta_campaign_id' => 'meta-overlap-first',
+            'google_ads_campaign_id' => 'ads-overlap-second',
+        ]);
+        $thirdTarget = $this->createTarget([
+            'tag' => 'Overlap last',
+            'meta_campaign_id' => 'meta-overlap-last',
+            'google_ads_campaign_id' => 'ads-overlap-second',
+        ]);
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection([$firstTarget, $secondTarget, $thirdTarget]),
+            [
+                $firstTarget->id => $this->portfolioMarketingSummary(
+                    ['status' => 'fresh', 'revenue' => '100.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '10.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '5.0000', 'currency_code' => 'TWD'],
+                ),
+                $secondTarget->id => $this->portfolioMarketingSummary(
+                    ['status' => 'fresh', 'revenue' => '200.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '20.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '15.0000', 'currency_code' => 'TWD'],
+                ),
+                $thirdTarget->id => $this->portfolioMarketingSummary(
+                    ['status' => 'fresh', 'revenue' => '300.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '30.0000', 'currency_code' => 'TWD'],
+                    ['status' => 'fresh', 'spend_amount' => '25.0000', 'currency_code' => 'TWD'],
+                ),
+            ],
+        );
+
+        $paidRows = collect($portfolio['mapping_audit_rows'])->where('type', 'paid_media')->values();
+        $this->assertCount(1, $paidRows);
+        $paidMapping = $paidRows->sole();
+        $this->assertSame(['Overlap first', 'Overlap middle', 'Overlap last'], $paidMapping['target_tags']);
+        $this->assertSame(2, $paidMapping['merged_count']);
+        $paidMappingIds = array_column($paidMapping['mappings'], 'campaign_id');
+        sort($paidMappingIds);
+        $this->assertSame(['ads-overlap-second', 'meta-overlap-first'], $paidMappingIds);
+        $this->assertSame(1, $portfolio['budget_coverage']['configured_campaigns']);
+        $this->assertSame(2, $portfolio['budget_coverage']['duplicate_mappings_excluded']);
+        $this->assertSame(40.0, $portfolio['currency_groups'][0]['meta_spend']);
+        $this->assertSame(20.0, $portfolio['currency_groups'][0]['google_ads_spend']);
+        $this->assertSame(2, $portfolio['coverage']['meta_marketing']['configured_campaigns']);
+        $this->assertSame(2, $portfolio['coverage']['google_ads']['configured_campaigns']);
+    }
+
+    public function test_dashboard_shows_empty_state_when_no_campaign_mappings_are_shared(): void
+    {
+        $user = User::factory()->create();
+        $this->createTarget(['tag' => 'Unique campaign mapping']);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('活動共用映射')
+            ->assertSee('目前沒有共用映射。');
+    }
+
+    public function test_dashboard_lists_shared_campaign_ids_and_merged_target_tags(): void
+    {
+        $user = User::factory()->create();
+        $this->createTarget([
+            'tag' => 'Shared mapping first',
+            'meta_campaign_id' => 'meta-shared-dashboard',
+            'google_ads_campaign_id' => 'ads-shared-dashboard',
+        ]);
+        $this->createTarget([
+            'tag' => 'Shared mapping second',
+            'meta_campaign_id' => 'meta-shared-dashboard',
+            'google_ads_campaign_id' => 'ads-shared-dashboard',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('活動共用映射')
+            ->assertSee('共用的廣告活動 ID 或 GA4 歸因條件會合併計算')
+            ->assertSee('Meta Ads 活動 ID：')
+            ->assertSee('Google Ads 活動 ID：')
+            ->assertSee('ads-shared-dashboard')
+            ->assertSee('meta-shared-dashboard')
+            ->assertSee('Shared mapping first、Shared mapping second')
+            ->assertSee('已合併 1 筆');
+    }
+
+    public function test_campaign_mapping_audit_uses_each_users_own_ga4_report_freshness(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $firstTarget = $this->createTarget([
+            'tag' => 'User scoped first',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => 'user-scoped-meta',
+            'ga4_campaign_name' => 'user-scoped-campaign',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+        $secondTarget = $this->createTarget([
+            'tag' => 'User scoped second',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => 'user-scoped-meta',
+            'ga4_campaign_name' => 'user-scoped-campaign',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+        $firstUserConnection = $this->createGoogleAnalyticsConnection($firstUser);
+        $secondUserConnection = $this->createGoogleAnalyticsConnection($secondUser);
+
+        $this->createGoalGoogleAnalyticsReport($firstUserConnection, $firstTarget, ['total_revenue' => '120.0000', 'synced_at' => now()]);
+        $this->createGoalGoogleAnalyticsReport($firstUserConnection, $secondTarget, ['total_revenue' => '900.0000', 'synced_at' => now()->subDays(2)]);
+        $this->createGoalGoogleAnalyticsReport($secondUserConnection, $firstTarget, ['total_revenue' => '800.0000', 'synced_at' => now()->subDays(2)]);
+        $this->createGoalGoogleAnalyticsReport($secondUserConnection, $secondTarget, ['total_revenue' => '300.0000', 'synced_at' => now()]);
+
+        $firstUserPortfolio = $this->actingAs($firstUser)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->viewData('campaignPortfolioMarketingSummary');
+        $secondUserPortfolio = $this->actingAs($secondUser)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->viewData('campaignPortfolioMarketingSummary');
+
+        $firstUserGa4Mapping = collect($firstUserPortfolio['mapping_audit_rows'])->firstWhere('type', 'google_analytics');
+        $secondUserGa4Mapping = collect($secondUserPortfolio['mapping_audit_rows'])->firstWhere('type', 'google_analytics');
+        $this->assertSame('User scoped first', $firstUserGa4Mapping['mappings'][0]['preferred_tag']);
+        $this->assertSame('User scoped second', $secondUserGa4Mapping['mappings'][0]['preferred_tag']);
+        $this->assertSame(120.0, $firstUserPortfolio['currency_groups'][0]['ga4_revenue']);
+        $this->assertSame(300.0, $secondUserPortfolio['currency_groups'][0]['ga4_revenue']);
     }
 
     public function test_campaign_portfolio_aggregates_budget_pacing_without_double_counting_shared_ad_campaigns(): void

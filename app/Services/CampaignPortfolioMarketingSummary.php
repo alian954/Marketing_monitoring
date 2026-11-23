@@ -21,6 +21,7 @@ class CampaignPortfolioMarketingSummary
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
      *     budget_risk_rows: list<array{target_id: int, tag: string, currency_code: string, spend_source_label: string, freshness_status: string, freshness_label: string, spend_amount: float, budget_amount: float, projected_spend_amount: float, projected_overrun_amount: float, projected_overrun_percent: float, status: string, status_label: string, starts_on: string, ends_on: string}>,
+     *     mapping_audit_rows: list<array{type: string, type_label: string, target_ids: list<int>, target_tags: list<string>, merged_count: int, mappings: list<array{source_label: string, campaign_id: string|null, attribution_mode: string|null, campaign_name: string|null, source_name: string|null, medium_name: string|null, preferred_tag: string, freshness_status: string, freshness_label: string}>}>,
      *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
      *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>,
      *     campaign_interaction_cost_ranks: array<int, array<string, array{rank: int, source: string, source_label: string, currency_code: string, cost_per_public_interaction: float, status: string}>>
@@ -146,12 +147,14 @@ class CampaignPortfolioMarketingSummary
 
                 $sourceCandidates[$source][$mappingKey][] = [
                     'target_id' => (int) $target->getKey(),
+                    'tag' => $target->tag,
                     'status' => is_string($summary['status'] ?? null) ? $summary['status'] : 'missing',
                     'value' => is_numeric($sourceValue) && is_finite((float) $sourceValue) && $currencyCode !== null
                         ? (float) $sourceValue
                         : null,
                     'currency_code' => $currencyCode,
                     'period_days' => $this->periodDays($target),
+                    'mapping_details' => $this->campaignMappingDetails($source, $this->campaignMappingIdentity($source, $target)),
                 ];
 
                 if (in_array($source, ['meta_marketing', 'google_ads'], true)) {
@@ -597,6 +600,8 @@ class CampaignPortfolioMarketingSummary
         }
         unset($group);
 
+        $mappingAuditRows = $this->mappingAuditRows($sourceCandidates);
+
         ksort($currencyGroups);
         ksort($nativeRoasGroups);
         ksort($budgetCurrencyGroups);
@@ -685,6 +690,7 @@ class CampaignPortfolioMarketingSummary
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
             'budget_risk_rows' => $budgetRiskRows,
+            'mapping_audit_rows' => $mappingAuditRows,
             'interaction_cost_groups' => array_values($interactionCostGroups),
             'campaign_interaction_cost_ranks' => $campaignInteractionCostRanks,
             'campaign_ranks' => $campaignRanks,
@@ -864,6 +870,16 @@ class CampaignPortfolioMarketingSummary
 
     private function campaignMappingKey(string $source, SocialEngagementTarget $target): ?string
     {
+        $identity = $this->campaignMappingIdentity($source, $target);
+
+        return $identity === null
+            ? null
+            : hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
+    }
+
+    /** @return list<string|null>|null */
+    private function campaignMappingIdentity(string $source, SocialEngagementTarget $target): ?array
+    {
         if ($target->starts_on === null || $target->ends_on === null) {
             return null;
         }
@@ -886,7 +902,153 @@ class CampaignPortfolioMarketingSummary
             default => null,
         };
 
-        return $identity === null ? null : hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
+        return $identity;
+    }
+
+    /**
+     * @param  list<string|null>|null  $identity
+     * @return array{source_label: string, campaign_id: string|null, attribution_mode: string|null, campaign_name: string|null, source_name: string|null, medium_name: string|null}
+     */
+    private function campaignMappingDetails(string $source, ?array $identity): array
+    {
+        $sourceLabel = match ($source) {
+            'google_analytics' => 'GA4',
+            'meta_marketing' => 'Meta Ads',
+            'google_ads' => 'Google Ads',
+            default => $source,
+        };
+
+        if ($source === 'google_analytics' && ($identity[0] ?? null) === 'manual_utm') {
+            return [
+                'source_label' => $sourceLabel,
+                'campaign_id' => null,
+                'attribution_mode' => 'manual_utm',
+                'campaign_name' => $identity[1] ?? null,
+                'source_name' => $identity[2] ?? null,
+                'medium_name' => $identity[3] ?? null,
+            ];
+        }
+
+        return [
+            'source_label' => $sourceLabel,
+            'campaign_id' => $identity[1] ?? null,
+            'attribution_mode' => $source === 'google_analytics' ? 'google_ads_auto_tagging' : null,
+            'campaign_name' => null,
+            'source_name' => null,
+            'medium_name' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, array<string, list<array<string, mixed>>>>  $sourceCandidates
+     * @return list<array{type: string, type_label: string, target_ids: list<int>, target_tags: list<string>, merged_count: int, mappings: list<array{source_label: string, campaign_id: string|null, attribution_mode: string|null, campaign_name: string|null, source_name: string|null, medium_name: string|null, preferred_tag: string, freshness_status: string, freshness_label: string}>}
+     */
+    private function mappingAuditRows(array $sourceCandidates): array
+    {
+        $rows = [];
+        $paidMappingGroups = [];
+        $paidMappingParents = [];
+
+        foreach (['meta_marketing', 'google_ads'] as $source) {
+            foreach ($sourceCandidates[$source] ?? [] as $candidates) {
+                if (count($candidates) < 2) {
+                    continue;
+                }
+
+                $targetIds = array_values(array_unique(array_map(
+                    static fn (array $candidate): int => (int) $candidate['target_id'],
+                    $candidates,
+                )));
+                foreach ($targetIds as $targetId) {
+                    $paidMappingParents[$targetId] ??= $targetId;
+                }
+
+                $this->unionBudgetTargets($paidMappingParents, $targetIds);
+                $paidMappingGroups[] = [
+                    'candidates' => $candidates,
+                    'target_ids' => $targetIds,
+                ];
+            }
+        }
+
+        $paidGroupsByRoot = [];
+        foreach ($paidMappingGroups as $group) {
+            $root = $this->budgetRoot($paidMappingParents, $group['target_ids'][0]);
+            $paidGroupsByRoot[$root][] = $group;
+        }
+
+        foreach ($paidGroupsByRoot as $groups) {
+            $targetTagsById = [];
+            $mappings = [];
+
+            foreach ($groups as $group) {
+                foreach ($group['candidates'] as $candidate) {
+                    $targetTagsById[(int) $candidate['target_id']] = (string) $candidate['tag'];
+                }
+
+                $preferredCandidate = $this->preferredCandidate($group['candidates']);
+                $mappings[] = [
+                    ...$preferredCandidate['mapping_details'],
+                    'preferred_tag' => (string) $preferredCandidate['tag'],
+                    'freshness_status' => (string) $preferredCandidate['status'],
+                    'freshness_label' => $this->freshnessLabel((string) $preferredCandidate['status']),
+                ];
+            }
+
+            ksort($targetTagsById);
+            usort($mappings, static fn (array $first, array $second): int => [$first['source_label'], $first['campaign_id']] <=> [$second['source_label'], $second['campaign_id']]);
+            $targetIds = array_map('intval', array_keys($targetTagsById));
+
+            $rows[] = [
+                'type' => 'paid_media',
+                'type_label' => '廣告活動',
+                'target_ids' => $targetIds,
+                'target_tags' => array_values($targetTagsById),
+                'merged_count' => max(0, count($targetIds) - 1),
+                'mappings' => $mappings,
+            ];
+        }
+
+        foreach ($sourceCandidates['google_analytics'] ?? [] as $candidates) {
+            if (count($candidates) < 2) {
+                continue;
+            }
+
+            $preferredCandidate = $this->preferredCandidate($candidates);
+            $targetTagsById = [];
+            foreach ($candidates as $candidate) {
+                $targetTagsById[(int) $candidate['target_id']] = (string) $candidate['tag'];
+            }
+
+            ksort($targetTagsById);
+            $targetIds = array_map('intval', array_keys($targetTagsById));
+            $rows[] = [
+                'type' => 'google_analytics',
+                'type_label' => 'GA4 歸因',
+                'target_ids' => $targetIds,
+                'target_tags' => array_values($targetTagsById),
+                'merged_count' => max(0, count($targetIds) - 1),
+                'mappings' => [[
+                    ...$preferredCandidate['mapping_details'],
+                    'preferred_tag' => (string) $preferredCandidate['tag'],
+                    'freshness_status' => (string) $preferredCandidate['status'],
+                    'freshness_label' => $this->freshnessLabel((string) $preferredCandidate['status']),
+                ]],
+            ];
+        }
+
+        usort($rows, static fn (array $first, array $second): int => [$first['type'], $first['target_tags'][0] ?? ''] <=> [$second['type'], $second['target_tags'][0] ?? '']);
+
+        return $rows;
+    }
+
+    private function freshnessLabel(string $status): string
+    {
+        return match ($status) {
+            'fresh' => '資料新鮮',
+            'stale' => '資料過期',
+            default => '資料不足',
+        };
     }
 
     /** @param list<array<string, mixed>> $candidates
