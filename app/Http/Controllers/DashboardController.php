@@ -388,9 +388,28 @@ class DashboardController extends Controller
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get();
+        $socialEngagementTargetSummaries = $socialEngagementTargetModels
+            ->mapWithKeys(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $asOf): array {
+                $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
+
+                return [
+                    $target->getKey() => $this->socialEngagementTargetSummary(
+                        $target,
+                        $summary,
+                        $socialEngagementTargetPlatformLabels,
+                        $asOf,
+                    ),
+                ];
+            })
+            ->all();
+        $publicEngagementSummaries = array_map(static fn (array $summary): array => [
+            'interaction_total' => $summary['current_interactions'],
+            'available_posts' => $summary['available_post_count'],
+            'tracked_posts' => $summary['tracked_post_count'],
+        ], $socialEngagementTargetSummaries);
         $user = $request->user();
         $socialEngagementMarketingSummaries = $user instanceof User
-            ? $dashboardCampaignMarketingSummary->build($socialEngagementTargetModels, $user, $asOf)
+            ? $dashboardCampaignMarketingSummary->build($socialEngagementTargetModels, $user, $asOf, $publicEngagementSummaries)
             : [];
         $campaignPortfolioMarketingSummary = $campaignPortfolioMarketingSummaryBuilder->build(
             $socialEngagementTargetModels,
@@ -402,9 +421,8 @@ class DashboardController extends Controller
         }
 
         $socialEngagementTargets = $socialEngagementTargetModels
-            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $socialEngagementMarketingSummaries, $asOf): array {
-                $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
-                $targetSummary = $this->socialEngagementTargetSummary($target, $summary, $socialEngagementTargetPlatformLabels, $asOf);
+            ->map(function (SocialEngagementTarget $target) use ($socialEngagementTargetSummaries, $socialEngagementMarketingSummaries): array {
+                $targetSummary = $socialEngagementTargetSummaries[$target->getKey()];
                 $targetSummary['marketing'] = $socialEngagementMarketingSummaries[$target->getKey()];
 
                 return $targetSummary;

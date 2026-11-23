@@ -695,6 +695,67 @@
                     </div>
                 @endif
             </section>
+            <section class="spaced-top" aria-labelledby="campaign-public-interaction-cost-title">
+                <h3 id="campaign-public-interaction-cost-title" class="panel-title">社群貼文互動成本</h3>
+                <p class="campaign-report-secondary">依外部廣告活動去重，以配對花費除以活動貼文的公開互動數；這是投放與貼文互動的效率參考，不代表廣告版位的付費互動成本。</p>
+                @if ($campaignPortfolioMarketingSummary['interaction_cost_groups'] === [])
+                    <p class="campaign-report-secondary">尚無可比較的投放花費。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-public-interaction-cost-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">各廣告平台與幣別中，已去重活動的配對花費、貼文公開互動數、單次公開互動成本與讀值覆蓋</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">來源</th>
+                                    <th scope="col">幣別</th>
+                                    <th scope="col" class="numeric">配對花費</th>
+                                    <th scope="col" class="numeric">公開互動</th>
+                                    <th scope="col" class="numeric">每次互動成本</th>
+                                    <th scope="col" class="numeric">貼文讀值覆蓋</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($campaignPortfolioMarketingSummary['interaction_cost_groups'] as $interactionCostGroup)
+                                    <tr>
+                                        <th scope="row">{{ $interactionCostGroup['source_label'] }}</th>
+                                        <td>{{ $interactionCostGroup['currency_code'] }}</td>
+                                        <td class="numeric">
+                                            @if ($interactionCostGroup['comparable_campaign_count'] > 0)
+                                                {{ number_format($interactionCostGroup['comparable_spend_amount'], 2) }}
+                                                <span class="secondary-text">{{ number_format($interactionCostGroup['comparable_campaign_count']) }} 個可比活動</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($interactionCostGroup['comparable_campaign_count'] > 0)
+                                                {{ number_format($interactionCostGroup['public_interactions']) }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($interactionCostGroup['cost_per_public_interaction'] !== null)
+                                                {{ number_format($interactionCostGroup['cost_per_public_interaction'], 4) }} {{ $interactionCostGroup['currency_code'] }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($interactionCostGroup['coverage_percent'] !== null)
+                                                {{ number_format($interactionCostGroup['available_post_count']) }}/{{ number_format($interactionCostGroup['tracked_post_count']) }} 篇
+                                                <span class="secondary-text">{{ number_format($interactionCostGroup['coverage_percent'], 1) }}%</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
             <p class="campaign-report-secondary spaced-top">
                 資料涵蓋（依外部活動去重）：
                 @foreach ($portfolioSourceLabels as $source => $sourceLabel)
@@ -718,6 +779,7 @@
                             <th scope="col">廣告花費</th>
                             <th scope="col">ROAS</th>
                             <th scope="col">同幣別 ROAS 排名</th>
+                            <th scope="col">公開互動效率</th>
                             <th scope="col">預算使用率</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -787,6 +849,23 @@
                                         <span class="secondary-text">{{ $efficiency['portfolio_roas_rank']['currency_code'] }}</span>
                                     @else
                                         —
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if ($socialEngagementTarget['current_interactions'] !== null)
+                                        {{ number_format($socialEngagementTarget['current_interactions']) }} 次互動
+                                        <span class="secondary-text">
+                                            @if ($efficiency['cost_per_public_interaction'] !== null)
+                                                {{ number_format($efficiency['cost_per_public_interaction'], 4) }} {{ $efficiency['ad_spend_currency'] }}／次
+                                            @else
+                                                花費或互動數不足，未計成本
+                                            @endif
+                                        </span>
+                                        <span class="secondary-text">讀值 {{ number_format($socialEngagementTarget['available_post_count']) }}/{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇</span>
+                                    @elseif ($socialEngagementTarget['tracked_post_count'] > 0)
+                                        <span class="secondary-text">尚無完整互動讀值（{{ number_format($socialEngagementTarget['available_post_count']) }}/{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇）</span>
+                                    @else
+                                        <span class="secondary-text">尚無活動貼文</span>
                                     @endif
                                 </td>
                                 <td class="numeric">

@@ -17,6 +17,7 @@ class CampaignPortfolioMarketingSummary
      *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>,
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
+     *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
      *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>
      * }
      */
@@ -28,6 +29,7 @@ class CampaignPortfolioMarketingSummary
             'google_ads' => ['value_key' => 'spend_amount', 'group_key' => 'google_ads_spend', 'count_key' => 'google_ads_campaign_count'],
         ];
         $sourceCandidates = array_fill_keys(array_keys($sourceDefinitions), []);
+        $interactionCostCandidates = ['meta_marketing' => [], 'google_ads' => [], 'manual' => []];
         $roasCandidates = [];
         $budgetParents = [];
         $budgetMappingMembers = [];
@@ -94,9 +96,58 @@ class CampaignPortfolioMarketingSummary
                     'currency_code' => $currencyCode,
                     'period_days' => $this->periodDays($target),
                 ];
+
+                if (in_array($source, ['meta_marketing', 'google_ads'], true)) {
+                    $publicEngagement = is_array($marketing['public_engagement'] ?? null)
+                        ? $marketing['public_engagement']
+                        : [];
+                    $interactionCostCandidates[$source][$mappingKey][] = [
+                        'target_id' => (int) $target->getKey(),
+                        'status' => is_string($summary['status'] ?? null) ? $summary['status'] : 'missing',
+                        'value' => is_numeric($sourceValue) && is_finite((float) $sourceValue) && $currencyCode !== null
+                            ? (float) $sourceValue
+                            : null,
+                        'currency_code' => $currencyCode,
+                        'public_interactions' => is_int($publicEngagement['interaction_total'] ?? null)
+                            ? $publicEngagement['interaction_total']
+                            : null,
+                        'available_post_count' => is_int($publicEngagement['available_posts'] ?? null)
+                            ? $publicEngagement['available_posts']
+                            : 0,
+                        'tracked_post_count' => is_int($publicEngagement['tracked_posts'] ?? null)
+                            ? $publicEngagement['tracked_posts']
+                            : 0,
+                        'period_days' => $this->periodDays($target),
+                    ];
+                }
             }
 
             $efficiency = is_array($marketing['efficiency'] ?? null) ? $marketing['efficiency'] : [];
+            if (($efficiency['ad_spend_source'] ?? null) === 'manual') {
+                $publicEngagement = is_array($marketing['public_engagement'] ?? null)
+                    ? $marketing['public_engagement']
+                    : [];
+                $interactionCostCandidates['manual']['manual:'.$target->getKey()][] = [
+                    'target_id' => (int) $target->getKey(),
+                    'status' => 'fresh',
+                    'value' => is_numeric($efficiency['ad_spend_amount'] ?? null)
+                        && is_finite((float) $efficiency['ad_spend_amount'])
+                        ? (float) $efficiency['ad_spend_amount']
+                        : null,
+                    'currency_code' => $this->currencyCode($efficiency['ad_spend_currency'] ?? null),
+                    'public_interactions' => is_int($publicEngagement['interaction_total'] ?? null)
+                        ? $publicEngagement['interaction_total']
+                        : null,
+                    'available_post_count' => is_int($publicEngagement['available_posts'] ?? null)
+                        ? $publicEngagement['available_posts']
+                        : 0,
+                    'tracked_post_count' => is_int($publicEngagement['tracked_posts'] ?? null)
+                        ? $publicEngagement['tracked_posts']
+                        : 0,
+                    'period_days' => $this->periodDays($target),
+                ];
+            }
+
             $googleAnalyticsMappingKey = $this->campaignMappingKey('google_analytics', $target);
             $roasRevenue = $marketing['google_analytics']['revenue'] ?? null;
             $roasRevenueCurrency = $this->currencyCode($marketing['google_analytics']['currency_code'] ?? null);
@@ -138,6 +189,7 @@ class CampaignPortfolioMarketingSummary
             'projected_under_budget_campaigns' => 0,
         ];
         $budgetCurrencyGroups = [];
+        $interactionCostGroups = [];
         $rankingCandidates = [];
 
         foreach ($budgetMappingMembers as $targetIds) {
@@ -245,6 +297,60 @@ class CampaignPortfolioMarketingSummary
             }
         }
 
+        foreach ($interactionCostCandidates as $source => $campaignCandidates) {
+            foreach ($campaignCandidates as $candidates) {
+                $candidate = $this->preferredInteractionCostCandidate($candidates);
+
+                if ($candidate['value'] === null || $candidate['currency_code'] === null) {
+                    continue;
+                }
+
+                $groupKey = $source.'|'.$candidate['currency_code'];
+                $interactionCostGroups[$groupKey] ??= [
+                    'source' => $source,
+                    'source_label' => match ($source) {
+                        'meta_marketing' => 'Meta Ads',
+                        'google_ads' => 'Google Ads',
+                        default => '人工記錄',
+                    },
+                    'currency_code' => $candidate['currency_code'],
+                    'comparable_spend_amount' => 0.0,
+                    'public_interactions' => 0,
+                    'cost_per_public_interaction' => null,
+                    'campaign_count' => 0,
+                    'fresh_campaign_count' => 0,
+                    'stale_campaign_count' => 0,
+                    'comparable_campaign_count' => 0,
+                    'available_post_count' => 0,
+                    'tracked_post_count' => 0,
+                    'coverage_percent' => null,
+                ];
+
+                $interactionCostGroups[$groupKey]['campaign_count']++;
+                $interactionCostGroups[$groupKey]['fresh_campaign_count'] += $candidate['status'] === 'fresh' ? 1 : 0;
+                $interactionCostGroups[$groupKey]['stale_campaign_count'] += $candidate['status'] === 'stale' ? 1 : 0;
+                $interactionCostGroups[$groupKey]['available_post_count'] += $candidate['available_post_count'];
+                $interactionCostGroups[$groupKey]['tracked_post_count'] += $candidate['tracked_post_count'];
+
+                if ($candidate['public_interactions'] !== null) {
+                    $interactionCostGroups[$groupKey]['comparable_spend_amount'] += $candidate['value'];
+                    $interactionCostGroups[$groupKey]['public_interactions'] += $candidate['public_interactions'];
+                    $interactionCostGroups[$groupKey]['comparable_campaign_count']++;
+                }
+            }
+        }
+
+        foreach ($interactionCostGroups as &$group) {
+            $group['comparable_spend_amount'] = round($group['comparable_spend_amount'], 4);
+            $group['cost_per_public_interaction'] = $group['public_interactions'] > 0
+                ? round($group['comparable_spend_amount'] / $group['public_interactions'], 4)
+                : null;
+            $group['coverage_percent'] = $group['tracked_post_count'] > 0
+                ? round($group['available_post_count'] / $group['tracked_post_count'] * 100, 1)
+                : null;
+        }
+        unset($group);
+
         foreach ($roasCandidates as $candidates) {
             $candidate = $this->preferredCandidate($candidates);
 
@@ -294,6 +400,7 @@ class CampaignPortfolioMarketingSummary
 
         ksort($currencyGroups);
         ksort($budgetCurrencyGroups);
+        ksort($interactionCostGroups);
         $campaignRanks = [];
 
         foreach ($rankingCandidates as $currencyCode => $candidates) {
@@ -332,6 +439,7 @@ class CampaignPortfolioMarketingSummary
             'currency_groups' => array_values($currencyGroups),
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
+            'interaction_cost_groups' => array_values($interactionCostGroups),
             'campaign_ranks' => $campaignRanks,
         ];
     }
@@ -492,6 +600,69 @@ class CampaignPortfolioMarketingSummary
 
             if ($freshnessOrder !== 0) {
                 return $freshnessOrder;
+            }
+
+            $periodOrder = $second['period_days'] <=> $first['period_days'];
+
+            return $periodOrder !== 0 ? $periodOrder : $first['target_id'] <=> $second['target_id'];
+        });
+
+        return $candidates[0];
+    }
+
+    /**
+     * @param  list<array{
+     *     target_id: int,
+     *     status: string,
+     *     value: float|null,
+     *     currency_code: string|null,
+     *     public_interactions: int|null,
+     *     available_post_count: int,
+     *     tracked_post_count: int,
+     *     period_days: int
+     * }>  $candidates
+     * @return array{
+     *     target_id: int,
+     *     status: string,
+     *     value: float|null,
+     *     currency_code: string|null,
+     *     public_interactions: int|null,
+     *     available_post_count: int,
+     *     tracked_post_count: int,
+     *     period_days: int
+     * }
+     */
+    private function preferredInteractionCostCandidate(array $candidates): array
+    {
+        usort($candidates, static function (array $first, array $second): int {
+            $firstHasComparableData = $first['value'] !== null
+                && $first['currency_code'] !== null
+                && $first['public_interactions'] !== null;
+            $secondHasComparableData = $second['value'] !== null
+                && $second['currency_code'] !== null
+                && $second['public_interactions'] !== null;
+
+            if ($firstHasComparableData !== $secondHasComparableData) {
+                return $firstHasComparableData ? -1 : 1;
+            }
+
+            $firstHasSpend = $first['value'] !== null && $first['currency_code'] !== null;
+            $secondHasSpend = $second['value'] !== null && $second['currency_code'] !== null;
+
+            if ($firstHasSpend !== $secondHasSpend) {
+                return $firstHasSpend ? -1 : 1;
+            }
+
+            $freshnessOrder = self::freshnessPriority($second['status']) <=> self::freshnessPriority($first['status']);
+
+            if ($freshnessOrder !== 0) {
+                return $freshnessOrder;
+            }
+
+            $coverageOrder = $second['available_post_count'] <=> $first['available_post_count'];
+
+            if ($coverageOrder !== 0) {
+                return $coverageOrder;
             }
 
             $periodOrder = $second['period_days'] <=> $first['period_days'];

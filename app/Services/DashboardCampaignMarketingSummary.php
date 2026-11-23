@@ -19,15 +19,21 @@ class DashboardCampaignMarketingSummary
 
     /**
      * @param  Collection<int, SocialEngagementTarget>  $targets
+     * @param  array<int, array{interaction_total: int|null, available_posts: int, tracked_posts: int}>  $publicEngagementSummaries
      * @return array<int, array{
      *     google_analytics: array{status: string, status_label: string, sessions: int|null, revenue: string|null, currency_code: string|null, synced_at: CarbonImmutable|null},
      *     meta_marketing: array{status: string, status_label: string, spend_amount: string|null, currency_code: string|null, synced_at: CarbonImmutable|null},
      *     google_ads: array{status: string, status_label: string, spend_amount: string|null, currency_code: string|null, synced_at: CarbonImmutable|null},
+     *     public_engagement: array{interaction_total: int|null, available_posts: int, tracked_posts: int, coverage_percent: float|null},
      *     efficiency: array<string, mixed>
      * }>
      */
-    public function build(Collection $targets, User $user, CarbonImmutable $asOf): array
-    {
+    public function build(
+        Collection $targets,
+        User $user,
+        CarbonImmutable $asOf,
+        array $publicEngagementSummaries = [],
+    ): array {
         if ($targets->isEmpty()) {
             return [];
         }
@@ -62,6 +68,16 @@ class DashboardCampaignMarketingSummary
         $summaries = [];
 
         foreach ($targets as $target) {
+            $publicEngagementSummary = $publicEngagementSummaries[$target->getKey()] ?? [];
+            $publicInteractionTotal = is_int($publicEngagementSummary['interaction_total'] ?? null)
+                ? $publicEngagementSummary['interaction_total']
+                : null;
+            $availableEngagementPosts = is_int($publicEngagementSummary['available_posts'] ?? null)
+                ? $publicEngagementSummary['available_posts']
+                : 0;
+            $trackedEngagementPosts = is_int($publicEngagementSummary['tracked_posts'] ?? null)
+                ? $publicEngagementSummary['tracked_posts']
+                : 0;
             $googleAnalyticsReport = $this->googleAnalyticsReportMatchesTarget(
                 $googleAnalyticsReports->get($target->getKey()),
                 $target,
@@ -96,10 +112,18 @@ class DashboardCampaignMarketingSummary
                     $target->google_ads_campaign_id !== null && $target->starts_on !== null && $target->ends_on !== null,
                     $freshnessCutoff,
                 ),
+                'public_engagement' => [
+                    'interaction_total' => $publicInteractionTotal,
+                    'available_posts' => $availableEngagementPosts,
+                    'tracked_posts' => $trackedEngagementPosts,
+                    'coverage_percent' => $trackedEngagementPosts > 0
+                        ? round($availableEngagementPosts / $trackedEngagementPosts * 100, 1)
+                        : null,
+                ],
                 'efficiency' => $this->marketingEfficiencyReport->build(
                     $target,
                     $googleAnalyticsReport,
-                    null,
+                    $publicInteractionTotal,
                     $metaMarketingReport,
                     $googleAdsReport,
                 ),
