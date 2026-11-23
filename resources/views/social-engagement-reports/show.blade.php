@@ -2647,6 +2647,50 @@
             </div>
         </section>
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-attribution-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-attribution-title">貼文歸因覆蓋</h2>
+                    <p class="campaign-report-secondary">依活動期間貼文的 utm_content 與 GA4 素材明細精確配對。</p>
+                </div>
+                <span class="badge badge-{{ $attributionCoverage['ga4_report_status'] === 'available' ? 'healthy' : 'warning' }}">
+                    {{ $attributionCoverage['ga4_report_status_label'] }}
+                </span>
+            </div>
+            <dl class="campaign-report-summary">
+                <div>
+                    <dt>UTM 已設定</dt>
+                    <dd>
+                        {{ number_format($attributionCoverage['utm_configured_post_count']) }}／{{ number_format($attributionCoverage['tracked_post_count']) }} 篇
+                        <span class="campaign-report-secondary">({{ $attributionCoverage['utm_coverage_percent'] === null ? '—' : number_format($attributionCoverage['utm_coverage_percent'], 1).'%' }})</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>UTM 未設定</dt>
+                    <dd>{{ number_format($attributionCoverage['utm_missing_post_count']) }} 篇</dd>
+                </div>
+                <div>
+                    <dt>GA4 已配對</dt>
+                    <dd>
+                        {{ number_format($attributionCoverage['ga4_matched_post_count']) }}／{{ number_format($attributionCoverage['ga4_unique_utm_post_count']) }} 篇
+                        <span class="campaign-report-secondary">({{ $attributionCoverage['ga4_match_coverage_percent'] === null ? '—' : number_format($attributionCoverage['ga4_match_coverage_percent'], 1).'%' }})</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>GA4 未配對</dt>
+                    <dd>{{ number_format($attributionCoverage['ga4_no_match_post_count']) }} 篇</dd>
+                </div>
+                <div>
+                    <dt>重複 UTM</dt>
+                    <dd>{{ number_format($attributionCoverage['ga4_duplicate_utm_post_count']) }} 篇</dd>
+                </div>
+                <div>
+                    <dt>待確認</dt>
+                    <dd>{{ number_format($attributionCoverage['ga4_unresolved_post_count']) }} 篇</dd>
+                </div>
+            </dl>
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-posts-title">
             <h2 id="campaign-report-posts-title">互動量排行 <span class="campaign-report-secondary">前 10 篇</span></h2>
             @if ($report['top_posts'] === [])

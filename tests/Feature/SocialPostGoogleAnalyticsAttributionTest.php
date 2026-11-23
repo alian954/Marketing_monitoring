@@ -78,6 +78,14 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
         $this->assertSame('report_expired', $expiredReport[0]['google_analytics_attribution']['status']);
         $this->assertSame('no_ga4_match', $unmatchedReport[0]['google_analytics_attribution']['status']);
         $this->assertSame('ga4_report_truncated', $truncatedReport[0]['google_analytics_attribution']['status']);
+
+        $unavailableReport = $service->attachToPosts(
+            $target,
+            $posts,
+            ['status' => 'unavailable', 'rows' => []],
+            null,
+        );
+        $this->assertSame('report_unavailable', $unavailableReport[0]['google_analytics_attribution']['status']);
     }
 
     public function test_missing_utm_and_ga4_thresholding_are_reported_without_fabricating_metrics(): void
@@ -160,6 +168,10 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
             ->assertOk()
             ->assertSee('GA4 工作階段')
             ->assertSee('GA4 重要事件')
+            ->assertSee('貼文歸因覆蓋')
+            ->assertSee('UTM 已設定')
+            ->assertSee('GA4 已配對')
+            ->assertSee('100.0%')
             ->assertSee(route('social-engagement-targets.report.posts.export', $target))
             ->assertSee('ig-reel-01')
             ->assertSee('已依 UTM 對應')

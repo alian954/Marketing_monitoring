@@ -50,6 +50,7 @@ use App\Services\MetaMarketingDemographicReportCsv;
 use App\Services\MetaMarketingPlacementPerformanceReport;
 use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
+use App\Services\SocialEngagementCampaignAttributionCoverageReport;
 use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
@@ -87,6 +88,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
         GoogleAnalyticsNewVsReturningPerformanceReport $googleAnalyticsNewVsReturningPerformanceReport,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
+        SocialEngagementCampaignAttributionCoverageReport $socialEngagementCampaignAttributionCoverageReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -104,6 +106,12 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['report']['top_posts'],
             $viewData['googleAnalyticsReport']?->ad_content_report,
             $viewData['googleAnalyticsReport']?->ad_content_report_expires_at,
+        );
+        $viewData['attributionCoverage'] = $socialEngagementCampaignAttributionCoverageReport->build(
+            $socialEngagementTarget,
+            $viewData['googleAnalyticsReport']?->ad_content_report,
+            $viewData['googleAnalyticsReport']?->ad_content_report_expires_at,
+            $socialPostGoogleAnalyticsAttributionReport,
         );
         $viewData['googleAdsSearchTermReport'] = $googleAdsSearchTermPerformanceReport->build(
             $viewData['googleAdsReport']?->search_terms_data,

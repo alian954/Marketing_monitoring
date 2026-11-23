@@ -154,12 +154,12 @@ class SocialPostGoogleAnalyticsAttributionReport
             } elseif ($reportStatus === 'thresholded') {
                 $attribution['status'] = 'thresholded';
                 $attribution['status_label'] = 'GA4 隱私門檻未提供明細';
-            } elseif (! $reportIsFresh) {
-                $attribution['status'] = $adContentReport === null ? 'report_unavailable' : 'report_expired';
-                $attribution['status_label'] = $adContentReport === null ? '尚無 GA4 素材報表' : 'GA4 素材報表已過期';
-            } elseif ($reportStatus !== 'complete') {
+            } elseif ($adContentReport === null || $reportStatus !== 'complete') {
                 $attribution['status'] = 'report_unavailable';
                 $attribution['status_label'] = 'GA4 素材資料不可用';
+            } elseif (! $reportIsFresh) {
+                $attribution['status'] = 'report_expired';
+                $attribution['status_label'] = 'GA4 素材報表已過期';
             } else {
                 $matchingRows = array_values(array_filter(
                     $reportRows,
