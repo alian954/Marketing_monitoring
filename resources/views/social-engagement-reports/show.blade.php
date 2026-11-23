@@ -2661,7 +2661,7 @@
                 @endphp
                 <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-posts-title" tabindex="0">
                     <table class="data-table campaign-report-table campaign-report-post-table">
-                        <caption>依公開互動數排序的活動貼文；互動口徑為{{ $report['interaction_scope_label'] }}，各指標列出擷取來源</caption>
+                        <caption>依公開互動數排序的活動貼文；互動口徑為{{ $report['interaction_scope_label'] }}，GA4 數據依 utm_content 完全相同值對應</caption>
                         <thead>
                             <tr>
                                 <th scope="col">貼文</th>
@@ -2671,6 +2671,12 @@
                                 <th scope="col">留言</th>
                                 <th scope="col">分享</th>
                                 <th scope="col">互動</th>
+                                <th scope="col">utm_content</th>
+                                <th scope="col">GA4 工作階段</th>
+                                <th scope="col">GA4 參與工作階段</th>
+                                <th scope="col">GA4 參與率</th>
+                                <th scope="col">GA4 重要事件</th>
+                                <th scope="col">GA4 收益</th>
                                 <th scope="col">讀值狀態</th>
                             </tr>
                         </thead>
@@ -2698,6 +2704,22 @@
                                         </td>
                                     @endforeach
                                     <td class="numeric">{{ $post['interaction_total'] === null ? '—' : number_format($post['interaction_total']) }}</td>
+                                    @php($ga4Attribution = $post['google_analytics_attribution'])
+                                    <td>
+                                        {{ $ga4Attribution['utm_content'] ?? '—' }}
+                                        <span class="secondary-text">{{ $ga4Attribution['status_label'] }}</span>
+                                    </td>
+                                    <td class="numeric">{{ $ga4Attribution['sessions'] === null ? '—' : number_format($ga4Attribution['sessions']) }}</td>
+                                    <td class="numeric">{{ $ga4Attribution['engaged_sessions'] === null ? '—' : number_format($ga4Attribution['engaged_sessions']) }}</td>
+                                    <td class="numeric">{{ $ga4Attribution['engagement_rate'] === null ? '—' : number_format((float) $ga4Attribution['engagement_rate'] * 100, 2).'%' }}</td>
+                                    <td class="numeric">{{ $ga4Attribution['key_events'] === null ? '—' : number_format((float) $ga4Attribution['key_events'], 2) }}</td>
+                                    <td class="numeric">
+                                        @if ($ga4Attribution['total_revenue'] !== null)
+                                            {{ $ga4Attribution['currency_code'] ?? '' }} {{ number_format((float) $ga4Attribution['total_revenue'], 2) }}
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
                                     <td>{{ $post['metrics_freshness'] }}</td>
                                 </tr>
                             @endforeach
@@ -2709,6 +2731,7 @@
 
         <p class="campaign-report-note">
             互動數依平台口徑計算。未讀到的公開數據以「—」表示，不視為 0。
+            GA4 數據僅依 utm_content 對應工作階段、重要事件與收益，不代表貼文造成該成效；重複素材值不會分配數據。
             @if ($report['unknown_publication_date_count'] > 0)
                 另有 {{ number_format($report['unknown_publication_date_count']) }} 篇未取得發布時間，未納入活動期間。
             @endif

@@ -51,6 +51,7 @@ use App\Services\MetaMarketingPlacementPerformanceReport;
 use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
+use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -84,6 +85,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
         GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
         GoogleAnalyticsNewVsReturningPerformanceReport $googleAnalyticsNewVsReturningPerformanceReport,
+        SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -95,6 +97,12 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingPerformanceReport,
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
+        );
+        $viewData['report']['top_posts'] = $socialPostGoogleAnalyticsAttributionReport->attachToPosts(
+            $socialEngagementTarget,
+            $viewData['report']['top_posts'],
+            $viewData['googleAnalyticsReport']?->ad_content_report,
+            $viewData['googleAnalyticsReport']?->ad_content_report_expires_at,
         );
         $viewData['googleAdsSearchTermReport'] = $googleAdsSearchTermPerformanceReport->build(
             $viewData['googleAdsReport']?->search_terms_data,

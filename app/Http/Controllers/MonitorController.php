@@ -352,6 +352,7 @@ class MonitorController extends Controller
             'url' => $normalizedUrl,
             'url_hash' => $fingerprint,
             'label' => $validated['label'] ?: null,
+            'utm_content' => Monitor::socialPlatformForUrl($normalizedUrl) !== null ? $validated['utm_content'] : null,
             'notification_email' => $validated['notification_email'],
             'notification_escalation_email' => $validated['notification_escalation_email'],
             'notification_escalation_delay_minutes' => $validated['notification_escalation_delay_minutes'],
@@ -907,6 +908,10 @@ class MonitorController extends Controller
                 'slo_target_basis_points' => $validated['slo_target_basis_points'],
                 'allowed_redirect_hosts' => $validated['allowed_redirect_hosts'],
             ]);
+
+            $lockedMonitor->forceFill([
+                'utm_content' => Monitor::socialPlatformForUrl($normalizedUrl) !== null ? $validated['utm_content'] : null,
+            ])->save();
 
             return $lockedMonitor;
         });
@@ -2189,6 +2194,7 @@ class MonitorController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
             'label' => ['nullable', 'string', 'max:1200'],
+            'utm_content' => ['nullable', 'string', 'max:4096'],
             'notification_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_email' => ['sometimes', 'nullable', 'string', 'max:2549'],
             'notification_escalation_delay_minutes' => ['sometimes', 'nullable', 'integer', 'min:5', 'max:1440'],
@@ -2442,6 +2448,9 @@ class MonitorController extends Controller
             'name' => $validated['name'],
             'url' => isset($validated['url']) ? trim($validated['url']) : '',
             'label' => $validated['label'] ?? null,
+            'utm_content' => array_key_exists('utm_content', $validated)
+                ? (trim((string) $validated['utm_content']) === '' ? null : trim((string) $validated['utm_content']))
+                : $monitor?->utm_content,
             'notification_email' => array_key_exists('notification_email', $validated)
                 ? $validated['notification_email']
                 : $monitor?->notification_email,
@@ -2769,6 +2778,22 @@ class MonitorController extends Controller
     /** @param array<string, mixed> $configuration */
     private function persistMonitorConfigurationVersion(Monitor $monitor, array $configuration): void
     {
+        $configurationChanged = false;
+
+        foreach ($configuration as $key => $value) {
+            $currentValue = $monitor->getAttribute($key);
+
+            if ($currentValue != $value) {
+                $configurationChanged = true;
+
+                break;
+            }
+        }
+
+        if (! $configurationChanged) {
+            return;
+        }
+
         $previousVersion = $monitor->config_version;
         $nextVersion = $previousVersion + 1;
 

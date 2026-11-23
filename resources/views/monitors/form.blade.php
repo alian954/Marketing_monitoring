@@ -114,6 +114,13 @@
                         </div>
 
                         <div class="field-group field-group-full">
+                            <label class="field-label" for="utm_content">GA4 UTM 素材值（選填）</label>
+                            <input class="field-input @error('utm_content') is-invalid @enderror" id="utm_content" name="utm_content" type="text" value="{{ old('utm_content', $monitor->utm_content) }}" maxlength="4096" autocomplete="off" aria-describedby="utm-content-help{{ $errors->has('utm_content') ? ' utm-content-error' : '' }}" @if ($errors->has('utm_content')) aria-invalid="true" @endif>
+                            <p id="utm-content-help" class="field-help">填入貼文連結使用的 utm_content；活動報告會用完全相同的值對應 GA4 工作階段、重要事件與收益。僅適用社群貼文與已同步的 GA4 活動素材報表。</p>
+                            @error('utm_content')<p id="utm-content-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
                             <label class="field-label" for="notification_email">告警收件信箱</label>
                             <textarea class="field-textarea @error('notification_email') is-invalid @enderror" id="notification_email" name="notification_email" rows="3" maxlength="2549" autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="{{ $errors->has('notification_email') ? 'notification-email-help notification-email-error' : 'notification-email-help' }}" @if ($errors->has('notification_email')) aria-invalid="true" @endif>{{ old('notification_email', $monitor->notification_email) }}</textarea>
                             <p id="notification-email-help" class="field-help">最多 10 個信箱；以換行、逗號或分號分隔。留空時使用全域設定。</p>
