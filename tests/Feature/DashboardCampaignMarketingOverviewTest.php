@@ -10,6 +10,8 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use App\Services\CampaignPortfolioMarketingSummary;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -37,6 +39,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('活動行銷成效')
+            ->assertSee('跨活動行銷數據總覽')
             ->assertSee('120 工作階段')
             ->assertSee('900.00')
             ->assertSee('300.00 TWD')
@@ -55,6 +58,131 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame('200.0000', $marketing['efficiency']['roas_spend_amount']);
         $this->assertSame(4.5, $marketing['efficiency']['roas']);
         $this->assertSame(30.0, $marketing['efficiency']['budget_utilization_percent']);
+        $portfolio = $response->viewData('campaignPortfolioMarketingSummary');
+        $this->assertSame(1, $portfolio['target_count']);
+        $this->assertSame(900.0, $portfolio['currency_groups'][0]['ga4_revenue']);
+        $this->assertSame(4.5, $portfolio['currency_groups'][0]['roas']);
+        $this->assertSame(1, $portfolio['currency_groups'][0]['roas_campaign_count']);
+    }
+
+    public function test_campaign_portfolio_groups_currencies_calculates_weighted_roas_and_reports_coverage(): void
+    {
+        $targets = [
+            $this->createTarget(['tag' => 'Portfolio TWD one', 'google_ads_campaign_id' => 'ads-portfolio-1', 'meta_campaign_id' => 'meta-portfolio-1']),
+            $this->createTarget(['tag' => 'Portfolio TWD two', 'google_ads_campaign_id' => 'ads-portfolio-2', 'meta_campaign_id' => 'meta-portfolio-2']),
+            $this->createTarget(['tag' => 'Portfolio USD', 'google_ads_campaign_id' => 'ads-portfolio-usd', 'meta_campaign_id' => null]),
+            $this->createTarget(['tag' => 'Portfolio zero values', 'google_ads_campaign_id' => 'ads-portfolio-zero', 'meta_campaign_id' => 'meta-portfolio-zero']),
+            $this->createTarget(['tag' => 'Portfolio missing values', 'google_ads_campaign_id' => 'ads-portfolio-missing', 'meta_campaign_id' => 'meta-portfolio-missing']),
+        ];
+        $marketingSummaries = [
+            $targets[0]->id => $this->portfolioMarketingSummary(
+                ['status' => 'fresh', 'revenue' => '900.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '200.0000', 'currency_code' => 'TWD'],
+                ['roas' => 4.5, 'roas_spend_amount' => '200.0000', 'roas_spend_currency' => 'TWD', 'roas_spend_source' => 'google_ads'],
+            ),
+            $targets[1]->id => $this->portfolioMarketingSummary(
+                ['status' => 'stale', 'revenue' => '100.0000', 'currency_code' => 'TWD'],
+                ['status' => 'stale', 'spend_amount' => '50.0000', 'currency_code' => 'TWD'],
+                ['status' => 'stale', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                ['roas' => 1.0, 'roas_spend_amount' => '100.0000', 'roas_spend_currency' => 'TWD', 'roas_spend_source' => 'google_ads'],
+            ),
+            $targets[2]->id => $this->portfolioMarketingSummary(
+                ['status' => 'fresh', 'revenue' => '80.0000', 'currency_code' => 'USD'],
+                ['status' => 'not_configured'],
+                ['status' => 'fresh', 'spend_amount' => '20.0000', 'currency_code' => 'USD'],
+                ['roas' => 4.0, 'roas_spend_amount' => '20.0000', 'roas_spend_currency' => 'USD', 'roas_spend_source' => 'google_ads'],
+            ),
+            $targets[3]->id => $this->portfolioMarketingSummary(
+                ['status' => 'fresh', 'revenue' => '0.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '0.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '0.0000', 'currency_code' => 'TWD'],
+            ),
+            $targets[4]->id => $this->portfolioMarketingSummary(
+                ['status' => 'missing'],
+                ['status' => 'missing'],
+                ['status' => 'missing'],
+            ),
+        ];
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection($targets),
+            $marketingSummaries,
+        );
+        $currencyGroups = collect($portfolio['currency_groups'])->keyBy('currency_code');
+        $twd = $currencyGroups->get('TWD');
+        $usd = $currencyGroups->get('USD');
+
+        $this->assertSame(5, $portfolio['target_count']);
+        $this->assertSame(1000.0, $twd['ga4_revenue']);
+        $this->assertSame(150.0, $twd['meta_spend']);
+        $this->assertSame(300.0, $twd['google_ads_spend']);
+        $this->assertSame(3.3333, $twd['roas']);
+        $this->assertSame(2, $twd['roas_campaign_count']);
+        $this->assertSame(80.0, $usd['ga4_revenue']);
+        $this->assertSame(20.0, $usd['google_ads_spend']);
+        $this->assertSame(4.0, $usd['roas']);
+        $this->assertSame(4, $portfolio['coverage']['google_analytics']['available_campaigns']);
+        $this->assertSame(3, $portfolio['coverage']['google_analytics']['fresh_campaigns']);
+        $this->assertSame(1, $portfolio['coverage']['google_analytics']['stale_campaigns']);
+        $this->assertSame(1, $portfolio['coverage']['google_analytics']['missing_campaigns']);
+    }
+
+    public function test_campaign_portfolio_excludes_duplicate_campaign_mappings_and_prefers_fresh_snapshots(): void
+    {
+        $staleTarget = $this->createTarget([
+            'tag' => 'Portfolio duplicate stale',
+            'google_ads_campaign_id' => 'ads-duplicate',
+            'meta_campaign_id' => 'meta-duplicate',
+            'ends_on' => '2026-11-15',
+        ]);
+        $freshTarget = $this->createTarget([
+            'tag' => 'Portfolio duplicate fresh',
+            'google_ads_campaign_id' => 'ads-duplicate',
+            'meta_campaign_id' => 'meta-duplicate',
+        ]);
+        $marketingSummaries = [
+            $staleTarget->id => $this->portfolioMarketingSummary(
+                ['status' => 'stale', 'revenue' => '900.0000', 'currency_code' => 'TWD'],
+                ['status' => 'stale', 'spend_amount' => '80.0000', 'currency_code' => 'TWD'],
+                ['status' => 'stale', 'spend_amount' => '200.0000', 'currency_code' => 'TWD'],
+                ['roas' => 4.5, 'roas_spend_amount' => '200.0000', 'roas_spend_currency' => 'TWD', 'roas_spend_source' => 'google_ads'],
+            ),
+            $freshTarget->id => $this->portfolioMarketingSummary(
+                ['status' => 'fresh', 'revenue' => '300.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '50.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                ['roas' => 3.0, 'roas_spend_amount' => '100.0000', 'roas_spend_currency' => 'TWD', 'roas_spend_source' => 'google_ads'],
+            ),
+        ];
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection([$staleTarget, $freshTarget]),
+            $marketingSummaries,
+        );
+        $twd = $portfolio['currency_groups'][0];
+
+        $this->assertSame(300.0, $twd['ga4_revenue']);
+        $this->assertSame(50.0, $twd['meta_spend']);
+        $this->assertSame(100.0, $twd['google_ads_spend']);
+        $this->assertSame(3.0, $twd['roas']);
+        $this->assertSame(1, $portfolio['coverage']['google_analytics']['configured_campaigns']);
+        $this->assertSame(1, $portfolio['coverage']['google_analytics']['duplicate_mappings_excluded']);
+    }
+
+    public function test_dashboard_portfolio_follows_the_selected_social_platform_filter(): void
+    {
+        $user = User::factory()->create();
+        $this->createTarget(['tag' => 'Facebook campaign', 'social_platform' => 'facebook']);
+        $this->createTarget(['tag' => 'Instagram campaign', 'social_platform' => 'instagram']);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard', ['engagement_platform' => 'instagram']))
+            ->assertOk();
+
+        $this->assertSame('instagram', $response->viewData('socialEngagementSelectedPlatform'));
+        $this->assertSame(1, $response->viewData('campaignPortfolioMarketingSummary')['target_count']);
+        $this->assertSame('Instagram campaign', $response->viewData('socialEngagementTargets')[0]['tag']);
     }
 
     public function test_dashboard_distinguishes_zero_missing_stale_and_unconnected_metrics(): void
@@ -183,6 +311,44 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'campaign_budget_amount' => '1000.0000',
             'campaign_budget_currency' => 'TWD',
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $googleAnalytics
+     * @param  array<string, mixed>  $metaMarketing
+     * @param  array<string, mixed>  $googleAds
+     * @param  array<string, mixed>  $efficiency
+     * @return array<string, mixed>
+     */
+    private function portfolioMarketingSummary(
+        array $googleAnalytics = [],
+        array $metaMarketing = [],
+        array $googleAds = [],
+        array $efficiency = [],
+    ): array {
+        return [
+            'google_analytics' => array_replace([
+                'status' => 'not_configured',
+                'revenue' => null,
+                'currency_code' => null,
+            ], $googleAnalytics),
+            'meta_marketing' => array_replace([
+                'status' => 'not_configured',
+                'spend_amount' => null,
+                'currency_code' => null,
+            ], $metaMarketing),
+            'google_ads' => array_replace([
+                'status' => 'not_configured',
+                'spend_amount' => null,
+                'currency_code' => null,
+            ], $googleAds),
+            'efficiency' => array_replace([
+                'roas' => null,
+                'roas_spend_amount' => null,
+                'roas_spend_currency' => null,
+                'roas_spend_source' => null,
+            ], $efficiency),
+        ];
     }
 
     private function createGoogleAnalyticsConnection(User $user): GoogleAnalyticsConnection

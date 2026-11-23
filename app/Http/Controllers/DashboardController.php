@@ -12,6 +12,7 @@ use App\Models\SchedulerHeartbeat;
 use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
 use App\Models\User;
+use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DashboardCampaignMarketingSummary;
 use App\Services\FleetAvailabilityReport;
@@ -74,6 +75,7 @@ class DashboardController extends Controller
         SocialEngagementDataCoverageReport $socialEngagementDataCoverageReport,
         SocialPostMaturityReport $socialPostMaturityReport,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
+        CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummaryBuilder,
     ): View {
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
@@ -390,6 +392,10 @@ class DashboardController extends Controller
         $socialEngagementMarketingSummaries = $user instanceof User
             ? $dashboardCampaignMarketingSummary->build($socialEngagementTargetModels, $user, $asOf)
             : [];
+        $campaignPortfolioMarketingSummary = $campaignPortfolioMarketingSummaryBuilder->build(
+            $socialEngagementTargetModels,
+            $socialEngagementMarketingSummaries,
+        );
         $socialEngagementTargets = $socialEngagementTargetModels
             ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $socialEngagementMarketingSummaries, $asOf): array {
                 $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;
@@ -549,6 +555,7 @@ class DashboardController extends Controller
             'socialPostMaturityRows' => $socialPostMaturityRows,
             'socialEngagementDataCoverageRows' => $socialEngagementDataCoverageRows,
             'socialEngagementTargets' => $socialEngagementTargets,
+            'campaignPortfolioMarketingSummary' => $campaignPortfolioMarketingSummary,
             'socialEngagementTargetTagOptions' => $socialEngagementTargetTagOptions,
             'socialEngagementTargetPlatformLabels' => $socialEngagementTargetPlatformLabels,
             'socialEngagementTargetFormPlatform' => $targetFormPlatform,

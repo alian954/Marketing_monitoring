@@ -551,6 +551,87 @@
                 <p class="empty-copy">設定活動目標並同步 GA4 或廣告平台後，這裡會顯示成效摘要。</p>
             </div>
         @else
+            @php
+                $portfolioCoverage = $campaignPortfolioMarketingSummary['coverage'];
+                $portfolioSourceLabels = [
+                    'google_analytics' => 'GA4',
+                    'meta_marketing' => 'Meta Ads',
+                    'google_ads' => 'Google Ads',
+                ];
+            @endphp
+            <p class="panel-description">
+                目前篩選的 {{ number_format($campaignPortfolioMarketingSummary['target_count']) }} 個活動期間累計；期間依各活動設定，金額依幣別分列，包含可用的過期快照。
+            </p>
+            <div class="data-table-wrap spaced-top" role="region" aria-label="跨活動行銷數據總覽" tabindex="0">
+                <table class="data-table">
+                    <caption class="sr-only">目前篩選活動的 GA4 營收、廣告花費與可比較 ROAS，依幣別分組</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">幣別</th>
+                            <th scope="col" class="numeric">GA4 營收</th>
+                            <th scope="col" class="numeric">Meta Ads 花費</th>
+                            <th scope="col" class="numeric">Google Ads 花費</th>
+                            <th scope="col" class="numeric">可比較 ROAS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($campaignPortfolioMarketingSummary['currency_groups'] as $portfolioGroup)
+                            <tr>
+                                <th scope="row">{{ $portfolioGroup['currency_code'] }}</th>
+                                <td class="numeric">
+                                    @if ($portfolioGroup['ga4_campaign_count'] > 0)
+                                        {{ number_format($portfolioGroup['ga4_revenue'], 2) }}
+                                        <span class="secondary-text">{{ number_format($portfolioGroup['ga4_campaign_count']) }} 個活動</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if ($portfolioGroup['meta_campaign_count'] > 0)
+                                        {{ number_format($portfolioGroup['meta_spend'], 2) }}
+                                        <span class="secondary-text">{{ number_format($portfolioGroup['meta_campaign_count']) }} 個活動</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if ($portfolioGroup['google_ads_campaign_count'] > 0)
+                                        {{ number_format($portfolioGroup['google_ads_spend'], 2) }}
+                                        <span class="secondary-text">{{ number_format($portfolioGroup['google_ads_campaign_count']) }} 個活動</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if ($portfolioGroup['roas'] !== null)
+                                        {{ number_format($portfolioGroup['roas'], 2) }}x
+                                        <span class="secondary-text">{{ number_format($portfolioGroup['roas_campaign_count']) }} 個可比較活動</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="5" class="secondary-text">目前沒有可彙總的營收或花費資料。</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <p class="campaign-report-secondary spaced-top">
+                資料涵蓋（依外部活動去重）：
+                @foreach ($portfolioSourceLabels as $source => $sourceLabel)
+                    @php
+                        $sourceCoverage = $portfolioCoverage[$source];
+                    @endphp
+                    {{ $sourceLabel }} {{ number_format($sourceCoverage['available_campaigns']) }}/{{ number_format($sourceCoverage['configured_campaigns']) }} 個活動有資料（新鮮 {{ number_format($sourceCoverage['fresh_campaigns']) }}、過期 {{ number_format($sourceCoverage['stale_campaigns']) }}）{{ $sourceCoverage['duplicate_mappings_excluded'] > 0 ? '，排除重複綁定 '.number_format($sourceCoverage['duplicate_mappings_excluded']).' 筆' : '' }}
+                    @if (! $loop->last)
+                        ；
+                    @endif
+                @endforeach
+                。ROAS 只納入同幣別且 GA4 營收與對應廣告花費可配對的活動，依合計營收除以合計花費計算。
+            </p>
             <div class="data-table-wrap" role="region" aria-labelledby="campaign-marketing-overview-title" tabindex="0">
                 <table class="data-table">
                     <caption class="sr-only">各活動的 GA4 成效、廣告花費、ROAS 與預算使用率</caption>
