@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\SocialEngagementTargetGoogleAdsReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -22,9 +23,12 @@ use Illuminate\Database\Eloquent\Model;
     'conversions_value',
     'conversion_actions',
     'daily_metrics',
+    'search_terms_data',
+    'search_terms_expires_at',
     'currency_code',
     'synced_at',
 ])]
+#[Hidden(['search_terms_data', 'search_terms_expires_at'])]
 class SocialEngagementTargetGoogleAdsReport extends Model
 {
     /** @use HasFactory<SocialEngagementTargetGoogleAdsReportFactory> */
@@ -42,6 +46,8 @@ class SocialEngagementTargetGoogleAdsReport extends Model
             'conversions_value' => 'decimal:4',
             'conversion_actions' => 'array',
             'daily_metrics' => 'array',
+            'search_terms_data' => 'encrypted:array',
+            'search_terms_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }

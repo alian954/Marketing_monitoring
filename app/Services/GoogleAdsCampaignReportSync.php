@@ -7,6 +7,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 
 class GoogleAdsCampaignReportSync
@@ -35,6 +36,27 @@ class GoogleAdsCampaignReportSync
             $connection->currency_code,
             $connection->login_customer_id,
         );
+        try {
+            $searchTermsData = $this->dataApi->campaignSearchTermInsights(
+                $accessToken,
+                $connection->customer_id,
+                $target->google_ads_campaign_id,
+                $target->starts_on->toDateString(),
+                $target->ends_on->toDateString(),
+                $metrics['currency_code'],
+                $metrics['campaign_channel_type'],
+                $connection->login_customer_id,
+            );
+        } catch (GoogleAdsApiException|ConnectionException) {
+            $searchTermsData = [
+                'status' => 'unavailable',
+                'window_start_on' => null,
+                'window_end_on' => null,
+                'currency_code' => $metrics['currency_code'],
+                'truncated' => false,
+                'rows' => [],
+            ];
+        }
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -58,8 +80,11 @@ class GoogleAdsCampaignReportSync
             $metrics['daily_metrics_coverage_end_on'],
         );
         $syncedAt = CarbonImmutable::now();
+        $searchTermsExpiresAt = $searchTermsData['status'] === 'complete'
+            ? $syncedAt->addDays(30)
+            : null;
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics): SocialEngagementTargetGoogleAdsReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt): SocialEngagementTargetGoogleAdsReport {
             $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
                 [
                     'google_ads_connection_id' => $connection->getKey(),
@@ -71,6 +96,8 @@ class GoogleAdsCampaignReportSync
                     'starts_on' => $startsOn,
                     'ends_on' => $endsOn,
                     'daily_metrics' => $dailyMetrics,
+                    'search_terms_data' => $searchTermsData,
+                    'search_terms_expires_at' => $searchTermsExpiresAt,
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],

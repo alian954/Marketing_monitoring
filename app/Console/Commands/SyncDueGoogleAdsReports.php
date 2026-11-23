@@ -26,6 +26,7 @@ class SyncDueGoogleAdsReports extends Command
         GoogleAdsCampaignReportSync $campaignReportSync,
     ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
+        $this->clearExpiredSearchTermReports($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Google Ads 的活動。');
@@ -138,5 +139,16 @@ class SyncDueGoogleAdsReports extends Command
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
             ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+    }
+
+    private function clearExpiredSearchTermReports(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->whereNotNull('search_terms_expires_at')
+            ->where('search_terms_expires_at', '<=', $asOf)
+            ->update([
+                'search_terms_data' => null,
+                'search_terms_expires_at' => null,
+            ]);
     }
 }

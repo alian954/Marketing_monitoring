@@ -267,7 +267,22 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 ->push($this->conversionActionsPayload([
                     ['id' => '1002', 'name' => 'Web purchase', 'conversions' => '10.5', 'value' => '900.25'],
                     ['id' => '1001', 'name' => 'Lead & form <Submit>', 'conversions' => '7', 'value' => '80.5'],
-                ])),
+                ]))
+                ->push([[
+                    'results' => [[
+                        'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
+                        'campaign' => ['id' => '987654321'],
+                        'adGroup' => ['id' => '555555555', 'name' => 'Brand terms'],
+                        'searchTermView' => ['searchTerm' => 'winter gift box'],
+                        'metrics' => [
+                            'costMicros' => '12500000',
+                            'impressions' => '100',
+                            'clicks' => '5',
+                            'conversions' => '2',
+                            'conversionsValue' => '50',
+                        ],
+                    ]],
+                ]]),
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget([
@@ -310,6 +325,25 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertNotNull($snapshot->synced_at);
         $this->assertSame([
             'status' => 'complete',
+            'window_start_on' => '2026-11-01',
+            'window_end_on' => '2026-11-21',
+            'currency_code' => 'USD',
+            'truncated' => false,
+            'rows' => [[
+                'search_term' => 'winter gift box',
+                'ad_group_id' => '555555555',
+                'ad_group_name' => 'Brand terms',
+                'impressions' => 100,
+                'clicks' => 5,
+                'spend_amount' => '12.5000',
+                'conversions' => '2.0000',
+                'conversions_value' => '50.0000',
+            ]],
+        ], $snapshot->search_terms_data);
+        $this->assertTrue($snapshot->search_terms_expires_at->isFuture());
+        $this->assertStringNotContainsString('winter gift box', $snapshot->getRawOriginal('search_terms_data'));
+        $this->assertSame([
+            'status' => 'complete',
             'campaign_channel_type' => 'SEARCH',
             'requested_start_on' => '2026-11-01',
             'requested_end_on' => '2026-11-30',
@@ -348,7 +382,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 
@@ -375,6 +409,15 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 && str_contains($query, 'segments.conversion_action_name')
                 && str_contains($query, 'campaign.id = 987654321')
                 && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-30'");
+        });
+        Http::assertSent(function (ClientRequest $request): bool {
+            $query = $request->data()['query'] ?? '';
+
+            return str_ends_with($request->url(), '/customers/1234567890/googleAds:searchStream')
+                && $request->hasHeader('login-customer-id', '0987654321')
+                && str_contains($query, 'FROM search_term_view')
+                && str_contains($query, "segments.date BETWEEN '2026-11-01' AND '2026-11-21'")
+                && str_contains($query, 'LIMIT 201');
         });
 
         $reportResponse = $this->get(route('social-engagement-targets.report', $target))

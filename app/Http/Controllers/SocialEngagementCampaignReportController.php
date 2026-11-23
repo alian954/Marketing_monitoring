@@ -16,6 +16,8 @@ use App\Services\CampaignDailyMarketingTrendChart;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
+use App\Services\GoogleAdsSearchTermPerformanceReport;
+use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
@@ -36,8 +38,9 @@ class SocialEngagementCampaignReportController extends Controller
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
         CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
+        GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
     ): View {
-        return view('social-engagement-reports.show', $this->reportData(
+        $viewData = $this->reportData(
             $request,
             $socialEngagementTarget,
             $campaignReport,
@@ -47,7 +50,67 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingPerformanceReport,
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
-        ));
+        );
+        $viewData['googleAdsSearchTermReport'] = $googleAdsSearchTermPerformanceReport->build(
+            $viewData['googleAdsReport']?->search_terms_data,
+            $viewData['googleAdsReport']?->search_terms_expires_at,
+            (string) $request->query('search_term_sort', 'spend'),
+        );
+
+        return view('social-engagement-reports.show', $viewData);
+    }
+
+    public function exportGoogleAdsSearchTerms(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
+        GoogleAdsSearchTermReportCsv $googleAdsSearchTermReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->googleAdsConnection;
+        abort_if(
+            $connection === null
+                || $connection->customer_id === null
+                || $socialEngagementTarget->google_ads_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('customer_id', $connection->customer_id)
+            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->search_terms_data)
+                || $report->search_terms_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $searchTermReport = $googleAdsSearchTermPerformanceReport->build(
+            $report->search_terms_data,
+            $report->search_terms_expires_at,
+            'spend',
+        );
+        abort_if($searchTermReport['status'] !== 'complete', 404);
+        $csv = $googleAdsSearchTermReportCsv->build($searchTermReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'google-ads-search-terms-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function exportCampaignSummary(

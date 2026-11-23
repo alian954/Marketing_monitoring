@@ -497,6 +497,92 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-search-terms-title">Google Ads 搜尋字詞</h3>
+                    @if ($googleAdsSearchTermReport['status'] === 'complete' && $googleAdsSearchTermReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.search-terms', $target) }}">匯出搜尋字詞 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsSearchTermReport['status'] === 'complete')
+                    <p class="campaign-report-secondary">
+                        最近 30 個完整日（{{ $googleAdsSearchTermReport['window_start_on'] }} 至 {{ $googleAdsSearchTermReport['window_end_on'] }}）。Google Ads 會隱去低量查詢；最多列出花費最高的 200 筆，未必涵蓋全部搜尋字詞。
+                    </p>
+                    @if ($googleAdsSearchTermReport['truncated'])
+                        <p class="campaign-report-empty">符合條件的搜尋字詞超過 200 筆，表格僅顯示花費最高的 200 筆。</p>
+                    @endif
+                    @if ($googleAdsSearchTermReport['rows'] === [])
+                        <p class="campaign-report-empty">目前沒有可列出的搜尋字詞；低量查詢可能已由 Google Ads 隱去。</p>
+                    @else
+                        <form class="campaign-report-actions" method="GET" action="{{ route('social-engagement-targets.report', $target) }}">
+                            <label class="field-label" for="google-ads-search-terms-sort">排序依據</label>
+                            <select class="field-select" id="google-ads-search-terms-sort" name="search_term_sort">
+                                <option value="spend" @selected($googleAdsSearchTermReport['sort'] === 'spend')>花費</option>
+                                <option value="conversions" @selected($googleAdsSearchTermReport['sort'] === 'conversions')>轉換</option>
+                                <option value="roas" @selected($googleAdsSearchTermReport['sort'] === 'roas')>ROAS</option>
+                                <option value="ctr" @selected($googleAdsSearchTermReport['sort'] === 'ctr')>CTR</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">排序</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-search-terms-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads 最近 30 個完整日的搜尋字詞成效</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">搜尋字詞</th>
+                                        <th scope="col">廣告群組</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">轉換</th>
+                                        <th scope="col" class="numeric">CPA</th>
+                                        <th scope="col" class="numeric">轉換價值</th>
+                                        <th scope="col" class="numeric">ROAS</th>
+                                        <th scope="col">判讀</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsSearchTermReport['rows'] as $searchTermRow)
+                                        <tr>
+                                            <th scope="row">{{ $searchTermRow['search_term'] }}</th>
+                                            <td>{{ $searchTermRow['ad_group_name'] }}</td>
+                                            <td class="numeric">{{ number_format((int) $searchTermRow['impressions']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $searchTermRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $searchTermRow['ctr_percent'] === null ? '—' : number_format($searchTermRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $searchTermRow['spend_amount'], 2) }} {{ $googleAdsSearchTermReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $searchTermRow['cost_per_click'] === null ? '—' : number_format($searchTermRow['cost_per_click'], 4).' '.$googleAdsSearchTermReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $searchTermRow['conversions'], 2) }}</td>
+                                            <td class="numeric">{{ $searchTermRow['cost_per_action'] === null ? '—' : number_format($searchTermRow['cost_per_action'], 4).' '.$googleAdsSearchTermReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $searchTermRow['conversions_value'], 2) }} {{ $googleAdsSearchTermReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $searchTermRow['roas'] === null ? '—' : number_format($searchTermRow['roas'], 2).'x' }}</td>
+                                            <td>
+                                                <span class="badge badge-{{ match ($searchTermRow['diagnostic_status']) {
+                                                    'spend_without_conversions' => 'warning',
+                                                    'has_conversions' => 'healthy',
+                                                    default => 'stale',
+                                                } }}">{{ match ($searchTermRow['diagnostic_status']) {
+                                                    'spend_without_conversions' => '有花費無轉換',
+                                                    'has_conversions' => '已產生轉換',
+                                                    default => '尚無花費',
+                                                } }}</span>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                @else
+                    <p class="campaign-report-empty">{{ match ($googleAdsSearchTermReport['status']) {
+                        'unsupported' => '目前僅支援 Google Ads 搜尋活動。',
+                        'no_complete_days' => '尚無完整日期可供搜尋字詞分析。',
+                        'unavailable' => '搜尋字詞暫時無法同步，請稍後再更新 Google Ads 數據。',
+                        'expired' => '搜尋字詞讀值已過期，請更新 Google Ads 數據。',
+                        default => '尚無搜尋字詞讀值；更新 Google Ads 數據即可同步。',
+                    } }}</p>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                     @if ($googleAdsTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'google-ads']) }}">匯出趨勢 CSV</a>
