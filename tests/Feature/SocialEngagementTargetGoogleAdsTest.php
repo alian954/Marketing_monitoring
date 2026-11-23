@@ -226,7 +226,11 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 ->push([[
                     'results' => [[
                         'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
-                        'campaign' => ['id' => '987654321', 'name' => 'Winter product launch'],
+                        'campaign' => [
+                            'id' => '987654321',
+                            'name' => 'Winter product launch',
+                            'advertisingChannelType' => 'SEARCH',
+                        ],
                         'metrics' => [
                             'costMicros' => '250750000',
                             'impressions' => '12000',
@@ -237,8 +241,28 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     ]],
                 ]])
                 ->push($this->dailyMetricsPayload([
-                    ['date' => '2026-11-02', 'cost_micros' => '100000000', 'impressions' => '4000', 'clicks' => '160', 'conversions' => '4.5', 'conversions_value' => '300.25'],
-                    ['date' => '2026-11-03', 'cost_micros' => '150750000', 'impressions' => '8000', 'clicks' => '320', 'conversions' => '8', 'conversions_value' => '702.75'],
+                    [
+                        'date' => '2026-11-02',
+                        'cost_micros' => '100000000',
+                        'impressions' => '4000',
+                        'clicks' => '160',
+                        'conversions' => '4.5',
+                        'conversions_value' => '300.25',
+                        'search_impression_share' => '0.0999',
+                        'search_budget_lost_impression_share' => '0.9001',
+                        'search_rank_lost_impression_share' => '0.1',
+                    ],
+                    [
+                        'date' => '2026-11-03',
+                        'cost_micros' => '150750000',
+                        'impressions' => '8000',
+                        'clicks' => '320',
+                        'conversions' => '8',
+                        'conversions_value' => '702.75',
+                        'search_impression_share' => '0.2',
+                        'search_budget_lost_impression_share' => '0.3',
+                        'search_rank_lost_impression_share' => '0.4',
+                    ],
                 ], '1234567890', '987654321', 'USD'))
                 ->push($this->conversionActionsPayload([
                     ['id' => '1002', 'name' => 'Web purchase', 'conversions' => '10.5', 'value' => '900.25'],
@@ -286,6 +310,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertNotNull($snapshot->synced_at);
         $this->assertSame([
             'status' => 'complete',
+            'campaign_channel_type' => 'SEARCH',
             'requested_start_on' => '2026-11-01',
             'requested_end_on' => '2026-11-30',
             'coverage_start_on' => '2026-11-01',
@@ -298,6 +323,9 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     'clicks' => 160,
                     'conversions' => '4.5000',
                     'conversions_value' => '300.2500',
+                    'search_impression_share' => 0.0999,
+                    'search_budget_lost_impression_share' => 0.9001,
+                    'search_rank_lost_impression_share' => 0.1,
                 ],
                 [
                     'date' => '2026-11-03',
@@ -306,6 +334,9 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                     'clicks' => 320,
                     'conversions' => '8.0000',
                     'conversions_value' => '702.7500',
+                    'search_impression_share' => 0.2,
+                    'search_budget_lost_impression_share' => 0.3,
+                    'search_rank_lost_impression_share' => 0.4,
                 ],
             ],
         ], $snapshot->daily_metrics);
@@ -451,6 +482,194 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('576460752303.4235', $insights['conversions']);
         $this->assertSame('576460752303.4235', $insights['conversions_value']);
         Http::assertSentCount(3);
+    }
+
+    public function test_google_ads_search_campaigns_return_daily_search_share_and_preserve_capped_values(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload('SEARCH'))
+                ->push($this->dailyMetricsPayload([
+                    [
+                        'date' => '2026-11-02',
+                        'cost_micros' => '1000000',
+                        'impressions' => '100',
+                        'clicks' => '4',
+                        'conversions' => '1',
+                        'conversions_value' => '10',
+                        'search_impression_share' => '0.0999',
+                        'search_budget_lost_impression_share' => '0.9001',
+                        'search_rank_lost_impression_share' => '0.2345',
+                    ],
+                    [
+                        'date' => '2026-11-03',
+                        'cost_micros' => '0',
+                        'impressions' => '0',
+                        'clicks' => '0',
+                        'conversions' => '0',
+                        'conversions_value' => '0',
+                    ],
+                ]))
+                ->push([['results' => []]]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+
+        $this->assertSame('SEARCH', $insights['campaign_channel_type']);
+        $this->assertSame([
+            'search_impression_share' => 0.0999,
+            'search_budget_lost_impression_share' => 0.9001,
+            'search_rank_lost_impression_share' => 0.2345,
+        ], array_intersect_key($insights['daily_metrics'][0], array_flip([
+            'search_impression_share',
+            'search_budget_lost_impression_share',
+            'search_rank_lost_impression_share',
+        ])));
+        $this->assertNull($insights['daily_metrics'][1]['search_impression_share']);
+
+        $queries = Http::recorded()->map(fn (array $record): string => $record[0]->data()['query'])->all();
+        $this->assertStringContainsString(
+            'metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share',
+            $queries[1],
+        );
+        Http::assertSentCount(3);
+    }
+
+    public function test_google_ads_non_search_campaigns_do_not_request_search_share_metrics(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload('DISPLAY'))
+                ->push($this->dailyMetricsPayload([
+                    ['date' => '2026-11-02', 'cost_micros' => '1000000', 'impressions' => '10', 'clicks' => '1', 'conversions' => '1', 'conversions_value' => '10'],
+                ]))
+                ->push([['results' => []]]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+
+        $this->assertSame('DISPLAY', $insights['campaign_channel_type']);
+        $this->assertArrayNotHasKey('search_impression_share', $insights['daily_metrics'][0]);
+        $dailyQuery = Http::recorded()->get(1)[0]->data()['query'];
+        $this->assertStringNotContainsString('metrics.search_impression_share', $dailyQuery);
+    }
+
+    public function test_google_ads_shopping_campaigns_request_daily_search_share_metrics(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload('SHOPPING'))
+                ->push($this->dailyMetricsPayload([
+                    [
+                        'date' => '2026-11-02',
+                        'cost_micros' => '1000000',
+                        'impressions' => '10',
+                        'clicks' => '1',
+                        'conversions' => '1',
+                        'conversions_value' => '10',
+                        'search_impression_share' => '0.25',
+                        'search_budget_lost_impression_share' => '0.35',
+                        'search_rank_lost_impression_share' => '0.4',
+                    ],
+                ]))
+                ->push([['results' => []]]),
+        ]);
+
+        $insights = (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+
+        $this->assertSame('SHOPPING', $insights['campaign_channel_type']);
+        $this->assertSame(0.25, $insights['daily_metrics'][0]['search_impression_share']);
+        $dailyQuery = Http::recorded()->get(1)[0]->data()['query'];
+        $this->assertStringContainsString('metrics.search_impression_share', $dailyQuery);
+    }
+
+    public function test_google_ads_rejects_search_share_values_that_only_round_to_boundary_markers(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload('SEARCH'))
+                ->push($this->dailyMetricsPayload([
+                    [
+                        'date' => '2026-11-02',
+                        'cost_micros' => '1000000',
+                        'impressions' => '10',
+                        'clicks' => '1',
+                        'conversions' => '1',
+                        'conversions_value' => '10',
+                        'search_impression_share' => '0.09994',
+                    ],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
+    }
+
+    public function test_google_ads_rejects_lost_share_values_that_only_round_to_boundary_markers(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push($this->campaignMetricsPayload('SEARCH'))
+                ->push($this->dailyMetricsPayload([
+                    [
+                        'date' => '2026-11-02',
+                        'cost_micros' => '1000000',
+                        'impressions' => '10',
+                        'clicks' => '1',
+                        'conversions' => '1',
+                        'conversions_value' => '10',
+                        'search_budget_lost_impression_share' => '0.90014',
+                    ],
+                ])),
+        ]);
+
+        $this->expectException(GoogleAdsApiException::class);
+        (new GoogleAdsDataApi)->campaignInsights(
+            'access-token',
+            '1234567890',
+            '987654321',
+            '2026-11-01',
+            '2026-11-30',
+            'TWD',
+        );
     }
 
     public function test_google_ads_daily_metrics_mark_history_before_the_37_month_window_as_partial(): void
@@ -703,8 +922,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
         $queries = Http::recorded()->map(fn (array $record): string => $record[0]->data()['query'])->all();
         $this->assertSame([
-            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.month BETWEEN '2022-01-01' AND '2023-10-01' ORDER BY segments.month ASC",
-            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-11-01' AND '2023-11-17' ORDER BY segments.date ASC",
+            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, campaign.advertising_channel_type, segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.month BETWEEN '2022-01-01' AND '2023-10-01' ORDER BY segments.month ASC",
+            "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, campaign.advertising_channel_type, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-11-01' AND '2023-11-17' ORDER BY segments.date ASC",
             "SELECT customer.id, customer.currency_code, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-10-22' AND '2023-11-17' ORDER BY segments.date ASC",
             "SELECT customer.id, campaign.id, segments.month, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.month BETWEEN '2022-01-01' AND '2023-10-01'",
             "SELECT customer.id, campaign.id, segments.date, segments.conversion_action, segments.conversion_action_name, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2023-11-01' AND '2023-11-17'",
@@ -1365,12 +1584,18 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
     }
 
     /** @return list<array{results: list<array<string, mixed>>}> */
-    private function campaignMetricsPayload(): array
+    private function campaignMetricsPayload(?string $channelType = null): array
     {
+        $campaign = ['id' => '987654321', 'name' => 'Current campaign'];
+
+        if ($channelType !== null) {
+            $campaign['advertisingChannelType'] = $channelType;
+        }
+
         return [[
             'results' => [[
                 'customer' => ['id' => '1234567890', 'currencyCode' => 'TWD'],
-                'campaign' => ['id' => '987654321', 'name' => 'Current campaign'],
+                'campaign' => $campaign,
                 'metrics' => [
                     'costMicros' => '1000000',
                     'impressions' => '100',
@@ -1382,7 +1607,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         ]];
     }
 
-    /** @param list<array{date: string, cost_micros: string, impressions: string, clicks: string, conversions: string, conversions_value: string}> $days
+    /** @param list<array{date: string, cost_micros: string, impressions: string, clicks: string, conversions: string, conversions_value: string, search_impression_share?: string|null, search_budget_lost_impression_share?: string|null, search_rank_lost_impression_share?: string|null}> $days
      * @return list<array{results: list<array<string, mixed>>}>
      */
     private function dailyMetricsPayload(
@@ -1392,18 +1617,32 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         string $currencyCode = 'TWD',
     ): array {
         return [[
-            'results' => array_map(static fn (array $day): array => [
-                'customer' => ['id' => $customerId, 'currencyCode' => $currencyCode],
-                'campaign' => ['id' => $campaignId],
-                'segments' => ['date' => $day['date']],
-                'metrics' => [
+            'results' => array_map(static function (array $day) use ($customerId, $campaignId, $currencyCode): array {
+                $metrics = [
                     'costMicros' => $day['cost_micros'],
                     'impressions' => $day['impressions'],
                     'clicks' => $day['clicks'],
                     'conversions' => $day['conversions'],
                     'conversionsValue' => $day['conversions_value'],
-                ],
-            ], $days),
+                ];
+
+                foreach ([
+                    'search_impression_share' => 'searchImpressionShare',
+                    'search_budget_lost_impression_share' => 'searchBudgetLostImpressionShare',
+                    'search_rank_lost_impression_share' => 'searchRankLostImpressionShare',
+                ] as $dayKey => $apiKey) {
+                    if (array_key_exists($dayKey, $day)) {
+                        $metrics[$apiKey] = $day[$dayKey];
+                    }
+                }
+
+                return [
+                    'customer' => ['id' => $customerId, 'currencyCode' => $currencyCode],
+                    'campaign' => ['id' => $campaignId],
+                    'segments' => ['date' => $day['date']],
+                    'metrics' => $metrics,
+                ];
+            }, $days),
         ]];
     }
 

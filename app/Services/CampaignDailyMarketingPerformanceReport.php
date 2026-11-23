@@ -13,7 +13,7 @@ class CampaignDailyMarketingPerformanceReport
      * @return array{
      *     google_analytics: array{label: string, status: string, requested_start_on: string|null, requested_end_on: string|null, coverage_start_on: string|null, coverage_end_on: string|null, currency_code: string|null, synced_at: CarbonImmutable|null, rows: list<array<string, mixed>>},
      *     meta_marketing: array{label: string, status: string, requested_start_on: string|null, requested_end_on: string|null, coverage_start_on: string|null, coverage_end_on: string|null, currency_code: string|null, synced_at: CarbonImmutable|null, rows: list<array<string, mixed>>},
-     *     google_ads: array{label: string, status: string, requested_start_on: string|null, requested_end_on: string|null, coverage_start_on: string|null, coverage_end_on: string|null, currency_code: string|null, synced_at: CarbonImmutable|null, rows: list<array<string, mixed>>}
+     *     google_ads: array{label: string, status: string, requested_start_on: string|null, requested_end_on: string|null, coverage_start_on: string|null, coverage_end_on: string|null, currency_code: string|null, campaign_channel_type: string|null, synced_at: CarbonImmutable|null, rows: list<array<string, mixed>>}
      * }
      */
     public function build(
@@ -21,6 +21,36 @@ class CampaignDailyMarketingPerformanceReport
         ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
         ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
     ): array {
+        $googleAdsSource = $this->source(
+            'Google Ads',
+            $googleAdsReport?->daily_metrics,
+            $googleAdsReport?->currency_code,
+            $googleAdsReport?->synced_at,
+            function (array $row): array {
+                $spendAmount = $this->decimalMetric($row['spend_amount'] ?? null);
+                $conversionsValue = $this->decimalMetric($row['conversions_value'] ?? null);
+
+                return [
+                    'date' => $row['date'],
+                    'spend_amount' => $spendAmount,
+                    'impressions' => $this->integerMetric($row['impressions'] ?? null),
+                    'clicks' => $this->integerMetric($row['clicks'] ?? null),
+                    'conversions' => $this->decimalMetric($row['conversions'] ?? null),
+                    'conversions_value' => $conversionsValue,
+                    'conversion_value_roas' => $conversionsValue !== null && $spendAmount !== null && (float) $spendAmount > 0
+                        ? round((float) $conversionsValue / (float) $spendAmount, 2)
+                        : null,
+                    'search_impression_share' => $this->decimalMetric($row['search_impression_share'] ?? null),
+                    'search_budget_lost_impression_share' => $this->decimalMetric($row['search_budget_lost_impression_share'] ?? null),
+                    'search_rank_lost_impression_share' => $this->decimalMetric($row['search_rank_lost_impression_share'] ?? null),
+                ];
+            },
+        );
+        $googleAdsDailyMetrics = $googleAdsReport?->daily_metrics;
+        $googleAdsSource['campaign_channel_type'] = $this->campaignChannelType(
+            is_array($googleAdsDailyMetrics) ? ($googleAdsDailyMetrics['campaign_channel_type'] ?? null) : null,
+        );
+
         return [
             'google_analytics' => $this->source(
                 'GA4',
@@ -59,28 +89,7 @@ class CampaignDailyMarketingPerformanceReport
                     ];
                 },
             ),
-            'google_ads' => $this->source(
-                'Google Ads',
-                $googleAdsReport?->daily_metrics,
-                $googleAdsReport?->currency_code,
-                $googleAdsReport?->synced_at,
-                function (array $row): array {
-                    $spendAmount = $this->decimalMetric($row['spend_amount'] ?? null);
-                    $conversionsValue = $this->decimalMetric($row['conversions_value'] ?? null);
-
-                    return [
-                        'date' => $row['date'],
-                        'spend_amount' => $spendAmount,
-                        'impressions' => $this->integerMetric($row['impressions'] ?? null),
-                        'clicks' => $this->integerMetric($row['clicks'] ?? null),
-                        'conversions' => $this->decimalMetric($row['conversions'] ?? null),
-                        'conversions_value' => $conversionsValue,
-                        'conversion_value_roas' => $conversionsValue !== null && $spendAmount !== null && (float) $spendAmount > 0
-                            ? round((float) $conversionsValue / (float) $spendAmount, 2)
-                            : null,
-                    ];
-                },
-            ),
+            'google_ads' => $googleAdsSource,
         ];
     }
 
@@ -188,6 +197,15 @@ class CampaignDailyMarketingPerformanceReport
     {
         return is_string($currencyCode) && preg_match('/^[A-Za-z]{3}$/', trim($currencyCode)) === 1
             ? strtoupper(trim($currencyCode))
+            : null;
+    }
+
+    private function campaignChannelType(mixed $channelType): ?string
+    {
+        return is_string($channelType)
+            && preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $channelType) === 1
+            && ! in_array($channelType, ['UNKNOWN', 'UNSPECIFIED'], true)
+            ? $channelType
             : null;
     }
 }

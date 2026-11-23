@@ -105,7 +105,11 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
                 'clicks' => 4,
                 'conversions' => '2.0000',
                 'conversions_value' => '60.0000',
+                'search_impression_share' => '0.0999',
+                'search_budget_lost_impression_share' => '0.9001',
+                'search_rank_lost_impression_share' => '0.2345',
             ]],
+            'ads_channel_type' => 'SEARCH',
         ]);
 
         $this->get(route('social-engagement-targets.daily-marketing-performance', $target))
@@ -142,6 +146,9 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'conversions',
             'conversions_value',
             'conversion_value_roas',
+            'search_impression_share',
+            'search_budget_lost_impression_share',
+            'search_rank_lost_impression_share',
             'meta_spend_amount',
             'meta_currency_code',
             'google_ads_spend_amount',
@@ -175,6 +182,9 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertSame('Google Ads', $adsFields['source']);
         $this->assertSame('2026-11-06', $adsFields['date']);
         $this->assertSame('2.0000', $adsFields['conversions']);
+        $this->assertSame('0.0999', $adsFields['search_impression_share']);
+        $this->assertSame('0.9001', $adsFields['search_budget_lost_impression_share']);
+        $this->assertSame('0.2345', $adsFields['search_rank_lost_impression_share']);
         $this->assertSame('2026-11-01', $adsFields['requested_start_on']);
 
         $combinedFields = array_combine($csvRows[0], $csvRows[4]);
@@ -214,6 +224,120 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $trendChart = $response->viewData('dailyMarketingPerformance')['google_ads']['trend_chart'];
         $this->assertSame(['2026-11-06'], array_column($trendChart['points'], 'date'));
         $this->assertSame('TWD 30.00', $trendChart['maximum_label']);
+    }
+
+    public function test_report_formats_search_share_boundaries_and_missing_search_metrics(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'ads_status' => 'complete',
+            'ads_channel_type' => 'SEARCH',
+            'ads_rows' => [
+                [
+                    'date' => '2026-11-06',
+                    'spend_amount' => '30.0000',
+                    'impressions' => 300,
+                    'clicks' => 10,
+                    'conversions' => '2.0000',
+                    'conversions_value' => '90.0000',
+                    'search_impression_share' => '0.0999',
+                    'search_budget_lost_impression_share' => '0.9001',
+                    'search_rank_lost_impression_share' => '0.2345',
+                ],
+                [
+                    'date' => '2026-11-05',
+                    'spend_amount' => '0.0000',
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'conversions' => '0.0000',
+                    'conversions_value' => '0.0000',
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('搜尋曝光比重')
+            ->assertSee('預算流失比重')
+            ->assertSee('排名流失比重')
+            ->assertSee('&lt;10%', false)
+            ->assertSee('&gt;90%', false)
+            ->assertSee('23.45%')
+            ->assertSee('平台未提供')
+            ->assertSee('搜尋指標判讀');
+
+        $googleAdsDailyReport = $response->viewData('dailyMarketingPerformance')['google_ads'];
+        $this->assertSame('SEARCH', $googleAdsDailyReport['campaign_channel_type']);
+        $this->assertSame('0.0999', $googleAdsDailyReport['rows'][0]['search_impression_share']);
+        $this->assertNull($googleAdsDailyReport['rows'][1]['search_impression_share']);
+    }
+
+    public function test_report_marks_search_metrics_not_applicable_for_non_search_campaigns(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'ads_channel_type' => 'DISPLAY',
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '30.0000',
+                'impressions' => 300,
+                'clicks' => 10,
+                'conversions' => '2.0000',
+                'conversions_value' => '90.0000',
+            ]],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('不適用');
+    }
+
+    public function test_report_labels_legacy_search_metrics_as_not_synced_when_campaign_type_is_unknown(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '30.0000',
+                'impressions' => 300,
+                'clicks' => 10,
+                'conversions' => '2.0000',
+                'conversions_value' => '90.0000',
+            ]],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('尚未同步搜尋指標');
+    }
+
+    public function test_report_treats_unspecified_google_ads_channel_as_unknown(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'ads_channel_type' => 'UNSPECIFIED',
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '30.0000',
+                'impressions' => 300,
+                'clicks' => 10,
+                'conversions' => '2.0000',
+                'conversions_value' => '90.0000',
+            ]],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('尚未同步搜尋指標')
+            ->assertDontSee('不適用');
     }
 
     public function test_report_does_not_expose_daily_metrics_from_another_users_connections(): void
@@ -367,6 +491,7 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'currency_code' => 'TWD',
             'daily_metrics' => [
                 'status' => $options['ads_status'] ?? 'complete',
+                'campaign_channel_type' => $options['ads_channel_type'] ?? null,
                 ...$requestedDates,
                 'coverage_start_on' => $options['ads_coverage_start_on'] ?? $startDate,
                 'coverage_end_on' => $options['ads_coverage_end_on'] ?? $endDate,

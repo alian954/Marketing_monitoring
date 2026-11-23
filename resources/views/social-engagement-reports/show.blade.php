@@ -798,6 +798,9 @@
                         ['key' => 'conversions', 'label' => '轉換', 'format' => 'decimal'],
                         ['key' => 'conversions_value', 'label' => '轉換價值', 'format' => 'currency'],
                         ['key' => 'conversion_value_roas', 'label' => '轉換價值 ROAS', 'format' => 'ratio'],
+                        ['key' => 'search_impression_share', 'label' => '搜尋曝光比重', 'format' => 'search_share'],
+                        ['key' => 'search_budget_lost_impression_share', 'label' => '預算流失比重', 'format' => 'search_share'],
+                        ['key' => 'search_rank_lost_impression_share', 'label' => '排名流失比重', 'format' => 'search_share'],
                     ],
                 ],
             ];
@@ -839,6 +842,9 @@
                         · 幣別：{{ $sourceReport['currency_code'] ?? '未提供' }}
                         · 更新於：{{ $sourceReport['synced_at']?->timezone('Asia/Taipei')->format('Y/n/j H:i') ?? '—' }}
                     </p>
+                    @if ($dailySource['key'] === 'google_ads')
+                        <p class="campaign-report-secondary">搜尋指標資料可能延遲 1–2 天；<a href="{{ route('features.index') }}">搜尋指標判讀</a></p>
+                    @endif
                     @if ($sourceReport['trend_chart']['points'] !== [])
                         <figure class="metric-trend-figure campaign-report-daily-trend">
                             <svg
@@ -899,11 +905,27 @@
                                         @foreach ($dailySource['metrics'] as $metricDefinition)
                                             <td class="numeric">
                                                 @if ($dailyRow[$metricDefinition['key']] === null)
-                                                    —
+                                                    @if ($metricDefinition['format'] === 'search_share')
+                                                        {{ match ($sourceReport['campaign_channel_type'] ?? null) {
+                                                            'SEARCH', 'SHOPPING' => '平台未提供',
+                                                            null => '尚未同步搜尋指標',
+                                                            default => '不適用',
+                                                        } }}
+                                                    @else
+                                                        —
+                                                    @endif
                                                 @elseif ($metricDefinition['format'] === 'integer')
                                                     {{ number_format((int) $dailyRow[$metricDefinition['key']]) }}
                                                 @elseif ($metricDefinition['format'] === 'ratio')
                                                     {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}x
+                                                @elseif ($metricDefinition['format'] === 'search_share')
+                                                    @if ($metricDefinition['key'] === 'search_impression_share' && (float) $dailyRow[$metricDefinition['key']] === 0.0999)
+                                                        &lt;10%
+                                                    @elseif ($metricDefinition['key'] !== 'search_impression_share' && (float) $dailyRow[$metricDefinition['key']] === 0.9001)
+                                                        &gt;90%
+                                                    @else
+                                                        {{ number_format((float) $dailyRow[$metricDefinition['key']] * 100, 2) }}%
+                                                    @endif
                                                 @else
                                                     {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}
                                                 @endif

@@ -26,6 +26,8 @@ class FeatureGuideTest extends TestCase
             ->assertSee('活動報告顯示 Meta Ads 的頻率、CTR、CPC、CPM')
             ->assertSee('各行動類型數量與轉換價值')
             ->assertSee('Google Ads 的轉換動作、每次轉換成本與點擊轉換率')
+            ->assertSee('Google Ads 搜尋與購物活動提供每日搜尋曝光、預算流失及排名流失比重')
+            ->assertSee('CSV 保留原始標記')
             ->assertSee('各平台行動數據依帳戶追蹤與歸因設定回傳')
             ->assertSee('兩平台歷史趨勢可匯出 CSV')
             ->assertSee('資料超過 24 小時未更新時會提示')

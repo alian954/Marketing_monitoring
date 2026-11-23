@@ -83,8 +83,8 @@ class GoogleAdsScheduledSyncTest extends TestCase
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), 'googleAds:searchStream')
                 && in_array($request->data()['query'], [
-                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2026-11-01' AND '2026-11-30'",
-                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654322 AND segments.date BETWEEN '2026-11-01' AND '2026-11-17'",
+                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654321 AND segments.date BETWEEN '2026-11-01' AND '2026-11-30'",
+                    "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = 987654322 AND segments.date BETWEEN '2026-11-01' AND '2026-11-17'",
                 ], true);
         });
         Http::assertSent(function (ClientRequest $request): bool {

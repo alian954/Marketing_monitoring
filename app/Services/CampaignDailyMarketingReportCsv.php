@@ -18,7 +18,7 @@ class CampaignDailyMarketingReportCsv
         ],
         'google_ads' => [
             'label' => 'Google Ads',
-            'metrics' => ['spend_amount', 'impressions', 'clicks', 'conversions', 'conversions_value', 'conversion_value_roas'],
+            'metrics' => ['spend_amount', 'impressions', 'clicks', 'conversions', 'conversions_value', 'conversion_value_roas', 'search_impression_share', 'search_budget_lost_impression_share', 'search_rank_lost_impression_share'],
         ],
     ];
 
@@ -46,6 +46,9 @@ class CampaignDailyMarketingReportCsv
         'conversions',
         'conversions_value',
         'conversion_value_roas',
+        'search_impression_share',
+        'search_budget_lost_impression_share',
+        'search_rank_lost_impression_share',
         'meta_spend_amount',
         'meta_currency_code',
         'google_ads_spend_amount',
@@ -90,7 +93,7 @@ class CampaignDailyMarketingReportCsv
                     $this->syncedAt($source['synced_at'] ?? null),
                 ];
 
-                foreach (array_slice(self::HEADERS, 9, 14) as $metric) {
+                foreach (array_slice(self::HEADERS, 9, 17) as $metric) {
                     $fields[] = in_array($metric, $sourceDefinition['metrics'], true)
                         ? $this->value($dailyRow[$metric] ?? null)
                         : '';
@@ -122,7 +125,7 @@ class CampaignDailyMarketingReportCsv
                 $this->syncedAt($combinedEfficiency['latest_synced_at'] ?? null),
             ];
 
-            $fields = [...$fields, ...array_fill(0, 14, '')];
+            $fields = [...$fields, ...array_fill(0, 17, '')];
 
             foreach ([
                 'meta_spend_amount',

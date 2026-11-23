@@ -159,7 +159,34 @@ class GoogleAdsDataApi
         return $campaigns;
     }
 
-    /** @return array{campaign_id: string, campaign_name: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string, conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>, currency_code: string, daily_metrics: list<array{date: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string}>, daily_metrics_status: 'complete'|'partial'|'unsupported', daily_metrics_coverage_start_on: string|null, daily_metrics_coverage_end_on: string|null} */
+    /**
+     * @return array{
+     *     campaign_id: string,
+     *     campaign_name: string,
+     *     campaign_channel_type: string|null,
+     *     spend_amount: string,
+     *     impressions: int,
+     *     clicks: int,
+     *     conversions: string,
+     *     conversions_value: string,
+     *     conversion_actions: list<array{conversion_action_id: string, conversion_action_name: string, conversions: string, conversion_value: string}>,
+     *     currency_code: string,
+     *     daily_metrics: list<array{
+     *         date: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         conversions: string,
+     *         conversions_value: string,
+     *         search_impression_share?: float|null,
+     *         search_budget_lost_impression_share?: float|null,
+     *         search_rank_lost_impression_share?: float|null
+     *     }>,
+     *     daily_metrics_status: 'complete'|'partial'|'unsupported',
+     *     daily_metrics_coverage_start_on: string|null,
+     *     daily_metrics_coverage_end_on: string|null
+     * }
+     */
     public function campaignInsights(
         string $accessToken,
         string $customerId,
@@ -182,6 +209,7 @@ class GoogleAdsDataApi
         $minimumSupportedDate = $this->minimumSupportedDate();
         $hasHistoricalRange = $startsOn < $minimumSupportedDate;
         $returnedCurrency = $accountCurrency;
+        $campaignChannelType = null;
 
         if ($hasHistoricalRange) {
             $cutoffMonth = CarbonImmutable::parse($minimumSupportedDate)->startOfMonth();
@@ -228,6 +256,7 @@ class GoogleAdsDataApi
                 $campaignId,
             );
             $campaignName = $aggregate['campaign_name'] ?? $campaignId;
+            $campaignChannelType = $aggregate['campaign_channel_type'];
             $metrics = $aggregate['metrics'];
             $returnedCurrency = $aggregate['currency_code'] ?? $accountCurrency;
         } else {
@@ -271,6 +300,7 @@ class GoogleAdsDataApi
                 }
 
                 $campaignName = trim($campaign['name']);
+                $campaignChannelType = $this->campaignChannelType($campaign['advertisingChannelType'] ?? null);
             }
         }
 
@@ -282,6 +312,7 @@ class GoogleAdsDataApi
             $endsOn,
             $loginCustomerId,
             $returnedCurrency,
+            $campaignChannelType,
         );
         $conversionActions = $this->conversionActionInsights(
             $accessToken,
@@ -296,6 +327,7 @@ class GoogleAdsDataApi
         return [
             'campaign_id' => $campaignId,
             'campaign_name' => $campaignName,
+            'campaign_channel_type' => $campaignChannelType,
             'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
             'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
             'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
@@ -309,7 +341,17 @@ class GoogleAdsDataApi
 
     /**
      * @return array{
-     *     daily_metrics: list<array{date: string, spend_amount: string, impressions: int, clicks: int, conversions: string, conversions_value: string}>,
+     *     daily_metrics: list<array{
+     *         date: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         conversions: string,
+     *         conversions_value: string,
+     *         search_impression_share?: float|null,
+     *         search_budget_lost_impression_share?: float|null,
+     *         search_rank_lost_impression_share?: float|null
+     *     }>,
      *     daily_metrics_status: 'complete'|'partial'|'unsupported',
      *     daily_metrics_coverage_start_on: string|null,
      *     daily_metrics_coverage_end_on: string|null
@@ -323,6 +365,7 @@ class GoogleAdsDataApi
         string $endsOn,
         ?string $loginCustomerId,
         string $expectedCurrency,
+        ?string $campaignChannelType,
     ): array {
         $minimumSupportedDate = $this->minimumSupportedDate();
 
@@ -337,7 +380,10 @@ class GoogleAdsDataApi
 
         $coverageStartOn = $startsOn < $minimumSupportedDate ? $minimumSupportedDate : $startsOn;
         $status = $coverageStartOn === $startsOn ? 'complete' : 'partial';
-        $query = "SELECT customer.id, customer.currency_code, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$coverageStartOn}' AND '{$endsOn}' ORDER BY segments.date ASC";
+        $searchMetricsFields = in_array($campaignChannelType, ['SEARCH', 'SHOPPING'], true)
+            ? ', metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share'
+            : '';
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value{$searchMetricsFields} FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$coverageStartOn}' AND '{$endsOn}' ORDER BY segments.date ASC";
         $payload = $this->googleAdsRequest(
             $accessToken,
             $customerId,
@@ -374,7 +420,7 @@ class GoogleAdsDataApi
                 throw new GoogleAdsApiException('Google Ads API 回傳重複日期的逐日資料，未儲存讀值。');
             }
 
-            $dailyMetricsByDate[$date] = [
+            $dailyMetric = [
                 'date' => $date,
                 'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
                 'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
@@ -382,6 +428,37 @@ class GoogleAdsDataApi
                 'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
                 'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
             ];
+
+            if (in_array($campaignChannelType, ['SEARCH', 'SHOPPING'], true)) {
+                $dailyMetric += [
+                    'search_impression_share' => $this->searchShareMetric(
+                        $metrics['searchImpressionShare'] ?? null,
+                        '搜尋曝光比重',
+                        0.1,
+                        1.0,
+                        0.0999,
+                        true,
+                    ),
+                    'search_budget_lost_impression_share' => $this->searchShareMetric(
+                        $metrics['searchBudgetLostImpressionShare'] ?? null,
+                        '預算流失曝光比重',
+                        0.0,
+                        0.9,
+                        0.9001,
+                        false,
+                    ),
+                    'search_rank_lost_impression_share' => $this->searchShareMetric(
+                        $metrics['searchRankLostImpressionShare'] ?? null,
+                        '排名流失曝光比重',
+                        0.0,
+                        0.9,
+                        0.9001,
+                        false,
+                    ),
+                ];
+            }
+
+            $dailyMetricsByDate[$date] = $dailyMetric;
         }
 
         ksort($dailyMetricsByDate);
@@ -532,7 +609,7 @@ class GoogleAdsDataApi
         $selectedSegmentField = $selectSegment ? $segmentField.', ' : '';
         $orderBySegment = $selectSegment ? " ORDER BY {$segmentField} ASC" : '';
         $querySegmentField = $selectSegment ? $segmentField : 'segments.date';
-        $query = "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, {$selectedSegmentField}metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND {$querySegmentField} BETWEEN '{$startsOn}' AND '{$endsOn}'{$orderBySegment}";
+        $query = "SELECT campaign.id, campaign.name, customer.id, customer.currency_code, campaign.advertising_channel_type, {$selectedSegmentField}metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND {$querySegmentField} BETWEEN '{$startsOn}' AND '{$endsOn}'{$orderBySegment}";
         $payload = $this->googleAdsRequest(
             $accessToken,
             $customerId,
@@ -603,7 +680,7 @@ class GoogleAdsDataApi
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @return array{campaign_name: string|null, currency_code: string|null, metrics: array{costMicros: string, impressions: int, clicks: int, conversions: string, conversionsValue: string}}
+     * @return array{campaign_name: string|null, campaign_channel_type: string|null, currency_code: string|null, metrics: array{costMicros: string, impressions: int, clicks: int, conversions: string, conversionsValue: string}}
      */
     private function aggregateCampaignMetricRows(
         array $rows,
@@ -611,6 +688,7 @@ class GoogleAdsDataApi
         string $campaignId,
     ): array {
         $campaignName = null;
+        $campaignChannelType = null;
         $currencyCode = null;
         $totals = [
             'cost_micros' => '0',
@@ -627,6 +705,9 @@ class GoogleAdsDataApi
             $metrics = $row['metrics'] ?? null;
             $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
             $rowCampaignName = is_array($campaign) ? ($campaign['name'] ?? null) : null;
+            $rowCampaignChannelType = is_array($campaign)
+                ? $this->campaignChannelType($campaign['advertisingChannelType'] ?? null)
+                : null;
             $month = is_array($segments) ? ($segments['month'] ?? null) : null;
             $date = is_array($segments) ? ($segments['date'] ?? null) : null;
             $hasValidSegment = (is_string($month)
@@ -643,16 +724,23 @@ class GoogleAdsDataApi
                 || (string) ($customer['id'] ?? '') !== $customerId
                 || ! is_string($rowCurrencyCode)
                 || preg_match('/^[A-Z]{3}$/', $rowCurrencyCode) !== 1
+                || (is_array($campaign)
+                    && array_key_exists('advertisingChannelType', $campaign)
+                    && $rowCampaignChannelType === null)
                 || ! is_array($metrics)) {
                 throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶或活動的資料，未儲存讀值。');
             }
 
             if (($campaignName !== null && $campaignName !== trim($rowCampaignName))
-                || ($currencyCode !== null && $currencyCode !== $rowCurrencyCode)) {
+                || ($currencyCode !== null && $currencyCode !== $rowCurrencyCode)
+                || ($campaignChannelType !== null
+                    && $rowCampaignChannelType !== null
+                    && $campaignChannelType !== $rowCampaignChannelType)) {
                 throw new GoogleAdsApiException('Google Ads API 回傳名稱或幣別不一致的活動資料，未儲存讀值。');
             }
 
             $campaignName = trim($rowCampaignName);
+            $campaignChannelType ??= $rowCampaignChannelType;
             $currencyCode = $rowCurrencyCode;
             $totals['cost_micros'] = $this->addUnsignedIntegerStrings(
                 $totals['cost_micros'],
@@ -678,6 +766,7 @@ class GoogleAdsDataApi
 
         return [
             'campaign_name' => $campaignName,
+            'campaign_channel_type' => $campaignChannelType,
             'currency_code' => $currencyCode,
             'metrics' => [
                 'costMicros' => $totals['cost_micros'],
@@ -996,6 +1085,47 @@ class GoogleAdsDataApi
         }
 
         return PreciseDecimalFormatter::toFourDecimalPlaces($value);
+    }
+
+    private function campaignChannelType(mixed $value): ?string
+    {
+        return is_string($value)
+            && preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $value) === 1
+            && ! in_array($value, ['UNKNOWN', 'UNSPECIFIED'], true)
+            ? $value
+            : null;
+    }
+
+    private function searchShareMetric(
+        mixed $value,
+        string $metricName,
+        float $minimum,
+        float $maximum,
+        float $cappedValue,
+        bool $isLowerBound,
+    ): ?float {
+        if ($value === null) {
+            return null;
+        }
+
+        if ((! is_string($value) && ! is_int($value) && ! is_float($value)) || ! is_numeric($value)) {
+            throw new GoogleAdsApiException('Google Ads API 回傳的'.$metricName.'格式無效。');
+        }
+
+        $number = (float) $value;
+        $isCappedValue = $number === $cappedValue;
+        $isOutsideSupportedRange = $isLowerBound
+            ? ($number < $minimum && ! $isCappedValue)
+            : ($number > $maximum && ! $isCappedValue);
+
+        if (! is_finite($number)
+            || $number < 0
+            || $number > 1
+            || $isOutsideSupportedRange) {
+            throw new GoogleAdsApiException('Google Ads API 回傳的'.$metricName.'超出有效範圍。');
+        }
+
+        return $number;
     }
 
     private function apiUrl(string $path): string

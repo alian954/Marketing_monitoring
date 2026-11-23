@@ -39,6 +39,7 @@ class GoogleAdsCampaignReportSync
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
             'status' => $metrics['daily_metrics_status'] ?? 'complete',
+            'campaign_channel_type' => $metrics['campaign_channel_type'] ?? null,
             'requested_start_on' => $startsOn,
             'requested_end_on' => $endsOn,
             'coverage_start_on' => array_key_exists('daily_metrics_coverage_start_on', $metrics)
@@ -50,6 +51,7 @@ class GoogleAdsCampaignReportSync
             'rows' => $metrics['daily_metrics'],
         ];
         unset(
+            $metrics['campaign_channel_type'],
             $metrics['daily_metrics'],
             $metrics['daily_metrics_status'],
             $metrics['daily_metrics_coverage_start_on'],
