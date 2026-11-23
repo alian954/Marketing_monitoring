@@ -694,59 +694,29 @@ textarea {
     padding: 20px;
 }
 
-.dashboard-focus-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin: 0 0 16px;
-}
-
 .stat-grid[aria-label="監測項目摘要"] .stat-card {
     min-height: 92px;
 }
 
-.dashboard-focus-card {
+.dashboard-attention-heading {
     display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 8px;
-    padding: 16px 18px;
-    color: var(--ink);
-    text-decoration: none;
-    transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+    align-items: center;
+    gap: 10px;
 }
 
-.dashboard-focus-card:hover {
-    transform: translateY(-1px);
-    border-color: var(--blue);
-    background: var(--surface-hover);
-}
-
-.dashboard-focus-card--attention {
-    border-color: var(--red);
-}
-
-.dashboard-focus-card:focus-visible {
-    outline: 3px solid var(--focus);
-    outline-offset: 2px;
-}
-
-.dashboard-focus-label {
-    color: var(--muted);
+.dashboard-attention-count {
+    display: inline-flex;
+    min-width: 24px;
+    min-height: 24px;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgb(173 64 91 / 10%);
+    color: var(--red);
     font-size: 12px;
-    font-weight: 650;
-}
-
-.dashboard-focus-value {
-    font-size: 25px;
     font-variant-numeric: tabular-nums;
-    line-height: 1;
-}
-
-.dashboard-focus-action {
-    color: var(--blue-dark);
-    font-size: 12px;
-    font-weight: 650;
+    font-weight: 700;
 }
 
 .dashboard-disclosure {
@@ -2129,10 +2099,6 @@ a.platform-chip:hover {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .dashboard-focus-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
     .heartbeat-panel {
         min-height: 132px;
     }
@@ -2220,11 +2186,6 @@ a.platform-chip:hover {
         gap: 9px;
     }
 
-    .dashboard-focus-grid {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 8px;
-    }
-
     .dashboard-attention-item {
         grid-template-columns: minmax(0, 1fr);
         align-items: start;
@@ -2238,24 +2199,6 @@ a.platform-chip:hover {
 
     .dashboard-attention-more {
         padding: 10px 15px 14px;
-    }
-
-    .dashboard-focus-card {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 4px 12px;
-        padding: 13px 15px;
-    }
-
-    .dashboard-focus-value {
-        grid-column: 2;
-        grid-row: 1 / span 2;
-        font-size: 22px;
-    }
-
-    .dashboard-focus-action {
-        grid-column: 1;
     }
 
     .dashboard-disclosure > summary {

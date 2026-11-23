@@ -8,7 +8,7 @@
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
         $attentionMonitors = $monitors
             ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
-            ->take(5);
+            ->take(3);
     @endphp
 
     <div class="page-heading">
@@ -20,34 +20,18 @@
         </div>
     </div>
 
-    <section class="dashboard-focus-grid" aria-label="快速摘要">
-        <a class="dashboard-focus-card panel{{ $attentionCount > 0 ? ' dashboard-focus-card--attention' : '' }}" href="#dashboard-attention">
-            <span class="dashboard-focus-label">需要處理</span>
-            <strong class="dashboard-focus-value">{{ number_format($attentionCount) }}</strong>
-            <span class="dashboard-focus-action">查看項目 <span aria-hidden="true">→</span></span>
-        </a>
-        <a class="dashboard-focus-card panel" href="{{ route('incidents.index') }}">
-            <span class="dashboard-focus-label">進行中的事件</span>
-            <strong class="dashboard-focus-value">{{ number_format($incidents->count()) }}</strong>
-            <span class="dashboard-focus-action">查看事件 <span aria-hidden="true">→</span></span>
-        </a>
-        <a class="dashboard-focus-card panel" href="{{ route('monitors.index') }}">
-            <span class="dashboard-focus-label">監測項目</span>
-            <strong class="dashboard-focus-value">{{ number_format($totalMonitors) }}</strong>
-            <span class="dashboard-focus-action">查看全部 <span aria-hidden="true">→</span></span>
-        </a>
-    </section>
-
     <section class="panel dashboard-attention-panel" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
         <div class="panel-header">
-            <div>
+            <div class="dashboard-attention-heading">
                 <h2 id="dashboard-attention-title" class="panel-title">需要處理</h2>
+                @if ($attentionCount > 0)
+                    <span class="dashboard-attention-count" aria-label="{{ number_format($attentionCount) }} 項需要處理">{{ number_format($attentionCount) }}</span>
+                @endif
             </div>
             <a class="strong-link" href="{{ route('monitors.index') }}">全部監測項目 <span aria-hidden="true">→</span></a>
         </div>
         @if ($attentionMonitors->isEmpty())
             <div class="dashboard-attention-empty">
-                <x-state-badge state="healthy" />
                 <span>目前沒有需要處理的項目</span>
             </div>
         @else

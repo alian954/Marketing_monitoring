@@ -18,8 +18,8 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('<h1 class="page-title">監測總覽</h1>', false)
-            ->assertSee('<section class="dashboard-focus-grid" aria-label="快速摘要">', false)
             ->assertSee('<section class="panel dashboard-attention-panel" id="dashboard-attention"', false)
+            ->assertDontSee('dashboard-focus-grid')
             ->assertSee(route('incidents.index'), false)
             ->assertSee(route('monitors.index'), false)
             ->assertSee(route('features.index'), false)
@@ -50,6 +50,7 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertLessThan($operationsReportsPosition, $marketingReportsPosition);
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
     }
 
     public function test_dashboard_attention_list_shows_problem_monitors_before_the_collapsed_full_list(): void
@@ -93,5 +94,42 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertStringContainsString('異常網站', $attentionMarkup);
         $this->assertStringNotContainsString('健康網站', $attentionMarkup);
         $this->assertSame(1, $response->viewData('counts')['issue']);
+    }
+
+    public function test_dashboard_attention_list_shows_only_three_items_and_reports_the_remaining_count(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        foreach (range(1, 4) as $number) {
+            $monitor = Monitor::factory()->create([
+                'name' => '異常網站 '.$number,
+                'url' => 'https://issue-'.$number.'.example.test/',
+                'url_hash' => Monitor::fingerprintUrl('https://issue-'.$number.'.example.test/'),
+            ]);
+            $monitor->forceFill(['last_checked_at' => now()])->save();
+
+            CheckRun::factory()->for($monitor)->create([
+                'config_version' => $monitor->config_version,
+                'normal_status' => 503,
+                'error_type' => 'normal_http_status',
+                'scheduled_at' => now(),
+            ]);
+        }
+
+        $response = $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('aria-label="4 項需要處理"', false)
+            ->assertSee('另有 1 項');
+
+        $responseContent = $response->getContent();
+        $attentionStart = strpos($responseContent, 'id="dashboard-attention"');
+        $collapsedMonitorStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
+        $attentionMarkup = substr($responseContent, $attentionStart, $collapsedMonitorStart - $attentionStart);
+
+        $this->assertStringContainsString('異常網站 1', $attentionMarkup);
+        $this->assertStringContainsString('異常網站 2', $attentionMarkup);
+        $this->assertStringContainsString('異常網站 3', $attentionMarkup);
+        $this->assertStringNotContainsString('異常網站 4', $attentionMarkup);
     }
 }
