@@ -2345,6 +2345,14 @@ a.platform-chip:hover {
     min-width: 960px;
 }
 
+.campaign-report .campaign-post-details-table-wrap {
+    overflow-x: auto;
+}
+
+.campaign-report .campaign-post-details-table {
+    min-width: 1440px;
+}
+
 .campaign-report-pmax-table {
     min-width: 1240px;
 }
@@ -2502,11 +2510,19 @@ a.platform-chip:hover {
         overflow-x: auto;
     }
 
+    .campaign-report .campaign-post-details-table-wrap {
+        overflow-x: auto;
+    }
+
     .campaign-report-table,
     .campaign-report-post-table {
         width: 100%;
         min-width: 0;
         font-size: 9pt;
+    }
+
+    .campaign-report .campaign-post-details-table {
+        min-width: 1440px;
     }
 
     .campaign-report-table th,

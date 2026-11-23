@@ -53,6 +53,7 @@ use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignAttributionCoverageReport;
 use App\Services\SocialEngagementCampaignBusinessGoalReport;
 use App\Services\SocialEngagementCampaignPostCsv;
+use App\Services\SocialEngagementCampaignPostDetailReport;
 use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Illuminate\Database\Eloquent\Builder;
@@ -216,6 +217,32 @@ class SocialEngagementCampaignReportController extends Controller
         ) === 'PERFORMANCE_MAX';
 
         return view('social-engagement-reports.show', $viewData);
+    }
+
+    public function postDetails(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignPostDetailReport $postDetailReport,
+        SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
+    ): View {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        $postDetails = $postDetailReport->build(
+            $socialEngagementTarget,
+            $analyticsReport?->ad_content_report,
+            $analyticsReport?->ad_content_report_expires_at,
+            $socialPostGoogleAnalyticsAttributionReport,
+            is_string($request->query('sort')) ? $request->query('sort') : null,
+        );
+
+        return view('social-engagement-reports.posts', [
+            'target' => $socialEngagementTarget,
+            'posts' => $postDetails['posts'],
+            'paginator' => $postDetails['paginator'],
+            'sort' => $postDetails['sort'],
+        ]);
     }
 
     public function exportMetaMarketingAds(

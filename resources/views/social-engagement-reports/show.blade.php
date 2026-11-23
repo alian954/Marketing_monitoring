@@ -22,6 +22,7 @@
                 </p>
             </div>
             <div class="campaign-report-actions">
+                <a class="button button-secondary" href="{{ route('social-engagement-targets.posts', $target) }}">完整貼文歸因</a>
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report.export', $target) }}">匯出 CSV</a>
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report.posts.export', $target) }}">匯出貼文明細</a>
                 <button class="button button-primary" type="button" data-print-page>列印／另存 PDF</button>
