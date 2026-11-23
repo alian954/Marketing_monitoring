@@ -55,7 +55,11 @@ class CampaignDailyMarketingPeriodComparison
         }
 
         if (($source['status'] ?? null) !== 'complete') {
-            $status = ($source['status'] ?? null) === 'partial' ? 'partial' : 'source_unavailable';
+            $status = match ($source['status'] ?? null) {
+                'partial' => 'partial',
+                'stale' => 'stale',
+                default => 'source_unavailable',
+            };
 
             return $this->paidMediaComparison(
                 $sourceKey,
@@ -226,6 +230,8 @@ class CampaignDailyMarketingPeriodComparison
                 && $previousPeriod['currency'] !== null
                 && $currentPeriod['currency'] !== $previousPeriod['currency'])) {
             $status = 'currency_mismatch';
+        } elseif ($currentPeriod['status'] === 'stale' || $previousPeriod['status'] === 'stale') {
+            $status = 'stale';
         } elseif ($currentPeriod['status'] !== 'complete' || $previousPeriod['status'] !== 'complete') {
             $status = 'partial';
         } else {
@@ -261,6 +267,10 @@ class CampaignDailyMarketingPeriodComparison
 
             if (($row['roas_status'] ?? null) === 'currency_mismatch') {
                 return $this->emptyPeriod($startOn, $endOn, 'currency_mismatch');
+            }
+
+            if (($row['roas_status'] ?? null) === 'stale') {
+                return $this->emptyPeriod($startOn, $endOn, 'stale');
             }
 
             $spend = $this->nonNegativeMetric($row['roas_spend_amount'] ?? null);
@@ -317,6 +327,7 @@ class CampaignDailyMarketingPeriodComparison
             'status_label' => match ($status) {
                 'complete' => '可比較',
                 'partial' => '資料不完整',
+                'stale' => '資料超過 24 小時',
                 'currency_mismatch' => '幣別不同，無法比較',
                 'insufficient_period' => '尚無完整 14 天資料',
                 'missing_period' => '未設定活動期間',

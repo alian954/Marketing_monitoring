@@ -78,6 +78,8 @@ class CampaignDailyMarketingEfficiencyReport
         $metaHasSnapshot = (bool) ($metaSource['snapshot_available'] ?? false);
         $googleAdsHasSnapshot = (bool) ($googleAdsSource['snapshot_available'] ?? false);
         $googleAnalyticsHasSnapshot = (bool) ($googleAnalyticsSource['snapshot_available'] ?? false);
+        $metaIsStale = $expectedSources['meta_marketing'] && ($metaSource['status'] ?? null) === 'stale';
+        $googleAdsIsStale = $expectedSources['google_ads'] && ($googleAdsSource['status'] ?? null) === 'stale';
         $paidMediaCurrencyMismatch = $expectedSources['meta_marketing']
             && $expectedSources['google_ads']
             && $metaHasSnapshot
@@ -113,6 +115,8 @@ class CampaignDailyMarketingEfficiencyReport
                 $metaCurrency,
                 $googleAdsCurrency,
                 $paidMediaCurrencyMismatch,
+                $metaIsStale,
+                $googleAdsIsStale,
             );
             [$adSpendAmount, $adSpendCurrency] = $this->combinedSpend(
                 $expectedSources,
@@ -122,9 +126,15 @@ class CampaignDailyMarketingEfficiencyReport
                 $metaCurrency,
                 $googleAdsCurrency,
             );
-            [$roasSpendAmount, $roasSpendCurrency] = match ($roasSpendSource) {
-                'google_ads' => [$googleAdsSpend, $googleAdsSpend === null ? null : $googleAdsCurrency],
-                'meta_marketing' => [$metaSpend, $metaSpend === null ? null : $metaCurrency],
+            $roasSpendSourceIsStale = match ($roasSpendSource) {
+                'google_ads' => $googleAdsIsStale,
+                'meta_marketing' => $metaIsStale,
+                default => false,
+            };
+            [$roasSpendAmount, $roasSpendCurrency] = match (true) {
+                $roasSpendSourceIsStale => [null, null],
+                $roasSpendSource === 'google_ads' => [$googleAdsSpend, $googleAdsSpend === null ? null : $googleAdsCurrency],
+                $roasSpendSource === 'meta_marketing' => [$metaSpend, $metaSpend === null ? null : $metaCurrency],
                 default => [null, null],
             };
             $googleAnalyticsRowAvailable = $googleAnalyticsHasSnapshot && array_key_exists($date, $googleAnalyticsRows);
@@ -136,6 +146,7 @@ class CampaignDailyMarketingEfficiencyReport
                 $ga4Revenue,
                 $googleAnalyticsCurrency,
                 $googleAnalyticsRowAvailable,
+                $roasSpendSourceIsStale || ($googleAnalyticsSource['status'] ?? null) === 'stale',
             );
             $roas = $roasStatus === 'available'
                 ? round((float) $ga4Revenue / (float) $roasSpendAmount, 2)
@@ -174,12 +185,16 @@ class CampaignDailyMarketingEfficiencyReport
         [$coverageStartOn, $coverageEndOn] = $this->combinedCoverage($requiredSources, $startOn, $endOn);
         $hasCompleteSourceCoverage = $this->sourcesCoverPeriod($requiredSources, $startOn, $endOn);
         $hasEveryCalendarDate = $this->hasEveryCalendarDate($dates, $startOn, $endOn);
+        $hasStaleSource = collect($requiredSources)->contains(
+            static fn (array $source): bool => ($source['status'] ?? null) === 'stale',
+        );
         $summaryStatus = $this->summaryStatus(
             $expectedSourceCount,
             $rows,
             $paidMediaCurrencyMismatch,
             $hasCompleteSourceCoverage,
             $hasEveryCalendarDate,
+            $hasStaleSource,
         );
         $periodComparison = $this->periodComparison->build($target, $rows);
         $asOf = CarbonImmutable::now('Asia/Taipei');
@@ -255,6 +270,8 @@ class CampaignDailyMarketingEfficiencyReport
         ?string $metaCurrency,
         ?string $googleAdsCurrency,
         bool $paidMediaCurrencyMismatch,
+        bool $metaIsStale,
+        bool $googleAdsIsStale,
     ): string {
         if ($expectedSourceCount === 0) {
             return 'not_configured';
@@ -262,6 +279,10 @@ class CampaignDailyMarketingEfficiencyReport
 
         if ($paidMediaCurrencyMismatch) {
             return 'currency_mismatch';
+        }
+
+        if ($metaIsStale || $googleAdsIsStale) {
+            return 'stale';
         }
 
         if (($expectedSources['meta_marketing'] && (! $metaHasSnapshot || $metaSpend === null))
@@ -325,9 +346,11 @@ class CampaignDailyMarketingEfficiencyReport
         ?string $ga4Revenue,
         ?string $googleAnalyticsCurrency,
         bool $googleAnalyticsRowAvailable,
+        bool $inputsAreStale,
     ): string {
         return match (true) {
             ! $roasSpendSourceIsConfigured => 'not_configured',
+            $inputsAreStale => 'stale',
             $roasSpendAmount === null => 'missing_spend',
             (float) $roasSpendAmount <= 0 => 'zero_spend',
             ! $googleAnalyticsRowAvailable || $ga4Revenue === null => 'missing_ga4',
@@ -345,10 +368,12 @@ class CampaignDailyMarketingEfficiencyReport
         bool $paidMediaCurrencyMismatch,
         bool $hasCompleteSourceCoverage,
         bool $hasEveryCalendarDate,
+        bool $hasStaleSource,
     ): string {
         return match (true) {
             $expectedSourceCount === 0 => 'not_configured',
             $paidMediaCurrencyMismatch => 'currency_mismatch',
+            $hasStaleSource => 'stale',
             $rows === [] => 'missing_data',
             ! $hasCompleteSourceCoverage || ! $hasEveryCalendarDate => 'partial',
             collect($rows)->every(static fn (array $row): bool => $row['spend_status'] === 'available'
@@ -447,6 +472,7 @@ class CampaignDailyMarketingEfficiencyReport
         return match ($status) {
             'complete' => '可比較',
             'partial' => '部分資料',
+            'stale' => '資料超過 24 小時',
             'currency_mismatch' => '廣告平台幣別不同',
             'not_configured' => '尚未設定廣告活動',
             default => '尚無逐日資料',
@@ -457,6 +483,7 @@ class CampaignDailyMarketingEfficiencyReport
     {
         return match ($status) {
             'available' => '可計算',
+            'stale' => '資料超過 24 小時',
             'zero_spend' => '花費為 0',
             'not_configured' => '尚未設定廣告活動',
             'platform_currency_mismatch' => '廣告平台幣別不同',

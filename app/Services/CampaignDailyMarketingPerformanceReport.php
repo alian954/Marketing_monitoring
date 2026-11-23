@@ -136,9 +136,17 @@ class CampaignDailyMarketingPerformanceReport
 
         usort($rows, static fn (array $first, array $second): int => strcmp($second['date'], $first['date']));
 
+        $status = is_string($snapshot['status'] ?? null) ? $snapshot['status'] : 'not_synced';
+
+        if ($status === 'complete'
+            && $syncedAt instanceof CarbonImmutable
+            && $syncedAt->lessThanOrEqualTo(CarbonImmutable::now()->subDay())) {
+            $status = 'stale';
+        }
+
         return [
             'label' => $label,
-            'status' => is_string($snapshot['status'] ?? null) ? $snapshot['status'] : 'not_synced',
+            'status' => $status,
             'requested_start_on' => $this->dateValue($snapshot['requested_start_on'] ?? null),
             'requested_end_on' => $this->dateValue($snapshot['requested_end_on'] ?? null),
             'coverage_start_on' => $this->dateValue($snapshot['coverage_start_on'] ?? null),

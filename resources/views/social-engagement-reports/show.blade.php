@@ -2262,6 +2262,7 @@
             $dailyMarketingStatusLabels = [
                 'complete' => '完整',
                 'partial' => '部分涵蓋',
+                'stale' => '資料超過 24 小時',
                 'unsupported' => '不支援',
                 'not_synced' => '尚未同步',
             ];
@@ -2282,6 +2283,7 @@
                     $sourceStatusClass = match ($sourceStatus) {
                         'complete' => 'healthy',
                         'partial' => 'warning',
+                        'stale' => 'stale',
                         'unsupported' => 'stale',
                         default => 'warning',
                     };
@@ -2464,6 +2466,7 @@
                 $dailyMarketingEfficiency = $dailyMarketingPerformance['combined_efficiency'];
                 $dailyMarketingEfficiencyStatusClass = match ($dailyMarketingEfficiency['status']) {
                     'complete' => 'healthy',
+                    'stale' => 'stale',
                     'currency_mismatch' => 'stale',
                     'not_configured' => 'unknown',
                     default => 'warning',
@@ -2471,6 +2474,7 @@
                 $dailyMarketingPeriodComparison = $dailyMarketingEfficiency['period_comparison'];
                 $dailyMarketingPeriodStatusClass = match ($dailyMarketingPeriodComparison['status']) {
                     'complete' => 'healthy',
+                    'stale' => 'stale',
                     'currency_mismatch' => 'stale',
                     'not_configured' => 'unknown',
                     default => 'warning',
@@ -2539,6 +2543,7 @@
                                             @else
                                                 {{ match ($periodValues['status']) {
                                                     'partial' => '資料不完整',
+                                                    'stale' => '資料超過 24 小時',
                                                     'currency_mismatch' => '幣別不同',
                                                     default => '—',
                                                 } }}
@@ -2748,6 +2753,8 @@
                                             缺少花費幣別
                                         @elseif ($dailyEfficiencyRow['spend_status'] === 'not_configured')
                                             未設定廣告活動
+                                        @elseif ($dailyEfficiencyRow['spend_status'] === 'stale')
+                                            資料超過 24 小時
                                         @else
                                             資料不完整
                                         @endif

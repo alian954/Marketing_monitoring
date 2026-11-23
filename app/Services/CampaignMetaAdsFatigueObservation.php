@@ -70,6 +70,7 @@ class CampaignMetaAdsFatigueObservation
         if (($dailyMarketing['status'] ?? null) !== 'complete') {
             $status = match ($dailyMarketing['status'] ?? null) {
                 'partial' => 'partial',
+                'stale' => 'stale',
                 'unsupported' => 'unsupported',
                 default => 'missing_data',
             };

@@ -244,8 +244,13 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             ->assertOk()
             ->assertSee('近 7 天與前 7 天')
             ->assertSee('0.94x');
-        $comparison = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['period_comparison'];
+        $dailyMarketingPerformance = $response->viewData('dailyMarketingPerformance');
+        $comparison = $dailyMarketingPerformance['combined_efficiency']['period_comparison'];
 
+        $this->assertSame('complete', $dailyMarketingPerformance['google_analytics']['status']);
+        $this->assertSame('complete', $dailyMarketingPerformance['meta_marketing']['status']);
+        $this->assertSame('complete', $dailyMarketingPerformance['google_ads']['status']);
+        $this->assertSame('complete', $dailyMarketingPerformance['combined_efficiency']['status']);
         $this->assertSame('complete', $comparison['status']);
         $this->assertSame('2026-11-24', $comparison['current_period']['start_on']);
         $this->assertSame('2026-11-30', $comparison['current_period']['end_on']);
@@ -259,6 +264,69 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertSame(51.43, $comparison['changes']['spend_percent']);
         $this->assertSame('65.0000', $comparison['changes']['revenue_amount']);
         $this->assertSame(0.44, $comparison['changes']['roas']);
+    }
+
+    public function test_report_marks_old_ga4_data_stale_and_suppresses_derived_roas(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $dailyMetrics = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $dateString = $date->toDateString();
+            $isCurrentPeriod = $dateString >= '2026-11-24';
+            $dailyMetrics[$dateString] = [
+                'spend' => $isCurrentPeriod
+                    ? ($dateString === '2026-11-30' ? '100.0000' : '1.0000')
+                    : '10.0000',
+                'revenue' => $isCurrentPeriod
+                    ? ($dateString === '2026-11-30' ? '100.0000' : '0.0000')
+                    : '5.0000',
+            ];
+        }
+
+        $this->createDailyReports($user, $target, $this->periodRows($dailyMetrics));
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $target->id)
+            ->firstOrFail()
+            ->update(['synced_at' => now()->subDay()->subSecond()]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('資料超過 24 小時');
+        $dailyMarketingPerformance = $response->viewData('dailyMarketingPerformance');
+        $efficiency = $dailyMarketingPerformance['combined_efficiency'];
+
+        $this->assertSame('stale', $dailyMarketingPerformance['google_analytics']['status']);
+        $this->assertSame('complete', $dailyMarketingPerformance['meta_marketing']['status']);
+        $this->assertSame('complete', $dailyMarketingPerformance['google_ads']['status']);
+        $this->assertSame('stale', $efficiency['status']);
+        $this->assertSame('資料超過 24 小時', $efficiency['status_label']);
+        $this->assertSame('stale', $efficiency['rows'][0]['roas_status']);
+        $this->assertNull($efficiency['rows'][0]['roas']);
+        $this->assertSame('stale', $efficiency['period_comparison']['status']);
+        $this->assertNull($efficiency['period_comparison']['changes']['roas']);
+
+        $csvRows = $this->csvRows(
+            $this->get(route('social-engagement-targets.daily-marketing-performance', $target))
+                ->assertDownload('campaign-daily-marketing-performance-'.$target->id.'.csv')
+                ->streamedContent(),
+        );
+        $ga4Fields = array_combine($csvRows[0], $csvRows[1]);
+        $combinedCsvRow = collect(array_slice($csvRows, 1))->first(
+            static fn (array $row): bool => ($row[0] ?? null) === '每日 GA4 ROAS',
+        );
+        $this->assertIsArray($combinedCsvRow);
+        $combinedFields = array_combine($csvRows[0], $combinedCsvRow);
+
+        $this->assertSame('stale', $ga4Fields['status']);
+        $this->assertSame('stale', $combinedFields['roas_status']);
+        $this->assertSame('', $combinedFields['daily_roas']);
     }
 
     public function test_paid_media_period_comparisons_calculate_each_platform_in_its_own_currency(): void
@@ -343,7 +411,13 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             ->assertOk()
             ->assertSee('Meta Ads 近 7 天與前 7 天')
             ->assertSee('資料超過 24 小時');
-        $staleComparisons = $staleResponse->viewData('dailyMarketingPerformance')['combined_efficiency']['paid_media_period_comparisons'];
+        $staleDailyMarketingPerformance = $staleResponse->viewData('dailyMarketingPerformance');
+        $staleEfficiency = $staleDailyMarketingPerformance['combined_efficiency'];
+        $staleComparisons = $staleEfficiency['paid_media_period_comparisons'];
+        $this->assertSame('stale', $staleDailyMarketingPerformance['meta_marketing']['status']);
+        $this->assertSame('stale', $staleEfficiency['status']);
+        $this->assertSame('stale', $staleEfficiency['rows'][0]['spend_status']);
+        $this->assertNull($staleEfficiency['rows'][0]['ad_spend_amount']);
         $this->assertSame('stale', $staleComparisons['meta_marketing']['status']);
         $this->assertNull($staleComparisons['meta_marketing']['changes']['spend_amount']);
         $this->assertSame('complete', $staleComparisons['google_ads']['status']);
