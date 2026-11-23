@@ -52,6 +52,7 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('逐日行銷成效')
+            ->assertSee('逐日顯示平台數據與衍生效率指標')
             ->assertSee('GA4 逐日成效')
             ->assertSee('Meta Ads 逐日成效')
             ->assertSee('Google Ads 逐日成效')
@@ -72,8 +73,111 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertNull($dailyReport['google_analytics']['rows'][0]['total_revenue']);
         $this->assertSame(0, $dailyReport['meta_marketing']['rows'][0]['impressions']);
         $this->assertSame('0.0000', $dailyReport['meta_marketing']['rows'][0]['omni_purchase_count']);
+        $this->assertNull($dailyReport['meta_marketing']['rows'][0]['frequency']);
+        $this->assertNull($dailyReport['meta_marketing']['rows'][0]['ctr_percent']);
+        $this->assertNull($dailyReport['meta_marketing']['rows'][0]['cost_per_click']);
+        $this->assertNull($dailyReport['meta_marketing']['rows'][0]['cost_per_thousand_impressions']);
+        $this->assertNull($dailyReport['meta_marketing']['rows'][0]['cost_per_action']);
         $this->assertSame([], $dailyReport['google_ads']['rows']);
         $this->assertTrue($dailyReport['google_ads']['snapshot_available']);
+    }
+
+    public function test_report_calculates_and_displays_daily_paid_media_efficiency_metrics(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'meta_rows' => [[
+                'date' => '2026-11-05',
+                'spend_amount' => '25.5000',
+                'impressions' => 100,
+                'reach' => 75,
+                'clicks' => 5,
+                'actions' => [['action_type' => 'omni_purchase', 'value' => '2.0000']],
+                'action_values' => [['action_type' => 'omni_purchase', 'value' => '60.0000']],
+            ]],
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '10.0000',
+                'impressions' => 80,
+                'clicks' => 4,
+                'conversions' => '2.0000',
+                'conversions_value' => '60.0000',
+            ]],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('頻率')
+            ->assertSee('點擊率')
+            ->assertSee('每次點擊成本')
+            ->assertSee('每千次曝光成本')
+            ->assertSee('每次購買成本')
+            ->assertSee('轉換率')
+            ->assertSee('1.33 次／人')
+            ->assertSee('5.00%')
+            ->assertSee('5.1000 TWD')
+            ->assertSee('255.0000 TWD')
+            ->assertSee('12.7500 TWD')
+            ->assertSee('2.5000 TWD')
+            ->assertSee('125.0000 TWD')
+            ->assertSee('50.00%');
+
+        $dailyReport = $response->viewData('dailyMarketingPerformance');
+        $metaRow = $dailyReport['meta_marketing']['rows'][0];
+        $googleAdsRow = $dailyReport['google_ads']['rows'][0];
+
+        $this->assertSame(1.3333, $metaRow['frequency']);
+        $this->assertSame(5.0, $metaRow['ctr_percent']);
+        $this->assertSame(5.1, $metaRow['cost_per_click']);
+        $this->assertSame(255.0, $metaRow['cost_per_thousand_impressions']);
+        $this->assertSame(12.75, $metaRow['cost_per_action']);
+        $this->assertSame(5.0, $googleAdsRow['ctr_percent']);
+        $this->assertSame(2.5, $googleAdsRow['cost_per_click']);
+        $this->assertSame(125.0, $googleAdsRow['cost_per_thousand_impressions']);
+        $this->assertSame(5.0, $googleAdsRow['cost_per_action']);
+        $this->assertSame(50.0, $googleAdsRow['conversion_rate_percent']);
+    }
+
+    public function test_daily_paid_media_efficiency_metrics_are_null_when_denominators_are_missing_or_zero(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'meta_rows' => [[
+                'date' => '2026-11-05',
+                'spend_amount' => '10.0000',
+                'impressions' => 0,
+                'reach' => 0,
+                'clicks' => null,
+                'actions' => [],
+                'action_values' => [],
+            ]],
+            'ads_rows' => [[
+                'date' => '2026-11-06',
+                'spend_amount' => '10.0000',
+                'impressions' => 0,
+                'clicks' => null,
+                'conversions' => '0.0000',
+                'conversions_value' => '0.0000',
+            ]],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk();
+        $dailyReport = $response->viewData('dailyMarketingPerformance');
+        $metaRow = $dailyReport['meta_marketing']['rows'][0];
+        $googleAdsRow = $dailyReport['google_ads']['rows'][0];
+
+        foreach (['frequency', 'ctr_percent', 'cost_per_click', 'cost_per_thousand_impressions', 'cost_per_action'] as $metric) {
+            $this->assertNull($metaRow[$metric]);
+        }
+
+        foreach (['ctr_percent', 'cost_per_click', 'cost_per_thousand_impressions', 'cost_per_action', 'conversion_rate_percent'] as $metric) {
+            $this->assertNull($googleAdsRow[$metric]);
+        }
     }
 
     public function test_daily_csv_download_is_authenticated_long_format_provider_specific_and_formula_safe(): void
@@ -95,8 +199,8 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
                 'impressions' => 100,
                 'reach' => 75,
                 'clicks' => 5,
-                'actions' => [],
-                'action_values' => [],
+                'actions' => [['action_type' => 'omni_purchase', 'value' => '2.0000']],
+                'action_values' => [['action_type' => 'omni_purchase', 'value' => '60.0000']],
             ]],
             'ads_rows' => [[
                 'date' => '2026-11-06',
@@ -149,6 +253,12 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'search_impression_share',
             'search_budget_lost_impression_share',
             'search_rank_lost_impression_share',
+            'frequency',
+            'ctr_percent',
+            'cost_per_click',
+            'cost_per_thousand_impressions',
+            'cost_per_action',
+            'conversion_rate_percent',
             'meta_spend_amount',
             'meta_currency_code',
             'google_ads_spend_amount',
@@ -176,6 +286,12 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertSame('Meta Ads', $metaFields['source']);
         $this->assertSame('2026-11-05', $metaFields['date']);
         $this->assertSame('25.5000', $metaFields['spend_amount']);
+        $this->assertSame('1.3333', $metaFields['frequency']);
+        $this->assertSame('5', $metaFields['ctr_percent']);
+        $this->assertSame('5.1', $metaFields['cost_per_click']);
+        $this->assertSame('255', $metaFields['cost_per_thousand_impressions']);
+        $this->assertSame('12.75', $metaFields['cost_per_action']);
+        $this->assertSame('', $metaFields['conversion_rate_percent']);
         $this->assertSame('', $metaFields['sessions']);
 
         $adsFields = array_combine($csvRows[0], $csvRows[3]);
@@ -185,6 +301,12 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
         $this->assertSame('0.0999', $adsFields['search_impression_share']);
         $this->assertSame('0.9001', $adsFields['search_budget_lost_impression_share']);
         $this->assertSame('0.2345', $adsFields['search_rank_lost_impression_share']);
+        $this->assertSame('', $adsFields['frequency']);
+        $this->assertSame('5', $adsFields['ctr_percent']);
+        $this->assertSame('2.5', $adsFields['cost_per_click']);
+        $this->assertSame('125', $adsFields['cost_per_thousand_impressions']);
+        $this->assertSame('5', $adsFields['cost_per_action']);
+        $this->assertSame('50', $adsFields['conversion_rate_percent']);
         $this->assertSame('2026-11-01', $adsFields['requested_start_on']);
 
         $combinedFields = array_combine($csvRows[0], $csvRows[4]);

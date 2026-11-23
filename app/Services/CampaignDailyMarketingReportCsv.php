@@ -14,11 +14,11 @@ class CampaignDailyMarketingReportCsv
         ],
         'meta_marketing' => [
             'label' => 'Meta Ads',
-            'metrics' => ['spend_amount', 'impressions', 'reach', 'clicks', 'omni_purchase_count', 'omni_purchase_value', 'purchase_roas'],
+            'metrics' => ['spend_amount', 'impressions', 'reach', 'clicks', 'omni_purchase_count', 'omni_purchase_value', 'purchase_roas', 'frequency', 'ctr_percent', 'cost_per_click', 'cost_per_thousand_impressions', 'cost_per_action'],
         ],
         'google_ads' => [
             'label' => 'Google Ads',
-            'metrics' => ['spend_amount', 'impressions', 'clicks', 'conversions', 'conversions_value', 'conversion_value_roas', 'search_impression_share', 'search_budget_lost_impression_share', 'search_rank_lost_impression_share'],
+            'metrics' => ['spend_amount', 'impressions', 'clicks', 'conversions', 'conversions_value', 'conversion_value_roas', 'search_impression_share', 'search_budget_lost_impression_share', 'search_rank_lost_impression_share', 'ctr_percent', 'cost_per_click', 'cost_per_thousand_impressions', 'cost_per_action', 'conversion_rate_percent'],
         ],
     ];
 
@@ -49,6 +49,12 @@ class CampaignDailyMarketingReportCsv
         'search_impression_share',
         'search_budget_lost_impression_share',
         'search_rank_lost_impression_share',
+        'frequency',
+        'ctr_percent',
+        'cost_per_click',
+        'cost_per_thousand_impressions',
+        'cost_per_action',
+        'conversion_rate_percent',
         'meta_spend_amount',
         'meta_currency_code',
         'google_ads_spend_amount',
@@ -93,7 +99,7 @@ class CampaignDailyMarketingReportCsv
                     $this->syncedAt($source['synced_at'] ?? null),
                 ];
 
-                foreach (array_slice(self::HEADERS, 9, 17) as $metric) {
+                foreach (array_slice(self::HEADERS, 9, 23) as $metric) {
                     $fields[] = in_array($metric, $sourceDefinition['metrics'], true)
                         ? $this->value($dailyRow[$metric] ?? null)
                         : '';
@@ -125,7 +131,7 @@ class CampaignDailyMarketingReportCsv
                 $this->syncedAt($combinedEfficiency['latest_synced_at'] ?? null),
             ];
 
-            $fields = [...$fields, ...array_fill(0, 17, '')];
+            $fields = [...$fields, ...array_fill(0, 23, '')];
 
             foreach ([
                 'meta_spend_amount',

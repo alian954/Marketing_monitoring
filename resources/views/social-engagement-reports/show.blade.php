@@ -783,8 +783,13 @@
                         ['key' => 'impressions', 'label' => '曝光', 'format' => 'integer'],
                         ['key' => 'reach', 'label' => '觸及', 'format' => 'integer'],
                         ['key' => 'clicks', 'label' => '點擊', 'format' => 'integer'],
+                        ['key' => 'frequency', 'label' => '頻率', 'format' => 'frequency'],
+                        ['key' => 'ctr_percent', 'label' => '點擊率', 'format' => 'percent'],
+                        ['key' => 'cost_per_click', 'label' => '每次點擊成本', 'format' => 'currency_unit'],
+                        ['key' => 'cost_per_thousand_impressions', 'label' => '每千次曝光成本', 'format' => 'currency_unit'],
                         ['key' => 'omni_purchase_count', 'label' => '購買', 'format' => 'decimal'],
                         ['key' => 'omni_purchase_value', 'label' => '購買價值', 'format' => 'currency'],
+                        ['key' => 'cost_per_action', 'label' => '每次購買成本', 'format' => 'currency_unit'],
                         ['key' => 'purchase_roas', 'label' => '購買 ROAS', 'format' => 'ratio'],
                     ],
                 ],
@@ -795,7 +800,12 @@
                         ['key' => 'spend_amount', 'label' => '花費', 'format' => 'currency'],
                         ['key' => 'impressions', 'label' => '曝光', 'format' => 'integer'],
                         ['key' => 'clicks', 'label' => '點擊', 'format' => 'integer'],
+                        ['key' => 'ctr_percent', 'label' => '點擊率', 'format' => 'percent'],
+                        ['key' => 'cost_per_click', 'label' => '每次點擊成本', 'format' => 'currency_unit'],
+                        ['key' => 'cost_per_thousand_impressions', 'label' => '每千次曝光成本', 'format' => 'currency_unit'],
                         ['key' => 'conversions', 'label' => '轉換', 'format' => 'decimal'],
+                        ['key' => 'conversion_rate_percent', 'label' => '轉換率', 'format' => 'percent'],
+                        ['key' => 'cost_per_action', 'label' => '每次轉換成本', 'format' => 'currency_unit'],
                         ['key' => 'conversions_value', 'label' => '轉換價值', 'format' => 'currency'],
                         ['key' => 'conversion_value_roas', 'label' => '轉換價值 ROAS', 'format' => 'ratio'],
                         ['key' => 'search_impression_share', 'label' => '搜尋曝光比重', 'format' => 'search_share'],
@@ -815,7 +825,7 @@
             <div class="campaign-report-section-header">
                 <div>
                     <h2 id="campaign-report-daily-marketing-title">逐日行銷成效</h2>
-                    <p class="campaign-report-secondary">各平台保留原始逐日數據；同日 ROAS＝GA4 活動營收 ÷ 廣告花費，只作日期對照，不代表因果。</p>
+                    <p class="campaign-report-secondary">逐日顯示平台數據與衍生效率指標；同日 ROAS＝GA4 活動營收 ÷ 廣告花費，只作日期對照，不代表因果。</p>
                 </div>
                 <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.daily-marketing-performance', $target) }}">匯出逐日 CSV</a>
             </div>
@@ -918,6 +928,12 @@
                                                     {{ number_format((int) $dailyRow[$metricDefinition['key']]) }}
                                                 @elseif ($metricDefinition['format'] === 'ratio')
                                                     {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}x
+                                                @elseif ($metricDefinition['format'] === 'frequency')
+                                                    {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }} 次／人
+                                                @elseif ($metricDefinition['format'] === 'percent')
+                                                    {{ number_format((float) $dailyRow[$metricDefinition['key']], 2) }}%
+                                                @elseif ($metricDefinition['format'] === 'currency_unit')
+                                                    {{ number_format((float) $dailyRow[$metricDefinition['key']], 4) }} {{ $sourceReport['currency_code'] ?? '幣別未知' }}
                                                 @elseif ($metricDefinition['format'] === 'search_share')
                                                     @if ($metricDefinition['key'] === 'search_impression_share' && (float) $dailyRow[$metricDefinition['key']] === 0.0999)
                                                         &lt;10%

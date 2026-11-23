@@ -28,15 +28,23 @@ class CampaignDailyMarketingPerformanceReport
             $googleAdsReport?->synced_at,
             function (array $row): array {
                 $spendAmount = $this->decimalMetric($row['spend_amount'] ?? null);
+                $impressions = $this->integerMetric($row['impressions'] ?? null);
+                $clicks = $this->integerMetric($row['clicks'] ?? null);
+                $conversions = $this->decimalMetric($row['conversions'] ?? null);
                 $conversionsValue = $this->decimalMetric($row['conversions_value'] ?? null);
 
                 return [
                     'date' => $row['date'],
                     'spend_amount' => $spendAmount,
-                    'impressions' => $this->integerMetric($row['impressions'] ?? null),
-                    'clicks' => $this->integerMetric($row['clicks'] ?? null),
-                    'conversions' => $this->decimalMetric($row['conversions'] ?? null),
+                    'impressions' => $impressions,
+                    'clicks' => $clicks,
+                    'conversions' => $conversions,
                     'conversions_value' => $conversionsValue,
+                    'ctr_percent' => $this->calculatedMetric($clicks, $impressions, 100),
+                    'cost_per_click' => $this->calculatedMetric($spendAmount, $clicks),
+                    'cost_per_thousand_impressions' => $this->calculatedMetric($spendAmount, $impressions, 1000),
+                    'cost_per_action' => $this->calculatedMetric($spendAmount, $conversions),
+                    'conversion_rate_percent' => $this->calculatedMetric($conversions, $clicks, 100),
                     'conversion_value_roas' => $conversionsValue !== null && $spendAmount !== null && (float) $spendAmount > 0
                         ? round((float) $conversionsValue / (float) $spendAmount, 2)
                         : null,
@@ -72,17 +80,25 @@ class CampaignDailyMarketingPerformanceReport
                 $metaMarketingReport?->synced_at,
                 function (array $row): array {
                     $spendAmount = $this->decimalMetric($row['spend_amount'] ?? null);
+                    $impressions = $this->integerMetric($row['impressions'] ?? null);
+                    $reach = $this->integerMetric($row['reach'] ?? null);
+                    $clicks = $this->integerMetric($row['clicks'] ?? null);
                     $purchaseCount = $this->actionMetric($row['actions'] ?? null, 'omni_purchase');
                     $purchaseValue = $this->actionMetric($row['action_values'] ?? null, 'omni_purchase');
 
                     return [
                         'date' => $row['date'],
                         'spend_amount' => $spendAmount,
-                        'impressions' => $this->integerMetric($row['impressions'] ?? null),
-                        'reach' => $this->integerMetric($row['reach'] ?? null),
-                        'clicks' => $this->integerMetric($row['clicks'] ?? null),
+                        'impressions' => $impressions,
+                        'reach' => $reach,
+                        'clicks' => $clicks,
                         'omni_purchase_count' => $purchaseCount,
                         'omni_purchase_value' => $purchaseValue,
+                        'frequency' => $this->calculatedMetric($impressions, $reach),
+                        'ctr_percent' => $this->calculatedMetric($clicks, $impressions, 100),
+                        'cost_per_click' => $this->calculatedMetric($spendAmount, $clicks),
+                        'cost_per_thousand_impressions' => $this->calculatedMetric($spendAmount, $impressions, 1000),
+                        'cost_per_action' => $this->calculatedMetric($spendAmount, $purchaseCount),
                         'purchase_roas' => $purchaseValue !== null && $spendAmount !== null && (float) $spendAmount > 0
                             ? round((float) $purchaseValue / (float) $spendAmount, 2)
                             : null,
@@ -191,6 +207,16 @@ class CampaignDailyMarketingPerformanceReport
         return (is_string($value) || is_int($value) || is_float($value)) && is_numeric($value)
             ? (string) $value
             : null;
+    }
+
+    private function calculatedMetric(mixed $numerator, mixed $denominator, float $multiplier = 1): ?float
+    {
+        if (! is_numeric($numerator) || ! is_numeric($denominator)
+            || (float) $numerator < 0 || (float) $denominator <= 0) {
+            return null;
+        }
+
+        return round((float) $numerator / (float) $denominator * $multiplier, 4);
     }
 
     private function currencyCode(?string $currencyCode): ?string
