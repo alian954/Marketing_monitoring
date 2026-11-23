@@ -69,6 +69,10 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-ads.search-terms');
+    Route::get('/social-engagement-targets/{socialEngagementTarget}/google-ads-keywords.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAdsKeywords'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-ads.keywords');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/google-ads-delivery-units.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAdsDeliveryUnits'])
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')

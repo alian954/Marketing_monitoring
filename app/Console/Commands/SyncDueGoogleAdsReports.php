@@ -27,6 +27,7 @@ class SyncDueGoogleAdsReports extends Command
     ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
         $this->clearExpiredSearchTermReports($asOf);
+        $this->clearExpiredKeywordPerformanceReports($asOf);
         $this->clearExpiredDeliveryUnitReports($asOf);
         $this->clearExpiredDeviceReports($asOf);
 
@@ -151,6 +152,17 @@ class SyncDueGoogleAdsReports extends Command
             ->update([
                 'search_terms_data' => null,
                 'search_terms_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredKeywordPerformanceReports(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->whereNotNull('keyword_performance_expires_at')
+            ->where('keyword_performance_expires_at', '<=', $asOf)
+            ->update([
+                'keyword_performance' => null,
+                'keyword_performance_expires_at' => null,
             ]);
     }
 

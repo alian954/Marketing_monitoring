@@ -20,6 +20,8 @@ use App\Services\GoogleAdsDeliveryUnitPerformanceReport;
 use App\Services\GoogleAdsDeliveryUnitReportCsv;
 use App\Services\GoogleAdsDevicePerformanceReport;
 use App\Services\GoogleAdsDeviceReportCsv;
+use App\Services\GoogleAdsKeywordPerformanceReport;
+use App\Services\GoogleAdsKeywordReportCsv;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
@@ -60,6 +62,7 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingDemographicPerformanceReport $metaMarketingDemographicPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
+        GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -76,6 +79,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->search_terms_data,
             $viewData['googleAdsReport']?->search_terms_expires_at,
             (string) $request->query('search_term_sort', 'spend'),
+        );
+        $viewData['googleAdsKeywordReport'] = $googleAdsKeywordPerformanceReport->build(
+            $viewData['googleAdsReport']?->keyword_performance,
+            $viewData['googleAdsReport']?->keyword_performance_expires_at,
+            (string) $request->query('google_ads_keyword_sort', 'spend'),
         );
         $viewData['googleAnalyticsLandingPageReport'] = $googleAnalyticsLandingPagePerformanceReport->build(
             $viewData['googleAnalyticsReport']?->landing_page_report,
@@ -402,6 +410,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'google-ads-search-terms-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAdsKeywords(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
+        GoogleAdsKeywordReportCsv $googleAdsKeywordReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->googleAdsConnection;
+        abort_if(
+            $connection === null
+                || $connection->customer_id === null
+                || $socialEngagementTarget->google_ads_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('customer_id', $connection->customer_id)
+            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->keyword_performance)
+                || $report->keyword_performance_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $keywordReport = $googleAdsKeywordPerformanceReport->build(
+            $report->keyword_performance,
+            $report->keyword_performance_expires_at,
+            'spend',
+        );
+        abort_if($keywordReport['status'] !== 'complete', 404);
+        $csv = $googleAdsKeywordReportCsv->build($keywordReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'google-ads-keywords-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

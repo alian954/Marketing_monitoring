@@ -283,6 +283,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push([])
                 ->push([[
                     'results' => [[
                         'customer' => ['id' => '1234567890', 'currencyCode' => 'USD'],
@@ -417,7 +418,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(7);
+        Http::assertSentCount(8);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 

@@ -807,6 +807,97 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-keywords-title">Google Ads 關鍵字成效</h3>
+                    @if ($googleAdsKeywordReport['status'] === 'complete' && $googleAdsKeywordReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.keywords', $target) }}">匯出關鍵字 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsKeywordReport['status'] === 'complete')
+                    <p class="campaign-report-secondary">
+                        最近 30 個完整日（{{ $googleAdsKeywordReport['window_start_on'] }} 至 {{ $googleAdsKeywordReport['window_end_on'] }}）。這是廣告主設定的關鍵字；搜尋字詞則是使用者實際輸入的查詢。Google Ads 僅回傳有曝光的關鍵字，最多顯示花費最高的 200 筆。
+                    </p>
+                    @if ($googleAdsKeywordReport['truncated'])
+                        <p class="campaign-report-empty">符合條件的關鍵字超過 200 筆，表格僅顯示花費最高的 200 筆。</p>
+                    @endif
+                    @if ($googleAdsKeywordReport['rows'] === [])
+                        <p class="campaign-report-empty">此期間沒有取得有曝光的關鍵字。</p>
+                    @else
+                        <form class="campaign-report-actions" method="GET" action="{{ route('social-engagement-targets.report', $target) }}">
+                            <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                            <label class="field-label" for="google-ads-keywords-sort">排序依據</label>
+                            <select class="field-select" id="google-ads-keywords-sort" name="google_ads_keyword_sort">
+                                <option value="spend" @selected($googleAdsKeywordReport['sort'] === 'spend')>花費</option>
+                                <option value="conversions" @selected($googleAdsKeywordReport['sort'] === 'conversions')>轉換</option>
+                                <option value="roas" @selected($googleAdsKeywordReport['sort'] === 'roas')>ROAS</option>
+                                <option value="ctr" @selected($googleAdsKeywordReport['sort'] === 'ctr')>CTR</option>
+                                <option value="impression_share" @selected($googleAdsKeywordReport['sort'] === 'impression_share')>搜尋曝光比重</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">排序</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-keywords-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads 最近 30 個完整日的關鍵字成效與搜尋曝光診斷</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">關鍵字</th>
+                                        <th scope="col">比對方式</th>
+                                        <th scope="col">狀態</th>
+                                        <th scope="col">廣告群組</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">轉換</th>
+                                        <th scope="col" class="numeric">CPA</th>
+                                        <th scope="col" class="numeric">轉換價值</th>
+                                        <th scope="col" class="numeric">ROAS</th>
+                                        <th scope="col" class="numeric">搜尋曝光比重</th>
+                                        <th scope="col" class="numeric">預算流失</th>
+                                        <th scope="col" class="numeric">排名流失</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsKeywordReport['rows'] as $keywordRow)
+                                        <tr>
+                                            <th scope="row">{{ $keywordRow['keyword_text'] }}</th>
+                                            <td>{{ match ($keywordRow['match_type']) {
+                                                'BROAD' => '廣泛',
+                                                'PHRASE' => '詞組',
+                                                'EXACT' => '完全',
+                                                default => $keywordRow['match_type'],
+                                            } }}</td>
+                                            <td>{{ $keywordRow['criterion_status_label'] }}</td>
+                                            <td>{{ $keywordRow['ad_group_name'] }}</td>
+                                            <td class="numeric">{{ number_format((int) $keywordRow['impressions']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $keywordRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $keywordRow['ctr_percent'] === null ? '—' : number_format($keywordRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $keywordRow['spend_amount'], 2) }} {{ $googleAdsKeywordReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $keywordRow['cost_per_click'] === null ? '—' : number_format($keywordRow['cost_per_click'], 4).' '.$googleAdsKeywordReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $keywordRow['conversions'], 2) }}</td>
+                                            <td class="numeric">{{ $keywordRow['cost_per_action'] === null ? '—' : number_format($keywordRow['cost_per_action'], 4).' '.$googleAdsKeywordReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $keywordRow['conversions_value'], 2) }} {{ $googleAdsKeywordReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $keywordRow['roas'] === null ? '—' : number_format($keywordRow['roas'], 4) }}</td>
+                                            <td class="numeric">{{ $keywordRow['search_impression_share_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $keywordRow['search_budget_lost_impression_share_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $keywordRow['search_rank_lost_impression_share_label'] ?? '—' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                @else
+                    <p class="campaign-report-empty">{{ match ($googleAdsKeywordReport['status']) {
+                        'unsupported' => '目前僅支援 Google Ads 搜尋活動。',
+                        'no_complete_days' => '尚無完整日期可供關鍵字分析。',
+                        'unavailable' => '關鍵字明細暫時無法同步，活動摘要仍可使用。',
+                        'expired' => '關鍵字讀值已過期，請更新 Google Ads 數據。',
+                        default => '尚無關鍵字讀值；更新 Google Ads 數據即可同步。',
+                    } }}</p>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-delivery-units-title">Google Ads 投放單位成效</h3>
                     @if ($googleAdsDeliveryUnitReport['status'] === 'complete' && $googleAdsDeliveryUnitReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.delivery-units', $target) }}">匯出投放單位 CSV</a>

@@ -465,6 +465,159 @@ class GoogleAdsDataApi
      *     window_start_on: string|null,
      *     window_end_on: string|null,
      *     currency_code: string,
+     *     truncated: bool,
+     *     rows: list<array{keyword_text: string, match_type: string, criterion_status: string, criterion_id: string, ad_group_id: string, ad_group_name: string, impressions: int, clicks: int, spend_amount: string, conversions: string, conversions_value: string, search_impression_share: float|null, search_budget_lost_impression_share: float|null, search_rank_lost_impression_share: float|null}>
+     * }
+     */
+    public function campaignKeywordInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $campaignChannelType,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads 關鍵字報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        if ($campaignChannelType !== 'SEARCH') {
+            return $this->emptyKeywordReport('unsupported', $accountCurrency);
+        }
+
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return $this->emptyKeywordReport('unsupported', $accountCurrency);
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyKeywordReport('no_complete_days', $accountCurrency);
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, ad_group.id, ad_group.name, ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share FROM keyword_view WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.cost_micros DESC, ad_group_criterion.criterion_id ASC LIMIT 201";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > 201) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超過關鍵字讀取上限，未儲存讀值。');
+        }
+
+        $rows = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $adGroup = $row['adGroup'] ?? null;
+            $criterion = $row['adGroupCriterion'] ?? null;
+            $keyword = is_array($criterion) ? ($criterion['keyword'] ?? null) : null;
+            $metrics = $row['metrics'] ?? null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+            $adGroupId = is_array($adGroup) ? ($adGroup['id'] ?? null) : null;
+            $adGroupName = is_array($adGroup) ? ($adGroup['name'] ?? null) : null;
+            $criterionId = is_array($criterion) ? ($criterion['criterionId'] ?? null) : null;
+            $keywordText = is_array($keyword) ? ($keyword['text'] ?? null) : null;
+            $matchType = is_array($keyword) ? ($keyword['matchType'] ?? null) : null;
+            $criterionStatus = is_array($criterion) ? ($criterion['status'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || $rowCurrencyCode !== $accountCurrency
+                || (! is_string($adGroupId) && ! is_int($adGroupId))
+                || preg_match('/^\d{1,32}$/', (string) $adGroupId) !== 1
+                || ! is_string($adGroupName)
+                || trim($adGroupName) === ''
+                || strlen($adGroupName) > 1024
+                || (! is_string($criterionId) && ! is_int($criterionId))
+                || preg_match('/^\d{1,32}$/', (string) $criterionId) !== 1
+                || ! is_string($keywordText)
+                || trim($keywordText) === ''
+                || strlen($keywordText) > 4096
+                || ! is_string($matchType)
+                || preg_match('/^[A-Z][A-Z_]{0,49}$/', $matchType) !== 1
+                || ! is_string($criterionStatus)
+                || preg_match('/^[A-Z][A-Z_]{0,49}$/', $criterionStatus) !== 1
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的關鍵字資料，未儲存讀值。');
+            }
+
+            $rows[] = [
+                'keyword_text' => $keywordText,
+                'match_type' => $matchType,
+                'criterion_status' => $criterionStatus,
+                'criterion_id' => (string) $criterionId,
+                'ad_group_id' => (string) $adGroupId,
+                'ad_group_name' => trim($adGroupName),
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+                'search_impression_share' => $this->searchShareMetric(
+                    $metrics['searchImpressionShare'] ?? null,
+                    '搜尋曝光比重',
+                    0.1,
+                    1.0,
+                    0.0999,
+                    true,
+                ),
+                'search_budget_lost_impression_share' => $this->searchShareMetric(
+                    $metrics['searchBudgetLostImpressionShare'] ?? null,
+                    '預算流失比重',
+                    0.0,
+                    0.9,
+                    0.9001,
+                    false,
+                ),
+                'search_rank_lost_impression_share' => $this->searchShareMetric(
+                    $metrics['searchRankLostImpressionShare'] ?? null,
+                    '排名流失比重',
+                    0.0,
+                    0.9,
+                    0.9001,
+                    false,
+                ),
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'truncated' => count($rows) > 200,
+            'rows' => array_slice($rows, 0, 200),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
      *     unit_type: 'ad_group'|'asset_group',
      *     truncated: bool,
      *     rows: list<array{
@@ -1176,6 +1329,19 @@ class GoogleAdsDataApi
 
     /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
     private function emptySearchTermReport(string $status, string $currencyCode): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $currencyCode,
+            'truncated' => false,
+            'rows' => [],
+        ];
+    }
+
+    /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyKeywordReport(string $status, string $currencyCode): array
     {
         return [
             'status' => $status,
