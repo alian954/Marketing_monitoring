@@ -15,7 +15,10 @@ use Illuminate\Database\Eloquent\Collection;
 
 class DashboardCampaignMarketingSummary
 {
-    public function __construct(private CampaignMarketingEfficiencyReport $marketingEfficiencyReport) {}
+    public function __construct(
+        private CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        private SocialEngagementCampaignBusinessGoalReport $businessGoalReport,
+    ) {}
 
     /**
      * @param  Collection<int, SocialEngagementTarget>  $targets
@@ -25,6 +28,7 @@ class DashboardCampaignMarketingSummary
      *     meta_marketing: array{status: string, status_label: string, spend_amount: string|null, currency_code: string|null, synced_at: CarbonImmutable|null},
      *     google_ads: array{status: string, status_label: string, spend_amount: string|null, currency_code: string|null, synced_at: CarbonImmutable|null},
      *     public_engagement: array{interaction_total: int|null, available_posts: int, tracked_posts: int, coverage_percent: float|null},
+     *     ga4_business_goal: array{metric: string|null, metric_label: string|null, target_value: float|null, actual_value: float|null, goal_currency_code: string|null, report_currency_code: string|null, completion_percent: float|null, remaining_value: float|null, status: string, status_label: string, time_pacing: array{status: string, status_label: string, campaign_days: int|null, elapsed_days: int|null, elapsed_percent: float|null, expected_value: float|null, gap_value: float|null, gap_percentage_points: float|null}},
      *     efficiency: array<string, mixed>
      * }>
      */
@@ -92,14 +96,15 @@ class DashboardCampaignMarketingSummary
                 $target,
                 $googleAdsConnection,
             );
+            $googleAnalyticsSummary = $this->googleAnalyticsSummary(
+                $googleAnalyticsReport,
+                $googleAnalyticsConnection,
+                $target,
+                $freshnessCutoff,
+            );
 
             $summaries[$target->getKey()] = [
-                'google_analytics' => $this->googleAnalyticsSummary(
-                    $googleAnalyticsReport,
-                    $googleAnalyticsConnection,
-                    $target,
-                    $freshnessCutoff,
-                ),
+                'google_analytics' => $googleAnalyticsSummary,
                 'meta_marketing' => $this->paidMediaSummary(
                     $metaMarketingReport,
                     $metaMarketingConnection,
@@ -120,6 +125,11 @@ class DashboardCampaignMarketingSummary
                         ? round($availableEngagementPosts / $trackedEngagementPosts * 100, 1)
                         : null,
                 ],
+                'ga4_business_goal' => $this->businessGoalReport->build(
+                    $target,
+                    $googleAnalyticsReport,
+                    $googleAnalyticsSummary['status'] === 'stale',
+                ),
                 'efficiency' => $this->marketingEfficiencyReport->build(
                     $target,
                     $googleAnalyticsReport,

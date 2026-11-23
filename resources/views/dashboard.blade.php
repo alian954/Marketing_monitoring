@@ -603,6 +603,7 @@
             @php
                 $portfolioCoverage = $campaignPortfolioMarketingSummary['coverage'];
                 $budgetCoverage = $campaignPortfolioMarketingSummary['budget_coverage'];
+                $ga4BusinessGoalCoverage = $campaignPortfolioMarketingSummary['ga4_business_goal_coverage'];
                 $portfolioSourceLabels = [
                     'google_analytics' => 'GA4',
                     'meta_marketing' => 'Meta Ads',
@@ -612,6 +613,11 @@
             <p class="panel-description">
                 目前篩選的 {{ number_format($campaignPortfolioMarketingSummary['target_count']) }} 個活動期間累計；期間依各活動設定，金額依幣別分列，包含可用的過期快照。
             </p>
+            @if ($ga4BusinessGoalCoverage['configured_campaigns'] > 0)
+                <p class="campaign-report-secondary">
+                    GA4 目標：已設定 {{ number_format($ga4BusinessGoalCoverage['configured_campaigns']) }} 個，可比較 {{ number_format($ga4BusinessGoalCoverage['available_campaigns']) }} 個；領先 {{ number_format($ga4BusinessGoalCoverage['ahead_campaigns']) }}、落後 {{ number_format($ga4BusinessGoalCoverage['behind_campaigns']) }}、符合進度 {{ number_format($ga4BusinessGoalCoverage['on_track_campaigns']) }}、尚未開始 {{ number_format($ga4BusinessGoalCoverage['not_started_campaigns']) }}、已結束 {{ number_format($ga4BusinessGoalCoverage['completed_campaigns']) }}、進度資料不足 {{ number_format($ga4BusinessGoalCoverage['data_unavailable_campaigns']) }}。進度依活動日數線性比較。
+                </p>
+            @endif
             <div class="data-table-wrap spaced-top" role="region" aria-label="跨活動行銷數據總覽" tabindex="0">
                 <table class="data-table">
                     <caption class="sr-only">目前篩選活動的 GA4 營收、廣告花費與可比較 ROAS，依幣別分組</caption>
@@ -870,11 +876,12 @@
             </p>
             <div class="data-table-wrap" role="region" aria-labelledby="campaign-marketing-overview-title" tabindex="0">
                 <table class="data-table">
-                    <caption class="sr-only">各活動的 GA4 成效、廣告花費、ROAS 與預算使用率</caption>
+                    <caption class="sr-only">各活動的 GA4 成效與目標進度、廣告花費、ROAS 與預算使用率</caption>
                     <thead>
                         <tr>
                             <th scope="col">活動</th>
                             <th scope="col">GA4</th>
+                            <th scope="col" class="numeric">GA4 目標進度</th>
                             <th scope="col">廣告花費</th>
                             <th scope="col">ROAS</th>
                             <th scope="col">同幣別 ROAS 排名</th>
@@ -889,6 +896,14 @@
                                 $marketing = $socialEngagementTarget['marketing'];
                                 $efficiency = $marketing['efficiency'];
                                 $paidMediaRoasGoal = $efficiency['paid_media_roas_goal'] ?? null;
+                                $ga4BusinessGoal = $marketing['ga4_business_goal'];
+                                $ga4BusinessGoalPacing = $ga4BusinessGoal['time_pacing'];
+                                $ga4BusinessGoalBadgeClass = match ($ga4BusinessGoalPacing['status']) {
+                                    'ahead', 'on_track' => 'healthy',
+                                    'behind' => 'warning',
+                                    'not_started', 'completed' => 'unknown',
+                                    default => 'warning',
+                                };
                                 $roasUnavailableLabel = match ($efficiency['roas_unavailable_reason']) {
                                     'ad_platform_currency_mismatch' => '廣告幣別不同',
                                     'currency_mismatch' => '營收與花費幣別不同',
@@ -921,6 +936,32 @@
                                         <span class="secondary-text">尚無工作階段資料</span>
                                     @endif
                                     <span class="secondary-text">GA4：{{ $marketing['google_analytics']['status_label'] }}</span>
+                                </td>
+                                <td class="numeric">
+                                    @if ($ga4BusinessGoal['status'] === 'not_configured')
+                                        <span class="secondary-text">未設定</span>
+                                    @else
+                                        <span>
+                                            {{ $ga4BusinessGoal['metric_label'] }}目標
+                                            @if ($ga4BusinessGoal['metric'] === 'total_revenue')
+                                                {{ $ga4BusinessGoal['goal_currency_code'] ?? '—' }} {{ number_format((float) $ga4BusinessGoal['target_value'], 2) }}
+                                            @else
+                                                {{ number_format((float) $ga4BusinessGoal['target_value'], 2) }}
+                                            @endif
+                                        </span>
+                                        @if ($ga4BusinessGoal['completion_percent'] !== null)
+                                            <span class="secondary-text">
+                                                實際 {{ number_format((float) $ga4BusinessGoal['actual_value'], 2) }}{{ $ga4BusinessGoal['metric'] === 'total_revenue' ? ' '.$ga4BusinessGoal['report_currency_code'] : '' }}
+                                                · 達成 {{ number_format($ga4BusinessGoal['completion_percent'], 1) }}%
+                                            </span>
+                                            <span class="badge badge-{{ $ga4BusinessGoalBadgeClass }}">{{ $ga4BusinessGoalPacing['status_label'] }}</span>
+                                        @else
+                                            <span class="badge badge-warning">{{ $ga4BusinessGoal['status_label'] }}</span>
+                                            @if (in_array($ga4BusinessGoalPacing['status'], ['not_started', 'completed'], true))
+                                                <span class="secondary-text">{{ $ga4BusinessGoalPacing['status_label'] }}</span>
+                                            @endif
+                                        @endif
+                                    @endif
                                 </td>
                                 <td class="numeric">
                                     @if ($efficiency['ad_spend_amount'] !== null && $efficiency['ad_spend_currency'] !== null)

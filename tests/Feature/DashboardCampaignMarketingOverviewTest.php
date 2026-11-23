@@ -107,6 +107,127 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(2.1053, $interactionCosts['google_ads']['cost_per_public_interaction']);
     }
 
+    public function test_dashboard_shows_ga4_business_goal_pacing_and_portfolio_coverage(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $user = User::factory()->create();
+        $connection = $this->createGoogleAnalyticsConnection($user);
+        $aheadTarget = $this->createTarget([
+            'tag' => 'Goal ahead',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_goal_metric' => 'key_events',
+            'ga4_goal_value' => '20.0000',
+            'ga4_goal_currency' => null,
+        ]);
+        $behindTarget = $this->createTarget([
+            'tag' => 'Goal behind',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_goal_metric' => 'total_revenue',
+            'ga4_goal_value' => '1000.0000',
+            'ga4_goal_currency' => 'TWD',
+        ]);
+        $staleTarget = $this->createTarget([
+            'tag' => 'Goal stale',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_goal_metric' => 'key_events',
+            'ga4_goal_value' => '20.0000',
+            'ga4_goal_currency' => null,
+        ]);
+        $mismatchedTarget = $this->createTarget([
+            'tag' => 'Goal currency mismatch',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'ga4_goal_metric' => 'total_revenue',
+            'ga4_goal_value' => '1000.0000',
+            'ga4_goal_currency' => 'TWD',
+        ]);
+        $notStartedTarget = $this->createTarget([
+            'tag' => 'Goal not started',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'starts_on' => '2026-11-16',
+            'ends_on' => '2026-11-30',
+            'ga4_goal_metric' => 'key_events',
+            'ga4_goal_value' => '20.0000',
+            'ga4_goal_currency' => null,
+        ]);
+        $completedTarget = $this->createTarget([
+            'tag' => 'Goal completed',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-14',
+            'ga4_goal_metric' => 'key_events',
+            'ga4_goal_value' => '20.0000',
+            'ga4_goal_currency' => null,
+        ]);
+        $unconfiguredTarget = $this->createTarget([
+            'tag' => 'Goal not configured',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => null,
+        ]);
+
+        $this->createGoalGoogleAnalyticsReport($connection, $aheadTarget, ['key_events' => '12.5000']);
+        $this->createGoalGoogleAnalyticsReport($connection, $behindTarget, ['total_revenue' => '300.0000']);
+        $this->createGoalGoogleAnalyticsReport($connection, $staleTarget, [
+            'key_events' => '12.0000',
+            'synced_at' => now()->subDays(2),
+        ]);
+        $this->createGoalGoogleAnalyticsReport($connection, $mismatchedTarget, [
+            'total_revenue' => '800.0000',
+            'currency_code' => 'USD',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('GA4 目標進度')
+            ->assertSee('領先 1')
+            ->assertSee('落後 1')
+            ->assertSee('符合進度 0')
+            ->assertSee('尚未開始 1')
+            ->assertSee('已結束 1')
+            ->assertSee('進度資料不足 2')
+            ->assertSee('GA4 資料超過 24 小時，請更新後查看達成率')
+            ->assertSee('目標與 GA4 幣別不同，無法比較')
+            ->assertSee('活動尚未開始')
+            ->assertSee('活動已結束');
+
+        $marketingByTag = collect($response->viewData('socialEngagementTargets'))->keyBy('tag');
+        $aheadGoal = $marketingByTag['Goal ahead']['marketing']['ga4_business_goal'];
+        $behindGoal = $marketingByTag['Goal behind']['marketing']['ga4_business_goal'];
+        $staleGoal = $marketingByTag['Goal stale']['marketing']['ga4_business_goal'];
+        $mismatchedGoal = $marketingByTag['Goal currency mismatch']['marketing']['ga4_business_goal'];
+        $notStartedGoal = $marketingByTag['Goal not started']['marketing']['ga4_business_goal'];
+        $completedGoal = $marketingByTag['Goal completed']['marketing']['ga4_business_goal'];
+        $unconfiguredGoal = $marketingByTag['Goal not configured']['marketing']['ga4_business_goal'];
+
+        $this->assertSame(62.5, $aheadGoal['completion_percent']);
+        $this->assertSame('ahead', $aheadGoal['time_pacing']['status']);
+        $this->assertSame(30.0, $behindGoal['completion_percent']);
+        $this->assertSame('behind', $behindGoal['time_pacing']['status']);
+        $this->assertSame('stale', $staleGoal['status']);
+        $this->assertNull($staleGoal['completion_percent']);
+        $this->assertSame('currency_mismatch', $mismatchedGoal['status']);
+        $this->assertNull($mismatchedGoal['completion_percent']);
+        $this->assertSame('not_started', $notStartedGoal['time_pacing']['status']);
+        $this->assertSame('completed', $completedGoal['time_pacing']['status']);
+        $this->assertSame('not_configured', $unconfiguredGoal['status']);
+
+        $portfolioCoverage = $response->viewData('campaignPortfolioMarketingSummary')['ga4_business_goal_coverage'];
+        $this->assertSame(6, $portfolioCoverage['configured_campaigns']);
+        $this->assertSame(2, $portfolioCoverage['available_campaigns']);
+        $this->assertSame(4, $portfolioCoverage['unavailable_campaigns']);
+        $this->assertSame(1, $portfolioCoverage['ahead_campaigns']);
+        $this->assertSame(1, $portfolioCoverage['behind_campaigns']);
+        $this->assertSame(1, $portfolioCoverage['not_started_campaigns']);
+        $this->assertSame(1, $portfolioCoverage['completed_campaigns']);
+        $this->assertSame(2, $portfolioCoverage['data_unavailable_campaigns']);
+    }
+
     public function test_campaign_portfolio_groups_currencies_calculates_weighted_roas_and_reports_coverage(): void
     {
         $targets = [
@@ -873,6 +994,31 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'currency_code' => 'TWD',
             'synced_at' => now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function createGoalGoogleAnalyticsReport(
+        GoogleAnalyticsConnection $connection,
+        SocialEngagementTarget $target,
+        array $overrides = [],
+    ): void {
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create(array_replace([
+            'google_analytics_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'attribution_mode' => $target->googleAnalyticsAttributionMode(),
+            'campaign_id' => null,
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
+            'starts_on' => $target->starts_on->toDateString(),
+            'ends_on' => $target->ends_on->toDateString(),
+            'sessions' => 100,
+            'engaged_sessions' => 80,
+            'key_events' => '12.5000',
+            'total_revenue' => '900.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ], $overrides));
     }
 
     private function createMetaConnection(User $user): MetaMarketingConnection

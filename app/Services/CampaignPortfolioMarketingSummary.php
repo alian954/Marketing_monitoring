@@ -17,6 +17,7 @@ class CampaignPortfolioMarketingSummary
      *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>,
      *     native_roas_groups: list<array{source: string, source_label: string, currency_code: string, conversion_value_amount: float, matched_spend_amount: float, roas: float|null, campaign_count: int, comparable_campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, missing_campaign_count: int, duplicate_mappings_excluded: int}>,
      *     native_roas_coverage: array<string, array{configured_campaigns: int, comparable_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
+     *     ga4_business_goal_coverage: array{configured_campaigns: int, available_campaigns: int, unavailable_campaigns: int, ahead_campaigns: int, behind_campaigns: int, on_track_campaigns: int, not_started_campaigns: int, completed_campaigns: int, data_unavailable_campaigns: int},
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
      *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
@@ -35,12 +36,53 @@ class CampaignPortfolioMarketingSummary
         $interactionCostCandidates = ['meta_marketing' => [], 'google_ads' => [], 'manual' => []];
         $roasCandidates = [];
         $nativeRoasCandidates = ['meta_marketing' => [], 'google_ads' => []];
+        $ga4BusinessGoalCoverage = [
+            'configured_campaigns' => 0,
+            'available_campaigns' => 0,
+            'unavailable_campaigns' => 0,
+            'ahead_campaigns' => 0,
+            'behind_campaigns' => 0,
+            'on_track_campaigns' => 0,
+            'not_started_campaigns' => 0,
+            'completed_campaigns' => 0,
+            'data_unavailable_campaigns' => 0,
+        ];
         $budgetParents = [];
         $budgetMappingMembers = [];
         $budgetCandidatesByTarget = [];
 
         foreach ($targets as $target) {
             $marketing = $marketingSummaries[$target->getKey()] ?? [];
+            $ga4BusinessGoal = is_array($marketing['ga4_business_goal'] ?? null)
+                ? $marketing['ga4_business_goal']
+                : [];
+
+            if (($ga4BusinessGoal['status'] ?? 'not_configured') !== 'not_configured') {
+                $ga4BusinessGoalCoverage['configured_campaigns']++;
+
+                if (($ga4BusinessGoal['status'] ?? null) === 'available') {
+                    $ga4BusinessGoalCoverage['available_campaigns']++;
+                } else {
+                    $ga4BusinessGoalCoverage['unavailable_campaigns']++;
+                }
+
+                $pacingStatus = is_array($ga4BusinessGoal['time_pacing'] ?? null)
+                    ? ($ga4BusinessGoal['time_pacing']['status'] ?? null)
+                    : null;
+                $pacingCoverageKey = match ($pacingStatus) {
+                    'ahead' => 'ahead_campaigns',
+                    'behind' => 'behind_campaigns',
+                    'on_track' => 'on_track_campaigns',
+                    'not_started' => 'not_started_campaigns',
+                    'completed' => 'completed_campaigns',
+                    'data_unavailable' => 'data_unavailable_campaigns',
+                    default => null,
+                };
+
+                if ($pacingCoverageKey !== null) {
+                    $ga4BusinessGoalCoverage[$pacingCoverageKey]++;
+                }
+            }
 
             $budgetAmount = $target->campaign_budget_amount;
             $budgetCurrency = $this->currencyCode($target->campaign_budget_currency);
@@ -610,6 +652,7 @@ class CampaignPortfolioMarketingSummary
             'currency_groups' => array_values($currencyGroups),
             'native_roas_groups' => array_values($nativeRoasGroups),
             'native_roas_coverage' => $nativeRoasCoverage,
+            'ga4_business_goal_coverage' => $ga4BusinessGoalCoverage,
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
             'interaction_cost_groups' => array_values($interactionCostGroups),
