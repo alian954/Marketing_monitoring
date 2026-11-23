@@ -39,6 +39,70 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertNull($progress['goal_currency_code']);
     }
 
+    public function test_active_ga4_goal_pacing_compares_actual_progress_with_elapsed_campaign_time(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $service = app(SocialEngagementCampaignBusinessGoalReport::class);
+        $ahead = $service->build($target, $this->analyticsReport(['key_events' => '12.5000']), false);
+        $behind = $service->build($target, $this->analyticsReport(['key_events' => '6.0000']), false);
+
+        $this->assertSame('ahead', $ahead['time_pacing']['status']);
+        $this->assertSame(30, $ahead['time_pacing']['campaign_days']);
+        $this->assertSame(15, $ahead['time_pacing']['elapsed_days']);
+        $this->assertSame(50.0, $ahead['time_pacing']['elapsed_percent']);
+        $this->assertSame(10.0, $ahead['time_pacing']['expected_value']);
+        $this->assertSame(2.5, $ahead['time_pacing']['gap_value']);
+        $this->assertSame(12.5, $ahead['time_pacing']['gap_percentage_points']);
+
+        $this->assertSame('behind', $behind['time_pacing']['status']);
+        $this->assertSame(10.0, $behind['time_pacing']['expected_value']);
+        $this->assertSame(-4.0, $behind['time_pacing']['gap_value']);
+        $this->assertSame(-20.0, $behind['time_pacing']['gap_percentage_points']);
+    }
+
+    public function test_ga4_goal_pacing_handles_campaign_date_boundaries_without_projection(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $service = app(SocialEngagementCampaignBusinessGoalReport::class);
+        $analyticsReport = $this->analyticsReport(['key_events' => '12.5000']);
+        $notStarted = $service->build(
+            $target->forceFill(['starts_on' => '2026-11-16', 'ends_on' => '2026-11-30']),
+            $analyticsReport,
+            false,
+        );
+        $notStartedWithStaleData = $service->build(
+            $target->forceFill(['starts_on' => '2026-11-16', 'ends_on' => '2026-11-30']),
+            $analyticsReport,
+            true,
+        );
+        $completed = $service->build(
+            $target->forceFill(['starts_on' => '2026-11-01', 'ends_on' => '2026-11-14']),
+            $analyticsReport,
+            false,
+        );
+        $completedWithoutReport = $service->build(
+            $target->forceFill(['starts_on' => '2026-11-01', 'ends_on' => '2026-11-14']),
+            null,
+            false,
+        );
+        $invalidPeriod = $service->build(
+            $target->forceFill(['starts_on' => '2026-11-30', 'ends_on' => '2026-11-01']),
+            $analyticsReport,
+            false,
+        );
+
+        $this->assertSame('not_started', $notStarted['time_pacing']['status']);
+        $this->assertNull($notStarted['time_pacing']['expected_value']);
+        $this->assertSame('not_started', $notStartedWithStaleData['time_pacing']['status']);
+        $this->assertSame('completed', $completed['time_pacing']['status']);
+        $this->assertNull($completed['time_pacing']['elapsed_percent']);
+        $this->assertSame('completed', $completedWithoutReport['time_pacing']['status']);
+        $this->assertSame('missing_period', $invalidPeriod['time_pacing']['status']);
+        $this->assertNull($invalidPeriod['time_pacing']['gap_value']);
+    }
+
     public function test_revenue_goal_is_not_compared_across_currencies(): void
     {
         $target = $this->businessGoalTarget('total_revenue', '1000.0000', 'TWD');
@@ -60,6 +124,7 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('USD', $progress['report_currency_code']);
         $this->assertNull($progress['completion_percent']);
         $this->assertNull($progress['remaining_value']);
+        $this->assertSame('data_unavailable', $progress['time_pacing']['status']);
     }
 
     public function test_revenue_goal_without_a_report_currency_has_no_completion_percentage(): void
@@ -79,6 +144,7 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('currency_unknown', $progress['status']);
         $this->assertSame(800.0, $progress['actual_value']);
         $this->assertNull($progress['completion_percent']);
+        $this->assertSame('data_unavailable', $progress['time_pacing']['status']);
     }
 
     public function test_unconfigured_ga4_goal_does_not_fabricate_progress(): void
@@ -100,6 +166,16 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertNull($progress['target_value']);
         $this->assertNull($progress['actual_value']);
         $this->assertNull($progress['completion_percent']);
+        $this->assertSame('data_unavailable', $progress['time_pacing']['status']);
+
+        $zeroTargetProgress = app(SocialEngagementCampaignBusinessGoalReport::class)->build(
+            $target->forceFill(['ga4_goal_metric' => 'key_events', 'ga4_goal_value' => '0.0000']),
+            $this->analyticsReport(['key_events' => '12.5000']),
+            false,
+        );
+
+        $this->assertSame('not_configured', $zeroTargetProgress['status']);
+        $this->assertSame('data_unavailable', $zeroTargetProgress['time_pacing']['status']);
     }
 
     public function test_stale_ga4_values_remain_visible_without_a_completion_percentage(): void
@@ -117,6 +193,7 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame(12.5, $progress['actual_value']);
         $this->assertNull($progress['completion_percent']);
         $this->assertNull($progress['remaining_value']);
+        $this->assertSame('data_unavailable', $progress['time_pacing']['status']);
     }
 
     public function test_missing_ga4_data_or_campaign_period_does_not_report_progress(): void
@@ -132,12 +209,15 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
 
         $this->assertSame('unavailable', $withoutReport['status']);
         $this->assertNull($withoutReport['completion_percent']);
+        $this->assertSame('data_unavailable', $withoutReport['time_pacing']['status']);
         $this->assertSame('missing_period', $withoutPeriod['status']);
         $this->assertNull($withoutPeriod['completion_percent']);
+        $this->assertSame('missing_period', $withoutPeriod['time_pacing']['status']);
     }
 
     public function test_campaign_report_displays_ga4_business_goal_and_progress(): void
     {
+        $this->travelTo('2026-11-15 12:00:00');
         $user = User::factory()->create();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -157,9 +237,15 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
             ->assertSee('GA4 商業目標')
             ->assertSee('GA4 重要事件')
             ->assertSee('62.5%')
+            ->assertSee('活動時間進度比較')
+            ->assertSee('已用活動時間')
+            ->assertSee('50.0%')
+            ->assertSee('高於線性進度')
+            ->assertSee('不預測最終成果')
             ->assertSee('進度可用');
 
         $this->assertSame('available', $response->viewData('businessGoal')['status']);
+        $this->assertSame('ahead', $response->viewData('businessGoal')['time_pacing']['status']);
     }
 
     public function test_campaign_report_displays_paid_media_roas_goal_attainment(): void
@@ -232,6 +318,7 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
 
     public function test_campaign_summary_csv_exports_the_configured_ga4_goal(): void
     {
+        $this->travelTo('2026-11-15 12:00:00');
         $user = User::factory()->create();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -266,6 +353,13 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('800.0000', $fields['ga4_business_goal_actual_value']);
         $this->assertSame('80.0', $fields['ga4_business_goal_completion_percent']);
         $this->assertSame('進度可用', $fields['ga4_business_goal_status']);
+        $this->assertSame('30', $fields['ga4_business_goal_campaign_days']);
+        $this->assertSame('15', $fields['ga4_business_goal_elapsed_days']);
+        $this->assertSame('50.0', $fields['ga4_business_goal_elapsed_percent']);
+        $this->assertSame('500.0000', $fields['ga4_business_goal_expected_to_date']);
+        $this->assertSame('300.0000', $fields['ga4_business_goal_pace_gap_value']);
+        $this->assertSame('30.0', $fields['ga4_business_goal_pace_gap_percentage_points']);
+        $this->assertSame('高於線性進度', $fields['ga4_business_goal_pace_status']);
         $this->assertSame('ga4', $fields['paid_media_roas_goal_source']);
         $this->assertSame('GA4 ROAS', $fields['paid_media_roas_goal_source_label']);
         $this->assertSame('人工記錄花費', $fields['paid_media_roas_goal_spend_source']);

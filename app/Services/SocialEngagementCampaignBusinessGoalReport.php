@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use Carbon\CarbonImmutable;
 
 class SocialEngagementCampaignBusinessGoalReport
 {
@@ -18,7 +19,8 @@ class SocialEngagementCampaignBusinessGoalReport
      *     completion_percent: float|null,
      *     remaining_value: float|null,
      *     status: string,
-     *     status_label: string
+     *     status_label: string,
+     *     time_pacing: array{status: string, status_label: string, campaign_days: int|null, elapsed_days: int|null, elapsed_percent: float|null, expected_value: float|null, gap_value: float|null, gap_percentage_points: float|null}
      * }
      */
     public function build(
@@ -70,6 +72,7 @@ class SocialEngagementCampaignBusinessGoalReport
         }
 
         $canCompare = $status === 'available';
+        $timePacing = $this->timePacing($target, $canCompare, $targetValue, $actualValue);
 
         return [
             'metric' => $metricLabel === null ? null : $metric,
@@ -86,6 +89,75 @@ class SocialEngagementCampaignBusinessGoalReport
                 : null,
             'status' => $status,
             'status_label' => $this->statusLabel($status),
+            'time_pacing' => $timePacing,
+        ];
+    }
+
+    /**
+     * @return array{status: string, status_label: string, campaign_days: int|null, elapsed_days: int|null, elapsed_percent: float|null, expected_value: float|null, gap_value: float|null, gap_percentage_points: float|null}
+     */
+    private function timePacing(
+        SocialEngagementTarget $target,
+        bool $hasComparableGoal,
+        ?float $targetValue,
+        ?float $actualValue,
+    ): array {
+        $startsOn = $target->starts_on?->timezone('Asia/Taipei')->startOfDay();
+        $endsOn = $target->ends_on?->timezone('Asia/Taipei')->startOfDay();
+        $hasCampaignPeriod = $startsOn !== null && $endsOn !== null && ! $endsOn->lessThan($startsOn);
+        $today = CarbonImmutable::now('Asia/Taipei')->startOfDay();
+        $campaignDays = $hasCampaignPeriod ? (int) $startsOn->diffInDays($endsOn) + 1 : null;
+        $hasStarted = $hasCampaignPeriod && ! $today->lessThan($startsOn);
+        $hasEnded = $hasCampaignPeriod && $today->greaterThan($endsOn);
+
+        $status = match (true) {
+            ! $hasCampaignPeriod => 'missing_period',
+            ! $hasStarted => 'not_started',
+            $hasEnded => 'completed',
+            ! $hasComparableGoal || $targetValue === null || $actualValue === null => 'data_unavailable',
+            default => 'in_progress',
+        };
+        $elapsedDays = $status === 'in_progress' && $startsOn !== null && $campaignDays !== null
+            ? min($campaignDays, (int) $startsOn->diffInDays($today) + 1)
+            : null;
+        $elapsedFraction = $status === 'in_progress' && $campaignDays !== null && $elapsedDays !== null
+            ? $elapsedDays / $campaignDays
+            : null;
+        $expectedValue = $elapsedFraction !== null && $targetValue !== null
+            ? round($targetValue * $elapsedFraction, 4)
+            : null;
+        $gapValue = $expectedValue !== null && $actualValue !== null
+            ? round($actualValue - $expectedValue, 4)
+            : null;
+        $gapPercentagePoints = $elapsedFraction !== null && $targetValue !== null && $targetValue > 0 && $actualValue !== null
+            ? round(($actualValue / $targetValue * 100) - ($elapsedFraction * 100), 1)
+            : null;
+
+        if ($status === 'in_progress') {
+            $status = match (true) {
+                $gapPercentagePoints > 0 => 'ahead',
+                $gapPercentagePoints < 0 => 'behind',
+                default => 'on_track',
+            };
+        }
+
+        return [
+            'status' => $status,
+            'status_label' => match ($status) {
+                'ahead' => '高於線性進度',
+                'behind' => '低於線性進度',
+                'on_track' => '符合線性進度',
+                'not_started' => '活動尚未開始',
+                'completed' => '活動已結束',
+                'missing_period' => '活動期間無效',
+                default => '資料不足，暫不比較',
+            },
+            'campaign_days' => $campaignDays,
+            'elapsed_days' => $elapsedDays,
+            'elapsed_percent' => $elapsedFraction === null ? null : round($elapsedFraction * 100, 1),
+            'expected_value' => $expectedValue,
+            'gap_value' => $gapValue,
+            'gap_percentage_points' => $gapPercentagePoints,
         ];
     }
 

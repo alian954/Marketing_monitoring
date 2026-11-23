@@ -184,6 +184,50 @@
                         </dd>
                     </div>
                 </dl>
+                @if (in_array($businessGoal['time_pacing']['status'], ['ahead', 'behind', 'on_track'], true))
+                    @php
+                        $businessGoalPacingStatusClass = $businessGoal['time_pacing']['status'] === 'behind' ? 'warning' : 'healthy';
+                        $businessGoalMetricUnit = $businessGoal['goal_currency_code'] ?? ($businessGoal['metric'] === 'key_events' ? '次' : '');
+                    @endphp
+                    <section class="campaign-report-daily-source" aria-labelledby="campaign-report-business-goal-time-pacing-title">
+                        <div class="campaign-report-section-header">
+                            <h3 id="campaign-report-business-goal-time-pacing-title">活動時間進度比較</h3>
+                            <span class="badge badge-{{ $businessGoalPacingStatusClass }}">{{ $businessGoal['time_pacing']['status_label'] }}</span>
+                        </div>
+                        <dl class="campaign-report-summary campaign-efficiency-summary">
+                            <div>
+                                <dt>已用活動時間</dt>
+                                <dd>{{ number_format($businessGoal['time_pacing']['elapsed_percent'], 1) }}%</dd>
+                                <span class="campaign-report-secondary">第 {{ number_format($businessGoal['time_pacing']['elapsed_days']) }}／{{ number_format($businessGoal['time_pacing']['campaign_days']) }} 天</span>
+                            </div>
+                            <div>
+                                <dt>依時間比例參考進度</dt>
+                                <dd>
+                                    {{ number_format($businessGoal['time_pacing']['expected_value'], 2) }}
+                                    @if ($businessGoalMetricUnit !== '')
+                                        {{ $businessGoalMetricUnit }}
+                                    @endif
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>實際高於／低於參考值</dt>
+                                <dd>
+                                    {{ $businessGoal['time_pacing']['gap_value'] >= 0 ? '+' : '' }}{{ number_format($businessGoal['time_pacing']['gap_value'], 2) }}
+                                    @if ($businessGoalMetricUnit !== '')
+                                        {{ $businessGoalMetricUnit }}
+                                    @endif
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>達成率與時間進度差距</dt>
+                                <dd>{{ $businessGoal['time_pacing']['gap_percentage_points'] >= 0 ? '+' : '' }}{{ number_format($businessGoal['time_pacing']['gap_percentage_points'], 1) }} 個百分點</dd>
+                            </div>
+                        </dl>
+                        <p class="campaign-report-secondary">依活動首尾日等比例換算，只作目前進度參考，不預測最終成果；營收或事件可能不平均發生。</p>
+                    </section>
+                @elseif (in_array($businessGoal['time_pacing']['status'], ['not_started', 'completed'], true))
+                    <p class="campaign-report-secondary">{{ $businessGoal['time_pacing']['status_label'] }}；只比較進行中活動的時間進度。</p>
+                @endif
                 @if ($businessGoal['status'] === 'currency_mismatch')
                     <p class="campaign-report-empty">目標幣別 {{ $businessGoal['goal_currency_code'] }}，GA4 報表幣別 {{ $businessGoal['report_currency_code'] }}；請修改目標幣別或 GA4 設定後再比較。</p>
                 @elseif ($businessGoal['status'] === 'missing_period')

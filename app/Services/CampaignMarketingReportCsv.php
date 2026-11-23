@@ -37,6 +37,7 @@ class CampaignMarketingReportCsv
         $goalForecast = $report['goal_forecast'];
         $analyticsReport = $data['googleAnalyticsReport'];
         $businessGoal = $data['businessGoal'];
+        $businessGoalTimePacing = $businessGoal['time_pacing'] ?? [];
         $paidMediaRoasGoal = $data['paidMediaRoasGoal'];
         $metaMarketingReport = $data['metaMarketingReport'];
         $googleAdsReport = $data['googleAdsReport'];
@@ -105,6 +106,13 @@ class CampaignMarketingReportCsv
             'ga4_business_goal_completion_percent',
             'ga4_business_goal_remaining_value',
             'ga4_business_goal_status',
+            'ga4_business_goal_campaign_days',
+            'ga4_business_goal_elapsed_days',
+            'ga4_business_goal_elapsed_percent',
+            'ga4_business_goal_expected_to_date',
+            'ga4_business_goal_pace_gap_value',
+            'ga4_business_goal_pace_gap_percentage_points',
+            'ga4_business_goal_pace_status',
             'paid_media_roas_goal_source',
             'paid_media_roas_goal_source_label',
             'paid_media_roas_goal_spend_source',
@@ -231,6 +239,13 @@ class CampaignMarketingReportCsv
             $this->formatDecimal($businessGoal['completion_percent'] ?? null, 1),
             $this->formatDecimal($businessGoal['remaining_value'] ?? null, 4),
             $businessGoal['status_label'] ?? '',
+            $businessGoalTimePacing['campaign_days'] ?? '',
+            $businessGoalTimePacing['elapsed_days'] ?? '',
+            $this->formatDecimal($businessGoalTimePacing['elapsed_percent'] ?? null, 1),
+            $this->formatDecimal($businessGoalTimePacing['expected_value'] ?? null, 4),
+            $this->formatDecimal($businessGoalTimePacing['gap_value'] ?? null, 4),
+            $this->formatDecimal($businessGoalTimePacing['gap_percentage_points'] ?? null, 1),
+            $businessGoalTimePacing['status_label'] ?? '',
             $paidMediaRoasGoal['source'] ?? '',
             $paidMediaRoasGoal['source_label'] ?? '',
             $paidMediaRoasGoal['spend_source_label'] ?? '',
