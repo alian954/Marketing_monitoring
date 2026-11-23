@@ -160,6 +160,7 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
             ->assertOk()
             ->assertSee('GA4 工作階段')
             ->assertSee('GA4 重要事件')
+            ->assertSee(route('social-engagement-targets.report.posts.export', $target))
             ->assertSee('ig-reel-01')
             ->assertSee('已依 UTM 對應')
             ->assertSee('1,000.00');

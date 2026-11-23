@@ -11,22 +11,10 @@ use Illuminate\Database\Eloquent\Collection;
 class SocialPostGoogleAnalyticsAttributionReport
 {
     /**
-     * @param  list<array<string, mixed>>  $posts
-     * @param  array<string, mixed>|null  $adContentReport
-     * @return list<array<string, mixed>>
+     * @return array<string, int>
      */
-    public function attachToPosts(
-        SocialEngagementTarget $target,
-        array $posts,
-        ?array $adContentReport,
-        ?CarbonImmutable $adContentExpiresAt,
-    ): array {
-        if ($posts === []) {
-            return [];
-        }
-
-        $topPostIds = array_fill_keys(array_map(static fn (array $post): int => (int) $post['id'], $posts), true);
-        $topPostUtmContent = [];
+    public function utmContentCountsForTarget(SocialEngagementTarget $target): array
+    {
         $utmContentCounts = [];
 
         Monitor::query()
@@ -37,7 +25,7 @@ class SocialPostGoogleAnalyticsAttributionReport
             })
             ->whereNotNull('utm_content')
             ->select(['id', 'utm_content'])
-            ->chunkById(250, function (Collection $monitors) use (&$topPostUtmContent, &$utmContentCounts, $topPostIds): void {
+            ->chunkById(250, function (Collection $monitors) use (&$utmContentCounts): void {
                 foreach ($monitors as $monitor) {
                     $utmContent = $monitor->utm_content;
 
@@ -47,12 +35,95 @@ class SocialPostGoogleAnalyticsAttributionReport
 
                     $utmKey = base64_encode($utmContent);
                     $utmContentCounts[$utmKey] = ($utmContentCounts[$utmKey] ?? 0) + 1;
-
-                    if (isset($topPostIds[(int) $monitor->id])) {
-                        $topPostUtmContent[(int) $monitor->id] = $utmContent;
-                    }
                 }
             });
+
+        return $utmContentCounts;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $posts
+     * @param  array<string, mixed>|null  $adContentReport
+     * @param  array<string, int>|null  $utmContentCounts
+     * @return list<array<string, mixed>>
+     */
+    public function attachToPosts(
+        SocialEngagementTarget $target,
+        array $posts,
+        ?array $adContentReport,
+        ?CarbonImmutable $adContentExpiresAt,
+        ?array $utmContentCounts = null,
+    ): array {
+        if ($posts === []) {
+            return [];
+        }
+
+        $topPostIds = array_fill_keys(array_map(static fn (array $post): int => (int) $post['id'], $posts), true);
+        $topPostUtmContent = [];
+
+        if ($utmContentCounts === null) {
+            $utmContentCounts = [];
+
+            Monitor::query()
+                ->where('social_platform', $target->social_platform)
+                ->where(static function (Builder $query) use ($target): void {
+                    $query->whereJsonContains('tags', $target->tag)
+                        ->orWhere('label', $target->tag);
+                })
+                ->whereNotNull('utm_content')
+                ->select(['id', 'utm_content'])
+                ->chunkById(250, function (Collection $monitors) use (&$topPostUtmContent, &$utmContentCounts, $topPostIds): void {
+                    foreach ($monitors as $monitor) {
+                        $utmContent = $monitor->utm_content;
+
+                        if (! is_string($utmContent) || $utmContent === '') {
+                            continue;
+                        }
+
+                        $utmKey = base64_encode($utmContent);
+                        $utmContentCounts[$utmKey] = ($utmContentCounts[$utmKey] ?? 0) + 1;
+
+                        if (isset($topPostIds[(int) $monitor->id])) {
+                            $topPostUtmContent[(int) $monitor->id] = $utmContent;
+                        }
+                    }
+                });
+        } else {
+            $postIdsWithoutUtmContentField = [];
+
+            foreach ($posts as $post) {
+                $postId = (int) $post['id'];
+
+                if (! array_key_exists('utm_content', $post)) {
+                    $postIdsWithoutUtmContentField[] = $postId;
+
+                    continue;
+                }
+
+                $utmContent = $post['utm_content'] ?? null;
+
+                if (is_string($utmContent) && $utmContent !== '') {
+                    $topPostUtmContent[$postId] = $utmContent;
+                }
+            }
+
+            if ($postIdsWithoutUtmContentField !== []) {
+                Monitor::query()
+                    ->where('social_platform', $target->social_platform)
+                    ->where(static function (Builder $query) use ($target): void {
+                        $query->whereJsonContains('tags', $target->tag)
+                            ->orWhere('label', $target->tag);
+                    })
+                    ->whereIn('id', $postIdsWithoutUtmContentField)
+                    ->whereNotNull('utm_content')
+                    ->get(['id', 'utm_content'])
+                    ->each(static function (Monitor $monitor) use (&$topPostUtmContent): void {
+                        if (is_string($monitor->utm_content) && $monitor->utm_content !== '') {
+                            $topPostUtmContent[(int) $monitor->id] = $monitor->utm_content;
+                        }
+                    });
+            }
+        }
 
         $reportStatus = $adContentReport['status'] ?? null;
         $reportRows = is_array($adContentReport['rows'] ?? null) ? $adContentReport['rows'] : [];

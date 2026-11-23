@@ -61,6 +61,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report.csv', [SocialEngagementCampaignReportController::class, 'exportCampaignSummary'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.report.export');
+    Route::get('/social-engagement-targets/{socialEngagementTarget}/posts.csv', [SocialEngagementCampaignReportController::class, 'exportCampaignPosts'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.report.posts.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/daily-marketing-performance.csv', [SocialEngagementCampaignReportController::class, 'exportDailyMarketingPerformance'])
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')

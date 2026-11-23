@@ -50,6 +50,7 @@ use App\Services\MetaMarketingDemographicReportCsv;
 use App\Services\MetaMarketingPlacementPerformanceReport;
 use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
+use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Illuminate\Database\Eloquent\Builder;
@@ -896,6 +897,43 @@ class SocialEngagementCampaignReportController extends Controller
             fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $csv['fields']), ',', '"', '');
             fclose($stream);
         }, 'campaign-report-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportCampaignPosts(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignPostCsv $socialEngagementCampaignPostCsv,
+        SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+
+        return response()->streamDownload(function () use (
+            $socialEngagementTarget,
+            $analyticsReport,
+            $socialEngagementCampaignPostCsv,
+            $socialPostGoogleAnalyticsAttributionReport,
+        ): void {
+            $stream = fopen('php://output', 'w');
+
+            if ($stream === false) {
+                return;
+            }
+
+            $socialEngagementCampaignPostCsv->write(
+                $socialEngagementTarget,
+                $stream,
+                $analyticsReport?->ad_content_report,
+                $analyticsReport?->ad_content_report_expires_at,
+                $socialPostGoogleAnalyticsAttributionReport,
+            );
+
+            fclose($stream);
+        }, 'campaign-posts-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
