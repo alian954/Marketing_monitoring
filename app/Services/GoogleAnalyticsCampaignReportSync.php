@@ -34,6 +34,11 @@ class GoogleAnalyticsCampaignReportSync
             $mediumName,
             $googleAdsCampaignId,
         );
+        $landingPageReport = $metrics['landing_page_report'];
+        $landingPageExpiresAt = $landingPageReport['status'] === 'complete'
+            ? CarbonImmutable::now()->addDays(30)
+            : null;
+        unset($metrics['landing_page_report']);
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -66,6 +71,8 @@ class GoogleAnalyticsCampaignReportSync
             'starts_on' => $startsOn,
             'ends_on' => $endsOn,
             'daily_metrics' => $dailyMetrics,
+            'landing_page_report' => $landingPageReport,
+            'landing_page_expires_at' => $landingPageExpiresAt,
             ...$metrics,
             'synced_at' => $syncedAt,
         ];
@@ -80,7 +87,11 @@ class GoogleAnalyticsCampaignReportSync
             );
 
             $snapshotAttributes = $reportAttributes;
-            unset($snapshotAttributes['daily_metrics']);
+            unset(
+                $snapshotAttributes['daily_metrics'],
+                $snapshotAttributes['landing_page_report'],
+                $snapshotAttributes['landing_page_expires_at'],
+            );
 
             GoogleAnalyticsCampaignSnapshot::query()->updateOrCreate(
                 [

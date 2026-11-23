@@ -26,6 +26,7 @@ class SyncDueGoogleAnalyticsReports extends Command
         GoogleAnalyticsCampaignReportSync $campaignReportSync,
     ): int {
         $asOf = CarbonImmutable::now();
+        $this->clearExpiredLandingPageReports($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 GA4 的活動。');
@@ -135,5 +136,16 @@ class SyncDueGoogleAnalyticsReports extends Command
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
             ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+    }
+
+    private function clearExpiredLandingPageReports(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->whereNotNull('landing_page_expires_at')
+            ->where('landing_page_expires_at', '<=', $asOf)
+            ->update([
+                'landing_page_report' => null,
+                'landing_page_expires_at' => null,
+            ]);
     }
 }

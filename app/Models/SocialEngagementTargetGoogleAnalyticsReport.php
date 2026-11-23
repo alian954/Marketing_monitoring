@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
@@ -22,9 +23,12 @@ use Illuminate\Database\Eloquent\Model;
     'currency_code',
     'source_medium_breakdown',
     'source_medium_breakdown_truncated',
+    'landing_page_report',
+    'landing_page_expires_at',
     'daily_metrics',
     'synced_at',
 ])]
+#[Hidden(['landing_page_report', 'landing_page_expires_at'])]
 class SocialEngagementTargetGoogleAnalyticsReport extends Model
 {
     protected function casts(): array
@@ -38,6 +42,8 @@ class SocialEngagementTargetGoogleAnalyticsReport extends Model
             'total_revenue' => 'decimal:4',
             'source_medium_breakdown' => 'array',
             'source_medium_breakdown_truncated' => 'boolean',
+            'landing_page_report' => 'encrypted:array',
+            'landing_page_expires_at' => 'immutable_datetime',
             'daily_metrics' => 'array',
             'synced_at' => 'immutable_datetime',
         ];

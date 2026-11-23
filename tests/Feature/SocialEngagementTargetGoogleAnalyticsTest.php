@@ -144,7 +144,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('TWD', $dailySnapshot->currency_code);
         $this->assertSame($snapshot->source_medium_breakdown, $dailySnapshot->source_medium_breakdown);
 
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dimensions'] === [
                 ['name' => 'sessionManualCampaignName'],
@@ -213,7 +213,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertStringContainsString('ga4_source_medium_breakdown_json', $campaignCsv);
         $this->assertStringContainsString('paid_social', $campaignCsv);
 
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 
     public function test_ga4_campaign_report_preserves_large_revenue_decimal_precision(): void
@@ -247,7 +247,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('576460752303.4235', $report['total_revenue']);
         $this->assertSame([], $report['source_medium_breakdown']);
         $this->assertSame([], $report['daily_metrics']);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
     }
 
     public function test_ga4_sync_matches_google_ads_auto_tagged_campaign_by_id_without_manual_utm_filters(): void
@@ -528,7 +528,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
                 'total_revenue' => '50.1235',
             ],
         ], $report['daily_metrics']);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dimensions'] === [['name' => 'date']]
             && $request->data()['dateRanges'] === [[
@@ -837,9 +837,12 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
                 ->push($this->reportPayload(100, 50, '10', '1000', 'TWD'))
                 ->push(['rows' => []])
+                ->push(['rows' => []])
                 ->push($this->reportPayload(130, 70, '12', '1200', 'TWD'))
                 ->push(['rows' => []])
+                ->push(['rows' => []])
                 ->push($this->reportPayload(155, 80, '16.5', '1500', 'TWD'))
+                ->push(['rows' => []])
                 ->push(['rows' => []]),
         ]);
 
@@ -935,7 +938,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertSame('sessions_change_since_previous', str_getcsv($csvLines[0])[5]);
         $this->assertStringContainsString(',25,', $csvLines[2]);
         $this->assertStringNotContainsString('999999', $csvResponse->streamedContent());
-        Http::assertSentCount(9);
+        Http::assertSentCount(12);
     }
 
     public function test_campaign_report_marks_ga4_read_stale_after_one_day(): void

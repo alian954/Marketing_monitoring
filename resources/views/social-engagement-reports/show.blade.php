@@ -779,6 +779,71 @@
                         </table>
                     </div>
                 @endif
+
+                <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-landing-page-title">登陸頁成效</h3>
+                    @if ($googleAnalyticsLandingPageReport['status'] === 'complete' && $googleAnalyticsLandingPageReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.landing-pages', $target) }}">匯出登陸頁 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAnalyticsLandingPageReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含登陸頁明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsLandingPageReport['status'] === 'thresholded')
+                    <p class="campaign-report-empty">GA4 因資料門檻未提供登陸頁數據。</p>
+                @elseif ($googleAnalyticsLandingPageReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">目前無法讀取登陸頁數據；活動總成效仍可查看。</p>
+                @elseif ($googleAnalyticsLandingPageReport['status'] === 'expired')
+                    <p class="campaign-report-empty">登陸頁明細已超過 30 天保存期限，更新數據後可重新讀取。</p>
+                @elseif ($googleAnalyticsLandingPageReport['rows'] === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的登陸頁數據。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAnalyticsLandingPageReport['window_start_on'] }} 至 {{ $googleAnalyticsLandingPageReport['window_end_on'] }} · 最多顯示 200 個登陸頁，依工作階段選入；路徑不含網址查詢參數，明細加密保存 30 天。
+                    </p>
+                    @if ($googleAnalyticsLandingPageReport['truncated'])
+                        <p class="campaign-report-note">登陸頁超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有路徑。</p>
+                    @endif
+                    <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                        <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                        <label for="ga4-landing-page-sort">排序</label>
+                        <select id="ga4-landing-page-sort" name="landing_page_sort">
+                            <option value="sessions" @selected($googleAnalyticsLandingPageReport['sort'] === 'sessions')>工作階段</option>
+                            <option value="key_events" @selected($googleAnalyticsLandingPageReport['sort'] === 'key_events')>重要事件</option>
+                            <option value="total_revenue" @selected($googleAnalyticsLandingPageReport['sort'] === 'total_revenue')>營收</option>
+                            <option value="engagement_rate" @selected($googleAnalyticsLandingPageReport['sort'] === 'engagement_rate')>參與率</option>
+                        </select>
+                        <button class="button button-secondary button-small" type="submit">套用</button>
+                    </form>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-landing-page-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-landing-page-table">
+                            <caption>GA4 登陸頁工作階段、參與、重要事件與營收</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">登陸頁路徑</th>
+                                    <th scope="col" class="numeric">工作階段</th>
+                                    <th scope="col" class="numeric">參與工作階段</th>
+                                    <th scope="col" class="numeric">參與率</th>
+                                    <th scope="col" class="numeric">跳出率</th>
+                                    <th scope="col" class="numeric">重要事件</th>
+                                    <th scope="col" class="numeric">營收（{{ $googleAnalyticsLandingPageReport['currency_code'] ?? '幣別未知' }}）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsLandingPageReport['rows'] as $landingPage)
+                                    <tr>
+                                        <th scope="row">{{ $landingPage['landing_page'] === '' ? '(not set)' : $landingPage['landing_page'] }}</th>
+                                        <td class="numeric">{{ number_format((int) $landingPage['sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((int) $landingPage['engaged_sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $landingPage['engagement_rate'] * 100, 2) }}%</td>
+                                        <td class="numeric">{{ number_format((float) $landingPage['bounce_rate'] * 100, 2) }}%</td>
+                                        <td class="numeric">{{ number_format((float) $landingPage['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $landingPage['total_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             @endif
         </section>
 

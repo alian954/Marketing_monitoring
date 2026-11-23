@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -10,6 +11,8 @@ class GoogleAnalyticsDataApi
     private const CAMPAIGN_BREAKDOWN_ROW_LIMIT = 10000;
 
     private const CAMPAIGN_DAILY_ROW_LIMIT = 10000;
+
+    private const CAMPAIGN_LANDING_PAGE_ROW_LIMIT = 200;
 
     /**
      * @return array{access_token: string, refresh_token: ?string}
@@ -96,6 +99,14 @@ class GoogleAnalyticsDataApi
      *         total_revenue: string
      *     }>,
      *     source_medium_breakdown_truncated: bool,
+     *     landing_page_report: array{
+     *         status: 'complete'|'thresholded'|'unavailable',
+     *         window_start_on: string,
+     *         window_end_on: string,
+     *         currency_code: ?string,
+     *         truncated: bool,
+     *         rows: list<array{landing_page: string, sessions: int, engaged_sessions: int, engagement_rate: string, bounce_rate: string, key_events: string, total_revenue: string}>
+     *     },
      *     daily_metrics: list<array{
      *         date: string,
      *         sessions: int,
@@ -249,6 +260,17 @@ class GoogleAnalyticsDataApi
             $endsOn,
             $dimensionFilter,
         );
+        try {
+            $landingPageReport = $this->landingPageBreakdown(
+                $accessToken,
+                $propertyId,
+                $startsOn,
+                $endsOn,
+                $dimensionFilter,
+            );
+        } catch (GoogleAnalyticsApiException|ConnectionException) {
+            $landingPageReport = $this->emptyLandingPageReport('unavailable', $startsOn, $endsOn);
+        }
 
         return [
             ...$totalMetrics,
@@ -256,7 +278,153 @@ class GoogleAnalyticsDataApi
             'source_medium_breakdown' => array_slice($channelRows, 0, self::CAMPAIGN_BREAKDOWN_ROW_LIMIT),
             'source_medium_breakdown_truncated' => $rowCount > count($rows)
                 || count($channelRows) > self::CAMPAIGN_BREAKDOWN_ROW_LIMIT,
+            'landing_page_report' => $landingPageReport,
             'daily_metrics' => $dailyMetrics,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return array{
+     *     status: 'complete'|'thresholded',
+     *     window_start_on: string,
+     *     window_end_on: string,
+     *     currency_code: ?string,
+     *     truncated: bool,
+     *     rows: list<array{landing_page: string, sessions: int, engaged_sessions: int, engagement_rate: string, bounce_rate: string, key_events: string, total_revenue: string}>
+     * }
+     */
+    private function landingPageBreakdown(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $endsOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'landingPage'],
+                ],
+                'metrics' => [
+                    ['name' => 'sessions'],
+                    ['name' => 'engagedSessions'],
+                    ['name' => 'engagementRate'],
+                    ['name' => 'bounceRate'],
+                    ['name' => 'keyEvents'],
+                    ['name' => 'totalRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'orderBys' => [
+                    ['metric' => ['metricName' => 'sessions'], 'desc' => true],
+                    ['dimension' => ['dimensionName' => 'landingPage']],
+                ],
+                'limit' => self::CAMPAIGN_LANDING_PAGE_ROW_LIMIT + 1,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+        $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $currencyCode = $this->currencyCode($metadata['currencyCode'] ?? null);
+
+        if (($metadata['subjectToThresholding'] ?? false) === true) {
+            return [
+                ...$this->emptyLandingPageReport('thresholded', $startsOn, $endsOn),
+                'currency_code' => $currencyCode,
+            ];
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁報表格式無效，請稍後再試。');
+        }
+
+        $landingPageRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($dimensionValues)
+                || ! array_is_list($dimensionValues)
+                || count($dimensionValues) !== 1
+                || ! is_array($metricValues)
+                || ! array_is_list($metricValues)
+                || count($metricValues) !== 6) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁欄位數量無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁指標格式無效，請稍後再試。');
+                }
+            }
+
+            $landingPage = $this->landingPagePath($dimensionValues[0]);
+            $engagementRate = $this->decimalString($metricValues[2]['value'], false);
+            $bounceRate = $this->decimalString($metricValues[3]['value'], false);
+
+            if ((float) $engagementRate > 1 || (float) $bounceRate > 1) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁比率格式無效，請稍後再試。');
+            }
+
+            $landingPageRows[] = [
+                'landing_page' => $landingPage,
+                'sessions' => $this->nonNegativeInteger($metricValues[0]['value']),
+                'engaged_sessions' => $this->nonNegativeInteger($metricValues[1]['value']),
+                'engagement_rate' => $engagementRate,
+                'bounce_rate' => $bounceRate,
+                'key_events' => $this->decimalString($metricValues[4]['value'], false),
+                'total_revenue' => $this->decimalString($metricValues[5]['value'], true),
+            ];
+        }
+
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($landingPageRows);
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => $currencyCode,
+            'truncated' => $rowCount > count($landingPageRows)
+                || count($landingPageRows) > self::CAMPAIGN_LANDING_PAGE_ROW_LIMIT
+                || ($metadata['dataLossFromOtherRow'] ?? false) === true,
+            'rows' => array_slice($landingPageRows, 0, self::CAMPAIGN_LANDING_PAGE_ROW_LIMIT),
+        ];
+    }
+
+    private function landingPagePath(mixed $dimensionValue): string
+    {
+        $value = is_array($dimensionValue) ? ($dimensionValue['value'] ?? null) : null;
+
+        if (! is_string($value) || strlen($value) > 4096) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的登陸頁路徑格式無效，請稍後再試。');
+        }
+
+        return explode('?', $value, 2)[0];
+    }
+
+    /** @return array{status: 'unavailable'|'thresholded', window_start_on: string, window_end_on: string, currency_code: null, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyLandingPageReport(string $status, string $startsOn, string $endsOn): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => null,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 

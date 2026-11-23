@@ -41,6 +41,8 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload()),
         ]);
 
@@ -71,7 +73,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $futureTarget->id,
         ]);
-        Http::assertSentCount(5);
+        Http::assertSentCount(7);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && in_array($request->data()['dimensionFilter']['filter']['stringFilter']['value'], [
                 'Active campaign',
@@ -127,6 +129,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
                 ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload()),
         ]);
 
@@ -156,7 +159,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'medium_name' => 'paid_social',
         ]);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['fieldName'] === 'sessionManualMedium'
             && $request->data()['dimensionFilter']['andGroup']['expressions'][1]['filter']['stringFilter']['value'] === 'paid_social');
@@ -175,6 +178,8 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload())
+                ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload()),
         ]);
         $this->createConnection();
@@ -190,7 +195,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'snapshot_date' => '2026-11-23',
         ]);
-        Http::assertSentCount(6);
+        Http::assertSentCount(8);
     }
 
     public function test_daily_command_continues_after_a_campaign_report_error(): void
@@ -204,6 +209,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
                 ->push(['error' => ['message' => 'RESOURCE_EXHAUSTED']], 429)
+                ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload()),
         ]);
@@ -222,7 +228,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $successfulTarget->id,
         ]);
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
     }
 
     /** @param array<string, mixed> $attributes */

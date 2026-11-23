@@ -43,6 +43,14 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
                 'currency_code' => 'TWD',
                 'source_medium_breakdown' => [],
                 'source_medium_breakdown_truncated' => false,
+                'landing_page_report' => [
+                    'status' => 'complete',
+                    'window_start_on' => '2026-11-01',
+                    'window_end_on' => '2026-11-30',
+                    'currency_code' => 'TWD',
+                    'truncated' => false,
+                    'rows' => [],
+                ],
                 'daily_metrics' => [[
                     'date' => '2026-11-01',
                     'sessions' => 12,
@@ -69,6 +77,8 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
                 'total_revenue' => '250.7500',
             ]],
         ], $report->fresh()->daily_metrics);
+        $this->assertSame('complete', $report->fresh()->landing_page_report['status']);
+        $this->assertSame([], $report->fresh()->landing_page_report['rows']);
 
         $cumulativeSnapshot = GoogleAnalyticsCampaignSnapshot::query()->sole();
         $this->assertSame(120, $cumulativeSnapshot->sessions);

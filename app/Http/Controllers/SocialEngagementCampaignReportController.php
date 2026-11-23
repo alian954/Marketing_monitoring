@@ -19,6 +19,8 @@ use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
+use App\Services\GoogleAnalyticsLandingPageReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,6 +41,7 @@ class SocialEngagementCampaignReportController extends Controller
         CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
+        GoogleAnalyticsLandingPagePerformanceReport $googleAnalyticsLandingPagePerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -56,8 +59,52 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->search_terms_expires_at,
             (string) $request->query('search_term_sort', 'spend'),
         );
+        $viewData['googleAnalyticsLandingPageReport'] = $googleAnalyticsLandingPagePerformanceReport->build(
+            $viewData['googleAnalyticsReport']?->landing_page_report,
+            $viewData['googleAnalyticsReport']?->landing_page_expires_at,
+            (string) $request->query('landing_page_sort', 'sessions'),
+        );
 
         return view('social-engagement-reports.show', $viewData);
+    }
+
+    public function exportGoogleAnalyticsLandingPages(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAnalyticsLandingPagePerformanceReport $googleAnalyticsLandingPagePerformanceReport,
+        GoogleAnalyticsLandingPageReportCsv $googleAnalyticsLandingPageReportCsv,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        abort_if(
+            $analyticsReport === null
+                || ! is_array($analyticsReport->landing_page_report)
+                || $analyticsReport->landing_page_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $landingPageReport = $googleAnalyticsLandingPagePerformanceReport->build(
+            $analyticsReport->landing_page_report,
+            $analyticsReport->landing_page_expires_at,
+            'sessions',
+        );
+        abort_if($landingPageReport['status'] !== 'complete' || $landingPageReport['rows'] === [], 404);
+        $csv = $googleAnalyticsLandingPageReportCsv->build($landingPageReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-landing-pages-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function exportGoogleAdsSearchTerms(
