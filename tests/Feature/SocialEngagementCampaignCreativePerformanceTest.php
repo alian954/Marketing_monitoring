@@ -47,6 +47,8 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             ->get(route('social-engagement-targets.posts', $target))
             ->assertOk()
             ->assertSee('素材成效彙總')
+            ->assertSee('匯出素材 CSV')
+            ->assertSee(route('social-engagement-targets.creative-performance.export', $target))
             ->assertSee('完整互動合計')
             ->assertViewHas('creativeGroups', function (array $groups): bool {
                 $sharedCreative = collect($groups)->firstWhere('utm_content', 'shared-creative');

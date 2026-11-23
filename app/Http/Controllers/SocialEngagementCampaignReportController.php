@@ -52,6 +52,7 @@ use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignAttributionCoverageReport;
 use App\Services\SocialEngagementCampaignBusinessGoalReport;
+use App\Services\SocialEngagementCampaignCreativePerformanceCsv;
 use App\Services\SocialEngagementCampaignCreativePerformanceReport;
 use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignPostDetailReport;
@@ -992,6 +993,39 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'campaign-posts-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportCampaignCreativePerformance(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignCreativePerformanceReport $creativePerformanceReport,
+        SocialEngagementCampaignCreativePerformanceCsv $creativePerformanceCsv,
+        SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        $creativePerformance = $creativePerformanceReport->build(
+            $socialEngagementTarget,
+            $analyticsReport?->ad_content_report,
+            $analyticsReport?->ad_content_report_expires_at,
+            $socialPostGoogleAnalyticsAttributionReport,
+        );
+
+        return response()->streamDownload(function () use ($creativePerformanceCsv, $creativePerformance): void {
+            $stream = fopen('php://output', 'w');
+
+            if ($stream === false) {
+                return;
+            }
+
+            $creativePerformanceCsv->write($stream, $creativePerformance['groups']);
+
+            fclose($stream);
+        }, 'campaign-creative-performance-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

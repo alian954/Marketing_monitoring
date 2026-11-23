@@ -34,6 +34,7 @@
             </div>
             <div class="campaign-report-actions">
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report', $target) }}">返回活動報告</a>
+                <a class="button button-secondary" href="{{ route('social-engagement-targets.creative-performance.export', $target) }}">匯出素材 CSV</a>
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report.posts.export', $target) }}">匯出全部 CSV</a>
             </div>
         </header>
