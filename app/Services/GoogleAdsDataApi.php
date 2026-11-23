@@ -12,6 +12,8 @@ class GoogleAdsDataApi
 
     private const DEVICE_REPORT_LIMIT = 20;
 
+    private const AUCTION_INSIGHT_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, refresh_token: ?string} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -609,6 +611,197 @@ class GoogleAdsDataApi
             'currency_code' => $accountCurrency,
             'truncated' => count($rows) > 200,
             'rows' => array_slice($rows, 0, 200),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
+     *     truncated: bool,
+     *     rows: list<array{
+     *         domain: string,
+     *         impression_share: float|null,
+     *         impression_share_is_below_10_percent: bool,
+     *         overlap_rate: float|null,
+     *         position_above_rate: float|null,
+     *         outranking_share: float|null,
+     *         outranking_share_is_below_10_percent: bool,
+     *         top_impression_percentage: float|null,
+     *         absolute_top_impression_percentage: float|null
+     *     }>
+     * }
+     */
+    public function campaignAuctionInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $campaignChannelType,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads 競價洞察報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        if ($campaignChannelType !== 'SEARCH') {
+            return $this->emptyAuctionInsightReport('unsupported', $accountCurrency);
+        }
+
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return $this->emptyAuctionInsightReport('unsupported', $accountCurrency);
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyAuctionInsightReport('no_complete_days', $accountCurrency);
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, segments.auction_insight_domain, metrics.auction_insight_search_impression_share, metrics.auction_insight_search_overlap_rate, metrics.auction_insight_search_position_above_rate, metrics.auction_insight_search_outranking_share, metrics.auction_insight_search_top_impression_percentage, metrics.auction_insight_search_absolute_top_impression_percentage FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.auction_insight_search_overlap_rate DESC, segments.auction_insight_domain ASC LIMIT ".(self::AUCTION_INSIGHT_REPORT_LIMIT + 1);
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > self::AUCTION_INSIGHT_REPORT_LIMIT + 1) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超過競價洞察讀取上限，未儲存讀值。');
+        }
+
+        $rows = [];
+        $seenDomains = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $segments = $row['segments'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $domain = is_array($segments) ? ($segments['auctionInsightDomain'] ?? null) : null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || $rowCurrencyCode !== $accountCurrency
+                || ! is_string($domain)
+                || trim($domain) === ''
+                || mb_strlen($domain) > 2048
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的競價洞察資料，未儲存讀值。');
+            }
+
+            $domain = trim($domain);
+
+            if (isset($seenDomains[$domain])) {
+                throw new GoogleAdsApiException('Google Ads API 回傳重複網域的競價洞察資料，未儲存讀值。');
+            }
+
+            $seenDomains[$domain] = true;
+            $impressionShare = $this->searchShareMetric(
+                $metrics['auctionInsightSearchImpressionShare'] ?? null,
+                '競價洞察曝光比重',
+                0.1,
+                1.0,
+                0.0999,
+                true,
+            );
+            $outrankingShare = $this->searchShareMetric(
+                $metrics['auctionInsightSearchOutrankingShare'] ?? null,
+                '競價洞察勝出比重',
+                0.1,
+                1.0,
+                0.0999,
+                true,
+            );
+
+            $rows[] = [
+                'domain' => $domain,
+                'impression_share' => $impressionShare,
+                'impression_share_is_below_10_percent' => $impressionShare === 0.0999,
+                'overlap_rate' => $this->searchShareMetric(
+                    $metrics['auctionInsightSearchOverlapRate'] ?? null,
+                    '競價洞察重疊率',
+                    0.0,
+                    1.0,
+                    0.0999,
+                    false,
+                ),
+                'position_above_rate' => $this->searchShareMetric(
+                    $metrics['auctionInsightSearchPositionAboveRate'] ?? null,
+                    '競價洞察排名高於比率',
+                    0.0,
+                    1.0,
+                    0.0999,
+                    false,
+                ),
+                'outranking_share' => $outrankingShare,
+                'outranking_share_is_below_10_percent' => $outrankingShare === 0.0999,
+                'top_impression_percentage' => $this->searchShareMetric(
+                    $metrics['auctionInsightSearchTopImpressionPercentage'] ?? null,
+                    '競價洞察頂端曝光比率',
+                    0.0,
+                    1.0,
+                    0.0999,
+                    false,
+                ),
+                'absolute_top_impression_percentage' => $this->searchShareMetric(
+                    $metrics['auctionInsightSearchAbsoluteTopImpressionPercentage'] ?? null,
+                    '競價洞察絕對頂端曝光比率',
+                    0.0,
+                    1.0,
+                    0.0999,
+                    false,
+                ),
+            ];
+        }
+
+        usort($rows, static function (array $first, array $second): int {
+            $firstOverlapRate = $first['overlap_rate'];
+            $secondOverlapRate = $second['overlap_rate'];
+
+            if ($firstOverlapRate !== $secondOverlapRate) {
+                if ($firstOverlapRate === null) {
+                    return 1;
+                }
+
+                if ($secondOverlapRate === null) {
+                    return -1;
+                }
+
+                return $secondOverlapRate <=> $firstOverlapRate;
+            }
+
+            return strcasecmp($first['domain'], $second['domain']);
+        });
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'truncated' => count($rows) > self::AUCTION_INSIGHT_REPORT_LIMIT,
+            'rows' => array_slice($rows, 0, self::AUCTION_INSIGHT_REPORT_LIMIT),
         ];
     }
 
@@ -1342,6 +1535,19 @@ class GoogleAdsDataApi
 
     /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
     private function emptyKeywordReport(string $status, string $currencyCode): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $currencyCode,
+            'truncated' => false,
+            'rows' => [],
+        ];
+    }
+
+    /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyAuctionInsightReport(string $status, string $currencyCode): array
     {
         return [
             'status' => $status,

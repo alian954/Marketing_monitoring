@@ -130,6 +130,29 @@ class GoogleAdsCampaignReportSync
         } catch (GoogleAdsApiException|ConnectionException $exception) {
             $devicePerformance['message'] = $exception->getMessage();
         }
+        $auctionInsights = [
+            'status' => 'unavailable',
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $metrics['currency_code'],
+            'truncated' => false,
+            'rows' => [],
+        ];
+
+        try {
+            $auctionInsights = $this->dataApi->campaignAuctionInsights(
+                $accessToken,
+                $connection->customer_id,
+                $target->google_ads_campaign_id,
+                $target->starts_on->toDateString(),
+                $target->ends_on->toDateString(),
+                $metrics['currency_code'],
+                $metrics['campaign_channel_type'],
+                $connection->login_customer_id,
+            );
+        } catch (GoogleAdsApiException|ConnectionException $exception) {
+            $auctionInsights['message'] = $exception->getMessage();
+        }
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -165,8 +188,11 @@ class GoogleAdsCampaignReportSync
         $devicePerformanceExpiresAt = $devicePerformance['status'] === 'complete'
             ? $syncedAt->addDays(30)
             : null;
+        $auctionInsightsExpiresAt = $auctionInsights['status'] === 'complete'
+            ? $syncedAt->addDays(30)
+            : null;
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt): SocialEngagementTargetGoogleAdsReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt, $auctionInsights, $auctionInsightsExpiresAt): SocialEngagementTargetGoogleAdsReport {
             $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
                 [
                     'google_ads_connection_id' => $connection->getKey(),
@@ -186,6 +212,8 @@ class GoogleAdsCampaignReportSync
                     'delivery_unit_performance_expires_at' => $deliveryUnitPerformanceExpiresAt,
                     'device_performance' => $devicePerformance,
                     'device_performance_expires_at' => $devicePerformanceExpiresAt,
+                    'auction_insights' => $auctionInsights,
+                    'auction_insights_expires_at' => $auctionInsightsExpiresAt,
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],

@@ -1130,6 +1130,81 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-auction-insights-title">Google Ads 搜尋競價洞察</h3>
+                    @if ($googleAdsAuctionInsightReport['status'] === 'complete' && $googleAdsAuctionInsightReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.auction-insights', $target) }}">匯出競價洞察 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsAuctionInsightReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚無競價洞察；更新 Google Ads 數據後即可查看。</p>
+                @elseif ($googleAdsAuctionInsightReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">競價洞察暫時無法讀取，其他 Google Ads 報表仍可使用。{{ $googleAdsAuctionInsightReport['message'] }}</p>
+                @elseif ($googleAdsAuctionInsightReport['status'] === 'expired')
+                    <p class="campaign-report-empty">競價洞察已超過 30 天保存期限，更新 Google Ads 數據後可重新讀取。</p>
+                @elseif ($googleAdsAuctionInsightReport['status'] === 'unsupported')
+                    <p class="campaign-report-empty">競價洞察僅支援 Google Ads 搜尋活動。</p>
+                @elseif ($googleAdsAuctionInsightReport['status'] === 'no_complete_days')
+                    <p class="campaign-report-empty">尚無完整日期可供競價洞察分析。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAdsAuctionInsightReport['window_start_on'] }} 至 {{ $googleAdsAuctionInsightReport['window_end_on'] }} · 最近 30 個完整日，明細加密保存 30 天。
+                    </p>
+                    @if ($googleAdsAuctionInsightReport['truncated'])
+                        <p class="campaign-report-note">競爭網域超過 200 個，表格僅列出重疊率最高的 200 個。</p>
+                    @endif
+                    @if ($googleAdsAuctionInsightReport['rows'] === [])
+                        <p class="campaign-report-empty">此期間沒有可用的競價洞察。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                            <input type="hidden" name="delivery_unit_sort" value="{{ request('delivery_unit_sort', 'spend') }}">
+                            <input type="hidden" name="google_ads_device_sort" value="{{ request('google_ads_device_sort', 'spend') }}">
+                            <label for="google-ads-auction-sort">排序</label>
+                            <select id="google-ads-auction-sort" name="google_ads_auction_sort">
+                                <option value="overlap_rate" @selected($googleAdsAuctionInsightReport['sort'] === 'overlap_rate')>重疊率</option>
+                                <option value="impression_share" @selected($googleAdsAuctionInsightReport['sort'] === 'impression_share')>曝光占比</option>
+                                <option value="position_above_rate" @selected($googleAdsAuctionInsightReport['sort'] === 'position_above_rate')>排名高於率</option>
+                                <option value="outranking_share" @selected($googleAdsAuctionInsightReport['sort'] === 'outranking_share')>勝出占比</option>
+                                <option value="top_impression_percentage" @selected($googleAdsAuctionInsightReport['sort'] === 'top_impression_percentage')>頂端曝光</option>
+                                <option value="absolute_top_impression_percentage" @selected($googleAdsAuctionInsightReport['sort'] === 'absolute_top_impression_percentage')>絕對頂端曝光</option>
+                                <option value="domain" @selected($googleAdsAuctionInsightReport['sort'] === 'domain')>網域名稱</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-auction-insights-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads 搜尋競價洞察</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">競爭網域</th>
+                                        <th scope="col" class="numeric">搜尋曝光占比</th>
+                                        <th scope="col" class="numeric">重疊率</th>
+                                        <th scope="col" class="numeric">排名高於率</th>
+                                        <th scope="col" class="numeric">勝出占比</th>
+                                        <th scope="col" class="numeric">頂端曝光</th>
+                                        <th scope="col" class="numeric">絕對頂端曝光</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsAuctionInsightReport['rows'] as $auctionInsightRow)
+                                        <tr>
+                                            <th scope="row">{{ $auctionInsightRow['domain'] }}</th>
+                                            <td class="numeric">{{ $auctionInsightRow['impression_share_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $auctionInsightRow['overlap_rate_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $auctionInsightRow['position_above_rate_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $auctionInsightRow['outranking_share_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $auctionInsightRow['top_impression_percentage_label'] ?? '—' }}</td>
+                                            <td class="numeric">{{ $auctionInsightRow['absolute_top_impression_percentage_label'] ?? '—' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">重疊率表示競爭網域與你同時出現的比率；排名高於率表示雙方同頁出現時，對方出現在更高位置的比率。&lt;10% 是 Google Ads API 的界線值，不代表精確比例。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                     @if ($googleAdsTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'google-ads']) }}">匯出趨勢 CSV</a>

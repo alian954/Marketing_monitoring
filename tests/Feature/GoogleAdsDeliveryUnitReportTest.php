@@ -137,6 +137,7 @@ class GoogleAdsDeliveryUnitReportTest extends TestCase
                 ->push([])
                 ->push([])
                 ->push(['error' => ['message' => 'No ad group permission.']], 403)
+                ->push([])
                 ->push([]),
         ]);
         $user = User::factory()->create();
@@ -163,6 +164,7 @@ class GoogleAdsDeliveryUnitReportTest extends TestCase
                 ->push([])
                 ->push([])
                 ->push([['results' => [$this->deliveryUnitRow('ad_group', 0, '25500000')]]])
+                ->push([])
                 ->push([]),
         ]);
         $user = User::factory()->create();
@@ -177,7 +179,7 @@ class GoogleAdsDeliveryUnitReportTest extends TestCase
         $this->assertTrue($report->delivery_unit_performance_expires_at->isFuture());
         $this->assertStringNotContainsString('Brand group 0', $report->getRawOriginal('delivery_unit_performance'));
         $this->assertArrayNotHasKey('delivery_unit_performance', $report->toArray());
-        Http::assertSentCount(7);
+        Http::assertSentCount(8);
     }
 
     public function test_delivery_unit_report_calculates_metrics_sorts_rows_and_marks_expired_data(): void

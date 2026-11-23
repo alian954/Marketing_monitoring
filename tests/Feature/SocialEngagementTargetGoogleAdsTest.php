@@ -298,6 +298,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                         ],
                     ]],
                 ]])
+                ->push([])
                 ->push([]),
         ]);
         $user = User::factory()->create();
@@ -418,7 +419,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(8);
+        Http::assertSentCount(9);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 

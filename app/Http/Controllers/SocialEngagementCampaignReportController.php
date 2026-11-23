@@ -16,6 +16,8 @@ use App\Services\CampaignDailyMarketingTrendChart;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
+use App\Services\GoogleAdsAuctionInsightPerformanceReport;
+use App\Services\GoogleAdsAuctionInsightReportCsv;
 use App\Services\GoogleAdsDeliveryUnitPerformanceReport;
 use App\Services\GoogleAdsDeliveryUnitReportCsv;
 use App\Services\GoogleAdsDevicePerformanceReport;
@@ -69,6 +71,7 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingAdSetPerformanceReport $metaMarketingAdSetPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
+        GoogleAdsAuctionInsightPerformanceReport $googleAdsAuctionInsightPerformanceReport,
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
         GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
         GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
@@ -143,6 +146,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->device_performance,
             $viewData['googleAdsReport']?->device_performance_expires_at,
             (string) $request->query('google_ads_device_sort', 'spend'),
+        );
+        $viewData['googleAdsAuctionInsightReport'] = $googleAdsAuctionInsightPerformanceReport->build(
+            $viewData['googleAdsReport']?->auction_insights,
+            $viewData['googleAdsReport']?->auction_insights_expires_at,
+            (string) $request->query('google_ads_auction_sort', 'overlap_rate'),
         );
 
         return view('social-engagement-reports.show', $viewData);
@@ -646,6 +654,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'google-ads-device-performance-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAdsAuctionInsights(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAdsAuctionInsightPerformanceReport $googleAdsAuctionInsightPerformanceReport,
+        GoogleAdsAuctionInsightReportCsv $googleAdsAuctionInsightReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->googleAdsConnection;
+        abort_if(
+            $connection === null
+                || $connection->customer_id === null
+                || $socialEngagementTarget->google_ads_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('customer_id', $connection->customer_id)
+            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->auction_insights)
+                || $report->auction_insights_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $auctionInsightReport = $googleAdsAuctionInsightPerformanceReport->build(
+            $report->auction_insights,
+            $report->auction_insights_expires_at,
+            'overlap_rate',
+        );
+        abort_if($auctionInsightReport['status'] !== 'complete' || $auctionInsightReport['rows'] === [], 404);
+        $csv = $googleAdsAuctionInsightReportCsv->build($auctionInsightReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'google-ads-auction-insights-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

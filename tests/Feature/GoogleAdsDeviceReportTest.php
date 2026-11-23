@@ -139,7 +139,8 @@ class GoogleAdsDeviceReportTest extends TestCase
                 ->push([])
                 ->push([])
                 ->push([])
-                ->push(['error' => ['message' => 'Device report unavailable.']], 403),
+                ->push(['error' => ['message' => 'Device report unavailable.']], 403)
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -151,7 +152,7 @@ class GoogleAdsDeviceReportTest extends TestCase
         $this->assertSame('complete', $report->delivery_unit_performance['status']);
         $this->assertSame('unavailable', $report->device_performance['status']);
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 1);
-        Http::assertSentCount(7);
+        Http::assertSentCount(8);
     }
 
     public function test_successful_device_report_is_encrypted_and_expires_after_thirty_days(): void
@@ -165,7 +166,8 @@ class GoogleAdsDeviceReportTest extends TestCase
                 ->push([])
                 ->push([])
                 ->push([])
-                ->push([['results' => [$this->deviceResult('MOBILE', '125500000', '1200', '60', '6', '300')]]]),
+                ->push([['results' => [$this->deviceResult('MOBILE', '125500000', '1200', '60', '6', '300')]]])
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -179,7 +181,7 @@ class GoogleAdsDeviceReportTest extends TestCase
         $this->assertTrue($report->device_performance_expires_at->isFuture());
         $this->assertStringNotContainsString('MOBILE', $report->getRawOriginal('device_performance'));
         $this->assertArrayNotHasKey('device_performance', $report->toArray());
-        Http::assertSentCount(7);
+        Http::assertSentCount(8);
     }
 
     public function test_device_report_view_and_csv_are_scoped_and_formula_safe(): void
