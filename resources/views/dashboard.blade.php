@@ -641,6 +641,7 @@
                             <th scope="col">GA4</th>
                             <th scope="col">廣告花費</th>
                             <th scope="col">ROAS</th>
+                            <th scope="col">同幣別 ROAS 排名</th>
                             <th scope="col">預算使用率</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -702,6 +703,14 @@
                                         <span class="secondary-text">分母：{{ $efficiency['roas_spend_source_label'] ?? '—' }} {{ number_format((float) $efficiency['roas_spend_amount'], 2) }} {{ $efficiency['roas_spend_currency'] ?? '' }}</span>
                                     @else
                                         {{ $roasUnavailableLabel }}
+                                    @endif
+                                </td>
+                                <td class="numeric">
+                                    @if (isset($efficiency['portfolio_roas_rank']))
+                                        #{{ number_format($efficiency['portfolio_roas_rank']['rank']) }}
+                                        <span class="secondary-text">{{ $efficiency['portfolio_roas_rank']['currency_code'] }}</span>
+                                    @else
+                                        —
                                     @endif
                                 </td>
                                 <td class="numeric">

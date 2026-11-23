@@ -396,6 +396,11 @@ class DashboardController extends Controller
             $socialEngagementTargetModels,
             $socialEngagementMarketingSummaries,
         );
+
+        foreach ($campaignPortfolioMarketingSummary['campaign_ranks'] as $targetId => $campaignRank) {
+            $socialEngagementMarketingSummaries[$targetId]['efficiency']['portfolio_roas_rank'] = $campaignRank;
+        }
+
         $socialEngagementTargets = $socialEngagementTargetModels
             ->map(function (SocialEngagementTarget $target) use ($socialEngagementTagPlatformSummaries, $socialEngagementTargetPlatformLabels, $socialEngagementMarketingSummaries, $asOf): array {
                 $summary = $socialEngagementTagPlatformSummaries[$target->tag][$target->social_platform] ?? null;

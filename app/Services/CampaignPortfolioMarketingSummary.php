@@ -14,7 +14,8 @@ class CampaignPortfolioMarketingSummary
      * @return array{
      *     target_count: int,
      *     coverage: array<string, array{configured_campaigns: int, available_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
-     *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>
+     *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>,
+     *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>
      * }
      */
     public function build(Collection $targets, array $marketingSummaries): array
@@ -70,6 +71,7 @@ class CampaignPortfolioMarketingSummary
                 && $roasRevenueCurrency === $roasSpendCurrency) {
                 $roasCandidates[$googleAnalyticsMappingKey][] = [
                     'target_id' => (int) $target->getKey(),
+                    'tag' => $target->tag,
                     'status' => $this->roasFreshnessStatus($marketing),
                     'revenue' => (float) $roasRevenue,
                     'spend' => (float) $roasSpend,
@@ -81,6 +83,7 @@ class CampaignPortfolioMarketingSummary
 
         $coverage = [];
         $currencyGroups = [];
+        $rankingCandidates = [];
 
         foreach ($sourceDefinitions as $source => $definition) {
             $coverage[$source] = [
@@ -129,6 +132,11 @@ class CampaignPortfolioMarketingSummary
             $currencyGroups[$candidate['currency_code']]['roas_revenue'] += $candidate['revenue'];
             $currencyGroups[$candidate['currency_code']]['roas_spend'] += $candidate['spend'];
             $currencyGroups[$candidate['currency_code']]['roas_campaign_count']++;
+            $rankingCandidates[$candidate['currency_code']][] = [
+                'target_id' => $candidate['target_id'],
+                'tag' => $candidate['tag'],
+                'roas' => round($candidate['revenue'] / $candidate['spend'], 4),
+            ];
         }
 
         foreach ($currencyGroups as &$group) {
@@ -144,11 +152,43 @@ class CampaignPortfolioMarketingSummary
         unset($group);
 
         ksort($currencyGroups);
+        $campaignRanks = [];
+
+        foreach ($rankingCandidates as $currencyCode => $candidates) {
+            usort($candidates, static function (array $first, array $second): int {
+                $roasOrder = $second['roas'] <=> $first['roas'];
+
+                return $roasOrder !== 0
+                    ? $roasOrder
+                    : (strcasecmp($first['tag'], $second['tag']) ?: ($first['target_id'] <=> $second['target_id']));
+            });
+            $rank = 0;
+            $position = 0;
+            $previousRoas = null;
+
+            foreach ($candidates as $candidate) {
+                $position++;
+
+                if ($previousRoas === null || $candidate['roas'] !== $previousRoas) {
+                    $rank = $position;
+                }
+
+                $campaignRanks[$candidate['target_id']] = [
+                    'rank' => $rank,
+                    'currency_code' => $currencyCode,
+                    'roas' => $candidate['roas'],
+                ];
+                $previousRoas = $candidate['roas'];
+            }
+        }
+
+        ksort($campaignRanks);
 
         return [
             'target_count' => $targets->count(),
             'coverage' => $coverage,
             'currency_groups' => array_values($currencyGroups),
+            'campaign_ranks' => $campaignRanks,
         ];
     }
 

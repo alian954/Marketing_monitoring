@@ -40,6 +40,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertOk()
             ->assertSee('活動行銷成效')
             ->assertSee('跨活動行銷數據總覽')
+            ->assertSee('同幣別 ROAS 排名')
             ->assertSee('120 工作階段')
             ->assertSee('900.00')
             ->assertSee('300.00 TWD')
@@ -63,6 +64,8 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(900.0, $portfolio['currency_groups'][0]['ga4_revenue']);
         $this->assertSame(4.5, $portfolio['currency_groups'][0]['roas']);
         $this->assertSame(1, $portfolio['currency_groups'][0]['roas_campaign_count']);
+        $this->assertSame(1, $marketing['efficiency']['portfolio_roas_rank']['rank']);
+        $this->assertSame('TWD', $marketing['efficiency']['portfolio_roas_rank']['currency_code']);
     }
 
     public function test_campaign_portfolio_groups_currencies_calculates_weighted_roas_and_reports_coverage(): void
@@ -73,6 +76,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             $this->createTarget(['tag' => 'Portfolio USD', 'google_ads_campaign_id' => 'ads-portfolio-usd', 'meta_campaign_id' => null]),
             $this->createTarget(['tag' => 'Portfolio zero values', 'google_ads_campaign_id' => 'ads-portfolio-zero', 'meta_campaign_id' => 'meta-portfolio-zero']),
             $this->createTarget(['tag' => 'Portfolio missing values', 'google_ads_campaign_id' => 'ads-portfolio-missing', 'meta_campaign_id' => 'meta-portfolio-missing']),
+            $this->createTarget(['tag' => 'Portfolio TWD tie', 'google_ads_campaign_id' => 'ads-portfolio-tie', 'meta_campaign_id' => 'meta-portfolio-tie']),
         ];
         $marketingSummaries = [
             $targets[0]->id => $this->portfolioMarketingSummary(
@@ -103,6 +107,12 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
                 ['status' => 'missing'],
                 ['status' => 'missing'],
             ),
+            $targets[5]->id => $this->portfolioMarketingSummary(
+                ['status' => 'fresh', 'revenue' => '450.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '10.0000', 'currency_code' => 'TWD'],
+                ['status' => 'fresh', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                ['roas' => 4.5, 'roas_spend_amount' => '100.0000', 'roas_spend_currency' => 'TWD', 'roas_spend_source' => 'google_ads'],
+            ),
         ];
 
         $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
@@ -113,19 +123,23 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $twd = $currencyGroups->get('TWD');
         $usd = $currencyGroups->get('USD');
 
-        $this->assertSame(5, $portfolio['target_count']);
-        $this->assertSame(1000.0, $twd['ga4_revenue']);
-        $this->assertSame(150.0, $twd['meta_spend']);
-        $this->assertSame(300.0, $twd['google_ads_spend']);
-        $this->assertSame(3.3333, $twd['roas']);
-        $this->assertSame(2, $twd['roas_campaign_count']);
+        $this->assertSame(6, $portfolio['target_count']);
+        $this->assertSame(1450.0, $twd['ga4_revenue']);
+        $this->assertSame(160.0, $twd['meta_spend']);
+        $this->assertSame(400.0, $twd['google_ads_spend']);
+        $this->assertSame(3.625, $twd['roas']);
+        $this->assertSame(3, $twd['roas_campaign_count']);
         $this->assertSame(80.0, $usd['ga4_revenue']);
         $this->assertSame(20.0, $usd['google_ads_spend']);
         $this->assertSame(4.0, $usd['roas']);
-        $this->assertSame(4, $portfolio['coverage']['google_analytics']['available_campaigns']);
-        $this->assertSame(3, $portfolio['coverage']['google_analytics']['fresh_campaigns']);
+        $this->assertSame(5, $portfolio['coverage']['google_analytics']['available_campaigns']);
+        $this->assertSame(4, $portfolio['coverage']['google_analytics']['fresh_campaigns']);
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['stale_campaigns']);
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['missing_campaigns']);
+        $this->assertSame(1, $portfolio['campaign_ranks'][$targets[0]->id]['rank']);
+        $this->assertSame(1, $portfolio['campaign_ranks'][$targets[5]->id]['rank']);
+        $this->assertSame(3, $portfolio['campaign_ranks'][$targets[1]->id]['rank']);
+        $this->assertSame(1, $portfolio['campaign_ranks'][$targets[2]->id]['rank']);
     }
 
     public function test_campaign_portfolio_excludes_duplicate_campaign_mappings_and_prefers_fresh_snapshots(): void
@@ -168,6 +182,8 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(3.0, $twd['roas']);
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['configured_campaigns']);
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['duplicate_mappings_excluded']);
+        $this->assertSame(1, $portfolio['campaign_ranks'][$freshTarget->id]['rank']);
+        $this->assertArrayNotHasKey($staleTarget->id, $portfolio['campaign_ranks']);
     }
 
     public function test_dashboard_portfolio_follows_the_selected_social_platform_filter(): void
