@@ -85,6 +85,10 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')
         ->name('social-engagement-targets.google-ads.auction-insights');
+    Route::get('/social-engagement-targets/{socialEngagementTarget}/google-ads-responsive-search-ad-assets.csv', [SocialEngagementCampaignReportController::class, 'exportGoogleAdsResponsiveSearchAdAssets'])
+        ->whereNumber('socialEngagementTarget')
+        ->middleware('throttle:10,1')
+        ->name('social-engagement-targets.google-ads.responsive-search-ad-assets');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/meta-marketing-ads.csv', [SocialEngagementCampaignReportController::class, 'exportMetaMarketingAds'])
         ->whereNumber('socialEngagementTarget')
         ->middleware('throttle:10,1')

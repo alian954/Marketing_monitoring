@@ -152,6 +152,7 @@ class GoogleAdsKeywordReportTest extends TestCase
                 ->push([['results' => [$this->keywordResult()]]])
                 ->push([])
                 ->push([])
+                ->push([])
                 ->push([]),
         ]);
 
@@ -164,7 +165,7 @@ class GoogleAdsKeywordReportTest extends TestCase
         $this->assertStringNotContainsString('=2+2', $report->getRawOriginal('keyword_performance'));
         $this->assertArrayNotHasKey('keyword_performance', $report->toArray());
         Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->data()['query'] ?? '', 'FROM keyword_view'));
-        Http::assertSentCount(8);
+        Http::assertSentCount(9);
     }
 
     public function test_keyword_api_failure_does_not_block_campaign_metrics(): void
@@ -180,6 +181,7 @@ class GoogleAdsKeywordReportTest extends TestCase
                 ->push([])
                 ->push([])
                 ->push(['error' => ['message' => 'Keyword report unavailable.']], 403)
+                ->push([])
                 ->push([])
                 ->push([])
                 ->push([]),

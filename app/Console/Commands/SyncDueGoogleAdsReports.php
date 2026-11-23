@@ -31,6 +31,7 @@ class SyncDueGoogleAdsReports extends Command
         $this->clearExpiredDeliveryUnitReports($asOf);
         $this->clearExpiredDeviceReports($asOf);
         $this->clearExpiredAuctionInsights($asOf);
+        $this->clearExpiredResponsiveSearchAdAssetPerformance($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Google Ads 的活動。');
@@ -197,6 +198,17 @@ class SyncDueGoogleAdsReports extends Command
             ->update([
                 'auction_insights' => null,
                 'auction_insights_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredResponsiveSearchAdAssetPerformance(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->whereNotNull('responsive_search_ad_asset_performance_expires_at')
+            ->where('responsive_search_ad_asset_performance_expires_at', '<=', $asOf)
+            ->update([
+                'responsive_search_ad_asset_performance' => null,
+                'responsive_search_ad_asset_performance_expires_at' => null,
             ]);
     }
 }

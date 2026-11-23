@@ -14,6 +14,8 @@ class GoogleAdsDataApi
 
     private const AUCTION_INSIGHT_REPORT_LIMIT = 200;
 
+    private const RESPONSIVE_SEARCH_AD_ASSET_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, refresh_token: ?string} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -926,6 +928,182 @@ class GoogleAdsDataApi
             'unit_type' => $unitType,
             'truncated' => count($rows) > self::DELIVERY_UNIT_REPORT_LIMIT,
             'rows' => array_slice($rows, 0, self::DELIVERY_UNIT_REPORT_LIMIT),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
+     *     truncated: bool,
+     *     rows: list<array{
+     *         ad_group_id: string,
+     *         ad_group_name: string,
+     *         ad_id: string,
+     *         asset_id: string,
+     *         text: string,
+     *         field_type: string,
+     *         source: string,
+     *         pinned_field: string,
+     *         performance_label: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         spend_amount: string,
+     *         conversions: string,
+     *         conversions_value: string
+     *     }>
+     * }
+     */
+    public function campaignResponsiveSearchAdAssetInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads 搜尋廣告素材報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return $this->emptyResponsiveSearchAdAssetReport('unsupported', $accountCurrency);
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyResponsiveSearchAdAssetReport('no_complete_days', $accountCurrency);
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.type, ad_group_ad_asset_view.asset, asset.id, asset.text_asset.text, ad_group_ad_asset_view.field_type, ad_group_ad_asset_view.source, ad_group_ad_asset_view.pinned_field, ad_group_ad_asset_view.performance_label, ad_group_ad_asset_view.enabled, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM ad_group_ad_asset_view WHERE campaign.id = {$campaignId} AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD' AND ad_group_ad.status != 'REMOVED' AND ad_group_ad_asset_view.enabled = TRUE AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.impressions DESC, ad_group_ad.ad.id ASC, asset.id ASC LIMIT 201";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > self::RESPONSIVE_SEARCH_AD_ASSET_REPORT_LIMIT + 1) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超過搜尋廣告素材讀取上限，未儲存讀值。');
+        }
+
+        $rows = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $adGroup = $row['adGroup'] ?? null;
+            $adGroupAd = $row['adGroupAd'] ?? null;
+            $ad = is_array($adGroupAd) ? ($adGroupAd['ad'] ?? null) : null;
+            $asset = $row['asset'] ?? null;
+            $textAsset = is_array($asset) ? ($asset['textAsset'] ?? null) : null;
+            $assetView = $row['adGroupAdAssetView'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $adGroupId = is_array($adGroup) ? ($adGroup['id'] ?? null) : null;
+            $adGroupName = is_array($adGroup) ? ($adGroup['name'] ?? null) : null;
+            $adId = is_array($ad) ? ($ad['id'] ?? null) : null;
+            $assetId = is_array($asset) ? ($asset['id'] ?? null) : null;
+            $assetText = is_array($textAsset) ? ($textAsset['text'] ?? null) : null;
+            $adType = is_array($ad) ? ($ad['type'] ?? null) : null;
+            $assetEnabled = is_array($assetView) ? ($assetView['enabled'] ?? null) : null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || $rowCurrencyCode !== $accountCurrency
+                || ! is_array($adGroup)
+                || (! is_string($adGroupId) && ! is_int($adGroupId))
+                || preg_match('/^\d{1,32}$/', (string) $adGroupId) !== 1
+                || ! is_string($adGroupName)
+                || trim($adGroupName) === ''
+                || strlen($adGroupName) > 1024
+                || ! is_array($ad)
+                || (! is_string($adId) && ! is_int($adId))
+                || preg_match('/^\d{1,32}$/', (string) $adId) !== 1
+                || ! is_array($asset)
+                || (! is_string($assetId) && ! is_int($assetId))
+                || preg_match('/^\d{1,32}$/', (string) $assetId) !== 1
+                || ! is_string($assetText)
+                || trim($assetText) === ''
+                || strlen($assetText) > 1024
+                || ! is_array($assetView)
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的搜尋廣告素材資料，未儲存讀值。');
+            }
+
+            if ($adType !== 'RESPONSIVE_SEARCH_AD' || $assetEnabled !== true) {
+                throw new GoogleAdsApiException('Google Ads API 回傳未啟用或非響應式搜尋廣告素材，未儲存讀值。');
+            }
+
+            $fieldType = $assetView['fieldType'] ?? null;
+            $source = $assetView['source'] ?? null;
+            $pinnedField = $assetView['pinnedField'] ?? null;
+            $performanceLabel = $assetView['performanceLabel'] ?? null;
+
+            foreach ([$fieldType, $source, $pinnedField, $performanceLabel] as $enumValue) {
+                if (! is_string($enumValue) || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $enumValue) !== 1) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳格式無效的搜尋廣告素材分類，未儲存讀值。');
+                }
+            }
+
+            $rows[] = [
+                'ad_group_id' => (string) $adGroupId,
+                'ad_group_name' => trim($adGroupName),
+                'ad_id' => (string) $adId,
+                'asset_id' => (string) $assetId,
+                'text' => trim($assetText),
+                'field_type' => $fieldType,
+                'source' => $source,
+                'pinned_field' => $pinnedField,
+                'performance_label' => $performanceLabel,
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'truncated' => count($rows) > self::RESPONSIVE_SEARCH_AD_ASSET_REPORT_LIMIT,
+            'rows' => array_slice($rows, 0, self::RESPONSIVE_SEARCH_AD_ASSET_REPORT_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyResponsiveSearchAdAssetReport(string $status, string $currencyCode): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $currencyCode,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 

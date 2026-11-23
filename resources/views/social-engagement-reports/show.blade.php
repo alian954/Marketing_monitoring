@@ -1062,6 +1062,94 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-responsive-search-ad-assets-title">Google Ads 搜尋廣告素材成效</h3>
+                    @if ($googleAdsResponsiveSearchAdAssetReport['status'] === 'complete' && $googleAdsResponsiveSearchAdAssetReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.responsive-search-ad-assets', $target) }}">匯出素材 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsResponsiveSearchAdAssetReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚無搜尋廣告素材明細；更新 Google Ads 數據後即可查看。</p>
+                @elseif ($googleAdsResponsiveSearchAdAssetReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">搜尋廣告素材暫時無法讀取，其他 Google Ads 報表仍可使用。{{ $googleAdsResponsiveSearchAdAssetReport['message'] }}</p>
+                @elseif ($googleAdsResponsiveSearchAdAssetReport['status'] === 'expired')
+                    <p class="campaign-report-empty">搜尋廣告素材明細已超過 30 天保存期限，更新 Google Ads 數據後可重新讀取。</p>
+                @elseif ($googleAdsResponsiveSearchAdAssetReport['status'] === 'unsupported_campaign')
+                    <p class="campaign-report-empty">{{ $googleAdsResponsiveSearchAdAssetReport['message'] }}</p>
+                @elseif ($googleAdsResponsiveSearchAdAssetReport['status'] === 'unsupported')
+                    <p class="campaign-report-empty">此活動日期超出 Google Ads 可讀取範圍。</p>
+                @elseif ($googleAdsResponsiveSearchAdAssetReport['status'] === 'no_complete_days')
+                    <p class="campaign-report-empty">尚無完整日期可供搜尋廣告素材分析。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAdsResponsiveSearchAdAssetReport['window_start_on'] }} 至 {{ $googleAdsResponsiveSearchAdAssetReport['window_end_on'] }} ·
+                        最近 30 個完整日，最多列出曝光最高的 200 個素材與廣告配對，明細加密保存 30 天。
+                    </p>
+                    @if ($googleAdsResponsiveSearchAdAssetReport['truncated'])
+                        <p class="campaign-report-note">素材配對超過 200 筆，表格僅列出曝光最高的 200 筆。</p>
+                    @endif
+                    @if ($googleAdsResponsiveSearchAdAssetReport['rows'] === [])
+                        <p class="campaign-report-empty">此期間沒有可用的搜尋廣告標題或說明素材。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                            <input type="hidden" name="google_ads_keyword_sort" value="{{ request('google_ads_keyword_sort', 'spend') }}">
+                            <input type="hidden" name="delivery_unit_sort" value="{{ request('delivery_unit_sort', 'spend') }}">
+                            <label for="google-ads-responsive-search-ad-assets-sort">排序</label>
+                            <select id="google-ads-responsive-search-ad-assets-sort" name="google_ads_asset_sort">
+                                <option value="impressions" @selected($googleAdsResponsiveSearchAdAssetReport['sort'] === 'impressions')>曝光</option>
+                                <option value="spend" @selected($googleAdsResponsiveSearchAdAssetReport['sort'] === 'spend')>花費</option>
+                                <option value="conversions" @selected($googleAdsResponsiveSearchAdAssetReport['sort'] === 'conversions')>轉換</option>
+                                <option value="roas" @selected($googleAdsResponsiveSearchAdAssetReport['sort'] === 'roas')>ROAS</option>
+                                <option value="ctr" @selected($googleAdsResponsiveSearchAdAssetReport['sort'] === 'ctr')>CTR</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-responsive-search-ad-assets-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads 搜尋廣告素材與單則廣告成效（{{ $googleAdsResponsiveSearchAdAssetReport['currency_code'] }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">素材</th>
+                                        <th scope="col">類型與來源</th>
+                                        <th scope="col">Google 評級</th>
+                                        <th scope="col">廣告群組／廣告</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">轉換</th>
+                                        <th scope="col" class="numeric">CPA</th>
+                                        <th scope="col" class="numeric">轉換價值</th>
+                                        <th scope="col" class="numeric">ROAS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsResponsiveSearchAdAssetReport['rows'] as $assetRow)
+                                        <tr>
+                                            <th scope="row">{{ $assetRow['text'] }}<br><span class="campaign-report-secondary"><code>{{ $assetRow['asset_id'] }}</code></span></th>
+                                            <td>{{ $assetRow['field_type_label'] }} · {{ $assetRow['source_label'] }}@if ($assetRow['pinned_field'] !== 'UNSPECIFIED')<br><span class="campaign-report-secondary">固定於 {{ $assetRow['pinned_field'] }}</span>@endif</td>
+                                            <td>{{ $assetRow['performance_label_label'] }}</td>
+                                            <td>{{ $assetRow['ad_group_name'] }}<br><span class="campaign-report-secondary">廣告 <code>{{ $assetRow['ad_id'] }}</code></span></td>
+                                            <td class="numeric">{{ number_format((int) $assetRow['impressions']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $assetRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $assetRow['ctr_percent'] === null ? '—' : number_format($assetRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $assetRow['spend_amount'], 2) }} {{ $googleAdsResponsiveSearchAdAssetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $assetRow['cost_per_click'] === null ? '—' : number_format($assetRow['cost_per_click'], 4).' '.$googleAdsResponsiveSearchAdAssetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $assetRow['conversions'], 2) }}</td>
+                                            <td class="numeric">{{ $assetRow['cost_per_conversion'] === null ? '—' : number_format($assetRow['cost_per_conversion'], 4).' '.$googleAdsResponsiveSearchAdAssetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $assetRow['conversions_value'], 2) }} {{ $googleAdsResponsiveSearchAdAssetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $assetRow['roas'] === null ? '—' : number_format($assetRow['roas'], 2).'x' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">每列代表單一廣告中的標題或說明素材。Google 評級是類別訊號，不是 ROAS 排名；轉換數據依 Google Ads 帳戶設定歸因。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-devices-title">Google Ads 裝置成效</h3>
                     @if ($googleAdsDeviceReport['status'] === 'complete' && $googleAdsDeviceReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.devices', $target) }}">匯出裝置 CSV</a>

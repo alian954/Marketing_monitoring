@@ -42,6 +42,8 @@ class GoogleAdsScheduledSyncTest extends TestCase
                 ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD'))
                 ->push([])
                 ->push($this->conversionActionsPayload('987654322'))
+                ->push([])
+                ->push([])
                 ->push([]),
         ]);
         $user = User::factory()->create();
@@ -150,6 +152,8 @@ class GoogleAdsScheduledSyncTest extends TestCase
                 ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
                 ->push([])
                 ->push($this->conversionActionsPayload('987654321'))
+                ->push([])
+                ->push([])
                 ->push([]),
         ]);
         $user = User::factory()->create();

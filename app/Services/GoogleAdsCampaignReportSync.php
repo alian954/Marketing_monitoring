@@ -153,6 +153,34 @@ class GoogleAdsCampaignReportSync
         } catch (GoogleAdsApiException|ConnectionException $exception) {
             $auctionInsights['message'] = $exception->getMessage();
         }
+        $responsiveSearchAdAssetPerformance = [
+            'status' => 'unsupported_campaign',
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $metrics['currency_code'],
+            'truncated' => false,
+            'message' => '僅支援 Google Ads 搜尋活動中的響應式搜尋廣告素材。',
+            'rows' => [],
+        ];
+
+        if ($metrics['campaign_channel_type'] === 'SEARCH') {
+            $responsiveSearchAdAssetPerformance['status'] = 'unavailable';
+            $responsiveSearchAdAssetPerformance['message'] = null;
+
+            try {
+                $responsiveSearchAdAssetPerformance = $this->dataApi->campaignResponsiveSearchAdAssetInsights(
+                    $accessToken,
+                    $connection->customer_id,
+                    $target->google_ads_campaign_id,
+                    $target->starts_on->toDateString(),
+                    $target->ends_on->toDateString(),
+                    $metrics['currency_code'],
+                    $connection->login_customer_id,
+                );
+            } catch (GoogleAdsApiException|ConnectionException $exception) {
+                $responsiveSearchAdAssetPerformance['message'] = $exception->getMessage();
+            }
+        }
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -191,8 +219,11 @@ class GoogleAdsCampaignReportSync
         $auctionInsightsExpiresAt = $auctionInsights['status'] === 'complete'
             ? $syncedAt->addDays(30)
             : null;
+        $responsiveSearchAdAssetPerformanceExpiresAt = $responsiveSearchAdAssetPerformance['status'] === 'complete'
+            ? $syncedAt->addDays(30)
+            : null;
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt, $auctionInsights, $auctionInsightsExpiresAt): SocialEngagementTargetGoogleAdsReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt, $auctionInsights, $auctionInsightsExpiresAt, $responsiveSearchAdAssetPerformance, $responsiveSearchAdAssetPerformanceExpiresAt): SocialEngagementTargetGoogleAdsReport {
             $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
                 [
                     'google_ads_connection_id' => $connection->getKey(),
@@ -214,6 +245,8 @@ class GoogleAdsCampaignReportSync
                     'device_performance_expires_at' => $devicePerformanceExpiresAt,
                     'auction_insights' => $auctionInsights,
                     'auction_insights_expires_at' => $auctionInsightsExpiresAt,
+                    'responsive_search_ad_asset_performance' => $responsiveSearchAdAssetPerformance,
+                    'responsive_search_ad_asset_performance_expires_at' => $responsiveSearchAdAssetPerformanceExpiresAt,
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],

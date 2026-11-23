@@ -24,6 +24,8 @@ use App\Services\GoogleAdsDevicePerformanceReport;
 use App\Services\GoogleAdsDeviceReportCsv;
 use App\Services\GoogleAdsKeywordPerformanceReport;
 use App\Services\GoogleAdsKeywordReportCsv;
+use App\Services\GoogleAdsResponsiveSearchAdAssetPerformanceReport;
+use App\Services\GoogleAdsResponsiveSearchAdAssetReportCsv;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsAdContentPerformanceReport;
@@ -72,6 +74,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
         GoogleAdsAuctionInsightPerformanceReport $googleAdsAuctionInsightPerformanceReport,
+        GoogleAdsResponsiveSearchAdAssetPerformanceReport $googleAdsResponsiveSearchAdAssetPerformanceReport,
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
         GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
         GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
@@ -151,6 +154,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->auction_insights,
             $viewData['googleAdsReport']?->auction_insights_expires_at,
             (string) $request->query('google_ads_auction_sort', 'overlap_rate'),
+        );
+        $viewData['googleAdsResponsiveSearchAdAssetReport'] = $googleAdsResponsiveSearchAdAssetPerformanceReport->build(
+            $viewData['googleAdsReport']?->responsive_search_ad_asset_performance,
+            $viewData['googleAdsReport']?->responsive_search_ad_asset_performance_expires_at,
+            (string) $request->query('google_ads_asset_sort', 'impressions'),
         );
 
         return view('social-engagement-reports.show', $viewData);
@@ -707,6 +715,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'google-ads-auction-insights-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAdsResponsiveSearchAdAssets(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAdsResponsiveSearchAdAssetPerformanceReport $googleAdsResponsiveSearchAdAssetPerformanceReport,
+        GoogleAdsResponsiveSearchAdAssetReportCsv $googleAdsResponsiveSearchAdAssetReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->googleAdsConnection;
+        abort_if(
+            $connection === null
+                || $connection->customer_id === null
+                || $socialEngagementTarget->google_ads_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('customer_id', $connection->customer_id)
+            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->responsive_search_ad_asset_performance)
+                || $report->responsive_search_ad_asset_performance_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $assetReport = $googleAdsResponsiveSearchAdAssetPerformanceReport->build(
+            $report->responsive_search_ad_asset_performance,
+            $report->responsive_search_ad_asset_performance_expires_at,
+            'impressions',
+        );
+        abort_if($assetReport['status'] !== 'complete' || $assetReport['rows'] === [], 404);
+        $csv = $googleAdsResponsiveSearchAdAssetReportCsv->build($assetReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'google-ads-responsive-search-ad-assets-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
