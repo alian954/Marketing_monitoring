@@ -72,6 +72,9 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(95, $marketing['public_engagement']['interaction_total']);
         $this->assertSame(100.0, $marketing['public_engagement']['coverage_percent']);
         $this->assertSame(3.1579, $marketing['efficiency']['cost_per_public_interaction']);
+        $this->assertArrayHasKey('meta_marketing', $marketing['efficiency']['portfolio_interaction_cost_ranks']);
+        $this->assertArrayHasKey('google_ads', $marketing['efficiency']['portfolio_interaction_cost_ranks']);
+        $this->assertArrayNotHasKey('combined_paid_ads', $marketing['efficiency']['portfolio_interaction_cost_ranks']);
         $portfolio = $response->viewData('campaignPortfolioMarketingSummary');
         $this->assertSame(1, $portfolio['target_count']);
         $this->assertSame(900.0, $portfolio['currency_groups'][0]['ga4_revenue']);
@@ -319,6 +322,41 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'google_ads_campaign_id' => null,
             'meta_campaign_id' => null,
         ]);
+        $tiedCampaignTarget = $this->createTarget([
+            'tag' => 'Interaction tied cost',
+            'google_ads_campaign_id' => 'interaction-tied',
+            'meta_campaign_id' => null,
+        ]);
+        $usdCampaignTarget = $this->createTarget([
+            'tag' => 'Interaction USD',
+            'google_ads_campaign_id' => 'interaction-usd',
+            'meta_campaign_id' => null,
+        ]);
+        $metaCampaignTarget = $this->createTarget([
+            'tag' => 'Interaction Meta',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => 'interaction-meta',
+        ]);
+        $zeroSpendTarget = $this->createTarget([
+            'tag' => 'Interaction zero spend',
+            'google_ads_campaign_id' => 'interaction-zero-spend',
+            'meta_campaign_id' => null,
+        ]);
+        $negativeSpendTarget = $this->createTarget([
+            'tag' => 'Interaction negative spend',
+            'google_ads_campaign_id' => 'interaction-negative-spend',
+            'meta_campaign_id' => null,
+        ]);
+        $partialCoverageTarget = $this->createTarget([
+            'tag' => 'Interaction partial coverage',
+            'google_ads_campaign_id' => 'interaction-partial',
+            'meta_campaign_id' => null,
+        ]);
+        $staleCampaignTarget = $this->createTarget([
+            'tag' => 'Interaction stale data',
+            'google_ads_campaign_id' => 'interaction-stale',
+            'meta_campaign_id' => null,
+        ]);
         $targets = new EloquentCollection([
             $sharedCampaignTarget,
             $duplicateCampaignTarget,
@@ -327,6 +365,13 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             $zeroInteractionTarget,
             $zeroOnlyTarget,
             $manualTarget,
+            $tiedCampaignTarget,
+            $usdCampaignTarget,
+            $metaCampaignTarget,
+            $zeroSpendTarget,
+            $negativeSpendTarget,
+            $partialCoverageTarget,
+            $staleCampaignTarget,
         ]);
         $marketingSummaries = [
             $sharedCampaignTarget->id => $this->portfolioMarketingSummary(
@@ -357,6 +402,34 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
                 publicEngagement: ['interaction_total' => 25, 'available_posts' => 1, 'tracked_posts' => 1],
                 efficiency: ['ad_spend_source' => 'manual', 'ad_spend_amount' => '5.0000', 'ad_spend_currency' => 'TWD'],
             ),
+            $tiedCampaignTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh', 'spend_amount' => '25.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 50, 'available_posts' => 2, 'tracked_posts' => 2],
+            ),
+            $usdCampaignTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh', 'spend_amount' => '20.0000', 'currency_code' => 'USD'],
+                publicEngagement: ['interaction_total' => 10, 'available_posts' => 1, 'tracked_posts' => 1],
+            ),
+            $metaCampaignTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '10.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 50, 'available_posts' => 1, 'tracked_posts' => 1],
+            ),
+            $zeroSpendTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh', 'spend_amount' => '0.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 10, 'available_posts' => 1, 'tracked_posts' => 1],
+            ),
+            $negativeSpendTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh', 'spend_amount' => '-1.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 10, 'available_posts' => 1, 'tracked_posts' => 1],
+            ),
+            $partialCoverageTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh', 'spend_amount' => '10.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 50, 'available_posts' => 1, 'tracked_posts' => 2],
+            ),
+            $staleCampaignTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'stale', 'spend_amount' => '30.0000', 'currency_code' => 'TWD'],
+                publicEngagement: ['interaction_total' => 10, 'available_posts' => 1, 'tracked_posts' => 1],
+            ),
         ];
 
         $portfolio = app(CampaignPortfolioMarketingSummary::class)->build($targets, $marketingSummaries);
@@ -365,16 +438,60 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         );
         $googleAdsTwd = $interactionCosts['google_ads|TWD'];
 
-        $this->assertSame(4, $googleAdsTwd['campaign_count']);
-        $this->assertSame(3, $googleAdsTwd['comparable_campaign_count']);
-        $this->assertSame(260.0, $googleAdsTwd['comparable_spend_amount']);
-        $this->assertSame(200, $googleAdsTwd['public_interactions']);
-        $this->assertSame(1.3, $googleAdsTwd['cost_per_public_interaction']);
-        $this->assertSame(5, $googleAdsTwd['available_post_count']);
-        $this->assertSame(7, $googleAdsTwd['tracked_post_count']);
-        $this->assertSame(71.4, $googleAdsTwd['coverage_percent']);
+        $this->assertSame(9, $googleAdsTwd['campaign_count']);
+        $this->assertSame(8, $googleAdsTwd['comparable_campaign_count']);
+        $this->assertSame(324.0, $googleAdsTwd['comparable_spend_amount']);
+        $this->assertSame(330, $googleAdsTwd['public_interactions']);
+        $this->assertSame(0.9818, $googleAdsTwd['cost_per_public_interaction']);
+        $this->assertSame(11, $googleAdsTwd['available_post_count']);
+        $this->assertSame(14, $googleAdsTwd['tracked_post_count']);
+        $this->assertSame(78.6, $googleAdsTwd['coverage_percent']);
         $this->assertNull($interactionCosts['google_ads|EUR']['cost_per_public_interaction']);
         $this->assertSame(0.2, $interactionCosts['manual|TWD']['cost_per_public_interaction']);
+
+        $ranks = $portfolio['campaign_interaction_cost_ranks'];
+        $this->assertSame(1, $ranks[$zeroSpendTarget->id]['google_ads']['rank']);
+        $this->assertSame(0.0, $ranks[$zeroSpendTarget->id]['google_ads']['cost_per_public_interaction']);
+        $this->assertSame(2, $ranks[$separateCampaignTarget->id]['google_ads']['rank']);
+        $this->assertSame(2, $ranks[$tiedCampaignTarget->id]['google_ads']['rank']);
+        $this->assertSame(4, $ranks[$sharedCampaignTarget->id]['google_ads']['rank']);
+        $this->assertSame('fresh', $ranks[$sharedCampaignTarget->id]['google_ads']['status']);
+        $this->assertSame(5, $ranks[$staleCampaignTarget->id]['google_ads']['rank']);
+        $this->assertSame('stale', $ranks[$staleCampaignTarget->id]['google_ads']['status']);
+        $this->assertSame(1, $ranks[$usdCampaignTarget->id]['google_ads']['rank']);
+        $this->assertSame('USD', $ranks[$usdCampaignTarget->id]['google_ads']['currency_code']);
+        $this->assertSame(1, $ranks[$metaCampaignTarget->id]['meta_marketing']['rank']);
+        $this->assertSame(1, $ranks[$manualTarget->id]['manual']['rank']);
+        $this->assertArrayNotHasKey($duplicateCampaignTarget->id, $ranks);
+        $this->assertArrayNotHasKey($missingInteractionTarget->id, $ranks);
+        $this->assertArrayNotHasKey($zeroInteractionTarget->id, $ranks);
+        $this->assertArrayNotHasKey($zeroOnlyTarget->id, $ranks);
+        $this->assertArrayNotHasKey($negativeSpendTarget->id, $ranks);
+        $this->assertArrayNotHasKey($partialCoverageTarget->id, $ranks);
+    }
+
+    public function test_dashboard_displays_the_matching_complete_source_and_currency_interaction_rank(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'tag' => 'Google Ads interaction rank',
+            'meta_campaign_id' => null,
+        ]);
+        $this->createGoogleAdsReport($user, $target, ['spend_amount' => '200.0000']);
+        $this->createPublicEngagementPost($target, 'interaction-rank');
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Google Ads／TWD 成本排名 #1');
+
+        $efficiency = $response->viewData('socialEngagementTargets')[0]['marketing']['efficiency'];
+        $rank = $efficiency['portfolio_interaction_cost_ranks']['google_ads'];
+
+        $this->assertSame(1, $rank['rank']);
+        $this->assertSame('TWD', $rank['currency_code']);
+        $this->assertSame(2.1053, $rank['cost_per_public_interaction']);
     }
 
     public function test_dashboard_portfolio_follows_the_selected_social_platform_filter(): void

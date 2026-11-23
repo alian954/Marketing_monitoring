@@ -18,7 +18,8 @@ class CampaignPortfolioMarketingSummary
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
      *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
-     *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>
+     *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>,
+     *     campaign_interaction_cost_ranks: array<int, array<string, array{rank: int, source: string, source_label: string, currency_code: string, cost_per_public_interaction: float, status: string}>>
      * }
      */
     public function build(Collection $targets, array $marketingSummaries): array
@@ -103,6 +104,7 @@ class CampaignPortfolioMarketingSummary
                         : [];
                     $interactionCostCandidates[$source][$mappingKey][] = [
                         'target_id' => (int) $target->getKey(),
+                        'tag' => $target->tag,
                         'status' => is_string($summary['status'] ?? null) ? $summary['status'] : 'missing',
                         'value' => is_numeric($sourceValue) && is_finite((float) $sourceValue) && $currencyCode !== null
                             ? (float) $sourceValue
@@ -129,6 +131,7 @@ class CampaignPortfolioMarketingSummary
                     : [];
                 $interactionCostCandidates['manual']['manual:'.$target->getKey()][] = [
                     'target_id' => (int) $target->getKey(),
+                    'tag' => $target->tag,
                     'status' => 'fresh',
                     'value' => is_numeric($efficiency['ad_spend_amount'] ?? null)
                         && is_finite((float) $efficiency['ad_spend_amount'])
@@ -190,6 +193,7 @@ class CampaignPortfolioMarketingSummary
         ];
         $budgetCurrencyGroups = [];
         $interactionCostGroups = [];
+        $interactionRankingCandidates = [];
         $rankingCandidates = [];
 
         foreach ($budgetMappingMembers as $targetIds) {
@@ -337,6 +341,28 @@ class CampaignPortfolioMarketingSummary
                     $interactionCostGroups[$groupKey]['public_interactions'] += $candidate['public_interactions'];
                     $interactionCostGroups[$groupKey]['comparable_campaign_count']++;
                 }
+
+                if ($candidate['value'] < 0
+                    || $candidate['public_interactions'] === null
+                    || $candidate['public_interactions'] <= 0
+                    || $candidate['tracked_post_count'] <= 0
+                    || $candidate['available_post_count'] < $candidate['tracked_post_count']) {
+                    continue;
+                }
+
+                $interactionRankingCandidates[$groupKey][] = [
+                    'target_id' => $candidate['target_id'],
+                    'tag' => $candidate['tag'],
+                    'source' => $source,
+                    'source_label' => match ($source) {
+                        'meta_marketing' => 'Meta Ads',
+                        'google_ads' => 'Google Ads',
+                        default => '人工記錄',
+                    },
+                    'currency_code' => $candidate['currency_code'],
+                    'cost_per_public_interaction' => round($candidate['value'] / $candidate['public_interactions'], 4),
+                    'status' => $candidate['status'],
+                ];
             }
         }
 
@@ -401,6 +427,41 @@ class CampaignPortfolioMarketingSummary
         ksort($currencyGroups);
         ksort($budgetCurrencyGroups);
         ksort($interactionCostGroups);
+        $campaignInteractionCostRanks = [];
+
+        foreach ($interactionRankingCandidates as $candidates) {
+            usort($candidates, static function (array $first, array $second): int {
+                $costOrder = $first['cost_per_public_interaction'] <=> $second['cost_per_public_interaction'];
+
+                return $costOrder !== 0
+                    ? $costOrder
+                    : (strcasecmp($first['tag'], $second['tag']) ?: ($first['target_id'] <=> $second['target_id']));
+            });
+            $rank = 0;
+            $position = 0;
+            $previousCost = null;
+
+            foreach ($candidates as $candidate) {
+                $position++;
+
+                if ($previousCost === null || $candidate['cost_per_public_interaction'] !== $previousCost) {
+                    $rank = $position;
+                }
+
+                $campaignInteractionCostRanks[$candidate['target_id']][$candidate['source']] = [
+                    'rank' => $rank,
+                    'source' => $candidate['source'],
+                    'source_label' => $candidate['source_label'],
+                    'currency_code' => $candidate['currency_code'],
+                    'cost_per_public_interaction' => $candidate['cost_per_public_interaction'],
+                    'status' => $candidate['status'],
+                ];
+                $previousCost = $candidate['cost_per_public_interaction'];
+            }
+        }
+
+        ksort($campaignInteractionCostRanks);
+
         $campaignRanks = [];
 
         foreach ($rankingCandidates as $currencyCode => $candidates) {
@@ -440,6 +501,7 @@ class CampaignPortfolioMarketingSummary
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
             'interaction_cost_groups' => array_values($interactionCostGroups),
+            'campaign_interaction_cost_ranks' => $campaignInteractionCostRanks,
             'campaign_ranks' => $campaignRanks,
         ];
     }
@@ -613,6 +675,7 @@ class CampaignPortfolioMarketingSummary
     /**
      * @param  list<array{
      *     target_id: int,
+     *     tag: string,
      *     status: string,
      *     value: float|null,
      *     currency_code: string|null,
@@ -623,6 +686,7 @@ class CampaignPortfolioMarketingSummary
      * }>  $candidates
      * @return array{
      *     target_id: int,
+     *     tag: string,
      *     status: string,
      *     value: float|null,
      *     currency_code: string|null,

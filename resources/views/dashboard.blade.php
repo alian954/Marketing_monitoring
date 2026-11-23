@@ -724,7 +724,7 @@
             </section>
             <section class="spaced-top" aria-labelledby="campaign-public-interaction-cost-title">
                 <h3 id="campaign-public-interaction-cost-title" class="panel-title">社群貼文互動成本</h3>
-                <p class="campaign-report-secondary">依外部廣告活動去重，以配對花費除以活動貼文的公開互動數；這是投放與貼文互動的效率參考，不代表廣告版位的付費互動成本。</p>
+                <p class="campaign-report-secondary">依外部廣告活動去重，以配對花費除以活動貼文的公開互動數；這是投放與貼文互動的效率參考，不代表廣告版位的付費互動成本。活動排名按廣告來源與幣別分組，只比較所有追蹤貼文都有讀值的活動。</p>
                 @if ($campaignPortfolioMarketingSummary['interaction_cost_groups'] === [])
                     <p class="campaign-report-secondary">尚無可比較的投放花費。</p>
                 @else
@@ -888,6 +888,12 @@
                                                 花費或互動數不足，未計成本
                                             @endif
                                         </span>
+                                        @php
+                                            $interactionCostRank = $efficiency['portfolio_interaction_cost_ranks'][$efficiency['ad_spend_source'] ?? ''] ?? null;
+                                        @endphp
+                                        @if ($interactionCostRank !== null)
+                                            <span class="secondary-text">{{ $interactionCostRank['source_label'] }}／{{ $interactionCostRank['currency_code'] }} 成本排名 #{{ number_format($interactionCostRank['rank']) }}{{ $interactionCostRank['status'] === 'stale' ? '（資料過期）' : '' }}</span>
+                                        @endif
                                         <span class="secondary-text">讀值 {{ number_format($socialEngagementTarget['available_post_count']) }}/{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇</span>
                                     @elseif ($socialEngagementTarget['tracked_post_count'] > 0)
                                         <span class="secondary-text">尚無完整互動讀值（{{ number_format($socialEngagementTarget['available_post_count']) }}/{{ number_format($socialEngagementTarget['tracked_post_count']) }} 篇）</span>
