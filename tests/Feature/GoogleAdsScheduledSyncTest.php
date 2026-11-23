@@ -38,9 +38,11 @@ class GoogleAdsScheduledSyncTest extends TestCase
                 ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
                 ->push([])
                 ->push($this->conversionActionsPayload('987654321'))
+                ->push([])
                 ->push($this->campaignPayload('987654322', 'Recently ended campaign', '60000000', 'TWD'))
                 ->push([])
-                ->push($this->conversionActionsPayload('987654322')),
+                ->push($this->conversionActionsPayload('987654322'))
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -79,7 +81,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $futureTarget->id,
         ]);
-        Http::assertSentCount(7);
+        Http::assertSentCount(9);
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), 'googleAds:searchStream')
                 && in_array($request->data()['query'], [
@@ -144,9 +146,11 @@ class GoogleAdsScheduledSyncTest extends TestCase
                 ->push($this->campaignPayload('987654321', 'Active campaign', '100000000', 'TWD'))
                 ->push([])
                 ->push($this->conversionActionsPayload('987654321'))
+                ->push([])
                 ->push($this->campaignPayload('987654321', 'Active campaign', '125500000', 'TWD'))
                 ->push([])
-                ->push($this->conversionActionsPayload('987654321')),
+                ->push($this->conversionActionsPayload('987654321'))
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -170,7 +174,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'spend_amount' => '125.5000',
         ]);
-        Http::assertSentCount(8);
+        Http::assertSentCount(10);
     }
 
     public function test_daily_command_does_not_request_google_data_without_a_connected_customer(): void

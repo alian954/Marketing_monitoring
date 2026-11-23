@@ -18,6 +18,8 @@ use App\Services\CampaignMarketingReportCsv;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAdsDeliveryUnitPerformanceReport;
 use App\Services\GoogleAdsDeliveryUnitReportCsv;
+use App\Services\GoogleAdsDevicePerformanceReport;
+use App\Services\GoogleAdsDeviceReportCsv;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
@@ -51,6 +53,7 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingAdPerformanceReport $metaMarketingAdPerformanceReport,
         MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
+        GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -87,6 +90,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->delivery_unit_performance,
             $viewData['googleAdsReport']?->delivery_unit_performance_expires_at,
             (string) $request->query('delivery_unit_sort', 'spend'),
+        );
+        $viewData['googleAdsDeviceReport'] = $googleAdsDevicePerformanceReport->build(
+            $viewData['googleAdsReport']?->device_performance,
+            $viewData['googleAdsReport']?->device_performance_expires_at,
+            (string) $request->query('google_ads_device_sort', 'spend'),
         );
 
         return view('social-engagement-reports.show', $viewData);
@@ -339,6 +347,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'google-ads-delivery-units-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAdsDevices(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
+        GoogleAdsDeviceReportCsv $googleAdsDeviceReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->googleAdsConnection;
+        abort_if(
+            $connection === null
+                || $connection->customer_id === null
+                || $socialEngagementTarget->google_ads_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('customer_id', $connection->customer_id)
+            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->device_performance)
+                || $report->device_performance_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $deviceReport = $googleAdsDevicePerformanceReport->build(
+            $report->device_performance,
+            $report->device_performance_expires_at,
+            'spend',
+        );
+        abort_if($deviceReport['status'] !== 'complete' || $deviceReport['rows'] === [], 404);
+        $csv = $googleAdsDeviceReportCsv->build($deviceReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'google-ads-device-performance-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

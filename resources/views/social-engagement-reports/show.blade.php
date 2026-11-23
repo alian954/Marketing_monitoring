@@ -813,6 +813,80 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="google-ads-devices-title">Google Ads 裝置成效</h3>
+                    @if ($googleAdsDeviceReport['status'] === 'complete' && $googleAdsDeviceReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.devices', $target) }}">匯出裝置 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAdsDeviceReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚無裝置明細；更新 Google Ads 數據後即可查看。</p>
+                @elseif ($googleAdsDeviceReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">裝置明細暫時無法讀取，其他 Google Ads 報表仍可使用。{{ $googleAdsDeviceReport['message'] }}</p>
+                @elseif ($googleAdsDeviceReport['status'] === 'expired')
+                    <p class="campaign-report-empty">裝置明細已超過 30 天保存期限，更新 Google Ads 數據後可重新讀取。</p>
+                @elseif ($googleAdsDeviceReport['status'] === 'unsupported')
+                    <p class="campaign-report-empty">此活動日期超出 Google Ads 可讀取的資料範圍。</p>
+                @elseif ($googleAdsDeviceReport['status'] === 'no_complete_days')
+                    <p class="campaign-report-empty">尚無完整日期可供裝置分析。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAdsDeviceReport['window_start_on'] }} 至 {{ $googleAdsDeviceReport['window_end_on'] }} · 裝置明細加密保存 30 天。
+                    </p>
+                    @if ($googleAdsDeviceReport['rows'] === [])
+                        <p class="campaign-report-empty">此期間沒有可用的裝置明細。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                            <input type="hidden" name="delivery_unit_sort" value="{{ request('delivery_unit_sort', 'spend') }}">
+                            <label for="google-ads-device-sort">排序</label>
+                            <select id="google-ads-device-sort" name="google_ads_device_sort">
+                                <option value="spend" @selected($googleAdsDeviceReport['sort'] === 'spend')>花費</option>
+                                <option value="conversions" @selected($googleAdsDeviceReport['sort'] === 'conversions')>轉換</option>
+                                <option value="roas" @selected($googleAdsDeviceReport['sort'] === 'roas')>ROAS</option>
+                                <option value="ctr" @selected($googleAdsDeviceReport['sort'] === 'ctr')>CTR</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="google-ads-devices-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Google Ads 裝置成效（{{ $googleAdsDeviceReport['currency_code'] }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">裝置</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">轉換</th>
+                                        <th scope="col" class="numeric">CPA</th>
+                                        <th scope="col" class="numeric">轉換價值</th>
+                                        <th scope="col" class="numeric">ROAS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($googleAdsDeviceReport['rows'] as $deviceRow)
+                                        <tr>
+                                            <th scope="row">{{ $deviceRow['device_label'] }}<br><span class="campaign-report-secondary"><code>{{ $deviceRow['device'] }}</code></span></th>
+                                            <td class="numeric">{{ number_format((int) $deviceRow['impressions']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $deviceRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $deviceRow['ctr_percent'] === null ? '—' : number_format($deviceRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $deviceRow['spend_amount'], 2) }} {{ $googleAdsDeviceReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $deviceRow['cost_per_click'] === null ? '—' : number_format($deviceRow['cost_per_click'], 4).' '.$googleAdsDeviceReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $deviceRow['conversions'], 2) }}</td>
+                                            <td class="numeric">{{ $deviceRow['cost_per_conversion'] === null ? '—' : number_format($deviceRow['cost_per_conversion'], 4).' '.$googleAdsDeviceReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ number_format((float) $deviceRow['conversions_value'], 2) }} {{ $googleAdsDeviceReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $deviceRow['roas'] === null ? '—' : number_format($deviceRow['roas'], 2).'x' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">裝置分類沿用 Google Ads API 回傳值，未分類項目會獨立顯示。CTR、CPC、CPA 與 ROAS 使用帳戶納入 Google Ads「轉換」欄的動作。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="google-ads-trend-title">Google Ads 歷史讀值</h3>
                     @if ($googleAdsTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'google-ads']) }}">匯出趨勢 CSV</a>

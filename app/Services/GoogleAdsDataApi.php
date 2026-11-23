@@ -10,6 +10,8 @@ class GoogleAdsDataApi
 {
     private const DELIVERY_UNIT_REPORT_LIMIT = 200;
 
+    private const DEVICE_REPORT_LIMIT = 20;
+
     /** @return array{access_token: string, refresh_token: ?string} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -578,6 +580,139 @@ class GoogleAdsDataApi
             'unit_type' => $unitType,
             'truncated' => count($rows) > self::DELIVERY_UNIT_REPORT_LIMIT,
             'rows' => array_slice($rows, 0, self::DELIVERY_UNIT_REPORT_LIMIT),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
+     *     truncated: false,
+     *     rows: list<array{
+     *         device: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         spend_amount: string,
+     *         conversions: string,
+     *         conversions_value: string
+     *     }>
+     * }
+     */
+    public function campaignDeviceInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads 裝置報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return [
+                'status' => 'unsupported',
+                'window_start_on' => null,
+                'window_end_on' => null,
+                'currency_code' => $accountCurrency,
+                'truncated' => false,
+                'rows' => [],
+            ];
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return [
+                'status' => 'no_complete_days',
+                'window_start_on' => null,
+                'window_end_on' => null,
+                'currency_code' => $accountCurrency,
+                'truncated' => false,
+                'rows' => [],
+            ];
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, segments.device, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = {$campaignId} AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.cost_micros DESC, segments.device ASC LIMIT ".(self::DEVICE_REPORT_LIMIT + 1);
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > self::DEVICE_REPORT_LIMIT) {
+            throw new GoogleAdsApiException('Google Ads API 回傳過多裝置分類，未儲存讀值。');
+        }
+
+        $rows = [];
+        $seenDevices = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $segments = $row['segments'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $device = is_array($segments) ? ($segments['device'] ?? null) : null;
+            $rowCurrencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+
+            if (! is_array($campaign)
+                || (string) ($campaign['id'] ?? '') !== $campaignId
+                || ! is_array($customer)
+                || (string) ($customer['id'] ?? '') !== $customerId
+                || ! is_string($rowCurrencyCode)
+                || $rowCurrencyCode !== $accountCurrency
+                || ! is_string($device)
+                || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $device) !== 1
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的裝置資料，未儲存讀值。');
+            }
+
+            if (array_key_exists($device, $seenDevices)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳重複的裝置資料，未儲存讀值。');
+            }
+
+            $seenDevices[$device] = true;
+            $rows[] = [
+                'device' => $device,
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        usort($rows, static function (array $first, array $second): int {
+            $spendOrder = (float) $second['spend_amount'] <=> (float) $first['spend_amount'];
+
+            return $spendOrder !== 0 ? $spendOrder : strcmp($first['device'], $second['device']);
+        });
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'truncated' => false,
+            'rows' => $rows,
         ];
     }
 

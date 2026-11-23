@@ -296,7 +296,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                             'conversionsValue' => '120',
                         ],
                     ]],
-                ]]),
+                ]])
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget([
@@ -416,7 +417,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         $this->assertSame('12.5000', $paidAdSnapshot->conversions);
         $this->assertSame('1003.0000', $paidAdSnapshot->conversions_value);
         $this->assertSame($snapshot->conversion_actions, $paidAdSnapshot->conversion_actions);
-        Http::assertSentCount(6);
+        Http::assertSentCount(7);
         Http::assertSent(function (ClientRequest $request): bool {
             $query = $request->data()['query'] ?? '';
 
@@ -506,7 +507,8 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
                 ->push($this->dailyMetricsPayload([
                     ['date' => '2026-11-02', 'cost_micros' => '9007199254740049', 'impressions' => '1000', 'clicks' => '40', 'conversions' => '2', 'conversions_value' => '200'],
                 ], '1234567890', '987654321', 'TWD'))
-                ->push($this->conversionActionsPayload([])),
+                ->push($this->conversionActionsPayload([]))
+                ->push([]),
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget();
@@ -1265,6 +1267,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'temporary-access-token']),
             'https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream' => Http::sequence()
+                ->push([])
                 ->push([])
                 ->push([])
                 ->push([]),

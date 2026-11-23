@@ -28,6 +28,7 @@ class SyncDueGoogleAdsReports extends Command
         $asOf = CarbonImmutable::now('Asia/Taipei');
         $this->clearExpiredSearchTermReports($asOf);
         $this->clearExpiredDeliveryUnitReports($asOf);
+        $this->clearExpiredDeviceReports($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Google Ads 的活動。');
@@ -161,6 +162,17 @@ class SyncDueGoogleAdsReports extends Command
             ->update([
                 'delivery_unit_performance' => null,
                 'delivery_unit_performance_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredDeviceReports(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->whereNotNull('device_performance_expires_at')
+            ->where('device_performance_expires_at', '<=', $asOf)
+            ->update([
+                'device_performance' => null,
+                'device_performance_expires_at' => null,
             ]);
     }
 }
