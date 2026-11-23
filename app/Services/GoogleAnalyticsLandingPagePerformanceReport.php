@@ -26,7 +26,7 @@ class GoogleAnalyticsLandingPagePerformanceReport
             $status = 'expired';
         }
 
-        $sort = in_array($sort, ['sessions', 'key_events', 'total_revenue', 'engagement_rate', 'revenue_per_session'], true)
+        $sort = in_array($sort, ['sessions', 'key_events', 'key_events_per_100_sessions', 'total_revenue', 'engagement_rate', 'revenue_per_session'], true)
             ? $sort
             : 'sessions';
         $currencyCode = $this->currencyCode($snapshot['currency_code'] ?? null);
@@ -42,7 +42,6 @@ class GoogleAnalyticsLandingPagePerformanceReport
             $numericMetrics = [
                 $row['engagement_rate'] ?? null,
                 $row['bounce_rate'] ?? null,
-                $row['key_events'] ?? null,
                 $row['total_revenue'] ?? null,
             ];
 
@@ -52,6 +51,39 @@ class GoogleAnalyticsLandingPagePerformanceReport
                 || $engagedSessions < 0
                 || array_any($numericMetrics, fn (mixed $metric): bool => ! is_numeric($metric) || ! is_finite((float) $metric))) {
                 continue;
+            }
+
+            $keyEventsStatus = match (true) {
+                ! array_key_exists('key_events', $row) || $row['key_events'] === null => 'missing_key_events',
+                ! is_numeric($row['key_events'])
+                    || ! is_finite((float) $row['key_events'])
+                    || (float) $row['key_events'] < 0 => 'invalid_key_events',
+                default => 'available',
+            };
+            if ($keyEventsStatus !== 'available') {
+                $row['key_events'] = null;
+            }
+
+            $row['key_events_per_100_sessions'] = null;
+            $row['key_events_per_100_sessions_status'] = $keyEventsStatus;
+            $row['key_events_per_100_sessions_status_label'] = match ($keyEventsStatus) {
+                'missing_key_events' => '缺少重要事件數',
+                'invalid_key_events' => '重要事件數無效',
+                default => '可計算',
+            };
+
+            if ($sessions === 0) {
+                $row['key_events_per_100_sessions_status'] = 'zero_sessions';
+                $row['key_events_per_100_sessions_status_label'] = '工作階段為 0';
+            } elseif ($keyEventsStatus === 'available') {
+                $keyEventsPer100Sessions = (float) $row['key_events'] / $sessions * 100;
+
+                if (is_finite($keyEventsPer100Sessions)) {
+                    $row['key_events_per_100_sessions'] = $keyEventsPer100Sessions;
+                } else {
+                    $row['key_events_per_100_sessions_status'] = 'calculation_unavailable';
+                    $row['key_events_per_100_sessions_status_label'] = '無法計算';
+                }
             }
 
             $row['revenue_per_session'] = null;
@@ -79,7 +111,7 @@ class GoogleAnalyticsLandingPagePerformanceReport
         }
 
         usort($rows, function (array $first, array $second) use ($sort): int {
-            if ($sort === 'revenue_per_session'
+            if (in_array($sort, ['revenue_per_session', 'key_events_per_100_sessions'], true)
                 && (($first[$sort] ?? null) === null || ($second[$sort] ?? null) === null)) {
                 if (($first[$sort] ?? null) === null && ($second[$sort] ?? null) !== null) {
                     return 1;

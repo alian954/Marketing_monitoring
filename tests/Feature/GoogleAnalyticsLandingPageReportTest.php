@@ -23,10 +23,11 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-23 10:00:00', 'Asia/Taipei'));
         [$user, $target] = $this->syncReport([
             'metadata' => ['currencyCode' => 'TWD'],
-            'rowCount' => 2,
+            'rowCount' => 3,
             'rows' => [
                 $this->landingPageRow('/campaign/spring?email=private@example.com', '120', '90', '0.75', '0.25', '10', '500'),
                 $this->landingPageRow('=SUM(1,1)', '40', '10', '0.25', '0.75', '4', '1400'),
+                $this->landingPageRow('/zero-key-events', '60', '40', '0.66', '0.34', '0', '10'),
             ],
         ]);
 
@@ -67,6 +68,8 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
             ->assertOk()
             ->assertSee('登陸頁成效')
             ->assertSee('每工作階段營收')
+            ->assertSee('每 100 次工作階段重要事件數')
+            ->assertSee('不是轉換率')
             ->assertSee('工作階段')
             ->assertSee('參與率')
             ->assertSee('75.00%')
@@ -88,11 +91,18 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         ]));
         $efficiencySortedResponse->assertOk()->assertSeeInOrder(['=SUM(1,1)', '/campaign/spring']);
 
+        $keyEventRateSortedResponse = $this->get(route('social-engagement-targets.report', [
+            'socialEngagementTarget' => $target,
+            'landing_page_sort' => 'key_events_per_100_sessions',
+        ]));
+        $keyEventRateSortedResponse->assertOk()->assertSeeInOrder(['=SUM(1,1)', '/campaign/spring']);
+
         $csvResponse = $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
             ->assertDownload('ga4-landing-pages-'.$target->getKey().'.csv');
         $csv = $csvResponse->streamedContent();
         $this->assertStringContainsString('landing_page,sessions,engaged_sessions,engagement_rate_percent,bounce_rate_percent', $csv);
         $this->assertStringContainsString('total_revenue,revenue_per_session,revenue_per_session_status_label,currency_code', $csv);
+        $this->assertStringContainsString('key_events_per_100_sessions,key_events_per_100_sessions_status_label', $csv);
         $this->assertStringContainsString("'=SUM(1,1)", $csv);
         $this->assertStringNotContainsString('private@example.com', $csv);
         $csvLines = preg_split('/\r\n|\r|\n/', trim($csv)) ?: [];
@@ -106,6 +116,10 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
 
         $this->assertSame('4.1667', $csvRowsByLandingPage['/campaign/spring']['revenue_per_session']);
         $this->assertSame('35.0000', $csvRowsByLandingPage["'=SUM(1,1)"]['revenue_per_session']);
+        $this->assertSame('8.3333', $csvRowsByLandingPage['/campaign/spring']['key_events_per_100_sessions']);
+        $this->assertSame('10.0000', $csvRowsByLandingPage["'=SUM(1,1)"]['key_events_per_100_sessions']);
+        $this->assertSame('0.0000', $csvRowsByLandingPage['/zero-key-events']['key_events_per_100_sessions']);
+        $this->assertSame('可計算', $csvRowsByLandingPage['/campaign/spring']['key_events_per_100_sessions_status_label']);
         $this->assertSame('TWD', $csvRowsByLandingPage['/campaign/spring']['currency_code']);
     }
 
@@ -125,6 +139,8 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         $report = $response->viewData('googleAnalyticsLandingPageReport');
 
         $this->assertNull($report['rows'][0]['revenue_per_session']);
+        $this->assertNull($report['rows'][0]['key_events_per_100_sessions']);
+        $this->assertSame('zero_sessions', $report['rows'][0]['key_events_per_100_sessions_status']);
 
         $csvResponse = $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
             ->assertDownload('ga4-landing-pages-'.$target->getKey().'.csv');
@@ -133,6 +149,58 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         $row = array_combine($headers, $csvRows[0]);
 
         $this->assertSame('', $row['revenue_per_session']);
+        $this->assertSame('', $row['key_events_per_100_sessions']);
+        $this->assertSame('工作階段為 0', $row['key_events_per_100_sessions_status_label']);
+    }
+
+    public function test_landing_page_key_event_rate_keeps_rows_with_missing_or_invalid_key_events(): void
+    {
+        [$user, $target] = $this->syncReport([
+            'metadata' => ['currencyCode' => 'TWD'],
+            'rowCount' => 2,
+            'rows' => [
+                $this->landingPageRow('/missing-key-events', '10', '8', '0.8', '0.2', '1', '100'),
+                $this->landingPageRow('/invalid-key-events', '20', '10', '0.5', '0.5', '1', '200'),
+            ],
+        ]);
+        $analyticsReport = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $landingPageReport = $analyticsReport->landing_page_report;
+        unset($landingPageReport['rows'][0]['key_events']);
+        $landingPageReport['rows'][1]['key_events'] = '1e999';
+        $analyticsReport->landing_page_report = $landingPageReport;
+        $analyticsReport->save();
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', [
+                'socialEngagementTarget' => $target,
+                'landing_page_sort' => 'key_events_per_100_sessions',
+            ]))
+            ->assertOk()
+            ->assertSee('/missing-key-events')
+            ->assertSee('/invalid-key-events');
+        $report = $response->viewData('googleAnalyticsLandingPageReport');
+        $this->assertCount(2, $report['rows']);
+        $rowsByLandingPage = collect($report['rows'])->keyBy('landing_page');
+        $this->assertNull($rowsByLandingPage['/missing-key-events']['key_events']);
+        $this->assertSame('missing_key_events', $rowsByLandingPage['/missing-key-events']['key_events_per_100_sessions_status']);
+        $this->assertNull($rowsByLandingPage['/invalid-key-events']['key_events']);
+        $this->assertSame('invalid_key_events', $rowsByLandingPage['/invalid-key-events']['key_events_per_100_sessions_status']);
+
+        $csvResponse = $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
+            ->assertDownload('ga4-landing-pages-'.$target->getKey().'.csv');
+        $csvLines = preg_split('/\r\n|\r|\n/', trim($csvResponse->streamedContent())) ?: [];
+        $csvHeaders = str_getcsv(array_shift($csvLines) ?: '');
+        $csvRows = array_map(static function (string $line) use ($csvHeaders): array {
+            $row = array_combine($csvHeaders, str_getcsv($line));
+
+            return is_array($row) ? $row : [];
+        }, $csvLines);
+        $csvRowsByLandingPage = collect($csvRows)->keyBy('landing_page');
+
+        $this->assertSame('', $csvRowsByLandingPage['/missing-key-events']['key_events_per_100_sessions']);
+        $this->assertSame('缺少重要事件數', $csvRowsByLandingPage['/missing-key-events']['key_events_per_100_sessions_status_label']);
+        $this->assertSame('', $csvRowsByLandingPage['/invalid-key-events']['key_events_per_100_sessions']);
+        $this->assertSame('重要事件數無效', $csvRowsByLandingPage['/invalid-key-events']['key_events_per_100_sessions_status_label']);
     }
 
     public function test_invalid_landing_page_metrics_are_excluded_from_revenue_per_session_report(): void

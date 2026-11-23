@@ -10,6 +10,7 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use App\Services\CampaignMarketingEfficiencyReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -23,14 +24,21 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
         $target = $this->createTarget();
         $this->createMetaReport($user, $target, 60);
         $this->createGoogleAdsReport($user, $target, 40);
-        $this->createGoogleAnalyticsReport($user, $target, 180);
+        $this->createGoogleAnalyticsReport($user, $target, 180, '18.0000');
 
         $this->actingAs($user)
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('GA4 工作階段／Google Ads點擊')
             ->assertSee('4.50 次／點擊')
-            ->assertSee('Google Ads點擊 40 · GA4 工作階段 180');
+            ->assertSee('Google Ads點擊 40 · GA4 工作階段 180')
+            ->assertSee('每 100 次工作階段重要事件數')
+            ->assertSee('10.00 次')
+            ->assertSee('不代表轉換率');
+
+        $analysis = $this->get(route('social-engagement-targets.report', $target))->viewData('adSpendAnalysis');
+        $this->assertSame(10.0, $analysis['ga4_key_events_per_100_sessions']);
+        $this->assertSame('available', $analysis['ga4_key_events_per_100_sessions_status']);
 
         $csvRows = $this->csvRows(
             $this->actingAs($user)
@@ -44,6 +52,8 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
         $this->assertSame('4.5000', $csv['ga4_sessions_per_paid_click']);
         $this->assertSame('google_ads', $csv['paid_click_source']);
         $this->assertSame('complete', $csv['paid_click_session_status']);
+        $this->assertSame('10.0000', $csv['ga4_key_events_per_100_sessions']);
+        $this->assertSame('available', $csv['ga4_key_events_per_100_sessions_status']);
     }
 
     public function test_campaign_report_does_not_sum_clicks_when_a_configured_source_is_missing(): void
@@ -102,6 +112,58 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
         $this->assertSame(23, $diagnostic['paid_ad_clicks']);
         $this->assertNull($diagnostic['ga4_sessions_per_paid_click']);
         $this->assertSame('missing_ga4', $diagnostic['paid_click_session_status']);
+        $this->assertNull($diagnostic['ga4_key_events_per_100_sessions']);
+        $this->assertSame('missing_report', $diagnostic['ga4_key_events_per_100_sessions_status']);
+    }
+
+    public function test_campaign_report_suppresses_key_event_rate_for_stale_ga4_data(): void
+    {
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createGoogleAnalyticsReport($user, $target, 30, '6.0000');
+        $analyticsReport = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $analyticsReport->synced_at = now()->subDays(2);
+        $analyticsReport->save();
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('GA4 數據已過期');
+        $analysis = $response->viewData('adSpendAnalysis');
+
+        $this->assertNull($analysis['ga4_key_events_per_100_sessions']);
+        $this->assertSame('stale', $analysis['ga4_key_events_per_100_sessions_status']);
+
+        $csvRows = $this->csvRows(
+            $this->get(route('social-engagement-targets.report.export', $target))
+                ->assertOk()
+                ->streamedContent(),
+        );
+        $csv = array_combine($csvRows[0], $csvRows[1]);
+
+        $this->assertSame('', $csv['ga4_key_events_per_100_sessions']);
+        $this->assertSame('stale', $csv['ga4_key_events_per_100_sessions_status']);
+    }
+
+    public function test_campaign_key_event_rate_handles_missing_or_invalid_source_values(): void
+    {
+        $target = $this->createTarget();
+        $analyticsReport = new SocialEngagementTargetGoogleAnalyticsReport;
+        $analyticsReport->forceFill(['sessions' => 10, 'key_events' => null]);
+
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build($target, $analyticsReport, null);
+        $this->assertNull($analysis['ga4_key_events_per_100_sessions']);
+        $this->assertSame('missing_key_events', $analysis['ga4_key_events_per_100_sessions_status']);
+
+        $analyticsReport->forceFill(['sessions' => 10, 'key_events' => '-1.0000']);
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build($target, $analyticsReport, null);
+        $this->assertNull($analysis['ga4_key_events_per_100_sessions']);
+        $this->assertSame('invalid_key_events', $analysis['ga4_key_events_per_100_sessions_status']);
+
+        $analyticsReport->forceFill(['sessions' => null, 'key_events' => '1.0000']);
+        $analysis = app(CampaignMarketingEfficiencyReport::class)->build($target, $analyticsReport, null);
+        $this->assertNull($analysis['ga4_key_events_per_100_sessions']);
+        $this->assertSame('missing_sessions', $analysis['ga4_key_events_per_100_sessions_status']);
     }
 
     public function test_campaign_report_does_not_require_paid_campaign_ids_for_manual_spend(): void
@@ -188,8 +250,12 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
         ]);
     }
 
-    private function createGoogleAnalyticsReport(User $user, SocialEngagementTarget $target, int $sessions): SocialEngagementTargetGoogleAnalyticsReport
-    {
+    private function createGoogleAnalyticsReport(
+        User $user,
+        SocialEngagementTarget $target,
+        int $sessions,
+        string $keyEvents = '0.0000',
+    ): SocialEngagementTargetGoogleAnalyticsReport {
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->getKey(),
             'property_id' => '123456789',
@@ -209,7 +275,7 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
             'ends_on' => $target->ends_on,
             'sessions' => $sessions,
             'engaged_sessions' => $sessions,
-            'key_events' => '0.0000',
+            'key_events' => $keyEvents,
             'total_revenue' => '0.0000',
             'currency_code' => 'TWD',
             'synced_at' => now(),

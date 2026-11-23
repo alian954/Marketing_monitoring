@@ -2074,7 +2074,7 @@
                 @else
                     <p class="campaign-report-secondary">
                         {{ $googleAnalyticsLandingPageReport['window_start_on'] }} 至 {{ $googleAnalyticsLandingPageReport['window_end_on'] }} · 最多顯示 200 個登陸頁，依工作階段選入；路徑不含網址查詢參數，明細加密保存 30 天。
-                        每工作階段營收以該登陸頁 GA4 營收除以工作階段計算；工作階段為 0 或幣別未知時不顯示。
+                        每工作階段營收以該登陸頁 GA4 營收除以工作階段計算；工作階段為 0 或幣別未知時不顯示。每 100 次工作階段重要事件數以重要事件次數除以工作階段再乘 100 計算。重要事件可能在同一工作階段重複發生，因此此數值不是轉換率。
                     </p>
                     @if ($googleAnalyticsLandingPageReport['truncated'])
                         <p class="campaign-report-note">登陸頁超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有路徑。</p>
@@ -2085,6 +2085,7 @@
                         <select id="ga4-landing-page-sort" name="landing_page_sort">
                             <option value="sessions" @selected($googleAnalyticsLandingPageReport['sort'] === 'sessions')>工作階段</option>
                             <option value="key_events" @selected($googleAnalyticsLandingPageReport['sort'] === 'key_events')>重要事件</option>
+                            <option value="key_events_per_100_sessions" @selected($googleAnalyticsLandingPageReport['sort'] === 'key_events_per_100_sessions')>每 100 次工作階段重要事件數</option>
                             <option value="total_revenue" @selected($googleAnalyticsLandingPageReport['sort'] === 'total_revenue')>營收</option>
                             <option value="revenue_per_session" @selected($googleAnalyticsLandingPageReport['sort'] === 'revenue_per_session')>每工作階段營收</option>
                             <option value="engagement_rate" @selected($googleAnalyticsLandingPageReport['sort'] === 'engagement_rate')>參與率</option>
@@ -2093,7 +2094,7 @@
                     </form>
                     <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-landing-page-title" tabindex="0">
                         <table class="data-table campaign-report-table campaign-report-ga4-landing-page-table">
-                            <caption>GA4 登陸頁工作階段、參與、重要事件、營收與每工作階段營收</caption>
+                            <caption>GA4 登陸頁工作階段、參與、重要事件、每 100 次工作階段重要事件數與營收</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">登陸頁路徑</th>
@@ -2102,6 +2103,7 @@
                                     <th scope="col" class="numeric">參與率</th>
                                     <th scope="col" class="numeric">跳出率</th>
                                     <th scope="col" class="numeric">重要事件</th>
+                                    <th scope="col" class="numeric">每 100 次工作階段重要事件數</th>
                                     <th scope="col" class="numeric">營收（{{ $googleAnalyticsLandingPageReport['currency_code'] ?? '幣別未知' }}）</th>
                                     <th scope="col" class="numeric">每工作階段營收（{{ $googleAnalyticsLandingPageReport['currency_code'] ?? '幣別未知' }}）</th>
                                 </tr>
@@ -2114,7 +2116,14 @@
                                         <td class="numeric">{{ number_format((int) $landingPage['engaged_sessions']) }}</td>
                                         <td class="numeric">{{ number_format((float) $landingPage['engagement_rate'] * 100, 2) }}%</td>
                                         <td class="numeric">{{ number_format((float) $landingPage['bounce_rate'] * 100, 2) }}%</td>
-                                        <td class="numeric">{{ number_format((float) $landingPage['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ $landingPage['key_events'] === null ? '—' : number_format($landingPage['key_events'], 2) }}</td>
+                                        <td class="numeric">
+                                            @if ($landingPage['key_events_per_100_sessions'] !== null)
+                                                {{ number_format($landingPage['key_events_per_100_sessions'], 2) }}
+                                            @else
+                                                {{ $landingPage['key_events_per_100_sessions_status_label'] }}
+                                            @endif
+                                        </td>
                                         <td class="numeric">{{ number_format((float) $landingPage['total_revenue'], 2) }}</td>
                                         <td class="numeric">
                                             @if ($landingPage['revenue_per_session'] !== null)
@@ -2807,6 +2816,12 @@
                     </dd>
                 </div>
                 <div>
+                    <dt>每 100 次工作階段重要事件數</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['ga4_key_events_per_100_sessions'] === null ? $adSpendAnalysis['ga4_key_events_per_100_sessions_status_label'] : number_format($adSpendAnalysis['ga4_key_events_per_100_sessions'], 2).' 次' }}
+                    </dd>
+                </div>
+                <div>
                     <dt>依最新累積數估算的每互動成本</dt>
                     <dd>
                         {{ $adSpendAnalysis['cost_per_public_interaction'] === null ? '—' : number_format($adSpendAnalysis['cost_per_public_interaction'], 4).' '.$adSpendAnalysis['ad_spend_currency'] }}
@@ -2822,6 +2837,7 @@
                     </dd>
                 </div>
             </dl>
+            <p class="campaign-report-secondary">以 GA4 重要事件次數除以工作階段再乘 100 計算；同一工作階段可產生多次事件，因此不代表轉換率。</p>
             <section class="spaced-top" aria-labelledby="campaign-estimated-profitability-title">
                 <h3 id="campaign-estimated-profitability-title">估算毛利貢獻</h3>
                 <dl class="campaign-report-summary campaign-efficiency-summary">

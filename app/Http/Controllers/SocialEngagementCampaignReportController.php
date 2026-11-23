@@ -1241,6 +1241,7 @@ class SocialEngagementCampaignReportController extends Controller
             $googleAdsReport,
             observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
             comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
+            googleAnalyticsReportIsStale: $googleAnalyticsReportIsStale,
         );
         $roasSpendSnapshotIsFresh = $this->selectedSpendSnapshotIsFresh(
             $adSpendAnalysis,

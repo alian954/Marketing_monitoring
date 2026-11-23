@@ -30,6 +30,9 @@ class CampaignMarketingEfficiencyReport
      *     ga4_sessions_per_paid_click: float|null,
      *     paid_click_session_status: string,
      *     paid_click_session_status_label: string,
+     *     ga4_key_events_per_100_sessions: float|null,
+     *     ga4_key_events_per_100_sessions_status: string,
+     *     ga4_key_events_per_100_sessions_status_label: string,
      *     meta_ads_omni_purchase_value: string|null,
      *     meta_ads_purchase_roas: float|null,
      *     meta_ads_purchase_roas_unrounded: float|null,
@@ -70,6 +73,7 @@ class CampaignMarketingEfficiencyReport
         ?SocialEngagementTargetGoogleAdsReport $googleAdsReport = null,
         ?int $observedCampaignInteractionChange = null,
         int $comparableInteractionPostCount = 0,
+        bool $googleAnalyticsReportIsStale = false,
     ): array {
         $metaSpendAmount = $metaMarketingReport?->spend_amount;
         $metaSpendCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
@@ -121,6 +125,10 @@ class CampaignMarketingEfficiencyReport
             $googleAnalyticsReport,
             $metaMarketingReport,
             $googleAdsReport,
+        );
+        $keyEventsPer100Sessions = $this->keyEventsPer100Sessions(
+            $googleAnalyticsReport,
+            $googleAnalyticsReportIsStale,
         );
         $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
         $metaPurchaseValue = $this->metaOmniPurchaseValue($metaMarketingReport?->action_values);
@@ -186,6 +194,7 @@ class CampaignMarketingEfficiencyReport
             'roas_unavailable_reason' => $roasUnavailableReason,
             'roas_unrounded' => $roasUnrounded,
             ...$paidClickSessionDiagnostic,
+            ...$keyEventsPer100Sessions,
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
             'meta_ads_purchase_roas_unrounded' => $metaRoasUnrounded,
@@ -260,6 +269,55 @@ class CampaignMarketingEfficiencyReport
         }
 
         return [null, null, null];
+    }
+
+    /**
+     * @return array{
+     *     ga4_key_events_per_100_sessions: float|null,
+     *     ga4_key_events_per_100_sessions_status: string,
+     *     ga4_key_events_per_100_sessions_status_label: string
+     * }
+     */
+    private function keyEventsPer100Sessions(
+        ?SocialEngagementTargetGoogleAnalyticsReport $googleAnalyticsReport,
+        bool $googleAnalyticsReportIsStale,
+    ): array {
+        $status = match (true) {
+            $googleAnalyticsReport === null => 'missing_report',
+            $googleAnalyticsReportIsStale => 'stale',
+            ! is_int($googleAnalyticsReport->sessions) || $googleAnalyticsReport->sessions < 0 => 'missing_sessions',
+            $googleAnalyticsReport->sessions === 0 => 'zero_sessions',
+            $googleAnalyticsReport->key_events === null => 'missing_key_events',
+            ! is_numeric($googleAnalyticsReport->key_events)
+                || ! is_finite((float) $googleAnalyticsReport->key_events)
+                || (float) $googleAnalyticsReport->key_events < 0 => 'invalid_key_events',
+            default => 'available',
+        };
+        $rate = null;
+
+        if ($status === 'available') {
+            $rate = round((float) $googleAnalyticsReport->key_events / $googleAnalyticsReport->sessions * 100, 4);
+
+            if (! is_finite($rate)) {
+                $rate = null;
+                $status = 'calculation_unavailable';
+            }
+        }
+
+        return [
+            'ga4_key_events_per_100_sessions' => $rate,
+            'ga4_key_events_per_100_sessions_status' => $status,
+            'ga4_key_events_per_100_sessions_status_label' => match ($status) {
+                'missing_report' => '缺少 GA4 數據',
+                'stale' => 'GA4 數據已過期',
+                'missing_sessions' => '缺少工作階段',
+                'zero_sessions' => '工作階段為 0',
+                'missing_key_events' => '缺少重要事件數',
+                'invalid_key_events' => '重要事件數無效',
+                'calculation_unavailable' => '無法計算',
+                default => '可計算',
+            },
+        ];
     }
 
     /**
