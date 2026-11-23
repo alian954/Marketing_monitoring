@@ -2545,6 +2545,112 @@
                         </tbody>
                     </table>
                 </div>
+                @foreach ($dailyMarketingEfficiency['paid_media_period_comparisons'] as $paidMediaPeriodComparison)
+                    @if ($paidMediaPeriodComparison['status'] !== 'not_configured')
+                        @php
+                            $paidMediaPeriodStatusClass = match ($paidMediaPeriodComparison['status']) {
+                                'complete' => 'healthy',
+                                'stale', 'currency_unknown' => 'stale',
+                                default => 'warning',
+                            };
+                            $paidMediaCurrentPeriod = $paidMediaPeriodComparison['current_period'];
+                            $paidMediaPreviousPeriod = $paidMediaPeriodComparison['previous_period'];
+                            $paidMediaPeriodMetrics = [
+                                ['key' => 'spend_amount', 'label' => '花費'],
+                                ['key' => 'ctr_percent', 'label' => 'CTR'],
+                                ['key' => 'cost_per_click', 'label' => 'CPC'],
+                                ['key' => 'result_count', 'label' => $paidMediaPeriodComparison['result_label']],
+                                ['key' => 'cost_per_result', 'label' => '每次'.$paidMediaPeriodComparison['result_label'].'成本'],
+                                ['key' => 'roas', 'label' => '平台 ROAS'],
+                            ];
+                        @endphp
+                        <div class="campaign-report-daily-source">
+                            <div class="campaign-report-section-header">
+                                <h4>{{ $paidMediaPeriodComparison['source_label'] }} 近 7 天與前 7 天</h4>
+                                <span class="badge badge-{{ $paidMediaPeriodStatusClass }}">{{ $paidMediaPeriodComparison['status_label'] }}</span>
+                            </div>
+                            <p class="campaign-report-secondary">
+                                近期：{{ $paidMediaCurrentPeriod['start_on'] ?? '—' }} 至 {{ $paidMediaCurrentPeriod['end_on'] ?? '—' }}
+                                · 前期：{{ $paidMediaPreviousPeriod['start_on'] ?? '—' }} 至 {{ $paidMediaPreviousPeriod['end_on'] ?? '—' }}
+                                · {{ $paidMediaPeriodComparison['result_label'] }}與 ROAS 使用該平台歸因數據，幣別分開比較；缺日或資料過期時不計差異，分母為 0 或來源未回傳的比率留白。
+                            </p>
+                            <div class="data-table-wrap campaign-report-daily-period-comparison" role="region" aria-label="{{ $paidMediaPeriodComparison['source_label'] }}近七天與前七天比較" tabindex="0">
+                                <table class="data-table campaign-report-table">
+                                    <caption class="sr-only">{{ $paidMediaPeriodComparison['source_label'] }}近 7 天與前 7 天的花費、點擊成本、{{ $paidMediaPeriodComparison['result_label'] }}與 ROAS</caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">指標</th>
+                                            <th scope="col" class="numeric">近 7 天</th>
+                                            <th scope="col" class="numeric">前 7 天</th>
+                                            <th scope="col" class="numeric">差異</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($paidMediaPeriodMetrics as $paidMediaPeriodMetric)
+                                            @php
+                                                $metricKey = $paidMediaPeriodMetric['key'];
+                                                $currentValue = $paidMediaCurrentPeriod[$metricKey];
+                                                $previousValue = $paidMediaPreviousPeriod[$metricKey];
+                                                $change = match ($metricKey) {
+                                                    'spend_amount' => $paidMediaPeriodComparison['changes']['spend_amount'],
+                                                    'ctr_percent' => $paidMediaPeriodComparison['changes']['ctr_percentage_points'],
+                                                    'cost_per_click' => $paidMediaPeriodComparison['changes']['cost_per_click_amount'],
+                                                    'result_count' => $paidMediaPeriodComparison['changes']['result_count'],
+                                                    'cost_per_result' => $paidMediaPeriodComparison['changes']['cost_per_result_amount'],
+                                                    default => $paidMediaPeriodComparison['changes']['roas'],
+                                                };
+                                                $changePercent = match ($metricKey) {
+                                                    'spend_amount' => $paidMediaPeriodComparison['changes']['spend_percent'],
+                                                    'cost_per_click' => $paidMediaPeriodComparison['changes']['cost_per_click_percent'],
+                                                    'cost_per_result' => $paidMediaPeriodComparison['changes']['cost_per_result_percent'],
+                                                    default => null,
+                                                };
+                                            @endphp
+                                            <tr>
+                                                <th scope="row">{{ $paidMediaPeriodMetric['label'] }}</th>
+                                                @foreach ([$currentValue, $previousValue] as $paidMediaMetricValue)
+                                                    <td class="numeric">
+                                                        @if ($paidMediaMetricValue === null)
+                                                            —
+                                                        @elseif (in_array($metricKey, ['spend_amount', 'cost_per_click', 'cost_per_result'], true))
+                                                            {{ number_format((float) $paidMediaMetricValue, 2) }} {{ $paidMediaCurrentPeriod['currency_code'] }}
+                                                        @elseif ($metricKey === 'ctr_percent')
+                                                            {{ number_format((float) $paidMediaMetricValue, 2) }}%
+                                                        @elseif ($metricKey === 'roas')
+                                                            {{ number_format((float) $paidMediaMetricValue, 2) }}x
+                                                        @else
+                                                            {{ number_format((float) $paidMediaMetricValue, 2) }}
+                                                        @endif
+                                                    </td>
+                                                @endforeach
+                                                <td class="numeric">
+                                                    @if ($change === null)
+                                                        —
+                                                    @elseif ($metricKey === 'ctr_percent')
+                                                        {{ $change > 0 ? '+' : '' }}{{ number_format($change, 2) }} 個百分點
+                                                    @elseif ($metricKey === 'roas')
+                                                        {{ $change > 0 ? '+' : '' }}{{ number_format($change, 2) }}x
+                                                    @elseif ($metricKey === 'result_count')
+                                                        {{ $change > 0 ? '+' : '' }}{{ number_format($change, 2) }}
+                                                    @else
+                                                        {{ (float) $change > 0 ? '+' : '' }}{{ number_format((float) $change, 2) }} {{ $paidMediaCurrentPeriod['currency_code'] }}
+                                                        <span class="campaign-report-secondary">
+                                                            @if ($changePercent !== null)
+                                                                ({{ $changePercent > 0 ? '+' : '' }}{{ number_format($changePercent, 2) }}%)
+                                                            @else
+                                                                (前期為 0，無法計算百分比)
+                                                            @endif
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
+                @endforeach
                 @if ($dailyMarketingEfficiency['trend_chart']['points'] !== [])
                     <figure class="metric-trend-figure campaign-report-daily-trend">
                         <svg

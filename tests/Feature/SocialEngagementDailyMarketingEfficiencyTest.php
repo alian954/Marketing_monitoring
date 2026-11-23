@@ -261,6 +261,117 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertSame(0.44, $comparison['changes']['roas']);
     }
 
+    public function test_paid_media_period_comparisons_calculate_each_platform_in_its_own_currency(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $this->createDailyReports($user, $target, [
+            'ga_rows' => [],
+            'meta_rows' => $this->paidMediaComparisonRows()['meta_rows'],
+            'ads_rows' => $this->paidMediaComparisonRows()['ads_rows'],
+            'meta_currency' => 'TWD',
+            'ads_currency' => 'USD',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads 近 7 天與前 7 天')
+            ->assertSee('Google Ads 近 7 天與前 7 天')
+            ->assertSee('該平台歸因數據，幣別分開比較');
+        $comparisons = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['paid_media_period_comparisons'];
+
+        $meta = $comparisons['meta_marketing'];
+        $this->assertSame('complete', $meta['status']);
+        $this->assertSame('TWD', $meta['current_period']['currency_code']);
+        $this->assertSame('140.0000', $meta['current_period']['spend_amount']);
+        $this->assertSame(6.0, $meta['current_period']['ctr_percent']);
+        $this->assertSame(0.2778, $meta['current_period']['cost_per_click']);
+        $this->assertSame(21.0, $meta['current_period']['result_count']);
+        $this->assertSame(6.6667, $meta['current_period']['cost_per_result']);
+        $this->assertSame(6.0, $meta['current_period']['roas']);
+        $this->assertSame('70.0000', $meta['changes']['spend_amount']);
+        $this->assertSame(1.0, $meta['changes']['ctr_percentage_points']);
+
+        $googleAds = $comparisons['google_ads'];
+        $this->assertSame('complete', $googleAds['status']);
+        $this->assertSame('USD', $googleAds['current_period']['currency_code']);
+        $this->assertSame('70.0000', $googleAds['current_period']['spend_amount']);
+        $this->assertSame(6.0, $googleAds['current_period']['ctr_percent']);
+        $this->assertSame(14.0, $googleAds['current_period']['result_count']);
+        $this->assertSame(4.0, $googleAds['current_period']['roas']);
+    }
+
+    public function test_paid_media_period_comparison_suppresses_partial_stale_and_zero_result_costs(): void
+    {
+        $this->travelTo('2026-12-01 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget([
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $rows = $this->paidMediaComparisonRows();
+        $rows['meta_rows'] = array_values(array_filter(
+            $rows['meta_rows'],
+            static fn (array $row): bool => $row['date'] !== '2026-11-25',
+        ));
+        $this->createDailyReports($user, $target, [
+            'ga_rows' => [],
+            'meta_rows' => $rows['meta_rows'],
+            'ads_rows' => $rows['ads_rows'],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('逐日資料不完整');
+        $comparisons = $response->viewData('dailyMarketingPerformance')['combined_efficiency']['paid_media_period_comparisons'];
+        $this->assertSame('partial', $comparisons['meta_marketing']['status']);
+        $this->assertNull($comparisons['meta_marketing']['changes']['spend_amount']);
+        $this->assertSame('complete', $comparisons['google_ads']['status']);
+
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->where('social_engagement_target_id', $target->id)
+            ->firstOrFail()
+            ->update(['synced_at' => now()->subDay()->subSecond()]);
+
+        $staleResponse = $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads 近 7 天與前 7 天')
+            ->assertSee('資料超過 24 小時');
+        $staleComparisons = $staleResponse->viewData('dailyMarketingPerformance')['combined_efficiency']['paid_media_period_comparisons'];
+        $this->assertSame('stale', $staleComparisons['meta_marketing']['status']);
+        $this->assertNull($staleComparisons['meta_marketing']['changes']['spend_amount']);
+        $this->assertSame('complete', $staleComparisons['google_ads']['status']);
+
+        $zeroResultsTarget = $this->createTarget([
+            'tag' => 'Zero paid media results',
+            'starts_on' => '2026-11-17',
+            'ends_on' => '2026-11-30',
+        ]);
+        $zeroResultRows = $this->paidMediaComparisonRows(false, false);
+        $zeroResultsUser = User::factory()->create();
+        $this->createDailyReports($zeroResultsUser, $zeroResultsTarget, [
+            'ga_rows' => [],
+            'meta_rows' => $zeroResultRows['meta_rows'],
+            'ads_rows' => $zeroResultRows['ads_rows'],
+        ]);
+
+        $zeroResultComparisons = $this->actingAs($zeroResultsUser)
+            ->get(route('social-engagement-targets.report', $zeroResultsTarget))
+            ->assertOk()
+            ->viewData('dailyMarketingPerformance')['combined_efficiency']['paid_media_period_comparisons'];
+        $this->assertSame('complete', $zeroResultComparisons['meta_marketing']['status']);
+        $this->assertSame(0.0, $zeroResultComparisons['meta_marketing']['current_period']['result_count']);
+        $this->assertNull($zeroResultComparisons['meta_marketing']['current_period']['cost_per_result']);
+        $this->assertNull($zeroResultComparisons['meta_marketing']['changes']['cost_per_result_amount']);
+        $this->assertNull($zeroResultComparisons['google_ads']['current_period']['cost_per_result']);
+    }
+
     public function test_period_comparison_does_not_calculate_change_when_a_calendar_date_is_missing(): void
     {
         $this->travelTo('2026-12-01 12:00:00');
@@ -777,6 +888,42 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'meta_rows' => $metaRows,
             'ads_rows' => $adsRows,
         ];
+    }
+
+    /**
+     * @return array{meta_rows: list<array<string, mixed>>, ads_rows: list<array<string, mixed>>}
+     */
+    private function paidMediaComparisonRows(bool $metaHasPurchases = true, bool $googleAdsHasConversions = true): array
+    {
+        $metaRows = [];
+        $adsRows = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-17'); $date->toDateString() <= '2026-11-30'; $date = $date->addDay()) {
+            $isCurrentPeriod = $date->toDateString() >= '2026-11-24';
+            $metaRows[] = [
+                'date' => $date->toDateString(),
+                'spend_amount' => $isCurrentPeriod ? '20.0000' : '10.0000',
+                'impressions' => $isCurrentPeriod ? 1200 : 1000,
+                'reach' => 800,
+                'clicks' => $isCurrentPeriod ? 72 : 50,
+                'actions' => $metaHasPurchases
+                    ? [['action_type' => 'omni_purchase', 'value' => $isCurrentPeriod ? '3.0000' : '2.0000']]
+                    : [['action_type' => 'omni_purchase', 'value' => '0.0000']],
+                'action_values' => $metaHasPurchases
+                    ? [['action_type' => 'omni_purchase', 'value' => $isCurrentPeriod ? '120.0000' : '40.0000']]
+                    : [['action_type' => 'omni_purchase', 'value' => '0.0000']],
+            ];
+            $adsRows[] = [
+                'date' => $date->toDateString(),
+                'spend_amount' => $isCurrentPeriod ? '10.0000' : '5.0000',
+                'impressions' => $isCurrentPeriod ? 600 : 500,
+                'clicks' => $isCurrentPeriod ? 36 : 25,
+                'conversions' => $googleAdsHasConversions ? ($isCurrentPeriod ? '2.0000' : '1.0000') : '0.0000',
+                'conversions_value' => $googleAdsHasConversions ? ($isCurrentPeriod ? '40.0000' : '20.0000') : '0.0000',
+            ];
+        }
+
+        return ['meta_rows' => $metaRows, 'ads_rows' => $adsRows];
     }
 
     /** @return list<list<string|null>> */

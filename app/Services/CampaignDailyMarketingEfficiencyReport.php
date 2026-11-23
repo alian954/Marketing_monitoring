@@ -25,6 +25,7 @@ class CampaignDailyMarketingEfficiencyReport
      *     roas_spend_source: string|null,
      *     roas_spend_source_label: string|null,
      *     period_comparison: array<string, mixed>,
+     *     paid_media_period_comparisons: array{meta_marketing: array<string, mixed>, google_ads: array<string, mixed>},
      *     rows: list<array{
      *         date: string,
      *         meta_spend_amount: string|null,
@@ -181,6 +182,11 @@ class CampaignDailyMarketingEfficiencyReport
             $hasEveryCalendarDate,
         );
         $periodComparison = $this->periodComparison->build($target, $rows);
+        $asOf = CarbonImmutable::now('Asia/Taipei');
+        $paidMediaPeriodComparisons = [
+            'meta_marketing' => $this->periodComparison->buildPaidMedia($target, $metaSource, 'meta_marketing', $asOf),
+            'google_ads' => $this->periodComparison->buildPaidMedia($target, $googleAdsSource, 'google_ads', $asOf),
+        ];
         $latestSyncedAt = $this->latestSyncedAt([
             $googleAnalyticsSource['synced_at'] ?? null,
             $metaSource['synced_at'] ?? null,
@@ -204,6 +210,7 @@ class CampaignDailyMarketingEfficiencyReport
             'roas_spend_source' => $roasSpendSource,
             'roas_spend_source_label' => $roasSpendSourceLabel,
             'period_comparison' => $periodComparison,
+            'paid_media_period_comparisons' => $paidMediaPeriodComparisons,
             'rows' => array_reverse($rows),
             'trend_chart' => $trendChart,
         ];
