@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
@@ -20,9 +21,12 @@ use Illuminate\Database\Eloquent\Model;
     'actions',
     'action_values',
     'daily_metrics',
+    'ad_insights',
+    'ad_insights_expires_at',
     'currency_code',
     'synced_at',
 ])]
+#[Hidden(['ad_insights', 'ad_insights_expires_at'])]
 class SocialEngagementTargetMetaMarketingReport extends Model
 {
     protected function casts(): array
@@ -37,6 +41,8 @@ class SocialEngagementTargetMetaMarketingReport extends Model
             'actions' => 'array',
             'action_values' => 'array',
             'daily_metrics' => 'array',
+            'ad_insights' => 'encrypted:array',
+            'ad_insights_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }

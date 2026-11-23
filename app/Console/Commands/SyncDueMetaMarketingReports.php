@@ -23,6 +23,7 @@ class SyncDueMetaMarketingReports extends Command
     public function handle(MetaMarketingCampaignReportSync $campaignReportSync): int
     {
         $asOf = CarbonImmutable::now('Asia/Taipei');
+        $this->clearExpiredAdInsights($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Meta Ads 的活動。');
@@ -106,5 +107,16 @@ class SyncDueMetaMarketingReports extends Command
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
             ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+    }
+
+    private function clearExpiredAdInsights(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->whereNotNull('ad_insights_expires_at')
+            ->where('ad_insights_expires_at', '<=', $asOf)
+            ->update([
+                'ad_insights' => null,
+                'ad_insights_expires_at' => null,
+            ]);
     }
 }

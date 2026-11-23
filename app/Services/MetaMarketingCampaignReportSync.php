@@ -7,6 +7,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\SocialEngagementTargetPaidAdSnapshot;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 
 class MetaMarketingCampaignReportSync
@@ -35,6 +36,31 @@ class MetaMarketingCampaignReportSync
         );
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
+        $adInsights = [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => $connection->currency_code,
+            'truncated' => false,
+            'rows' => [],
+        ];
+
+        try {
+            $adMetrics = $this->dataApi->campaignAdInsights(
+                (string) $connection->access_token,
+                $connection->ad_account_id,
+                $target->meta_campaign_id,
+                $startsOn,
+                $endsOn,
+                $connection->currency_code,
+            );
+            $adInsights['rows'] = $adMetrics['rows'];
+            $adInsights['truncated'] = $adMetrics['truncated'];
+        } catch (MetaMarketingApiException|ConnectionException $exception) {
+            $adInsights['status'] = 'unavailable';
+            $adInsights['message'] = $exception->getMessage();
+        }
+
         $dailyMetrics = [
             'status' => $metrics['daily_metrics_status'] ?? 'complete',
             'requested_start_on' => $startsOn,
@@ -55,7 +81,7 @@ class MetaMarketingCampaignReportSync
         );
         $syncedAt = CarbonImmutable::now();
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics): SocialEngagementTargetMetaMarketingReport {
+        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $adInsights): SocialEngagementTargetMetaMarketingReport {
             $report = SocialEngagementTargetMetaMarketingReport::query()->updateOrCreate(
                 [
                     'meta_marketing_connection_id' => $connection->getKey(),
@@ -67,6 +93,8 @@ class MetaMarketingCampaignReportSync
                     'starts_on' => $startsOn,
                     'ends_on' => $endsOn,
                     'daily_metrics' => $dailyMetrics,
+                    'ad_insights' => $adInsights,
+                    'ad_insights_expires_at' => $syncedAt->addDays(30),
                     ...$metrics,
                     'synced_at' => $syncedAt,
                 ],

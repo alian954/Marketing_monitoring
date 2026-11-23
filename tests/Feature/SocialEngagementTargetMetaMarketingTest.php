@@ -104,7 +104,8 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                         ],
                         'account_currency' => 'USD',
                     ])],
-                ]),
+                ])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget([
@@ -179,6 +180,9 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         $this->assertSame('complete', $snapshot->daily_metrics['status']);
         $this->assertSame('2026-11-01', $snapshot->daily_metrics['coverage_start_on']);
         $this->assertSame('2026-11-30', $snapshot->daily_metrics['coverage_end_on']);
+        $this->assertSame('complete', $snapshot->ad_insights['status']);
+        $this->assertSame([], $snapshot->ad_insights['rows']);
+        $this->assertTrue($snapshot->ad_insights_expires_at->isFuture());
         $this->assertNotNull($snapshot->synced_at);
         $paidAdSnapshot = SocialEngagementTargetPaidAdSnapshot::query()->sole();
         $this->assertSame(SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING, $paidAdSnapshot->source);
@@ -206,7 +210,14 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                 && ($query['time_increment'] ?? null) === '1'
                 && ($query['fields'] ?? null) === 'date_start,date_stop,account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,actions,action_values,account_currency';
         });
-        Http::assertSentCount(2);
+        Http::assertSent(function (ClientRequest $request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return ($query['level'] ?? null) === 'ad'
+                && ($query['limit'] ?? null) === '100'
+                && json_decode($query['filtering'], true)[0]['value'] === '987654321';
+        });
+        Http::assertSentCount(3);
 
         $reportResponse = $this->get(route('social-engagement-targets.report', $target))
             ->assertOk()
