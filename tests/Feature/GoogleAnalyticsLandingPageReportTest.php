@@ -66,9 +66,12 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
             ->get(route('social-engagement-targets.report', $target))
             ->assertOk()
             ->assertSee('登陸頁成效')
+            ->assertSee('每工作階段營收')
             ->assertSee('工作階段')
             ->assertSee('參與率')
             ->assertSee('75.00%')
+            ->assertSee('TWD 4.1667')
+            ->assertSee('TWD 35.0000')
             ->assertSee('/campaign/spring')
             ->assertDontSee('private@example.com')
             ->assertSee(route('social-engagement-targets.google-analytics.landing-pages', $target));
@@ -79,12 +82,133 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
         ]));
         $sortedResponse->assertOk()->assertSeeInOrder(['=SUM(1,1)', '/campaign/spring']);
 
+        $efficiencySortedResponse = $this->get(route('social-engagement-targets.report', [
+            'socialEngagementTarget' => $target,
+            'landing_page_sort' => 'revenue_per_session',
+        ]));
+        $efficiencySortedResponse->assertOk()->assertSeeInOrder(['=SUM(1,1)', '/campaign/spring']);
+
         $csvResponse = $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
             ->assertDownload('ga4-landing-pages-'.$target->getKey().'.csv');
         $csv = $csvResponse->streamedContent();
         $this->assertStringContainsString('landing_page,sessions,engaged_sessions,engagement_rate_percent,bounce_rate_percent', $csv);
+        $this->assertStringContainsString('total_revenue,revenue_per_session,revenue_per_session_status_label,currency_code', $csv);
         $this->assertStringContainsString("'=SUM(1,1)", $csv);
         $this->assertStringNotContainsString('private@example.com', $csv);
+        $csvLines = preg_split('/\r\n|\r|\n/', trim($csv)) ?: [];
+        $csvHeaders = str_getcsv(array_shift($csvLines) ?: '');
+        $csvRows = array_map(static function (string $line) use ($csvHeaders): array {
+            $row = array_combine($csvHeaders, str_getcsv($line));
+
+            return is_array($row) ? $row : [];
+        }, $csvLines);
+        $csvRowsByLandingPage = collect($csvRows)->keyBy('landing_page');
+
+        $this->assertSame('4.1667', $csvRowsByLandingPage['/campaign/spring']['revenue_per_session']);
+        $this->assertSame('35.0000', $csvRowsByLandingPage["'=SUM(1,1)"]['revenue_per_session']);
+        $this->assertSame('TWD', $csvRowsByLandingPage['/campaign/spring']['currency_code']);
+    }
+
+    public function test_landing_page_without_sessions_has_no_revenue_per_session_in_report_or_csv(): void
+    {
+        [$user, $target] = $this->syncReport([
+            'metadata' => ['currencyCode' => 'TWD'],
+            'rowCount' => 1,
+            'rows' => [$this->landingPageRow('/no-sessions', '0', '0', '0', '0', '0', '500')],
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('每工作階段營收')
+            ->assertSee('工作階段為 0');
+        $report = $response->viewData('googleAnalyticsLandingPageReport');
+
+        $this->assertNull($report['rows'][0]['revenue_per_session']);
+
+        $csvResponse = $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
+            ->assertDownload('ga4-landing-pages-'.$target->getKey().'.csv');
+        $csvRows = array_map('str_getcsv', preg_split('/\r\n|\r|\n/', trim($csvResponse->streamedContent())) ?: []);
+        $headers = array_shift($csvRows);
+        $row = array_combine($headers, $csvRows[0]);
+
+        $this->assertSame('', $row['revenue_per_session']);
+    }
+
+    public function test_invalid_landing_page_metrics_are_excluded_from_revenue_per_session_report(): void
+    {
+        [$user, $target] = $this->syncReport([
+            'metadata' => ['currencyCode' => 'TWD'],
+            'rowCount' => 1,
+            'rows' => [$this->landingPageRow('/valid', '10', '8', '0.8', '0.2', '1', '100')],
+        ]);
+        $analyticsReport = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $landingPageReport = $analyticsReport->landing_page_report;
+        $landingPageReport['rows'][0]['total_revenue'] = '1e999';
+        $analyticsReport->landing_page_report = $landingPageReport;
+        $analyticsReport->save();
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('此活動期間沒有可用的登陸頁數據。');
+
+        $this->assertSame([], $response->viewData('googleAnalyticsLandingPageReport')['rows']);
+    }
+
+    public function test_landing_page_with_unknown_currency_does_not_show_revenue_per_session(): void
+    {
+        [$user, $target] = $this->syncReport([
+            'metadata' => ['currencyCode' => 'TWD'],
+            'rowCount' => 1,
+            'rows' => [$this->landingPageRow('/unknown-currency', '10', '8', '0.8', '0.2', '1', '100')],
+        ]);
+        $analyticsReport = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $landingPageReport = $analyticsReport->landing_page_report;
+        $landingPageReport['currency_code'] = null;
+        $analyticsReport->landing_page_report = $landingPageReport;
+        $analyticsReport->save();
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('每工作階段營收')
+            ->assertSee('幣別未知');
+        $landingPage = $response->viewData('googleAnalyticsLandingPageReport')['rows'][0];
+
+        $this->assertNull($landingPage['revenue_per_session']);
+        $this->assertSame('currency_unknown', $landingPage['revenue_per_session_status']);
+    }
+
+    public function test_expired_or_missing_expiry_landing_page_data_is_not_used(): void
+    {
+        [$user, $target] = $this->syncReport([
+            'metadata' => ['currencyCode' => 'TWD'],
+            'rowCount' => 1,
+            'rows' => [$this->landingPageRow('/expired', '10', '8', '0.8', '0.2', '1', '100')],
+        ]);
+        $analyticsReport = SocialEngagementTargetGoogleAnalyticsReport::query()->sole();
+        $analyticsReport->landing_page_expires_at = now()->subSecond();
+        $analyticsReport->save();
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('登陸頁明細已超過 30 天保存期限');
+
+        $this->assertSame('expired', $response->viewData('googleAnalyticsLandingPageReport')['status']);
+        $this->assertSame([], $response->viewData('googleAnalyticsLandingPageReport')['rows']);
+        $this->get(route('social-engagement-targets.google-analytics.landing-pages', $target))
+            ->assertNotFound();
+
+        $analyticsReport->landing_page_expires_at = null;
+        $analyticsReport->save();
+
+        $missingExpiryResponse = $this->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('登陸頁明細已超過 30 天保存期限');
+        $this->assertSame('expired', $missingExpiryResponse->viewData('googleAnalyticsLandingPageReport')['status']);
+        $this->assertSame([], $missingExpiryResponse->viewData('googleAnalyticsLandingPageReport')['rows']);
     }
 
     public function test_sync_limits_landing_page_rows_and_marks_aggregated_data_as_truncated(): void

@@ -2074,6 +2074,7 @@
                 @else
                     <p class="campaign-report-secondary">
                         {{ $googleAnalyticsLandingPageReport['window_start_on'] }} 至 {{ $googleAnalyticsLandingPageReport['window_end_on'] }} · 最多顯示 200 個登陸頁，依工作階段選入；路徑不含網址查詢參數，明細加密保存 30 天。
+                        每工作階段營收以該登陸頁 GA4 營收除以工作階段計算；工作階段為 0 或幣別未知時不顯示。
                     </p>
                     @if ($googleAnalyticsLandingPageReport['truncated'])
                         <p class="campaign-report-note">登陸頁超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有路徑。</p>
@@ -2085,13 +2086,14 @@
                             <option value="sessions" @selected($googleAnalyticsLandingPageReport['sort'] === 'sessions')>工作階段</option>
                             <option value="key_events" @selected($googleAnalyticsLandingPageReport['sort'] === 'key_events')>重要事件</option>
                             <option value="total_revenue" @selected($googleAnalyticsLandingPageReport['sort'] === 'total_revenue')>營收</option>
+                            <option value="revenue_per_session" @selected($googleAnalyticsLandingPageReport['sort'] === 'revenue_per_session')>每工作階段營收</option>
                             <option value="engagement_rate" @selected($googleAnalyticsLandingPageReport['sort'] === 'engagement_rate')>參與率</option>
                         </select>
                         <button class="button button-secondary button-small" type="submit">套用</button>
                     </form>
                     <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-landing-page-title" tabindex="0">
                         <table class="data-table campaign-report-table campaign-report-ga4-landing-page-table">
-                            <caption>GA4 登陸頁工作階段、參與、重要事件與營收</caption>
+                            <caption>GA4 登陸頁工作階段、參與、重要事件、營收與每工作階段營收</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">登陸頁路徑</th>
@@ -2101,6 +2103,7 @@
                                     <th scope="col" class="numeric">跳出率</th>
                                     <th scope="col" class="numeric">重要事件</th>
                                     <th scope="col" class="numeric">營收（{{ $googleAnalyticsLandingPageReport['currency_code'] ?? '幣別未知' }}）</th>
+                                    <th scope="col" class="numeric">每工作階段營收（{{ $googleAnalyticsLandingPageReport['currency_code'] ?? '幣別未知' }}）</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2113,6 +2116,13 @@
                                         <td class="numeric">{{ number_format((float) $landingPage['bounce_rate'] * 100, 2) }}%</td>
                                         <td class="numeric">{{ number_format((float) $landingPage['key_events'], 2) }}</td>
                                         <td class="numeric">{{ number_format((float) $landingPage['total_revenue'], 2) }}</td>
+                                        <td class="numeric">
+                                            @if ($landingPage['revenue_per_session'] !== null)
+                                                {{ $googleAnalyticsLandingPageReport['currency_code'] }} {{ number_format($landingPage['revenue_per_session'], 4) }}
+                                            @else
+                                                {{ $landingPage['revenue_per_session_status_label'] }}
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>

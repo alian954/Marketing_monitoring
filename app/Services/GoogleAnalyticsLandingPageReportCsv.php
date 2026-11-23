@@ -18,6 +18,8 @@ class GoogleAnalyticsLandingPageReportCsv
             'bounce_rate_percent',
             'key_events',
             'total_revenue',
+            'revenue_per_session',
+            'revenue_per_session_status_label',
             'currency_code',
             'window_start_on',
             'window_end_on',
@@ -38,6 +40,8 @@ class GoogleAnalyticsLandingPageReportCsv
                 $this->percentage($row['bounce_rate'] ?? null),
                 $this->value($row['key_events'] ?? null),
                 $this->value($row['total_revenue'] ?? null),
+                $this->decimal($row['revenue_per_session'] ?? null),
+                $this->value($row['revenue_per_session_status_label'] ?? null),
                 $this->value($report['currency_code'] ?? null),
                 $this->value($report['window_start_on'] ?? null),
                 $this->value($report['window_end_on'] ?? null),
@@ -56,5 +60,12 @@ class GoogleAnalyticsLandingPageReportCsv
     private function percentage(mixed $value): string
     {
         return is_numeric($value) ? number_format((float) $value * 100, 4, '.', '') : '';
+    }
+
+    private function decimal(mixed $value): string
+    {
+        return is_numeric($value) && is_finite((float) $value)
+            ? number_format((float) $value, 4, '.', '')
+            : '';
     }
 }
