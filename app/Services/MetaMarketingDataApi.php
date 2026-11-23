@@ -17,6 +17,12 @@ class MetaMarketingDataApi
 
     private const AD_INSIGHTS_REPORT_LIMIT = 200;
 
+    private const PLACEMENT_INSIGHTS_PAGE_LIMIT = 100;
+
+    private const MAX_PLACEMENT_INSIGHTS_PAGES = 100;
+
+    private const PLACEMENT_INSIGHTS_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, expires_in: int|null} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -489,6 +495,164 @@ class MetaMarketingDataApi
         }
 
         throw new MetaMarketingApiException('Meta Ads Insights API 廣告資料超過分頁上限，未回傳不完整結果。');
+    }
+
+    /**
+     * @return array{
+     *     rows: list<array{
+     *         publisher_platform: string,
+     *         platform_position: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         reach: int|null,
+     *         clicks: int,
+     *         actions: list<array{action_type: string, value: string}>,
+     *         action_values: list<array{action_type: string, value: string}>
+     *     }>,
+     *     truncated: bool
+     * }
+     */
+    public function campaignPlacementInsights(
+        string $accessToken,
+        string $adAccountId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+    ): array {
+        if (preg_match('/^\d{5,32}$/', $adAccountId) !== 1 || preg_match('/^\d{5,32}$/', $campaignId) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶或活動 ID 格式無效。');
+        }
+
+        if (! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn) {
+            throw new MetaMarketingApiException('Meta 活動日期區間無效，請重新設定開始日與結束日。');
+        }
+
+        if (preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶幣別格式無效，請重新連結帳戶。');
+        }
+
+        $parameters = [
+            'fields' => 'account_id,campaign_id,publisher_platform,platform_position,spend,impressions,reach,clicks,actions,action_values,account_currency',
+            'level' => 'campaign',
+            'breakdowns' => 'publisher_platform,platform_position',
+            'filtering' => json_encode([[
+                'field' => 'campaign.id',
+                'operator' => 'EQUAL',
+                'value' => $campaignId,
+            ]], JSON_THROW_ON_ERROR),
+            'time_range' => json_encode([
+                'since' => $startsOn,
+                'until' => $endsOn,
+            ], JSON_THROW_ON_ERROR),
+            'limit' => self::PLACEMENT_INSIGHTS_PAGE_LIMIT,
+        ];
+        $insightsByPlacement = [];
+        $seenCursors = [];
+        $afterCursor = null;
+
+        for ($pageNumber = 1; $pageNumber <= self::MAX_PLACEMENT_INSIGHTS_PAGES; $pageNumber++) {
+            $pageParameters = $parameters;
+
+            if ($afterCursor !== null) {
+                $pageParameters['after'] = $afterCursor;
+            }
+
+            $response = Http::withToken($accessToken)
+                ->acceptJson()
+                ->timeout(20)
+                ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
+            $payload = $this->successfulPayload($response, 'Meta Ads Insights API 版位成效');
+            $rows = $payload['data'] ?? null;
+
+            if (! is_array($rows) || ! array_is_list($rows)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的版位成效格式無效。');
+            }
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的版位成效格式無效。');
+                }
+
+                $this->assertDailyInsightIdentity($row, $adAccountId, $campaignId, $accountCurrency);
+                $publisherPlatform = $row['publisher_platform'] ?? null;
+                $platformPosition = $row['platform_position'] ?? null;
+
+                if (! is_string($publisherPlatform)
+                    || trim($publisherPlatform) === ''
+                    || mb_strlen($publisherPlatform) > 100
+                    || ! is_string($platformPosition)
+                    || trim($platformPosition) === ''
+                    || mb_strlen($platformPosition) > 100) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的版位名稱無效。');
+                }
+
+                $placementKey = json_encode([
+                    mb_strtolower(trim($publisherPlatform)),
+                    mb_strtolower(trim($platformPosition)),
+                ], JSON_THROW_ON_ERROR);
+
+                if (array_key_exists($placementKey, $insightsByPlacement)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的版位資料。');
+                }
+
+                $insightsByPlacement[$placementKey] = [
+                    'publisher_platform' => trim($publisherPlatform),
+                    'platform_position' => trim($platformPosition),
+                    'spend_amount' => $this->decimalString($row['spend'] ?? null),
+                    'impressions' => $this->nonNegativeInteger($row['impressions'] ?? null),
+                    'reach' => ($row['reach'] ?? null) === null ? null : $this->nonNegativeInteger($row['reach']),
+                    'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
+                    'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
+                    'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
+                ];
+            }
+
+            $nextPage = $payload['paging']['next'] ?? null;
+
+            if ($nextPage === null || $nextPage === '') {
+                $allInsights = array_values($insightsByPlacement);
+                usort($allInsights, static function (array $first, array $second): int {
+                    $spendOrder = (float) $second['spend_amount'] <=> (float) $first['spend_amount'];
+
+                    if ($spendOrder !== 0) {
+                        return $spendOrder;
+                    }
+
+                    $platformOrder = strcmp($first['publisher_platform'], $second['publisher_platform']);
+
+                    return $platformOrder !== 0
+                        ? $platformOrder
+                        : strcmp($first['platform_position'], $second['platform_position']);
+                });
+
+                return [
+                    'rows' => array_slice($allInsights, 0, self::PLACEMENT_INSIGHTS_REPORT_LIMIT),
+                    'truncated' => count($allInsights) > self::PLACEMENT_INSIGHTS_REPORT_LIMIT,
+                ];
+            }
+
+            $nextCursor = $payload['paging']['cursors']['after'] ?? null;
+
+            if (! is_string($nextPage) || ! is_string($nextCursor) || trim($nextCursor) === '') {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的版位分頁資訊無效。');
+            }
+
+            if (array_key_exists($nextCursor, $seenCursors)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的版位分頁游標。');
+            }
+
+            if ($pageNumber === self::MAX_PLACEMENT_INSIGHTS_PAGES) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 版位資料超過分頁上限，未回傳不完整結果。');
+            }
+
+            $seenCursors[$nextCursor] = true;
+            $afterCursor = $nextCursor;
+        }
+
+        throw new MetaMarketingApiException('Meta Ads Insights API 版位資料超過分頁上限，未回傳不完整結果。');
     }
 
     /** @param array<string, mixed> $row */

@@ -26,6 +26,7 @@
                 <p class="panel-description">活動互動目標可依標籤與平台設定期間，只計入期間內發布的貼文；未提供發布日期的貼文另列。進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位。尚未開始則按活動日數分配目標；進行中資料不足、已達成或活動結束時不估算。目標、達成進度與每日所需互動可匯出 CSV。</p>
                 <p class="panel-description">活動報告顯示 Meta Ads 的頻率、CTR、CPC、CPM、各行動類型數量與轉換價值，以及 Google Ads 的轉換動作、每次轉換成本與點擊轉換率。各平台行動數據依帳戶追蹤與歸因設定回傳，類型可能重疊，不合併計算。兩平台歷史趨勢可匯出 CSV；資料超過 24 小時未更新時會提示。跨平台花費僅同幣別合計；ROAS 以同幣別 GA4 營收計算且不扣商品成本。</p>
                 <p class="panel-description">Meta Ads 活動報告另提供廣告層級曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase 數據；依花費排序最多列出 200 則並可匯出 CSV，明細加密保存 30 天。</p>
+                <p class="panel-description">Meta Ads 另按 Facebook、Instagram 等平台與版位拆分曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase；可排序及匯出 CSV，明細加密保存 30 天。版位觸及可能重疊，不應加總；轉換依 Meta 歸因設定回傳。</p>
                 <p class="panel-description">逐日成效表與 CSV 提供 CTR＝點擊 ÷ 曝光、CPC＝花費 ÷ 點擊、CPM＝花費 ÷ 曝光 × 1,000、CPA＝花費 ÷ 購買或轉換；Meta 頻率＝曝光 ÷ 觸及，Google Ads 轉換率＝轉換 ÷ 點擊。分母缺值或為零時留空。</p>
                 <p class="panel-description">Google Ads 搜尋與購物活動提供每日搜尋曝光、預算流失及排名流失比重。平台將低於 10%／高於 90% 的數值標記為界線值，畫面顯示 &lt;10%／&gt;90%，CSV 保留原始標記。</p>
                 <p class="panel-description">Google Ads 搜尋字詞報表僅支援搜尋活動，查看最近 30 個完整日，依花費排序最多列出 200 筆，可按花費、轉換、ROAS 或 CTR 排序並匯出 CSV。平台會隱去低量查詢；轉換依帳戶納入轉換指標的設定。字詞加密保存，最後同步 30 天後不再顯示，並由每日排程清除。報表僅標記有花費無轉換的字詞，不會自動變更關鍵字。</p>

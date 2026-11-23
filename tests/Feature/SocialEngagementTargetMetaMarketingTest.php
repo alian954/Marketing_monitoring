@@ -105,6 +105,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                         'account_currency' => 'USD',
                     ])],
                 ])
+                ->push(['data' => []])
                 ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
@@ -217,7 +218,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                 && ($query['limit'] ?? null) === '100'
                 && json_decode($query['filtering'], true)[0]['value'] === '987654321';
         });
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
 
         $reportResponse = $this->get(route('social-engagement-targets.report', $target))
             ->assertOk()

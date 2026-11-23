@@ -338,6 +338,81 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="meta-marketing-placement-report-title">Meta Ads 版位成效</h3>
+                    @if ($metaMarketingPlacementReport['status'] === 'complete' && $metaMarketingPlacementReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.meta-marketing.placements', $target) }}">匯出版位 CSV</a>
+                    @endif
+                </div>
+                @if ($metaMarketingPlacementReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚未讀取版位資料；更新 Meta Ads 數據後即可查看。</p>
+                @elseif ($metaMarketingPlacementReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">版位明細暫時無法讀取，其他 Meta Ads 報表仍可使用。{{ $metaMarketingPlacementReport['message'] }}</p>
+                @elseif ($metaMarketingPlacementReport['status'] === 'expired')
+                    <p class="campaign-report-empty">版位明細已超過 30 天保存期限，更新 Meta Ads 數據後可重新讀取。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $metaMarketingPlacementReport['window_start_on'] }} 至 {{ $metaMarketingPlacementReport['window_end_on'] }} · 明細加密保存 30 天。
+                    </p>
+                    @if ($metaMarketingPlacementReport['truncated'])
+                        <p class="campaign-report-note">版位資料超過 200 筆，表格僅列出花費最高的 200 筆。</p>
+                    @endif
+                    @if ($metaMarketingPlacementReport['rows'] === [])
+                        <p class="campaign-report-empty">此活動期間沒有可用的版位明細。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <label for="meta-marketing-placement-sort">排序</label>
+                            <select id="meta-marketing-placement-sort" name="meta_placement_sort">
+                                <option value="spend" @selected($metaMarketingPlacementReport['sort'] === 'spend')>花費</option>
+                                <option value="impressions" @selected($metaMarketingPlacementReport['sort'] === 'impressions')>曝光</option>
+                                <option value="clicks" @selected($metaMarketingPlacementReport['sort'] === 'clicks')>點擊</option>
+                                <option value="ctr" @selected($metaMarketingPlacementReport['sort'] === 'ctr')>CTR</option>
+                                <option value="purchases" @selected($metaMarketingPlacementReport['sort'] === 'purchases')>購買</option>
+                                <option value="purchase_value" @selected($metaMarketingPlacementReport['sort'] === 'purchase_value')>購買價值</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-placement-report-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Meta Ads 平台與版位投放成效（{{ $metaMarketingPlacementReport['currency_code'] ?? '幣別未知' }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">平台</th>
+                                        <th scope="col">版位</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">觸及</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">CPM</th>
+                                        <th scope="col" class="numeric">購買</th>
+                                        <th scope="col" class="numeric">購買價值</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($metaMarketingPlacementReport['rows'] as $placementRow)
+                                        <tr>
+                                            <th scope="row">{{ $placementRow['publisher_platform'] }}</th>
+                                            <td>{{ $placementRow['platform_position'] }}</td>
+                                            <td class="numeric">{{ number_format((int) $placementRow['impressions']) }}</td>
+                                            <td class="numeric">{{ $placementRow['reach'] === null ? '—' : number_format((int) $placementRow['reach']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $placementRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $placementRow['ctr_percent'] === null ? '—' : number_format($placementRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $placementRow['spend_amount'], 2) }} {{ $metaMarketingPlacementReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $placementRow['cost_per_click'] === null ? '—' : number_format($placementRow['cost_per_click'], 4).' '.$metaMarketingPlacementReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $placementRow['cost_per_thousand_impressions'] === null ? '—' : number_format($placementRow['cost_per_thousand_impressions'], 4).' '.$metaMarketingPlacementReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $placementRow['purchases'] === null ? '—' : number_format((float) $placementRow['purchases'], 2) }}</td>
+                                            <td class="numeric">{{ $placementRow['purchase_value'] === null ? '—' : number_format((float) $placementRow['purchase_value'], 2).' '.$metaMarketingPlacementReport['currency_code'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">版位觸及可能重疊，不應加總；CTR、CPC 與 CPM 依版位花費、曝光及點擊計算。購買數與價值採用 Meta 回傳的 <code>omni_purchase</code>。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
                     @if ($metaMarketingTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']) }}">匯出趨勢 CSV</a>

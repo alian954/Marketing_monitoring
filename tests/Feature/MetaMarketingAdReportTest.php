@@ -116,7 +116,8 @@ class MetaMarketingAdReportTest extends TestCase
                     'account_currency' => 'TWD',
                 ]]])
                 ->push(['data' => []])
-                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400),
+                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400)
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -145,7 +146,8 @@ class MetaMarketingAdReportTest extends TestCase
                     'account_currency' => 'TWD',
                 ]]])
                 ->push(['data' => []])
-                ->push(['data' => [$this->adInsightRow(0, '42.5')]]),
+                ->push(['data' => [$this->adInsightRow(0, '42.5')]])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -159,7 +161,7 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertTrue($report->ad_insights_expires_at->isFuture());
         $this->assertStringNotContainsString('Winter Ad 10000', $report->getRawOriginal('ad_insights'));
         $this->assertArrayNotHasKey('ad_insights', $report->toArray());
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 
     public function test_ad_report_derives_metrics_sorts_rows_and_marks_expired_data(): void

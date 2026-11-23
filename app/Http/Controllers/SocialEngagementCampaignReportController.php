@@ -25,6 +25,8 @@ use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
 use App\Services\GoogleAnalyticsLandingPageReportCsv;
 use App\Services\MetaMarketingAdPerformanceReport;
 use App\Services\MetaMarketingAdReportCsv;
+use App\Services\MetaMarketingPlacementPerformanceReport;
+use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignReport;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,6 +49,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
         GoogleAnalyticsLandingPagePerformanceReport $googleAnalyticsLandingPagePerformanceReport,
         MetaMarketingAdPerformanceReport $metaMarketingAdPerformanceReport,
+        MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
     ): View {
         $viewData = $this->reportData(
@@ -74,6 +77,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['metaMarketingReport']?->ad_insights,
             $viewData['metaMarketingReport']?->ad_insights_expires_at,
             (string) $request->query('meta_ad_sort', 'spend'),
+        );
+        $viewData['metaMarketingPlacementReport'] = $metaMarketingPlacementPerformanceReport->build(
+            $viewData['metaMarketingReport']?->placement_insights,
+            $viewData['metaMarketingReport']?->placement_insights_expires_at,
+            (string) $request->query('meta_placement_sort', 'spend'),
         );
         $viewData['googleAdsDeliveryUnitReport'] = $googleAdsDeliveryUnitPerformanceReport->build(
             $viewData['googleAdsReport']?->delivery_unit_performance,
@@ -133,6 +141,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'meta-ads-ad-performance-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportMetaMarketingPlacements(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
+        MetaMarketingPlacementReportCsv $metaMarketingPlacementReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->metaMarketingConnection;
+        abort_if(
+            $connection === null
+                || $connection->ad_account_id === null
+                || $socialEngagementTarget->meta_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetMetaMarketingReport::query()
+            ->where('meta_marketing_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->placement_insights)
+                || $report->placement_insights_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $placementReport = $metaMarketingPlacementPerformanceReport->build(
+            $report->placement_insights,
+            $report->placement_insights_expires_at,
+            'spend',
+        );
+        abort_if($placementReport['status'] !== 'complete' || $placementReport['rows'] === [], 404);
+        $csv = $metaMarketingPlacementReportCsv->build($placementReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'meta-ads-placement-performance-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
