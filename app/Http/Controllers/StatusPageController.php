@@ -146,6 +146,7 @@ class StatusPageController extends Controller
             ->firstOrFail();
         $monitors = Monitor::query()
             ->where('public_status', true)
+            ->where('user_id', $statusPage->user_id)
             ->with(['latestCheckRun', 'activeIncidents'])
             ->orderBy('name')
             ->get();

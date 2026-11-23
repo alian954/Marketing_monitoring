@@ -14,6 +14,8 @@ class DomainRegistrationObservation extends Model
     /** @use HasFactory<DomainRegistrationObservationFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return ['observed_on' => 'immutable_date', 'expires_at' => 'immutable_datetime'];

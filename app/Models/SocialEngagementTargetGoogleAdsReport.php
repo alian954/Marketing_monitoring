@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'google_ads_connection_id',
@@ -45,6 +46,16 @@ class SocialEngagementTargetGoogleAdsReport extends Model
 {
     /** @use HasFactory<SocialEngagementTargetGoogleAdsReportFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedRelationScope('socialEngagementTarget'));
+    }
+
+    public function socialEngagementTarget(): BelongsTo
+    {
+        return $this->belongsTo(SocialEngagementTarget::class);
+    }
 
     protected function casts(): array
     {

@@ -18,6 +18,8 @@ class MaintenanceWindow extends Model
     /** @use HasFactory<MaintenanceWindowFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return [

@@ -846,8 +846,13 @@ class SocialEngagementTargetTest extends TestCase
 
     public function test_local_target_seeder_uses_an_existing_tagged_social_post_and_is_idempotent(): void
     {
-        $this->createSocialMonitor('facebook', 'UNTAGGED-POST', null);
-        $this->createSocialMonitor('threads', 'THREAD123', 'Spring campaign');
+        $owner = User::factory()->create();
+        $this->createSocialMonitor('facebook', 'UNTAGGED-POST', null)
+            ->forceFill(['user_id' => $owner->id])
+            ->save();
+        $this->createSocialMonitor('threads', 'THREAD123', 'Spring campaign')
+            ->forceFill(['user_id' => $owner->id])
+            ->save();
         app()->detectEnvironment(static fn (): string => 'local');
         $seeder = app(SocialEngagementTargetSeeder::class);
 
@@ -858,6 +863,7 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame('Spring campaign', $target->tag);
         $this->assertSame('threads', $target->social_platform);
         $this->assertSame(1000, $target->target_interactions);
+        $this->assertSame($owner->id, $target->user_id);
     }
 
     public function test_authenticated_user_can_delete_a_social_engagement_target(): void

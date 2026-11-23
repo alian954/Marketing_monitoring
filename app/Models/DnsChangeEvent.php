@@ -14,6 +14,8 @@ class DnsChangeEvent extends Model
     /** @use HasFactory<DnsChangeEventFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return [

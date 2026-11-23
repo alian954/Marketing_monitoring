@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'meta_marketing_connection_id',
@@ -44,6 +45,16 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class SocialEngagementTargetMetaMarketingReport extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedRelationScope('socialEngagementTarget'));
+    }
+
+    public function socialEngagementTarget(): BelongsTo
+    {
+        return $this->belongsTo(SocialEngagementTarget::class);
+    }
+
     protected function casts(): array
     {
         return [

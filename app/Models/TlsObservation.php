@@ -14,6 +14,8 @@ class TlsObservation extends Model
     /** @use HasFactory<TlsObservationFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return ['observed_on' => 'immutable_date', 'expires_at' => 'immutable_datetime'];

@@ -16,6 +16,8 @@ class IncidentEvent extends Model
     /** @use HasFactory<IncidentEventFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedIncident;
+
     protected function casts(): array
     {
         return ['evidence' => 'array', 'created_at' => 'immutable_datetime'];

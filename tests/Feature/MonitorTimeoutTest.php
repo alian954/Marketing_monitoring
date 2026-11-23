@@ -42,8 +42,9 @@ class MonitorTimeoutTest extends TestCase
     {
         Config::set('monitoring.transport', 'fixture');
         Queue::fake([RunMonitorCheck::class]);
+        $user = User::factory()->create();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($user)
             ->post(route('monitors.store'), [
                 'name' => 'Slow campaign page',
                 'url' => 'https://fixture.test/ok',
@@ -56,7 +57,7 @@ class MonitorTimeoutTest extends TestCase
 
         $this->assertSame(15, $monitor->timeout_seconds);
         $this->assertSame(14000, $monitor->response_time_threshold_ms);
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($user)
             ->get(route('monitors.show', $monitor))
             ->assertOk()
             ->assertSee('請求逾時上限')

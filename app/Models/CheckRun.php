@@ -18,6 +18,8 @@ class CheckRun extends Model
     /** @use HasFactory<CheckRunFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return [

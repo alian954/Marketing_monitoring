@@ -6,6 +6,7 @@ use App\Jobs\SendNotificationOutbox;
 use App\Models\DnsChangeEvent;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -50,7 +51,7 @@ class DnsDailySummaryTest extends TestCase
         $this->assertNull($outbox->incident_id);
         $this->assertSame('dns_daily_summary', $outbox->event_type);
         $this->assertSame('owner@example.test', $outbox->recipient);
-        $this->assertSame(hash('sha256', 'dns_daily_summary:owner@example.test:2026-11-17'), $outbox->event_key);
+        $this->assertSame(hash('sha256', 'dns_daily_summary:unowned:owner@example.test:2026-11-17'), $outbox->event_key);
         $this->assertStringContainsString('2026-11-17', $outbox->subject);
         $this->assertStringContainsString('Campaign landing', $outbox->body);
         $this->assertStringContainsString('email=REDACTED&token=REDACTED', $outbox->body);
@@ -104,6 +105,51 @@ class DnsDailySummaryTest extends TestCase
         $this->assertDatabaseCount('notification_outbox', 1);
         $this->assertDatabaseHas('notification_outbox', ['id' => $outbox->id, 'status' => 'sent']);
         Queue::assertPushed(SendNotificationOutbox::class, 1);
+    }
+
+    public function test_daily_dns_summaries_keep_each_accounts_monitor_details_separate(): void
+    {
+        Config::set('monitoring.notify_email', 'owner@example.test');
+        Config::set('monitoring.notify_slack_webhook', null);
+        Config::set('monitoring.notify_discord_webhook', null);
+        Config::set('monitoring.notify_teams_webhook', null);
+        Queue::fake([SendNotificationOutbox::class]);
+        $this->travelTo(Carbon::parse('2026-11-18 09:30:00', 'UTC'));
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+        $firstMonitor = Monitor::factory()->create([
+            'name' => 'First account domain',
+            'url' => 'https://first-account.example/landing',
+            'url_hash' => Monitor::fingerprintUrl('https://first-account.example/landing'),
+        ]);
+        $firstMonitor->forceFill(['user_id' => $firstUser->id])->save();
+        $secondMonitor = Monitor::factory()->create([
+            'name' => 'Second account domain',
+            'url' => 'https://second-account.example/landing',
+            'url_hash' => Monitor::fingerprintUrl('https://second-account.example/landing'),
+        ]);
+        $secondMonitor->forceFill(['user_id' => $secondUser->id])->save();
+
+        foreach ([$firstMonitor, $secondMonitor] as $monitor) {
+            DnsChangeEvent::factory()->for($monitor)->create([
+                'previous_ips' => ['93.184.216.34'],
+                'current_ips' => ['93.184.216.35'],
+                'detected_at' => now()->subDay()->startOfDay()->addHours(12),
+            ]);
+        }
+
+        $this->artisan('monitors:send-dns-summary')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('已將 2 筆 DNS 變更摘要加入 2 個通知管道。');
+
+        $firstOutbox = NotificationOutbox::withoutGlobalScopes()->where('user_id', $firstUser->id)->sole();
+        $secondOutbox = NotificationOutbox::withoutGlobalScopes()->where('user_id', $secondUser->id)->sole();
+
+        $this->assertStringContainsString('First account domain', $firstOutbox->body);
+        $this->assertStringNotContainsString('Second account domain', $firstOutbox->body);
+        $this->assertStringContainsString('Second account domain', $secondOutbox->body);
+        $this->assertStringNotContainsString('First account domain', $secondOutbox->body);
+        Queue::assertPushed(SendNotificationOutbox::class, 2);
     }
 
     public function test_daily_summary_explains_a_dns_answer_without_public_ip_addresses(): void

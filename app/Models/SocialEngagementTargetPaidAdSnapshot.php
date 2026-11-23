@@ -39,6 +39,11 @@ class SocialEngagementTargetPaidAdSnapshot extends Model
     /** @use HasFactory<SocialEngagementTargetPaidAdSnapshotFactory> */
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedRelationScope('target'));
+    }
+
     protected function casts(): array
     {
         return [

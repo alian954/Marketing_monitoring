@@ -20,6 +20,7 @@ class StatusPageSubscriptionDispatcher
 
         $statusPage = StatusPage::query()
             ->where('setting_key', 'default')
+            ->where('user_id', $monitor->user_id)
             ->where('is_published', true)
             ->first();
 

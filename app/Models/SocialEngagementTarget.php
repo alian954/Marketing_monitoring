@@ -4,14 +4,28 @@ namespace App\Models;
 
 use Database\Factories\SocialEngagementTargetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['tag', 'social_platform', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ga4_medium_name', 'ga4_goal_metric', 'ga4_goal_value', 'ga4_goal_currency', 'paid_media_goal_source', 'paid_media_goal_roas', 'gross_margin_percent', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
+#[Hidden(['user_id'])]
 class SocialEngagementTarget extends Model
 {
     /** @use HasFactory<SocialEngagementTargetFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedAccountScope);
+
+        static::creating(static function (SocialEngagementTarget $target): void {
+            if (Auth::id() !== null) {
+                $target->forceFill(['user_id' => Auth::id()]);
+            }
+        });
+    }
 
     protected function casts(): array
     {

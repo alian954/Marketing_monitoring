@@ -12,9 +12,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['name', 'url', 'url_hash', 'label', 'utm_content', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'alert_on_visible_text_change', 'alert_on_response_metadata_change', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'slo_target_basis_points', 'next_check_at', 'last_checked_at'])]
-#[Hidden(['notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header'])]
+#[Hidden(['user_id', 'notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header'])]
 class Monitor extends Model
 {
     public const MAX_INTERVAL_SECONDS = 3600;
@@ -49,6 +50,14 @@ class Monitor extends Model
 
     protected static function booted(): void
     {
+        static::addGlobalScope(new AuthenticatedAccountScope);
+
+        static::creating(static function (Monitor $monitor): void {
+            if (Auth::id() !== null) {
+                $monitor->forceFill(['user_id' => Auth::id()]);
+            }
+        });
+
         static::saving(static function (Monitor $monitor): void {
             $tags = $monitor->isDirty('label') || ! is_array($monitor->tags)
                 ? self::parseTags(is_string($monitor->label) ? $monitor->label : null)

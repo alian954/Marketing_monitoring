@@ -14,6 +14,8 @@ class RobotsObservation extends Model
     /** @use HasFactory<RobotsObservationFactory> */
     use HasFactory;
 
+    use ScopesThroughAuthenticatedMonitor;
+
     protected function casts(): array
     {
         return [

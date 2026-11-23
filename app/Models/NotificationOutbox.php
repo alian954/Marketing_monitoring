@@ -8,9 +8,10 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Auth;
 
-#[Fillable(['incident_id', 'monitor_id', 'status_page_subscription_id', 'event_key', 'channel', 'recipient', 'event_type', 'status', 'attempts', 'attempt_started_at', 'sent_at', 'subject', 'body', 'last_error'])]
-#[Hidden(['recipient'])]
+#[Fillable(['user_id', 'incident_id', 'monitor_id', 'status_page_subscription_id', 'event_key', 'channel', 'recipient', 'event_type', 'status', 'attempts', 'attempt_started_at', 'sent_at', 'subject', 'body', 'last_error'])]
+#[Hidden(['recipient', 'user_id'])]
 class NotificationOutbox extends Model
 {
     public const CHANNEL_EMAIL = 'email';
@@ -43,6 +44,45 @@ class NotificationOutbox extends Model
 
     /** @use HasFactory<NotificationOutboxFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedAccountScope);
+
+        static::creating(static function (NotificationOutbox $outbox): void {
+            if (Auth::id() !== null) {
+                $outbox->forceFill(['user_id' => Auth::id()]);
+
+                return;
+            }
+
+            $userId = $outbox->user_id;
+
+            if ($userId === null && $outbox->monitor_id !== null) {
+                $userId = Monitor::withoutGlobalScopes()->whereKey($outbox->monitor_id)->value('user_id');
+            }
+
+            if ($userId === null && $outbox->incident_id !== null) {
+                $userId = Incident::withoutGlobalScopes()
+                    ->with('monitor')
+                    ->find($outbox->incident_id)
+                    ?->monitor
+                    ?->user_id;
+            }
+
+            if ($userId === null && $outbox->status_page_subscription_id !== null) {
+                $userId = StatusPageSubscription::query()
+                    ->with('statusPage')
+                    ->find($outbox->status_page_subscription_id)
+                    ?->statusPage
+                    ?->user_id;
+            }
+
+            if ($userId !== null) {
+                $outbox->forceFill(['user_id' => $userId]);
+            }
+        });
+    }
 
     protected function casts(): array
     {

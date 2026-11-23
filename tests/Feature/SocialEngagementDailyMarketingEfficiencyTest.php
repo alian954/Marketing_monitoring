@@ -348,13 +348,14 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertNull($staleComparisons['meta_marketing']['changes']['spend_amount']);
         $this->assertSame('complete', $staleComparisons['google_ads']['status']);
 
+        $zeroResultsUser = User::factory()->create();
+        $this->actingAs($zeroResultsUser);
         $zeroResultsTarget = $this->createTarget([
             'tag' => 'Zero paid media results',
             'starts_on' => '2026-11-17',
             'ends_on' => '2026-11-30',
         ]);
         $zeroResultRows = $this->paidMediaComparisonRows(false, false);
-        $zeroResultsUser = User::factory()->create();
         $this->createDailyReports($zeroResultsUser, $zeroResultsTarget, [
             'ga_rows' => [],
             'meta_rows' => $zeroResultRows['meta_rows'],
@@ -597,6 +598,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertNull($incompleteObservation['frequency_change_percent']);
 
         $staleUser = User::factory()->create();
+        $this->actingAs($staleUser);
         $staleTarget = $this->createTarget([
             'tag' => 'Stale Meta fatigue',
             'meta_campaign_id' => 'meta-stale-fatigue',
@@ -619,6 +621,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertNull($staleObservation['ctr_change_percent']);
 
         $invalidUser = User::factory()->create();
+        $this->actingAs($invalidUser);
         $invalidTarget = $this->createTarget([
             'tag' => 'Invalid Meta fatigue',
             'meta_campaign_id' => 'meta-invalid-fatigue',
@@ -665,6 +668,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertSame('insufficient_period', $shortPeriodObservation['status']);
 
         $partialUser = User::factory()->create();
+        $this->actingAs($partialUser);
         $partialTarget = $this->createTarget([
             'tag' => 'Partial Meta fatigue',
             'meta_campaign_id' => 'meta-partial-fatigue',

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'google_analytics_connection_id',
@@ -39,6 +40,16 @@ use Illuminate\Database\Eloquent\Model;
 #[Hidden(['landing_page_report', 'landing_page_expires_at', 'event_name_report', 'event_name_expires_at', 'item_report', 'item_report_expires_at', 'ad_content_report', 'ad_content_report_expires_at', 'new_vs_returning_report', 'new_vs_returning_report_expires_at'])]
 class SocialEngagementTargetGoogleAnalyticsReport extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedRelationScope('socialEngagementTarget'));
+    }
+
+    public function socialEngagementTarget(): BelongsTo
+    {
+        return $this->belongsTo(SocialEngagementTarget::class);
+    }
+
     protected function casts(): array
     {
         return [

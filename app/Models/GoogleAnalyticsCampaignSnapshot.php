@@ -36,6 +36,11 @@ class GoogleAnalyticsCampaignSnapshot extends Model
     /** @use HasFactory<GoogleAnalyticsCampaignSnapshotFactory> */
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedRelationScope('socialEngagementTarget'));
+    }
+
     protected function casts(): array
     {
         return [

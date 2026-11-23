@@ -63,27 +63,32 @@ class SendDailyDnsSummary extends Command
         }
 
         $queuedCount = 0;
-        $subject = '['.config('app.name').'] DNS 變更摘要 '.$reportDate;
-        $body = $this->summaryBody($events, $urlMasker, $reportDate);
 
-        foreach ($destinations as [$channel, $recipient]) {
-            $eventKeyParts = $channel === NotificationOutbox::CHANNEL_EMAIL
-                ? ['dns_daily_summary', $recipient, $reportDate]
-                : ['dns_daily_summary', $channel, hash('sha256', $recipient), $reportDate];
-            $eventKey = hash('sha256', implode(':', $eventKeyParts));
-            $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
-                'incident_id' => null,
-                'channel' => $channel,
-                'recipient' => $recipient,
-                'event_type' => 'dns_daily_summary',
-                'status' => 'pending',
-                'subject' => $subject,
-                'body' => $body,
-            ]);
+        foreach ($events->groupBy(static fn (DnsChangeEvent $event): string => (string) ($event->monitor?->user_id ?? 'unowned')) as $ownerKey => $accountEvents) {
+            $userId = $ownerKey === 'unowned' ? null : (int) $ownerKey;
+            $subject = '['.config('app.name').'] DNS 變更摘要 '.$reportDate;
+            $body = $this->summaryBody($accountEvents, $urlMasker, $reportDate);
 
-            if ($outbox->wasRecentlyCreated) {
-                SendNotificationOutbox::dispatch($outbox->id);
-                $queuedCount++;
+            foreach ($destinations as [$channel, $recipient]) {
+                $eventKeyParts = $channel === NotificationOutbox::CHANNEL_EMAIL
+                    ? ['dns_daily_summary', $userId ?? 'unowned', $recipient, $reportDate]
+                    : ['dns_daily_summary', $userId ?? 'unowned', $channel, hash('sha256', $recipient), $reportDate];
+                $eventKey = hash('sha256', implode(':', $eventKeyParts));
+                $outbox = NotificationOutbox::query()->firstOrCreate(['event_key' => $eventKey], [
+                    'user_id' => $userId,
+                    'incident_id' => null,
+                    'channel' => $channel,
+                    'recipient' => $recipient,
+                    'event_type' => 'dns_daily_summary',
+                    'status' => 'pending',
+                    'subject' => $subject,
+                    'body' => $body,
+                ]);
+
+                if ($outbox->wasRecentlyCreated) {
+                    SendNotificationOutbox::dispatch($outbox->id);
+                    $queuedCount++;
+                }
             }
         }
 
