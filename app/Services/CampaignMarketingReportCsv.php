@@ -25,7 +25,8 @@ class CampaignMarketingReportCsv
      *     googleAnalyticsMediumName: string|null,
      *     businessGoal: array<string, mixed>,
      *     paidMediaRoasGoal: array<string, mixed>,
-     *     adSpendAnalysis: array<string, mixed>
+     *     adSpendAnalysis: array<string, mixed>,
+     *     estimatedProfitability: array<string, mixed>
      * }  $data
      * @return array{headers: list<string>, fields: list<string>}
      */
@@ -39,6 +40,7 @@ class CampaignMarketingReportCsv
         $businessGoal = $data['businessGoal'];
         $businessGoalTimePacing = $businessGoal['time_pacing'] ?? [];
         $paidMediaRoasGoal = $data['paidMediaRoasGoal'];
+        $estimatedProfitability = $data['estimatedProfitability'];
         $metaMarketingReport = $data['metaMarketingReport'];
         $googleAdsReport = $data['googleAdsReport'];
         $adSpendAnalysis = $data['adSpendAnalysis'];
@@ -163,6 +165,12 @@ class CampaignMarketingReportCsv
             'total_ad_spend_amount',
             'total_ad_spend_currency',
             'ad_spend_source',
+            'estimated_gross_margin_percent',
+            'estimated_gross_profit_amount',
+            'estimated_media_contribution_amount',
+            'estimated_profitability_currency',
+            'break_even_roas',
+            'profitability_estimate_status',
             'campaign_budget_amount',
             'campaign_budget_currency',
             'budget_utilization_percent',
@@ -298,6 +306,12 @@ class CampaignMarketingReportCsv
             $adSpendAnalysis['ad_spend_amount'] ?? '',
             $adSpendAnalysis['ad_spend_currency'] ?? '',
             $adSpendAnalysis['ad_spend_source_label'] ?? '',
+            $this->formatDecimal($estimatedProfitability['gross_margin_percent'] ?? null, 4),
+            $this->formatDecimal($estimatedProfitability['gross_profit_amount'] ?? null, 4),
+            $this->formatDecimal($estimatedProfitability['media_contribution_amount'] ?? null, 4),
+            $estimatedProfitability['currency_code'] ?? '',
+            $this->formatDecimal($estimatedProfitability['break_even_roas'] ?? null, 4),
+            $estimatedProfitability['status'] ?? '',
             $adSpendAnalysis['campaign_budget_amount'] ?? '',
             $adSpendAnalysis['campaign_budget_currency'] ?? '',
             $this->formatDecimal($adSpendAnalysis['budget_utilization_percent'], 2),

@@ -38,6 +38,7 @@ class SocialEngagementTargetController extends Controller
                 'paid_media_goal_roas' => ($data['paid_media_goal_source'] ?? null) !== null
                     ? $data['paid_media_goal_roas']
                     : null,
+                'gross_margin_percent' => $data['gross_margin_percent'] ?? null,
                 'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
                 'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
             ],

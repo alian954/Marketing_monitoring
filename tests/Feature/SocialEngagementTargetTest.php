@@ -51,6 +51,95 @@ class SocialEngagementTargetTest extends TestCase
             ->assertSee('營收目標需填', false);
     }
 
+    public function test_dashboard_exposes_an_optional_gross_margin_input(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('估算毛利貢獻')
+            ->assertSee('name="gross_margin_percent"', false)
+            ->assertSee('min="0" max="100" step="0.0001"', false)
+            ->assertSee('不預設毛利假設', false)
+            ->assertSee('不含物流、交易費與固定營運成本', false);
+    }
+
+    public function test_authenticated_user_can_create_update_and_clear_activity_gross_margin(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-MARGIN-01', 'Margin campaign');
+        $user = User::factory()->create();
+        $payload = [
+            'tag' => 'Margin campaign',
+            'social_platform' => 'instagram',
+            'target_interactions' => 1000,
+        ];
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'gross_margin_percent' => '0',
+            ])
+            ->assertRedirect();
+
+        $target = SocialEngagementTarget::query()->sole();
+        $this->assertSame('0.0000', $target->gross_margin_percent);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'gross_margin_percent' => '100',
+            ])
+            ->assertRedirect();
+
+        $target->refresh();
+        $this->assertSame('100.0000', $target->gross_margin_percent);
+
+        $this->actingAs($user)
+            ->get(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_tag' => 'tag:Margin campaign',
+            ]))
+            ->assertOk()
+            ->assertSee('value="100.0000"', false);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                ...$payload,
+                'gross_margin_percent' => '',
+            ])
+            ->assertRedirect();
+
+        $target->refresh();
+        $this->assertNull($target->gross_margin_percent);
+    }
+
+    public function test_activity_gross_margin_rejects_non_numeric_out_of_range_and_over_precision_values(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-MARGIN-02', 'Invalid margin');
+        $user = User::factory()->create();
+        $payload = [
+            'tag' => 'Invalid margin',
+            'social_platform' => 'instagram',
+            'target_interactions' => 1000,
+        ];
+
+        foreach ([
+            '-0.1' => '毛利率不可小於 0%。',
+            '100.1' => '毛利率不可超過 100%。',
+            '12.12345' => '毛利率最多可輸入 4 位小數。',
+            'unknown' => '毛利率必須是數字。',
+        ] as $value => $message) {
+            $this->actingAs($user)
+                ->from(route('dashboard'))
+                ->post(route('social-engagement-targets.store'), [
+                    ...$payload,
+                    'gross_margin_percent' => $value,
+                ])
+                ->assertSessionHasErrorsIn('socialEngagementTarget', ['gross_margin_percent' => $message]);
+        }
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
+    }
+
     public function test_authenticated_user_can_create_and_clear_a_paid_media_roas_goal(): void
     {
         $this->createSocialMonitor('instagram', 'IG-ROAS-01', 'Spring launch');

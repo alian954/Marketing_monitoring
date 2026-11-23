@@ -480,6 +480,17 @@
                         </div>
                     </div>
                 </fieldset>
+                <fieldset class="campaign-business-goal-fields">
+                    <legend>估算毛利貢獻</legend>
+                    <div class="campaign-business-goal-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-gross-margin-percent">毛利率（%）</label>
+                            <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('gross_margin_percent') ? ' is-invalid' : '' }}" id="social-engagement-target-gross-margin-percent" name="gross_margin_percent" type="number" inputmode="decimal" min="0" max="100" step="0.0001" value="{{ old('gross_margin_percent', $socialEngagementTargetFormTarget?->gross_margin_percent) }}" aria-describedby="social-engagement-target-gross-margin-percent-help{{ $errors->getBag('socialEngagementTarget')->has('gross_margin_percent') ? ' social-engagement-target-gross-margin-percent-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('gross_margin_percent')) aria-invalid="true" @endif>
+                            <p id="social-engagement-target-gross-margin-percent-help" class="field-help">選填，不預設毛利假設；留白不計算。估算不含物流、交易費與固定營運成本。</p>
+                            @error('gross_margin_percent', 'socialEngagementTarget')<p id="social-engagement-target-gross-margin-percent-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                </fieldset>
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-starts-on">活動開始日</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' is-invalid' : '' }}" id="social-engagement-target-starts-on" name="starts_on" type="date" value="{{ old('starts_on', $socialEngagementTargetFormTarget?->starts_on?->toDateString()) }}" aria-describedby="social-engagement-target-period-help{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' social-engagement-target-start-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('starts_on')) aria-invalid="true" @endif>

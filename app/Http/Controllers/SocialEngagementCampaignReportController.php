@@ -13,6 +13,7 @@ use App\Services\CampaignDailyMarketingEfficiencyReport;
 use App\Services\CampaignDailyMarketingPerformanceReport;
 use App\Services\CampaignDailyMarketingReportCsv;
 use App\Services\CampaignDailyMarketingTrendChart;
+use App\Services\CampaignEstimatedProfitabilityReport;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CampaignMetaAdsFatigueObservation;
@@ -77,6 +78,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignEstimatedProfitabilityReport $estimatedProfitabilityReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
         CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
@@ -113,6 +115,13 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingPerformanceReport,
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
+        );
+        $viewData['estimatedProfitability'] = $estimatedProfitabilityReport->build(
+            $socialEngagementTarget,
+            $viewData['googleAnalyticsReport'],
+            $viewData['adSpendAnalysis'],
+            $viewData['googleAnalyticsReport'] !== null && ! $viewData['googleAnalyticsReportIsStale'],
+            $viewData['totalAdSpendSnapshotIsFresh'],
         );
         $viewData['businessGoal'] = $socialEngagementCampaignBusinessGoalReport->build(
             $socialEngagementTarget,
@@ -997,6 +1006,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
         PaidMediaCampaignTrendReport $paidMediaTrendReport,
         CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
+        CampaignEstimatedProfitabilityReport $estimatedProfitabilityReport,
         CampaignDailyMarketingPerformanceReport $dailyMarketingPerformanceReport,
         CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
@@ -1015,6 +1025,13 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
             false,
+        );
+        $data['estimatedProfitability'] = $estimatedProfitabilityReport->build(
+            $socialEngagementTarget,
+            $data['googleAnalyticsReport'],
+            $data['adSpendAnalysis'],
+            $data['googleAnalyticsReport'] !== null && ! $data['googleAnalyticsReportIsStale'],
+            $data['totalAdSpendSnapshotIsFresh'],
         );
         $data['businessGoal'] = $socialEngagementCampaignBusinessGoalReport->build(
             $socialEngagementTarget,
@@ -1173,6 +1190,7 @@ class SocialEngagementCampaignReportController extends Controller
      *     googleAnalyticsTrend: list<array<string, mixed>>,
      *     adSpendAnalysis: array<string, mixed>,
      *     roasSpendSnapshotIsFresh: bool,
+     *     totalAdSpendSnapshotIsFresh: bool,
      *     dailyMarketingPerformance: array<string, array<string, mixed>>
      * }
      */
@@ -1225,6 +1243,13 @@ class SocialEngagementCampaignReportController extends Controller
             comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
         );
         $roasSpendSnapshotIsFresh = $this->selectedSpendSnapshotIsFresh(
+            $adSpendAnalysis,
+            $metaMarketingReport,
+            $googleAdsReport,
+            $reportFreshnessCutoff,
+        );
+        $totalAdSpendSnapshotIsFresh = $this->totalAdSpendSnapshotIsFresh(
+            $socialEngagementTarget,
             $adSpendAnalysis,
             $metaMarketingReport,
             $googleAdsReport,
@@ -1292,6 +1317,7 @@ class SocialEngagementCampaignReportController extends Controller
                 : [],
             'adSpendAnalysis' => $adSpendAnalysis,
             'roasSpendSnapshotIsFresh' => $roasSpendSnapshotIsFresh,
+            'totalAdSpendSnapshotIsFresh' => $totalAdSpendSnapshotIsFresh,
             'dailyMarketingPerformance' => $dailyMarketingPerformance,
         ];
     }
@@ -1360,6 +1386,57 @@ class SocialEngagementCampaignReportController extends Controller
             'manual' => is_numeric($adSpendAnalysis['roas_spend_amount'] ?? null),
             default => false,
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $adSpendAnalysis
+     */
+    private function totalAdSpendSnapshotIsFresh(
+        SocialEngagementTarget $target,
+        array $adSpendAnalysis,
+        ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
+        ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
+        CarbonImmutable $freshnessCutoff,
+    ): bool {
+        $source = $adSpendAnalysis['ad_spend_source'] ?? null;
+        $metaIsConfigured = filled($target->meta_campaign_id);
+        $googleAdsIsConfigured = filled($target->google_ads_campaign_id);
+
+        if ($source === 'manual') {
+            return ! $metaIsConfigured && ! $googleAdsIsConfigured
+                && is_numeric($adSpendAnalysis['ad_spend_amount'] ?? null);
+        }
+
+        if (! in_array($source, ['meta_marketing', 'google_ads', 'combined_paid_ads'], true)) {
+            return false;
+        }
+
+        $metaIsFresh = $metaMarketingReport?->synced_at?->greaterThan($freshnessCutoff) === true
+            && is_numeric($metaMarketingReport->spend_amount)
+            && $this->isValidCurrencyCode($metaMarketingReport->currency_code);
+        $googleAdsIsFresh = $googleAdsReport?->synced_at?->greaterThan($freshnessCutoff) === true
+            && is_numeric($googleAdsReport->spend_amount)
+            && $this->isValidCurrencyCode($googleAdsReport->currency_code);
+
+        if ($metaIsConfigured && ! $metaIsFresh) {
+            return false;
+        }
+
+        if ($googleAdsIsConfigured && ! $googleAdsIsFresh) {
+            return false;
+        }
+
+        return match ($source) {
+            'meta_marketing' => $metaIsFresh && ! $googleAdsIsConfigured,
+            'google_ads' => $googleAdsIsFresh && ! $metaIsConfigured,
+            'combined_paid_ads' => $metaIsFresh && $googleAdsIsFresh,
+            default => false,
+        };
+    }
+
+    private function isValidCurrencyCode(mixed $value): bool
+    {
+        return is_string($value) && preg_match('/^[A-Z]{3}$/D', strtoupper(trim($value))) === 1;
     }
 
     public function exportGoogleAnalyticsChannelBreakdown(

@@ -2822,6 +2822,31 @@
                     </dd>
                 </div>
             </dl>
+            <section class="spaced-top" aria-labelledby="campaign-estimated-profitability-title">
+                <h3 id="campaign-estimated-profitability-title">估算毛利貢獻</h3>
+                <dl class="campaign-report-summary campaign-efficiency-summary">
+                    <div>
+                        <dt>設定毛利率</dt>
+                        <dd>{{ $estimatedProfitability['gross_margin_percent'] === null ? '未設定' : number_format($estimatedProfitability['gross_margin_percent'], 4).'%' }}</dd>
+                    </div>
+                    <div>
+                        <dt>估算毛利額</dt>
+                        <dd>{{ $estimatedProfitability['gross_profit_amount'] === null ? '—' : number_format($estimatedProfitability['gross_profit_amount'], 2).' '.$estimatedProfitability['currency_code'] }}</dd>
+                    </div>
+                    <div>
+                        <dt>扣媒體花費後貢獻額</dt>
+                        <dd>{{ $estimatedProfitability['media_contribution_amount'] === null ? '—' : number_format($estimatedProfitability['media_contribution_amount'], 2).' '.$estimatedProfitability['currency_code'] }}</dd>
+                    </div>
+                    <div>
+                        <dt>損益兩平 ROAS</dt>
+                        <dd>
+                            {{ $estimatedProfitability['break_even_roas'] === null ? '—' : number_format($estimatedProfitability['break_even_roas'], 2).'x' }}
+                            <span class="campaign-report-secondary">{{ $estimatedProfitability['break_even_roas_status_label'] }}</span>
+                        </dd>
+                    </div>
+                </dl>
+                <p class="campaign-report-secondary">{{ $estimatedProfitability['status_label'] }}。估算依 GA4 營收、活動設定毛利率及媒體總花費；不含物流、交易費與固定營運成本。</p>
+            </section>
             <p class="campaign-report-secondary">已設定 Google Ads 活動時使用 Google Ads 點擊；否則使用 Meta Ads 點擊。此比值僅供追蹤診斷，點擊與工作階段不一定一對一，不代表轉換率。</p>
             <p class="campaign-report-secondary">活動期間互動增量以每篇貼文在活動日期內的首、末完整讀值相減；至少兩次完整讀值才納入，下降的數量會抵銷增量。</p>
             @if ($adSpendAnalysis['roas'] === null)
