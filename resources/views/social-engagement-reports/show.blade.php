@@ -2332,6 +2332,60 @@
             @endforeach
 
             @php
+                $metaAdsFatigueStatusClass = match ($metaAdsFatigueObservation['status']) {
+                    'signal', 'partial', 'stale', 'invalid_metrics' => 'warning',
+                    'unsupported' => 'stale',
+                    'no_signal' => 'healthy',
+                    default => 'unknown',
+                };
+                $metaAdsFatigueHasComparison = in_array($metaAdsFatigueObservation['status'], ['signal', 'no_signal'], true);
+                $metaAdsFatigueCurrentPeriod = $metaAdsFatigueObservation['current_period'];
+                $metaAdsFatiguePreviousPeriod = $metaAdsFatigueObservation['previous_period'];
+            @endphp
+            <section class="campaign-report-daily-source" aria-labelledby="campaign-meta-ads-fatigue-title">
+                <div class="campaign-report-section-header">
+                    <h3 id="campaign-meta-ads-fatigue-title">Meta Ads 頻率與 CTR 觀察</h3>
+                    <span class="badge badge-{{ $metaAdsFatigueStatusClass }}">{{ $metaAdsFatigueObservation['status_label'] }}</span>
+                </div>
+                <p class="campaign-report-secondary">
+                    比較最近兩個完整 7 日區間的投放日平均頻率與整段 CTR；頻率升幅至少 {{ number_format($metaAdsFatigueObservation['frequency_threshold_percent'], 0) }}%，且 CTR 降幅至少 {{ number_format($metaAdsFatigueObservation['ctr_threshold_percent'], 0) }}% 時提示檢視。曝光量偏低時波動較大；此提示不代表因果判定。
+                </p>
+                @if ($metaAdsFatigueHasComparison)
+                    <dl class="campaign-report-summary campaign-efficiency-summary">
+                        <div>
+                            <dt>近期投放日平均頻率</dt>
+                            <dd>{{ number_format($metaAdsFatigueCurrentPeriod['average_frequency'], 2) }} 次／人</dd>
+                            <span class="campaign-report-secondary">{{ $metaAdsFatigueCurrentPeriod['start_on'] }} 至 {{ $metaAdsFatigueCurrentPeriod['end_on'] }} · {{ number_format($metaAdsFatigueCurrentPeriod['delivery_day_count']) }} 個投放日 · {{ number_format($metaAdsFatigueCurrentPeriod['impressions']) }} 次曝光</span>
+                        </div>
+                        <div>
+                            <dt>前期投放日平均頻率</dt>
+                            <dd>{{ number_format($metaAdsFatiguePreviousPeriod['average_frequency'], 2) }} 次／人</dd>
+                            <span class="campaign-report-secondary">{{ $metaAdsFatiguePreviousPeriod['start_on'] }} 至 {{ $metaAdsFatiguePreviousPeriod['end_on'] }} · {{ number_format($metaAdsFatiguePreviousPeriod['delivery_day_count']) }} 個投放日 · {{ number_format($metaAdsFatiguePreviousPeriod['impressions']) }} 次曝光</span>
+                        </div>
+                        <div>
+                            <dt>頻率變化</dt>
+                            <dd>{{ $metaAdsFatigueObservation['frequency_change_percent'] >= 0 ? '+' : '' }}{{ number_format($metaAdsFatigueObservation['frequency_change_percent'], 1) }}%</dd>
+                        </div>
+                        <div>
+                            <dt>近期 CTR</dt>
+                            <dd>{{ number_format($metaAdsFatigueCurrentPeriod['ctr_percent'], 2) }}%</dd>
+                        </div>
+                        <div>
+                            <dt>前期 CTR</dt>
+                            <dd>{{ number_format($metaAdsFatiguePreviousPeriod['ctr_percent'], 2) }}%</dd>
+                        </div>
+                        <div>
+                            <dt>CTR 變化</dt>
+                            <dd>{{ $metaAdsFatigueObservation['ctr_change_percent'] === null ? '—' : number_format($metaAdsFatigueObservation['ctr_change_percent'], 1).'%' }}</dd>
+                        </div>
+                    </dl>
+                    <p class="campaign-report-secondary">{{ $metaAdsFatigueObservation['message'] }}</p>
+                @else
+                    <p class="campaign-report-empty">{{ $metaAdsFatigueObservation['message'] }}</p>
+                @endif
+            </section>
+
+            @php
                 $dailyMarketingEfficiency = $dailyMarketingPerformance['combined_efficiency'];
                 $dailyMarketingEfficiencyStatusClass = match ($dailyMarketingEfficiency['status']) {
                     'complete' => 'healthy',

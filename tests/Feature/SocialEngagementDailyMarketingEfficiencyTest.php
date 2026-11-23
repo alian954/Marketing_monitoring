@@ -380,6 +380,198 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->assertNull($comparison['changes']['spend_amount']);
     }
 
+    public function test_meta_fatigue_observation_flags_complete_frequency_increase_and_ctr_decline(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'meta_rows' => $this->fatigueMetaRows(1500, 1000, 120),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('Meta Ads 頻率與 CTR 觀察')
+            ->assertSee('建議檢視')
+            ->assertSee('頻率增加與 CTR 下滑同時達到提示門檻，建議檢視素材與受眾。')
+            ->assertSee('10,500 次曝光')
+            ->assertSee('7 個投放日');
+        $observation = $response->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('signal', $observation['status']);
+        $this->assertSame('2026-11-15', $observation['current_period']['start_on']);
+        $this->assertSame('2026-11-21', $observation['current_period']['end_on']);
+        $this->assertSame('2026-11-08', $observation['previous_period']['start_on']);
+        $this->assertSame('2026-11-14', $observation['previous_period']['end_on']);
+        $this->assertSame(1.5, $observation['current_period']['average_frequency']);
+        $this->assertSame(8.0, $observation['current_period']['ctr_percent']);
+        $this->assertSame(1.0, $observation['previous_period']['average_frequency']);
+        $this->assertSame(10.0, $observation['previous_period']['ctr_percent']);
+        $this->assertSame(50.0, $observation['frequency_change_percent']);
+        $this->assertSame(-20.0, $observation['ctr_change_percent']);
+    }
+
+    public function test_meta_fatigue_observation_requires_both_frequency_and_ctr_conditions(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createDailyReports($user, $target, [
+            'meta_rows' => $this->fatigueMetaRows(1500, 1000, 150),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('未達提示條件')
+            ->assertSee('目前未同時達到兩項提示門檻。');
+        $observation = $response->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('no_signal', $observation['status']);
+        $this->assertSame(50.0, $observation['frequency_change_percent']);
+        $this->assertSame(0.0, $observation['ctr_change_percent']);
+    }
+
+    public function test_meta_fatigue_observation_ignores_zero_delivery_days_and_exposes_period_sample_volume(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $rows = $this->fatigueMetaRows(1500, 1000, 120);
+
+        foreach ($rows as &$row) {
+            if ($row['date'] === '2026-11-10') {
+                $row['impressions'] = 0;
+                $row['reach'] = 0;
+                $row['clicks'] = 0;
+            }
+        }
+        unset($row);
+        $this->createDailyReports($user, $target, ['meta_rows' => $rows]);
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('曝光量偏低時波動較大')
+            ->assertSee('6 個投放日');
+        $observation = $response->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('signal', $observation['status']);
+        $this->assertSame(6, $observation['previous_period']['delivery_day_count']);
+        $this->assertSame(6000, $observation['previous_period']['impressions']);
+        $this->assertSame(7, $observation['current_period']['delivery_day_count']);
+        $this->assertSame(10500, $observation['current_period']['impressions']);
+    }
+
+    public function test_meta_fatigue_observation_suppresses_incomplete_stale_and_invalid_data(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $incompleteUser = User::factory()->create();
+        $incompleteTarget = $this->createTarget();
+        $incompleteRows = $this->fatigueMetaRows(1500, 1000, 120);
+        $incompleteRows = array_values(array_filter(
+            $incompleteRows,
+            static fn (array $row): bool => $row['date'] !== '2026-11-18',
+        ));
+        $this->createDailyReports($incompleteUser, $incompleteTarget, ['meta_rows' => $incompleteRows]);
+
+        $incompleteObservation = $this->actingAs($incompleteUser)
+            ->get(route('social-engagement-targets.report', $incompleteTarget))
+            ->assertOk()
+            ->assertSee('逐日資料不完整')
+            ->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('partial', $incompleteObservation['status']);
+        $this->assertNull($incompleteObservation['frequency_change_percent']);
+
+        $staleUser = User::factory()->create();
+        $staleTarget = $this->createTarget([
+            'tag' => 'Stale Meta fatigue',
+            'meta_campaign_id' => 'meta-stale-fatigue',
+        ]);
+        $this->createDailyReports($staleUser, $staleTarget, [
+            'meta_rows' => $this->fatigueMetaRows(1500, 1000, 120),
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->where('social_engagement_target_id', $staleTarget->id)
+            ->firstOrFail()
+            ->update(['synced_at' => now()->subDay()]);
+
+        $staleObservation = $this->actingAs($staleUser)
+            ->get(route('social-engagement-targets.report', $staleTarget))
+            ->assertOk()
+            ->assertSee('Meta 資料已過期')
+            ->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('stale', $staleObservation['status']);
+        $this->assertNull($staleObservation['ctr_change_percent']);
+
+        $invalidUser = User::factory()->create();
+        $invalidTarget = $this->createTarget([
+            'tag' => 'Invalid Meta fatigue',
+            'meta_campaign_id' => 'meta-invalid-fatigue',
+        ]);
+        $invalidRows = $this->fatigueMetaRows(1500, 1000, 120);
+        foreach ($invalidRows as &$row) {
+            if ($row['date'] === '2026-11-18') {
+                $row['reach'] = 0;
+            }
+        }
+        unset($row);
+        $this->createDailyReports($invalidUser, $invalidTarget, ['meta_rows' => $invalidRows]);
+
+        $invalidObservation = $this->actingAs($invalidUser)
+            ->get(route('social-engagement-targets.report', $invalidTarget))
+            ->assertOk()
+            ->assertSee('頻率或點擊率指標不足')
+            ->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('invalid_metrics', $invalidObservation['status']);
+        $this->assertNull($invalidObservation['frequency_change_percent']);
+    }
+
+    public function test_meta_fatigue_observation_requires_two_full_campaign_weeks_and_complete_source_status(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $shortPeriodUser = User::factory()->create();
+        $shortPeriodTarget = $this->createTarget([
+            'tag' => 'Short Meta fatigue period',
+            'starts_on' => '2026-11-10',
+            'ends_on' => '2026-11-30',
+        ]);
+        $this->createDailyReports($shortPeriodUser, $shortPeriodTarget, [
+            'meta_rows' => $this->fatigueMetaRows(1500, 1000, 120),
+        ]);
+
+        $shortPeriodObservation = $this->actingAs($shortPeriodUser)
+            ->get(route('social-engagement-targets.report', $shortPeriodTarget))
+            ->assertOk()
+            ->assertSee('不足 14 天資料')
+            ->assertSee('活動日期不足兩個完整七日區間，暫不判讀。')
+            ->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('insufficient_period', $shortPeriodObservation['status']);
+
+        $partialUser = User::factory()->create();
+        $partialTarget = $this->createTarget([
+            'tag' => 'Partial Meta fatigue',
+            'meta_campaign_id' => 'meta-partial-fatigue',
+        ]);
+        $this->createDailyReports($partialUser, $partialTarget, [
+            'meta_status' => 'partial',
+            'meta_rows' => $this->fatigueMetaRows(1500, 1000, 120),
+        ]);
+
+        $partialObservation = $this->actingAs($partialUser)
+            ->get(route('social-engagement-targets.report', $partialTarget))
+            ->assertOk()
+            ->assertSee('逐日資料不完整')
+            ->viewData('metaAdsFatigueObservation');
+
+        $this->assertSame('partial', $partialObservation['status']);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -524,6 +716,27 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'actions' => [],
             'action_values' => [],
         ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function fatigueMetaRows(int $recentImpressions, int $recentReach, int $recentClicks): array
+    {
+        $rows = [];
+
+        for ($date = CarbonImmutable::parse('2026-11-08'); $date->toDateString() <= '2026-11-21'; $date = $date->addDay()) {
+            $isRecentPeriod = $date->toDateString() >= '2026-11-15';
+            $rows[] = [
+                'date' => $date->toDateString(),
+                'spend_amount' => '10.0000',
+                'impressions' => $isRecentPeriod ? $recentImpressions : 1000,
+                'reach' => $isRecentPeriod ? $recentReach : 1000,
+                'clicks' => $isRecentPeriod ? $recentClicks : 100,
+                'actions' => [],
+                'action_values' => [],
+            ];
+        }
+
+        return $rows;
     }
 
     /** @return array<string, mixed> */

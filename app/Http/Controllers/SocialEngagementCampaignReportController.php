@@ -15,6 +15,7 @@ use App\Services\CampaignDailyMarketingReportCsv;
 use App\Services\CampaignDailyMarketingTrendChart;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
+use App\Services\CampaignMetaAdsFatigueObservation;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAdsAuctionInsightPerformanceReport;
 use App\Services\GoogleAdsAuctionInsightReportCsv;
@@ -97,6 +98,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementCampaignAttributionCoverageReport $socialEngagementCampaignAttributionCoverageReport,
         SocialEngagementCampaignBusinessGoalReport $socialEngagementCampaignBusinessGoalReport,
         SocialEngagementCampaignPaidMediaRoasGoalReport $paidMediaRoasGoalReport,
+        CampaignMetaAdsFatigueObservation $metaAdsFatigueObservation,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -120,6 +122,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReportIsStale'],
             $viewData['metaMarketingReportIsStale'],
             $viewData['googleAdsReportIsStale'],
+        );
+        $viewData['metaAdsFatigueObservation'] = $metaAdsFatigueObservation->build(
+            $socialEngagementTarget,
+            $viewData['dailyMarketingPerformance']['meta_marketing'],
+            $viewData['metaMarketingReportIsStale'],
         );
         $viewData['report']['top_posts'] = $socialPostGoogleAnalyticsAttributionReport->attachToPosts(
             $socialEngagementTarget,
