@@ -29,6 +29,7 @@
                 <p class="panel-description">GA4 商品成效列出商品瀏覽、加入購物車、購買件數與商品營收，可排序及匯出 CSV；最多顯示 200 個商品，明細加密保存 30 天。商品營收已扣退款，不含稅與運費；需由 GA4 電商事件送出商品資料，否則報表可能沒有資料。</p>
                 <p class="panel-description">GA4 UTM 素材成效以 `utm_content` 比較工作階段、參與率、重要事件與營收，可排序及匯出 CSV；最多顯示 200 筆、明細加密保存 30 天。只適用手動 UTM 活動；GA4 未提供素材值時會列為（not set）。</p>
                 <p class="panel-description">Meta Ads 活動報告另提供廣告層級曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase 數據；依花費排序最多列出 200 則並可匯出 CSV，明細加密保存 30 天。</p>
+                <p class="panel-description">Meta Ads 廣告組合報表提供組合層級曝光、去重觸及、點擊、CTR、花費、CPC、CPM、omni_purchase、購買價值與 ROAS；可排序及匯出 CSV，最多列出 200 組，明細加密保存 30 天。不同組合觸及可能重疊，不應加總。</p>
                 <p class="panel-description">Meta Ads 另按 Facebook、Instagram 等平台與版位拆分曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase；可排序及匯出 CSV，明細加密保存 30 天。版位觸及可能重疊，不應加總；轉換依 Meta 歸因設定回傳。</p>
                 <p class="panel-description">Meta Ads 年齡與性別報表提供分群曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase；依花費排序最多列出 200 筆，可排序及匯出 CSV，明細加密保存 30 天。Meta 受眾拆分為估算值，分群觸及不代表去重後的總觸及。</p>
                 <p class="panel-description">逐日成效表與 CSV 提供 CTR＝點擊 ÷ 曝光、CPC＝花費 ÷ 點擊、CPM＝花費 ÷ 曝光 × 1,000、CPA＝花費 ÷ 購買或轉換；Meta 頻率＝曝光 ÷ 觸及，Google Ads 轉換率＝轉換 ÷ 點擊。分母缺值或為零時留空。</p>

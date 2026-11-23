@@ -338,6 +338,84 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="meta-marketing-ad-set-report-title">Meta Ads 廣告組合成效</h3>
+                    @if ($metaMarketingAdSetReport['status'] === 'complete' && $metaMarketingAdSetReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.meta-marketing.adsets', $target) }}">匯出廣告組合 CSV</a>
+                    @endif
+                </div>
+                @if ($metaMarketingAdSetReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚未讀取廣告組合資料；更新 Meta Ads 數據後即可查看。</p>
+                @elseif ($metaMarketingAdSetReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">廣告組合明細暫時無法讀取，其他 Meta Ads 報表仍可使用。{{ $metaMarketingAdSetReport['message'] }}</p>
+                @elseif ($metaMarketingAdSetReport['status'] === 'expired')
+                    <p class="campaign-report-empty">廣告組合明細已超過 30 天保存期限，更新 Meta Ads 數據後可重新讀取。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $metaMarketingAdSetReport['window_start_on'] }} 至 {{ $metaMarketingAdSetReport['window_end_on'] }} · 最多列出花費最高的 200 個廣告組合，明細加密保存 30 天。
+                    </p>
+                    @if ($metaMarketingAdSetReport['truncated'])
+                        <p class="campaign-report-note">符合條件的廣告組合超過 200 個，表格僅列出花費最高的 200 個。</p>
+                    @endif
+                    @if ($metaMarketingAdSetReport['rows'] === [])
+                        <p class="campaign-report-empty">此活動期間沒有可用的廣告組合明細。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <label for="meta-marketing-ad-set-sort">排序</label>
+                            <select id="meta-marketing-ad-set-sort" name="meta_ad_set_sort">
+                                <option value="spend" @selected($metaMarketingAdSetReport['sort'] === 'spend')>花費</option>
+                                <option value="reach" @selected($metaMarketingAdSetReport['sort'] === 'reach')>觸及</option>
+                                <option value="impressions" @selected($metaMarketingAdSetReport['sort'] === 'impressions')>曝光</option>
+                                <option value="clicks" @selected($metaMarketingAdSetReport['sort'] === 'clicks')>點擊</option>
+                                <option value="ctr" @selected($metaMarketingAdSetReport['sort'] === 'ctr')>CTR</option>
+                                <option value="purchases" @selected($metaMarketingAdSetReport['sort'] === 'purchases')>購買</option>
+                                <option value="purchase_value" @selected($metaMarketingAdSetReport['sort'] === 'purchase_value')>購買價值</option>
+                                <option value="purchase_roas" @selected($metaMarketingAdSetReport['sort'] === 'purchase_roas')>購買 ROAS</option>
+                                <option value="adset_name" @selected($metaMarketingAdSetReport['sort'] === 'adset_name')>名稱</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-ad-set-report-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Meta Ads 廣告組合投放成效（{{ $metaMarketingAdSetReport['currency_code'] ?? '幣別未知' }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">廣告組合</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">觸及</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">CPM</th>
+                                        <th scope="col" class="numeric">購買</th>
+                                        <th scope="col" class="numeric">購買價值</th>
+                                        <th scope="col" class="numeric">購買 ROAS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($metaMarketingAdSetReport['rows'] as $adSetRow)
+                                        <tr>
+                                            <th scope="row">{{ $adSetRow['adset_name'] }}<br><span class="campaign-report-secondary"><code>{{ $adSetRow['adset_id'] }}</code></span></th>
+                                            <td class="numeric">{{ number_format((int) $adSetRow['impressions']) }}</td>
+                                            <td class="numeric">{{ $adSetRow['reach'] === null ? '—' : number_format((int) $adSetRow['reach']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $adSetRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $adSetRow['ctr_percent'] === null ? '—' : number_format($adSetRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $adSetRow['spend_amount'], 2) }} {{ $metaMarketingAdSetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $adSetRow['cost_per_click'] === null ? '—' : number_format($adSetRow['cost_per_click'], 4).' '.$metaMarketingAdSetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $adSetRow['cost_per_thousand_impressions'] === null ? '—' : number_format($adSetRow['cost_per_thousand_impressions'], 4).' '.$metaMarketingAdSetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $adSetRow['purchases'] === null ? '—' : number_format((float) $adSetRow['purchases'], 2) }}</td>
+                                            <td class="numeric">{{ $adSetRow['purchase_value'] === null ? '—' : number_format((float) $adSetRow['purchase_value'], 2).' '.$metaMarketingAdSetReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $adSetRow['purchase_roas'] === null ? '—' : number_format($adSetRow['purchase_roas'], 2).'x' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="campaign-report-secondary">觸及取自 Meta 廣告組合層級；不同廣告組合的受眾可能重疊，不應加總。購買與購買價值採用 Meta 回傳的 <code>omni_purchase</code>；ROAS 為購買價值除以花費。</p>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="meta-marketing-placement-report-title">Meta Ads 版位成效</h3>
                     @if ($metaMarketingPlacementReport['status'] === 'complete' && $metaMarketingPlacementReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.meta-marketing.placements', $target) }}">匯出版位 CSV</a>

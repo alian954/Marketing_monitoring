@@ -190,7 +190,8 @@ class MetaMarketingDemographicReportTest extends TestCase
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
-                ->push(['data' => [$this->demographicInsightRow(['age' => '25-34', 'gender' => 'female'])]]),
+                ->push(['data' => [$this->demographicInsightRow(['age' => '25-34', 'gender' => 'female'])]])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -203,7 +204,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         $this->assertTrue($report->demographic_insights_expires_at->isFuture());
         $this->assertStringNotContainsString('female', $report->getRawOriginal('demographic_insights'));
         $this->assertArrayNotHasKey('demographic_insights', $report->toArray());
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
     }
 
     public function test_demographic_api_failure_does_not_block_campaign_or_other_meta_reports(): void
@@ -215,7 +216,8 @@ class MetaMarketingDemographicReportTest extends TestCase
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
-                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400),
+                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400)
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -226,7 +228,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         $this->assertSame('complete', $unavailableReport->ad_insights['status']);
         $this->assertSame('complete', $unavailableReport->placement_insights['status']);
         $this->assertSame('unavailable', $unavailableReport->demographic_insights['status']);
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
     }
 
     public function test_demographic_connection_failure_does_not_block_campaign_or_other_meta_reports(): void
@@ -253,7 +255,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         $this->assertSame('complete', $report->placement_insights['status']);
         $this->assertSame('unavailable', $report->demographic_insights['status']);
         $this->assertSame(1, $demographicRequestCount);
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
     }
 
     public function test_demographic_report_view_and_csv_are_scoped_to_the_current_users_snapshot(): void

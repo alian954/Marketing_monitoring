@@ -27,6 +27,8 @@ use Illuminate\Database\Eloquent\Model;
     'placement_insights_expires_at',
     'demographic_insights',
     'demographic_insights_expires_at',
+    'ad_set_insights',
+    'ad_set_insights_expires_at',
     'currency_code',
     'synced_at',
 ])]
@@ -37,6 +39,8 @@ use Illuminate\Database\Eloquent\Model;
     'placement_insights_expires_at',
     'demographic_insights',
     'demographic_insights_expires_at',
+    'ad_set_insights',
+    'ad_set_insights_expires_at',
 ])]
 class SocialEngagementTargetMetaMarketingReport extends Model
 {
@@ -58,6 +62,8 @@ class SocialEngagementTargetMetaMarketingReport extends Model
             'placement_insights_expires_at' => 'immutable_datetime',
             'demographic_insights' => 'encrypted:array',
             'demographic_insights_expires_at' => 'immutable_datetime',
+            'ad_set_insights' => 'encrypted:array',
+            'ad_set_insights_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }

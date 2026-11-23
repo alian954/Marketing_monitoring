@@ -42,6 +42,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
+                ->push(['data' => []])
                 ->push(['data' => [[
                     'account_id' => '123456789',
                     'campaign_id' => '987654322',
@@ -52,6 +53,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'clicks' => '20',
                     'account_currency' => 'TWD',
                 ]]])
+                ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
@@ -94,7 +96,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'conversions' => null,
         ]);
         $this->assertStringContainsString('完成 2 個活動', Artisan::output());
-        Http::assertSentCount(10);
+        Http::assertSentCount(12);
     }
 
     public function test_scheduled_sync_skips_a_fresh_snapshot(): void
@@ -153,6 +155,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
+                ->push(['data' => []])
                 ->push(['data' => [[
                     'account_id' => '123456789',
                     'campaign_id' => '987654321',
@@ -163,6 +166,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
                     'clicks' => '48',
                     'account_currency' => 'TWD',
                 ]]])
+                ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []])
@@ -189,7 +193,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $target->id,
             'spend_amount' => '125.5000',
         ]);
-        Http::assertSentCount(10);
+        Http::assertSentCount(12);
     }
 
     public function test_scheduled_sync_does_not_request_data_for_an_expired_token(): void

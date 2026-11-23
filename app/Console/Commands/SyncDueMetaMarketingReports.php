@@ -26,6 +26,7 @@ class SyncDueMetaMarketingReports extends Command
         $this->clearExpiredAdInsights($asOf);
         $this->clearExpiredPlacementInsights($asOf);
         $this->clearExpiredDemographicInsights($asOf);
+        $this->clearExpiredAdSetInsights($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Meta Ads 的活動。');
@@ -141,6 +142,17 @@ class SyncDueMetaMarketingReports extends Command
             ->update([
                 'demographic_insights' => null,
                 'demographic_insights_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredAdSetInsights(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->whereNotNull('ad_set_insights_expires_at')
+            ->where('ad_set_insights_expires_at', '<=', $asOf)
+            ->update([
+                'ad_set_insights' => null,
+                'ad_set_insights_expires_at' => null,
             ]);
     }
 }

@@ -506,6 +506,174 @@ class MetaMarketingDataApi
     /**
      * @return array{
      *     rows: list<array{
+     *         adset_id: string,
+     *         adset_name: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         reach: int,
+     *         clicks: int,
+     *         actions: list<array{action_type: string, value: string}>,
+     *         action_values: list<array{action_type: string, value: string}>
+     *     }>,
+     *     truncated: bool
+     * }
+     */
+    public function campaignAdSetInsights(
+        string $accessToken,
+        string $adAccountId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+    ): array {
+        if (preg_match('/^\d{5,32}$/', $adAccountId) !== 1 || preg_match('/^\d{5,32}$/', $campaignId) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶或活動 ID 格式無效。');
+        }
+
+        if (! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn) {
+            throw new MetaMarketingApiException('Meta 活動日期區間無效，請重新設定開始日與結束日。');
+        }
+
+        if (preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶幣別格式無效，請重新連結帳戶。');
+        }
+
+        $parameters = [
+            'fields' => 'account_id,campaign_id,adset_id,adset_name,spend,impressions,reach,clicks,actions,action_values,account_currency',
+            'level' => 'adset',
+            'filtering' => json_encode([[
+                'field' => 'campaign.id',
+                'operator' => 'EQUAL',
+                'value' => $campaignId,
+            ]], JSON_THROW_ON_ERROR),
+            'time_range' => json_encode([
+                'since' => $startsOn,
+                'until' => $endsOn,
+            ], JSON_THROW_ON_ERROR),
+            'limit' => self::AD_INSIGHTS_PAGE_LIMIT,
+        ];
+        $insightsByAdSetId = [];
+        $seenCursors = [];
+        $afterCursor = null;
+
+        for ($pageNumber = 1; $pageNumber <= self::MAX_AD_INSIGHTS_PAGES; $pageNumber++) {
+            $pageParameters = $parameters;
+
+            if ($afterCursor !== null) {
+                $pageParameters['after'] = $afterCursor;
+            }
+
+            $response = Http::withToken($accessToken)
+                ->acceptJson()
+                ->timeout(20)
+                ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
+            $payload = $this->successfulPayload($response, 'Meta Ads Insights API');
+            $rows = $payload['data'] ?? null;
+
+            if (! is_array($rows) || ! array_is_list($rows)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的廣告組合成效格式無效。');
+            }
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的廣告組合成效格式無效。');
+                }
+
+                $this->assertAdSetInsightIdentity($row, $adAccountId, $campaignId, $accountCurrency);
+                $adSetId = (string) $row['adset_id'];
+                $adSetName = $row['adset_name'] ?? null;
+
+                if (! is_string($adSetName) || trim($adSetName) === '') {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的廣告組合名稱無效。');
+                }
+
+                if (array_key_exists($adSetId, $insightsByAdSetId)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的廣告組合資料。');
+                }
+
+                $insightsByAdSetId[$adSetId] = [
+                    'adset_id' => $adSetId,
+                    'adset_name' => trim($adSetName),
+                    'spend_amount' => $this->decimalString($row['spend'] ?? null),
+                    'impressions' => $this->nonNegativeInteger($row['impressions'] ?? null),
+                    'reach' => $this->nonNegativeInteger($row['reach'] ?? null),
+                    'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
+                    'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
+                    'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
+                ];
+            }
+
+            $nextPage = $payload['paging']['next'] ?? null;
+
+            if ($nextPage === null || $nextPage === '') {
+                $allInsights = array_values($insightsByAdSetId);
+                usort($allInsights, static function (array $first, array $second): int {
+                    $spendOrder = (float) $second['spend_amount'] <=> (float) $first['spend_amount'];
+
+                    return $spendOrder !== 0 ? $spendOrder : strcmp($first['adset_id'], $second['adset_id']);
+                });
+
+                return [
+                    'rows' => array_slice($allInsights, 0, self::AD_INSIGHTS_REPORT_LIMIT),
+                    'truncated' => count($allInsights) > self::AD_INSIGHTS_REPORT_LIMIT,
+                ];
+            }
+
+            $nextCursor = $payload['paging']['cursors']['after'] ?? null;
+
+            if (! is_string($nextPage) || ! is_string($nextCursor) || trim($nextCursor) === '') {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的廣告組合分頁資訊無效。');
+            }
+
+            if (array_key_exists($nextCursor, $seenCursors)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的廣告組合分頁游標。');
+            }
+
+            if ($pageNumber === self::MAX_AD_INSIGHTS_PAGES) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 廣告組合資料超過分頁上限，未回傳不完整結果。');
+            }
+
+            $seenCursors[$nextCursor] = true;
+            $afterCursor = $nextCursor;
+        }
+
+        throw new MetaMarketingApiException('Meta Ads Insights API 廣告組合資料超過分頁上限，未回傳不完整結果。');
+    }
+
+    /** @param array<string, mixed> $row */
+    private function assertAdSetInsightIdentity(
+        array $row,
+        string $adAccountId,
+        string $campaignId,
+        string $accountCurrency,
+    ): void {
+        $returnedAccountId = $row['account_id'] ?? null;
+        $returnedCampaignId = $row['campaign_id'] ?? null;
+        $adSetId = $row['adset_id'] ?? null;
+
+        if ((! is_string($returnedAccountId) && ! is_int($returnedAccountId))
+            || (string) $returnedAccountId !== $adAccountId
+            || (! is_string($returnedCampaignId) && ! is_int($returnedCampaignId))
+            || (string) $returnedCampaignId !== $campaignId
+            || (! is_string($adSetId) && ! is_int($adSetId))
+            || preg_match('/^\d{1,32}$/', (string) $adSetId) !== 1) {
+            throw new MetaMarketingApiException('Meta Ads Insights API 回傳了不同帳戶、活動或無效廣告組合 ID 的資料。');
+        }
+
+        $currencyCode = $row['account_currency'] ?? null;
+
+        if (! is_string($currencyCode)
+            || preg_match('/^[A-Z]{3}$/', $currencyCode) !== 1
+            || $currencyCode !== $accountCurrency) {
+            throw new MetaMarketingApiException('Meta Ads Insights API 回傳了不同幣別的廣告組合資料。');
+        }
+    }
+
+    /**
+     * @return array{
+     *     rows: list<array{
      *         publisher_platform: string,
      *         platform_position: string,
      *         spend_amount: string,
