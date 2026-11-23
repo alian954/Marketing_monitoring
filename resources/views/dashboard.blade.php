@@ -6,6 +6,7 @@
     @php
         $totalMonitors = $monitorCount;
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
+        $campaignTargetCount = count($socialEngagementTargets);
         $attentionMonitors = $monitors
             ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
             ->take(3);
@@ -29,14 +30,31 @@
         </div>
     </div>
 
-    <section class="panel dashboard-attention-panel" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
-        <div class="panel-header">
-            <div class="dashboard-attention-heading">
-                <h2 id="dashboard-attention-title" class="panel-title">需要處理</h2>
-                @if ($attentionCount > 0)
-                    <span class="dashboard-attention-count" aria-label="{{ number_format($attentionCount) }} 項需要處理">{{ number_format($attentionCount) }}</span>
-                @endif
+    <section class="stat-grid dashboard-summary-grid spaced-top" aria-label="總覽重點">
+        <article class="stat-card" aria-label="需要處理 {{ number_format($attentionCount) }} 項">
+            <div class="stat-topline">
+                <span class="stat-label">需要處理</span>
+                <span class="badge {{ $attentionCount > 0 ? 'badge-issue' : 'badge-healthy' }}">{{ $attentionCount > 0 ? '需查看' : '正常' }}</span>
             </div>
+            <strong class="stat-value">{{ number_format($attentionCount) }}</strong>
+            <p class="stat-hint">監測異常與警告</p>
+        </article>
+        <article class="stat-card" aria-label="監測項目 {{ number_format($totalMonitors) }} 項">
+            <div class="stat-topline"><span class="stat-label">監測項目</span></div>
+            <strong class="stat-value">{{ number_format($totalMonitors) }}</strong>
+            <p class="stat-hint">網站與公開貼文</p>
+        </article>
+        <article class="stat-card" aria-label="行銷活動 {{ number_format($campaignTargetCount) }} 項">
+            <div class="stat-topline"><span class="stat-label">行銷活動</span></div>
+            <strong class="stat-value">{{ number_format($campaignTargetCount) }}</strong>
+            <p class="stat-hint">社群互動與投放成效</p>
+        </article>
+    </section>
+
+    @if ($attentionCount > 0)
+    <section class="panel dashboard-attention-panel spaced-top" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
+        <div class="panel-header">
+            <h2 id="dashboard-attention-title" class="panel-title">待處理項目</h2>
             <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">全部監測項目 <span aria-hidden="true">→</span></a>
         </div>
         @if ($attentionMonitors->isEmpty())
@@ -64,11 +82,12 @@
             @endif
         @endif
     </section>
+    @endif
 
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-monitor-summary">
         <summary>
             <span id="dashboard-monitor-summary">監測清單與執行狀態</span>
-            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項 · 排程器 {{ $heartbeatStatus === 'healthy' ? '正常' : '需留意' }}</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項 · {{ number_format($attentionCount) }} 項需處理 · 排程器 {{ $heartbeatStatus === 'healthy' ? '正常' : '需留意' }}</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <div class="dashboard-top">
@@ -247,7 +266,7 @@
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-marketing-summary" @if ($socialEngagementSelectedPlatform !== 'all' || $socialEngagementSelectedTag !== 'all' || $socialEngagementChangePeriodDays !== 7) open @endif>
         <summary>
             <span id="dashboard-marketing-summary">行銷數據</span>
-            <span class="dashboard-disclosure-meta">互動 · 活動 · 投放</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動 · 互動與投放</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="social-platform-summary-title">
@@ -1873,7 +1892,7 @@
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-operations-summary">
         <summary>
             <span id="dashboard-operations-summary">服務品質與維運</span>
-            <span class="dashboard-disclosure-meta">SLO · 憑證 · 網域</span>
+            <span class="dashboard-disclosure-meta">事件清單 {{ number_format($incidents->count()) }} 筆 · {{ number_format($expiringCertificateCount) }} 張憑證 · {{ number_format($expiringDomainCount) }} 個網域</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
