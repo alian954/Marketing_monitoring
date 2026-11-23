@@ -1,0 +1,58 @@
+<?php
+
+namespace App\Models;
+
+use Database\Factories\ClientFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
+
+#[Fillable(['name'])]
+#[Hidden(['user_id'])]
+class Client extends Model
+{
+    public const DEFAULT_NAME = '未分類';
+
+    /** @use HasFactory<ClientFactory> */
+    use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AuthenticatedAccountScope);
+
+        static::creating(static function (Client $client): void {
+            if (Auth::id() !== null && $client->user_id === null) {
+                $client->forceFill(['user_id' => Auth::id()]);
+            }
+        });
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function monitors(): HasMany
+    {
+        return $this->hasMany(Monitor::class);
+    }
+
+    public function socialEngagementTargets(): HasMany
+    {
+        return $this->hasMany(SocialEngagementTarget::class);
+    }
+
+    public function isDefault(): bool
+    {
+        return $this->name === self::DEFAULT_NAME;
+    }
+
+    public static function ensureDefaultFor(User $user): self
+    {
+        return $user->clients()->firstOrCreate(['name' => self::DEFAULT_NAME]);
+    }
+}

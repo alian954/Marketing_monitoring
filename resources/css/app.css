@@ -1561,6 +1561,56 @@ a.platform-chip:hover {
     margin: 0;
 }
 
+.dashboard-client-filter {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 0;
+}
+
+.dashboard-client-filter .field-label {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.dashboard-client-filter .field-select {
+    width: auto;
+    min-width: 150px;
+    min-height: 36px;
+    padding-block: 6px;
+}
+
+.client-create-form {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: end;
+    gap: 14px;
+}
+
+.client-create-form .field-group {
+    max-width: 480px;
+}
+
+.client-name-edit {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: min(100%, 280px);
+}
+
+.client-name-edit .field-error {
+    grid-column: 1 / -1;
+}
+
+.dashboard-target-client {
+    align-self: center;
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
 .campaign-business-goal-fields {
     flex: 1 1 100%;
     min-width: 0;
@@ -2179,6 +2229,27 @@ a.platform-chip:hover {
 
     .heading-actions .button {
         flex: 1 1 auto;
+    }
+
+    .dashboard-client-filter {
+        flex: 1 1 100%;
+    }
+
+    .dashboard-client-filter .field-select {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .client-create-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .client-create-form .button {
+        width: 100%;
+    }
+
+    .client-name-edit {
+        min-width: 200px;
     }
 
     .stat-grid {

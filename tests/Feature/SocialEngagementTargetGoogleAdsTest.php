@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\MetaMarketingConnection;
@@ -1540,6 +1541,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
     {
         $this->createSocialMonitor('facebook', 'GOOGLE-ADS-POST', 'Google campaign');
         $user = User::factory()->create();
+        $defaultClient = Client::ensureDefaultFor($user);
 
         $this->actingAs($user)
             ->get(route('dashboard'))
@@ -1554,6 +1556,7 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             'ends_on' => '2026-11-30',
             'google_ads_campaign_id' => '987654321',
         ])->assertRedirect(route('dashboard', [
+            'client_id' => $defaultClient->id,
             'engagement_platform' => 'facebook',
             'engagement_tag' => 'tag:Google campaign',
         ]));

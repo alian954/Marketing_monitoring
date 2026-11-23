@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['content_match'] !== 'all' || $filters['http_status'] !== '' || $filters['signal'] !== '';
+        $hasFilters = $filters['search'] !== '' || $filters['label'] !== '' || $filters['client_id'] !== '' || $filters['platform'] !== 'all' || $filters['state'] !== 'all' || $filters['content_match'] !== 'all' || $filters['http_status'] !== '' || $filters['signal'] !== '';
         $hasListOptions = $hasFilters || $filters['sort'] !== 'name';
         $monitorExportFilters = array_filter(
             $filters,
@@ -26,7 +26,7 @@
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('monitors.export', $monitorExportFilters) }}">{{ $hasFilters ? '匯出符合條件 CSV' : '匯出 CSV' }}</a>
             <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
-            <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
+            <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $filters['client_id']]) }}">新增監測項目</a>
         </div>
     </div>
 
@@ -46,6 +46,15 @@
                             <label class="field-label" for="monitor-search">名稱、標籤、頁面標題、摘要或完整網址</label>
                             <input class="field-input" id="monitor-search" name="search" type="search" value="{{ old('search', $filters['search']) }}" maxlength="2048" autocomplete="off" aria-describedby="monitor-search-help">
                             <p id="monitor-search-help" class="field-help">依名稱、標籤、頁面標題或摘要搜尋；網址需輸入完整連結。</p>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="monitor-client">客戶</label>
+                            <select class="field-select" id="monitor-client" name="client_id">
+                                <option value="">所有客戶</option>
+                                @foreach ($clients as $client)
+                                    <option value="{{ $client->id }}" @selected($filters['client_id'] === (string) $client->id)>{{ $client->name }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div class="field-group">
                             <label class="field-label" for="monitor-label">標籤篩選</label>

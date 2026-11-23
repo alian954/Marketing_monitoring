@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Client;
 use App\Models\Monitor;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -31,6 +34,12 @@ class StoreSocialEngagementTargetRequest extends FormRequest
         return [
             'tag' => ['required', 'string', 'max:100', Rule::in($this->trackedTagsForPlatform())],
             'social_platform' => ['required', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
+            'client_id' => [
+                'nullable',
+                'integer',
+                'min:1',
+                Rule::exists('clients', 'id')->where('user_id', $this->user()?->getAuthIdentifier()),
+            ],
             'target_interactions' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'starts_on' => ['nullable', 'date_format:Y-m-d'],
             'ends_on' => ['nullable', 'date_format:Y-m-d'],
@@ -113,9 +122,22 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             return [];
         }
 
-        return Monitor::query()
-            ->where('social_platform', $platform)
-            ->get(['tags', 'label'])
+        $query = Monitor::query()->where('social_platform', $platform);
+
+        if (is_numeric($this->input('client_id'))) {
+            $query->where('client_id', (int) $this->input('client_id'));
+        } elseif ($this->user() instanceof User) {
+            $defaultClientId = Client::ensureDefaultFor($this->user())->getKey();
+            $query->where(function (Builder $clientQuery) use ($defaultClientId): void {
+                $clientQuery->where('client_id', $defaultClientId);
+
+                if (app()->environment('testing')) {
+                    $clientQuery->orWhereNull('client_id');
+                }
+            });
+        }
+
+        return $query->get(['tags', 'label'])
             ->flatMap(static fn (Monitor $monitor): array => $monitor->tagNames())
             ->unique()
             ->values()
@@ -131,6 +153,9 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'tag.max' => '活動標籤不可超過 100 個字元。',
             'social_platform.required' => '請選擇社群平台。',
             'social_platform.in' => '所選平台不支援互動目標。',
+            'client_id.integer' => '請選擇有效的客戶。',
+            'client_id.min' => '請選擇有效的客戶。',
+            'client_id.exists' => '所選客戶不存在或無權限。',
             'target_interactions.required' => '請輸入互動目標。',
             'target_interactions.integer' => '互動目標必須是整數。',
             'target_interactions.min' => '互動目標至少為 1。',

@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckRun;
+use App\Models\Client;
+use App\Models\ClientSelectionContext;
 use App\Models\DnsChangeEvent;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
 use App\Models\StatusPage;
+use App\Models\User;
 use App\Services\AcceptedStatusCodeList;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\DiscordWebhookUrlPolicy;
@@ -36,6 +39,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -101,6 +105,7 @@ class MonitorController extends Controller
         'content_match' => ['nullable', 'in:all,found,missing,not_checked,visible_text_changed,visible_text_stable,visible_text_pending'],
         'http_status' => ['nullable', 'integer', 'between:100,599'],
         'signal' => ['nullable', 'string', 'max:40', 'regex:/\A[a-z0-9_]+\z/'],
+        'client_id' => ['nullable', 'integer', 'min:1'],
         'sort' => ['nullable', 'in:name,last_checked_desc,last_checked_asc'],
     ];
 
@@ -115,6 +120,9 @@ class MonitorController extends Controller
         'http_status.between' => 'HTTP 回應碼必須介於 100–599。',
         'signal.max' => '訊號代碼不得超過 40 個字元。',
         'signal.regex' => '訊號代碼只能使用小寫英文字母、數字與底線。',
+        'client_id.integer' => '請選擇有效的客戶。',
+        'client_id.min' => '請選擇有效的客戶。',
+        'client_id.exists' => '所選客戶不存在或無權限。',
         'sort.in' => '請選擇有效的監測排序方式。',
     ];
 
@@ -127,10 +135,14 @@ class MonitorController extends Controller
 
     public function index(Request $request): View|RedirectResponse
     {
-        $validator = Validator::make($request->query(), self::MONITOR_LIST_FILTER_RULES, self::MONITOR_LIST_FILTER_MESSAGES);
+        $validator = Validator::make($request->query(), $this->monitorListFilterRules($request), self::MONITOR_LIST_FILTER_MESSAGES);
         if ($validator->fails()) {
             return redirect()->route('monitors.index')->withErrors($validator);
         }
+
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        Client::ensureDefaultFor($user);
 
         $validated = $validator->validated();
         $search = trim((string) ($validated['search'] ?? ''));
@@ -141,7 +153,17 @@ class MonitorController extends Controller
         $httpStatus = (string) ($validated['http_status'] ?? '');
         $signal = (string) ($validated['signal'] ?? '');
         $sort = $validated['sort'] ?? 'name';
-        $filters = ['search' => $search, 'label' => $label, 'platform' => $platform, 'state' => $state, 'content_match' => $contentMatch, 'http_status' => $httpStatus, 'signal' => $signal, 'sort' => $sort];
+        $filters = [
+            'search' => $search,
+            'label' => $label,
+            'platform' => $platform,
+            'state' => $state,
+            'content_match' => $contentMatch,
+            'http_status' => $httpStatus,
+            'signal' => $signal,
+            'client_id' => isset($validated['client_id']) ? (string) $validated['client_id'] : '',
+            'sort' => $sort,
+        ];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
             ->with(['latestCheckRun', 'activeIncidents']);
@@ -164,6 +186,7 @@ class MonitorController extends Controller
         });
 
         $labels = Monitor::query()
+            ->when($filters['client_id'] !== '', static fn (Builder $query): Builder => $query->where('client_id', (int) $filters['client_id']))
             ->select(['id', 'label', 'tags'])
             ->lazyById(500)
             ->flatMap(static fn (Monitor $monitor): array => $monitor->tagNames())
@@ -172,14 +195,27 @@ class MonitorController extends Controller
             ->values();
 
         return view('monitors.index', compact('monitors', 'filters', 'labels') + [
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
             'intervalOptions' => self::INTERVAL_OPTIONS,
         ]);
     }
 
-    /** @param array{search: string, label: string, platform: string, state: string, content_match: string, http_status?: string, signal?: string, sort?: string} $filters */
+    /** @return array<string, array<int, mixed>> */
+    private function monitorListFilterRules(Request $request): array
+    {
+        $rules = self::MONITOR_LIST_FILTER_RULES;
+        $rules['client_id'][] = Rule::exists('clients', 'id')->where('user_id', $request->user()->getAuthIdentifier());
+
+        return $rules;
+    }
+
+    /** @param array{search: string, label: string, platform: string, state: string, content_match: string, http_status?: string, signal?: string, client_id?: string, sort?: string} $filters */
     private function filterMonitorList(Builder $query, array $filters): Builder
     {
         return $query
+            ->when(($filters['client_id'] ?? '') !== '', static function (Builder $query) use ($filters): void {
+                $query->where('client_id', (int) $filters['client_id']);
+            })
             ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
                 $searchTerm = '%'.$filters['search'].'%';
                 $encodedSearchValue = json_encode($filters['search'], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '""';
@@ -314,10 +350,20 @@ class MonitorController extends Controller
             });
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $defaultClient = Client::ensureDefaultFor($user);
+        $requestedClientId = $request->query('client_id');
+        $selectedClient = is_string($requestedClientId) && ctype_digit($requestedClientId)
+            ? Client::query()->find((int) $requestedClientId)
+            : null;
+
         return view('monitors.form', [
             'monitor' => new Monitor,
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'selectedClientId' => $selectedClient?->id ?? $defaultClient->id,
             'formAction' => route('monitors.store'),
             'formMethod' => 'POST',
             'previewAction' => route('monitors.probe-preview'),
@@ -352,6 +398,7 @@ class MonitorController extends Controller
             'url' => $normalizedUrl,
             'url_hash' => $fingerprint,
             'label' => $validated['label'] ?: null,
+            'client_id' => $validated['client_id'],
             'utm_content' => Monitor::socialPlatformForUrl($normalizedUrl) !== null ? $validated['utm_content'] : null,
             'notification_email' => $validated['notification_email'],
             'notification_escalation_email' => $validated['notification_escalation_email'],
@@ -851,12 +898,17 @@ class MonitorController extends Controller
             ->first(['id', 'scheduled_at', 'response_title', 'response_description', 'response_image_reference_hash', 'response_open_graph_type', 'response_canonical_reference_hash', 'response_published_at', 'response_modified_at']);
     }
 
-    public function edit(Monitor $monitor): View
+    public function edit(Request $request, Monitor $monitor): View
     {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $defaultClient = Client::ensureDefaultFor($user);
         $monitor->setAttribute('masked_url', $this->urlMasker->mask($monitor->url));
 
         return view('monitors.form', [
             'monitor' => $monitor,
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'selectedClientId' => $monitor->client_id ?? $defaultClient->id,
             'formAction' => route('monitors.update', $monitor),
             'formMethod' => 'PUT',
             'previewAction' => route('monitors.probe-preview.update', $monitor),
@@ -877,7 +929,11 @@ class MonitorController extends Controller
             return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
         }
 
-        $monitor = DB::transaction(function () use ($monitor, $validated, $normalizedUrl, $fingerprint): Monitor {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $clientId = $validated['client_id'] ?? $monitor->client_id ?? Client::ensureDefaultFor($user)->id;
+
+        $monitor = DB::transaction(function () use ($monitor, $validated, $normalizedUrl, $fingerprint, $clientId): Monitor {
             $lockedMonitor = Monitor::query()->lockForUpdate()->findOrFail($monitor->id);
             $this->persistMonitorConfigurationVersion($lockedMonitor, [
                 'name' => $validated['name'],
@@ -910,6 +966,7 @@ class MonitorController extends Controller
             ]);
 
             $lockedMonitor->forceFill([
+                'client_id' => $clientId,
                 'utm_content' => Monitor::socialPlatformForUrl($normalizedUrl) !== null ? $validated['utm_content'] : null,
             ])->save();
 
@@ -1335,6 +1392,7 @@ class MonitorController extends Controller
 
     public function exportSocialEngagement(Request $request): StreamedResponse
     {
+        $this->selectClientContext($request);
         $platform = $this->socialEngagementPlatformFilter($request);
         $tagFilter = $this->socialEngagementTagFilter($request);
 
@@ -1441,6 +1499,7 @@ class MonitorController extends Controller
 
     private function streamSocialEngagementHistory(Request $request, ?Monitor $monitor = null): StreamedResponse
     {
+        $this->selectClientContext($request);
         $platform = $monitor?->social_platform ?? $this->socialEngagementPlatformFilter($request);
         $tagFilter = $this->socialEngagementTagFilter($request);
         $periodDays = $this->selectedSocialEngagementHistoryPeriodDays($request);
@@ -1672,6 +1731,23 @@ class MonitorController extends Controller
         return is_string($platform) && in_array($platform, self::SOCIAL_ENGAGEMENT_PLATFORMS, true)
             ? $platform
             : null;
+    }
+
+    private function selectClientContext(Request $request): void
+    {
+        $rawClientId = $request->query('client_id');
+
+        if ($rawClientId === null || $rawClientId === '') {
+            ClientSelectionContext::select($request, null);
+
+            return;
+        }
+
+        abort_unless(is_string($rawClientId) && ctype_digit($rawClientId) && (int) $rawClientId > 0, 404);
+        $clientId = (int) $rawClientId;
+        abort_unless(Client::query()->whereKey($clientId)->exists(), 404);
+
+        ClientSelectionContext::select($request, $clientId);
     }
 
     /** @return array{tag: string|null, untagged: bool} */
@@ -2079,7 +2155,7 @@ class MonitorController extends Controller
 
     public function export(Request $request): StreamedResponse|RedirectResponse
     {
-        $exportRules = array_diff_key(self::MONITOR_LIST_FILTER_RULES, ['sort' => true]);
+        $exportRules = array_diff_key($this->monitorListFilterRules($request), ['sort' => true]);
         $validator = Validator::make($request->query(), $exportRules, self::MONITOR_LIST_FILTER_MESSAGES);
         if ($validator->fails()) {
             return redirect()->route('monitors.index')->withErrors($validator);
@@ -2094,6 +2170,7 @@ class MonitorController extends Controller
             'content_match' => $validated['content_match'] ?? 'all',
             'http_status' => (string) ($validated['http_status'] ?? ''),
             'signal' => (string) ($validated['signal'] ?? ''),
+            'client_id' => isset($validated['client_id']) ? (string) $validated['client_id'] : '',
         ];
 
         return $this->streamMonitorCsv($this->filterMonitorList(Monitor::query(), $filters));
@@ -2130,7 +2207,7 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, slo_target_basis_points: int, allowed_redirect_hosts: list<string>} */
+    /** @return array{name: string, url: string, label: ?string, client_id: int|null, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, slo_target_basis_points: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -2192,6 +2269,12 @@ class MonitorController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
+            'client_id' => [
+                'nullable',
+                'integer',
+                'min:1',
+                Rule::exists('clients', 'id')->where('user_id', $request->user()->getAuthIdentifier()),
+            ],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
             'label' => ['nullable', 'string', 'max:1200'],
             'utm_content' => ['nullable', 'string', 'max:4096'],
@@ -2226,6 +2309,9 @@ class MonitorController extends Controller
             'slo_target_basis_points' => ['sometimes', 'integer', 'in:'.implode(',', array_keys(Monitor::SLO_TARGET_OPTIONS))],
             'redirect_hosts' => ['nullable', 'string', 'max:2000'],
         ], [
+            'client_id.integer' => '請選擇有效的客戶。',
+            'client_id.min' => '請選擇有效的客戶。',
+            'client_id.exists' => '所選客戶不存在或無權限。',
             'response_time_threshold_ms.integer' => '回應時間門檻必須是整數。',
             'response_time_threshold_ms.min' => '回應時間門檻不得低於 100 毫秒。',
             'response_time_threshold_ms.max' => '回應時間門檻不得高於 14000 毫秒。',
@@ -2448,6 +2534,7 @@ class MonitorController extends Controller
             'name' => $validated['name'],
             'url' => isset($validated['url']) ? trim($validated['url']) : '',
             'label' => $validated['label'] ?? null,
+            'client_id' => isset($validated['client_id']) ? (int) $validated['client_id'] : null,
             'utm_content' => array_key_exists('utm_content', $validated)
                 ? (trim((string) $validated['utm_content']) === '' ? null : trim((string) $validated['utm_content']))
                 : $monitor?->utm_content,

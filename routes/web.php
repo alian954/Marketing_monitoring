@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
@@ -55,6 +56,10 @@ Route::post('/status-subscriptions/{subscription}/unsubscribe', [StatusPageSubsc
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
+    Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
+    Route::put('/clients/{client}', [ClientController::class, 'update'])->whereNumber('client')->name('clients.update');
+    Route::delete('/clients/{client}', [ClientController::class, 'destroy'])->whereNumber('client')->name('clients.destroy');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');

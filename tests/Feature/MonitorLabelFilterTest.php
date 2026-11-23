@@ -56,6 +56,7 @@ class MonitorLabelFilterTest extends TestCase
             'content_match' => 'all',
             'http_status' => '',
             'signal' => '',
+            'client_id' => '',
             'sort' => 'name',
         ], $response->viewData('filters'));
     }
@@ -514,6 +515,7 @@ class MonitorLabelFilterTest extends TestCase
             'content_match' => 'all',
             'http_status' => '',
             'signal' => '',
+            'client_id' => '',
             'sort' => 'last_checked_desc',
         ], $response->viewData('filters'));
     }

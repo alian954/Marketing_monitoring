@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\Client;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
@@ -240,6 +241,7 @@ class SocialEngagementTargetTest extends TestCase
     {
         $this->createSocialMonitor('instagram', 'IG-GOAL-01', 'Spring launch');
         $user = User::factory()->create();
+        $defaultClient = Client::ensureDefaultFor($user);
         $campaignDates = [
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
@@ -256,6 +258,7 @@ class SocialEngagementTargetTest extends TestCase
                 'ga4_goal_currency' => 'TWD',
             ])
             ->assertRedirect(route('dashboard', [
+                'client_id' => $defaultClient->id,
                 'engagement_platform' => 'instagram',
                 'engagement_tag' => 'tag:Spring launch',
             ]));
@@ -276,6 +279,7 @@ class SocialEngagementTargetTest extends TestCase
                 'ga4_goal_currency' => 'TWD',
             ])
             ->assertRedirect(route('dashboard', [
+                'client_id' => $defaultClient->id,
                 'engagement_platform' => 'instagram',
                 'engagement_tag' => 'tag:Spring launch',
             ]));
@@ -433,6 +437,7 @@ class SocialEngagementTargetTest extends TestCase
     {
         $this->createSocialMonitor('facebook', 'POST123', 'Summer launch');
         $user = User::factory()->create();
+        $defaultClient = Client::ensureDefaultFor($user);
 
         $this->actingAs($user)
             ->from(route('dashboard', ['engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']))
@@ -448,7 +453,7 @@ class SocialEngagementTargetTest extends TestCase
                 'engagement_platform' => 'facebook',
                 'engagement_tag' => 'tag:Summer launch',
             ])
-            ->assertRedirect(route('dashboard', ['engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']))
+            ->assertRedirect(route('dashboard', ['client_id' => $defaultClient->id, 'engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']))
             ->assertSessionHas('status');
 
         $target = SocialEngagementTarget::query()->sole();
@@ -470,7 +475,7 @@ class SocialEngagementTargetTest extends TestCase
                 'ga4_source_name' => 'fb',
                 'ga4_medium_name' => 'organic_social',
             ])
-            ->assertRedirect(route('dashboard', ['engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']));
+            ->assertRedirect(route('dashboard', ['client_id' => $defaultClient->id, 'engagement_platform' => 'facebook', 'engagement_tag' => 'tag:Summer launch']));
 
         $this->assertDatabaseCount('social_engagement_targets', 1);
         $this->assertSame(3000, $target->fresh()->target_interactions);
@@ -479,6 +484,96 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame('organic_social', $target->fresh()->ga4_medium_name);
         $this->assertNull($target->fresh()->starts_on);
         $this->assertNull($target->fresh()->ends_on);
+    }
+
+    public function test_campaign_targets_and_public_metrics_are_isolated_by_client(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $firstClient = $user->clients()->create(['name' => 'Campaign Client Alpha']);
+        $secondClient = $user->clients()->create(['name' => 'Campaign Client Beta']);
+        $firstMonitor = $this->createSocialMonitor('facebook', 'CLIENT-A-01', 'Shared campaign');
+        $firstMonitor->forceFill(['client_id' => $firstClient->id])->save();
+        $secondMonitor = $this->createSocialMonitor('facebook', 'CLIENT-B-01', 'Shared campaign');
+        $secondMonitor->forceFill(['client_id' => $secondClient->id])->save();
+        $this->createMetricRun($firstMonitor, ['likes' => 12, 'comments' => 3, 'shares' => 5]);
+        $this->createMetricRun($secondMonitor, ['likes' => 120, 'comments' => 30, 'shares' => 50]);
+
+        $targetPayload = [
+            'tag' => 'Shared campaign',
+            'social_platform' => 'facebook',
+            'target_interactions' => 100,
+        ];
+
+        $this->post(route('social-engagement-targets.store'), [
+            ...$targetPayload,
+            'client_id' => $firstClient->id,
+        ])->assertRedirect(route('dashboard', [
+            'client_id' => $firstClient->id,
+            'engagement_platform' => 'facebook',
+            'engagement_tag' => 'tag:Shared campaign',
+        ]));
+
+        $this->post(route('social-engagement-targets.store'), [
+            ...$targetPayload,
+            'client_id' => $secondClient->id,
+            'target_interactions' => 1000,
+        ])->assertRedirect(route('dashboard', [
+            'client_id' => $secondClient->id,
+            'engagement_platform' => 'facebook',
+            'engagement_tag' => 'tag:Shared campaign',
+        ]));
+
+        $this->assertDatabaseCount('social_engagement_targets', 2);
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'client_id' => $firstClient->id,
+            'tag' => 'Shared campaign',
+            'target_interactions' => 100,
+        ]);
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'client_id' => $secondClient->id,
+            'tag' => 'Shared campaign',
+            'target_interactions' => 1000,
+        ]);
+
+        $firstDashboard = $this->get(route('dashboard', ['client_id' => $firstClient->id]))->assertOk();
+        $firstTargets = $firstDashboard->viewData('socialEngagementTargets');
+        $this->assertCount(1, $firstTargets);
+        $this->assertSame(20, $firstTargets[0]['current_interactions']);
+        $this->assertSame(100, $firstTargets[0]['target_interactions']);
+
+        $secondDashboard = $this->get(route('dashboard', ['client_id' => $secondClient->id]))->assertOk();
+        $secondTargets = $secondDashboard->viewData('socialEngagementTargets');
+        $this->assertCount(1, $secondTargets);
+        $this->assertSame(200, $secondTargets[0]['current_interactions']);
+        $this->assertSame(1000, $secondTargets[0]['target_interactions']);
+
+        $targetExport = $this->get(route('social-engagement-targets.export', ['client_id' => $firstClient->id]))
+            ->assertOk();
+        $exportRows = $this->csvRows($targetExport->streamedContent());
+        $this->assertCount(1, $exportRows);
+        $this->assertSame($firstClient->name, $exportRows[0]['client_name']);
+        $this->assertSame('100', $exportRows[0]['target_interactions']);
+    }
+
+    public function test_campaign_target_cannot_be_assigned_to_another_accounts_client(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $client = $user->clients()->create(['name' => 'Campaign Owner']);
+        $this->createSocialMonitor('facebook', 'OWNED-POST-01', 'Owned campaign')->forceFill(['client_id' => $client->id])->save();
+        $foreignClient = User::factory()->create()->clients()->create(['name' => 'Foreign Campaign']);
+
+        $this->from(route('dashboard', ['client_id' => $client->id]))
+            ->post(route('social-engagement-targets.store'), [
+                'client_id' => $foreignClient->id,
+                'tag' => 'Owned campaign',
+                'social_platform' => 'facebook',
+                'target_interactions' => 500,
+            ])
+            ->assertSessionHasErrorsIn('socialEngagementTarget', ['client_id' => '所選客戶不存在或無權限。']);
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
     }
 
     public function test_target_validation_rejects_untracked_tags_and_invalid_target_values(): void

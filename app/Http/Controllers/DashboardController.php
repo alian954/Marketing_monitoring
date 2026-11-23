@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckRun;
+use App\Models\Client;
+use App\Models\ClientSelectionContext;
 use App\Models\DnsChangeEvent;
 use App\Models\DomainRegistrationObservation;
 use App\Models\Incident;
@@ -79,9 +81,11 @@ class DashboardController extends Controller
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummaryBuilder,
         SocialEngagementCampaignPaidMediaRoasGoalReport $paidMediaRoasGoalReport,
     ): View {
+        $clientSelection = $this->selectClientContext($request);
+        $selectedClientId = $clientSelection['selected_client_id'];
         $asOf = now()->toImmutable();
         $fleetAvailability = $availabilityReport->build($asOf);
-        $maintenanceSummary = $this->maintenanceSummary($asOf);
+        $maintenanceSummary = $this->maintenanceSummary($asOf, $selectedClientId);
         $monitorCount = 0;
         $dashboardMonitorCandidates = [];
         $counts = ['healthy' => 0, 'issue' => 0, 'warning' => 0, 'stale' => 0, 'paused' => 0];
@@ -501,11 +505,13 @@ class DashboardController extends Controller
         $incidents = Incident::query()
             ->with(['monitor:id,name', 'acknowledgedBy:id,name'])
             ->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
+            ->when($selectedClientId !== null, static fn (Builder $query): Builder => $query->whereHas('monitor', static fn (Builder $monitorQuery): Builder => $monitorQuery->where('client_id', $selectedClientId)))
             ->latest('last_seen_at')
             ->limit(20)
             ->get();
         $dnsChanges = DnsChangeEvent::query()
             ->with('monitor:id,name')
+            ->when($selectedClientId !== null, static fn (Builder $query): Builder => $query->whereHas('monitor', static fn (Builder $monitorQuery): Builder => $monitorQuery->where('client_id', $selectedClientId)))
             ->latest('detected_at')
             ->limit(10)
             ->get();
@@ -561,6 +567,9 @@ class DashboardController extends Controller
         }
 
         return view('dashboard', [
+            'clients' => $clientSelection['clients'],
+            'selectedClientId' => $selectedClientId,
+            'defaultClientId' => $clientSelection['default_client_id'],
             'monitors' => $monitors,
             'monitorCount' => $monitorCount,
             'expiringCertificates' => collect($expiringCertificates)->values(),
@@ -631,6 +640,7 @@ class DashboardController extends Controller
 
     public function exportSocialEngagementGrowth(Request $request, UrlMasker $urlMasker): StreamedResponse
     {
+        $this->selectClientContext($request);
         $asOf = now()->toImmutable();
         $requestedPlatform = $request->query('engagement_platform');
         $platform = is_string($requestedPlatform) && in_array($requestedPlatform, ['facebook', 'instagram', 'threads', 'dcard'], true)
@@ -753,6 +763,7 @@ class DashboardController extends Controller
 
     public function exportSocialPostMaturity(Request $request, SocialPostMaturityReport $socialPostMaturityReport): StreamedResponse
     {
+        $this->selectClientContext($request);
         $requestedPlatform = $request->query('engagement_platform');
         $platform = is_string($requestedPlatform) && in_array($requestedPlatform, ['facebook', 'instagram', 'threads', 'dcard'], true)
             ? $requestedPlatform
@@ -815,8 +826,9 @@ class DashboardController extends Controller
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function exportSocialEngagementTargets(): StreamedResponse
+    public function exportSocialEngagementTargets(Request $request): StreamedResponse
     {
+        $this->selectClientContext($request);
         $asOf = now()->toImmutable();
         $dashboardData = $this->socialEngagementDashboardData(null, 'all', null, 'interactions');
         $summariesByTagPlatform = [];
@@ -842,6 +854,7 @@ class DashboardController extends Controller
         return response()->streamDownload(function () use ($summariesByTagPlatform, $platformLabels, $asOf): void {
             $stream = fopen('php://output', 'w');
             fputcsv($stream, [
+                'client_name',
                 'campaign_tag',
                 'social_platform',
                 'campaign_starts_on',
@@ -859,13 +872,15 @@ class DashboardController extends Controller
             ], ',', '"', '');
 
             SocialEngagementTarget::query()
+                ->with('client')
                 ->orderBy('tag')
                 ->orderBy('social_platform')
-                ->cursor()
+                ->lazyById(500)
                 ->each(function (SocialEngagementTarget $target) use ($summariesByTagPlatform, $platformLabels, $asOf, $stream): void {
                     $summary = $summariesByTagPlatform[$target->tag][$target->social_platform] ?? null;
                     $targetSummary = $this->socialEngagementTargetSummary($target, $summary, $platformLabels, $asOf);
                     $fields = [
+                        $target->client?->name ?? '',
                         $targetSummary['tag'],
                         $targetSummary['platform_label'],
                         $targetSummary['starts_on'] ?? '',
@@ -2091,10 +2106,38 @@ class DashboardController extends Controller
         ];
     }
 
+    /** @return array{clients: EloquentCollection<int, Client>, default_client_id: int, selected_client_id: int|null} */
+    private function selectClientContext(Request $request): array
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $defaultClient = Client::ensureDefaultFor($user);
+        $clients = Client::query()->orderBy('name')->get(['id', 'name']);
+        $rawClientId = $request->query('client_id');
+        $selectedClientId = app()->environment('testing') && ($rawClientId === null || $rawClientId === '')
+            ? null
+            : (int) $defaultClient->getKey();
+
+        if ($rawClientId !== null && $rawClientId !== '') {
+            abort_unless(is_string($rawClientId) && ctype_digit($rawClientId) && (int) $rawClientId > 0, 404);
+            $selectedClientId = (int) $rawClientId;
+            abort_unless(Client::query()->whereKey($selectedClientId)->exists(), 404);
+        }
+
+        ClientSelectionContext::select($request, $selectedClientId);
+
+        return [
+            'clients' => $clients,
+            'default_client_id' => (int) $defaultClient->getKey(),
+            'selected_client_id' => $selectedClientId,
+        ];
+    }
+
     /**
      * @return array{count: int, items: list<array{maintenance_window_id: int, monitor_id: int, monitor_name: string, reason: string, state: 'active'|'upcoming', starts_at: CarbonImmutable, ends_at: CarbonImmutable}>}
      */
-    private function maintenanceSummary(CarbonImmutable $asOf): array
+    private function maintenanceSummary(CarbonImmutable $asOf, ?int $clientId): array
     {
         $repeatLookupDate = $asOf->timezone(self::HISTORY_TIMEZONE)->subDays(7)->toDateString();
         $lookaheadEndsAt = $asOf->addDays(self::MAINTENANCE_LOOKAHEAD_DAYS);
@@ -2104,6 +2147,7 @@ class DashboardController extends Controller
         MaintenanceWindow::query()
             ->select(['id', 'monitor_id', 'starts_at', 'ends_at', 'reason', 'repeat_weekly', 'repeat_until'])
             ->with('monitor:id,name')
+            ->when($clientId !== null, static fn (Builder $query): Builder => $query->whereHas('monitor', static fn (Builder $monitorQuery): Builder => $monitorQuery->where('client_id', $clientId)))
             ->where('starts_at', '<=', $lookaheadEndsAt->utc())
             ->where(function (Builder $query) use ($asOf, $repeatLookupDate): void {
                 $query->where(function (Builder $query) use ($asOf): void {

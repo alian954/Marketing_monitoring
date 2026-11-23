@@ -25,6 +25,11 @@ class User extends Authenticatable
         return $this->hasMany(Monitor::class);
     }
 
+    public function clients(): HasMany
+    {
+        return $this->hasMany(Client::class);
+    }
+
     public function socialEngagementTargets(): HasMany
     {
         return $this->hasMany(SocialEngagementTarget::class);

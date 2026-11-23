@@ -20,6 +20,7 @@
                 <nav class="primary-nav" aria-label="主要導覽">
                     <a class="nav-link" href="{{ route('dashboard') }}" @if (request()->routeIs('dashboard')) aria-current="page" @endif>總覽</a>
                     <a class="nav-link" href="{{ route('monitors.index') }}" @if (request()->routeIs('monitors.*')) aria-current="page" @endif>監測項目</a>
+                    <a class="nav-link" href="{{ route('clients.index') }}" @if (request()->routeIs('clients.*')) aria-current="page" @endif>客戶</a>
                     <a class="nav-link" href="{{ route('notifications.index') }}" @if (request()->routeIs('notifications.*')) aria-current="page" @endif>通知紀錄</a>
                     <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
                     <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>

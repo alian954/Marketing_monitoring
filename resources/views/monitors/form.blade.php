@@ -96,6 +96,17 @@
                             @error('name')<p id="name-error" class="field-error">{{ $message }}</p>@enderror
                         </div>
 
+                        <div class="field-group">
+                            <label class="field-label" for="client_id">客戶<span class="required-mark" aria-hidden="true">*</span></label>
+                            <select class="field-select @error('client_id') is-invalid @enderror" id="client_id" name="client_id" required aria-describedby="client-id-help{{ $errors->has('client_id') ? ' client-id-error' : '' }}" @if ($errors->has('client_id')) aria-invalid="true" @endif>
+                                @foreach ($clients as $client)
+                                    <option value="{{ $client->id }}" @selected((string) old('client_id', $selectedClientId) === (string) $client->id)>{{ $client->name }}</option>
+                                @endforeach
+                            </select>
+                            <p id="client-id-help" class="field-help">將此監測項目歸入客戶。</p>
+                            @error('client_id')<p id="client-id-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
                         <div class="field-group field-group-full">
                             <label class="field-label" for="url">網站或公開貼文網址 @unless ($isEditing)<span class="required-mark" aria-hidden="true">*</span>@endunless</label>
                             @if ($isEditing && $maskedUrl)

@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSocialEngagementTargetRequest;
 use App\Http\Requests\UpdateSocialEngagementTargetAdSpendRequest;
 use App\Http\Requests\UpdateSocialEngagementTargetBudgetRequest;
+use App\Models\Client;
 use App\Models\SocialEngagementTarget;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -14,9 +16,13 @@ class SocialEngagementTargetController extends Controller
     public function store(StoreSocialEngagementTargetRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $clientId = (int) ($data['client_id'] ?? Client::ensureDefaultFor($user)->getKey());
 
         SocialEngagementTarget::query()->updateOrCreate(
             [
+                'client_id' => $clientId,
                 'tag' => $data['tag'],
                 'social_platform' => $data['social_platform'],
             ],
@@ -45,6 +51,7 @@ class SocialEngagementTargetController extends Controller
         );
 
         return redirect()->route('dashboard', [
+            'client_id' => $clientId,
             'engagement_platform' => $data['social_platform'],
             'engagement_tag' => 'tag:'.$data['tag'],
         ])
@@ -56,6 +63,7 @@ class SocialEngagementTargetController extends Controller
         $socialEngagementTarget->delete();
 
         return redirect()->route('dashboard', $this->dashboardFilters($request->only([
+            'client_id',
             'engagement_platform',
             'engagement_tag',
         ])))
@@ -88,6 +96,10 @@ class SocialEngagementTargetController extends Controller
     private function dashboardFilters(array $data): array
     {
         $filters = [];
+
+        if (is_scalar($data['client_id'] ?? null) && ctype_digit((string) $data['client_id'])) {
+            $filters['client_id'] = (string) $data['client_id'];
+        }
 
         if (is_string($data['engagement_platform'] ?? null)
             && in_array($data['engagement_platform'], ['facebook', 'instagram', 'threads', 'dcard'], true)) {

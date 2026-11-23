@@ -65,7 +65,7 @@ class MonitorIncidentFilterTest extends TestCase
             ->assertSee('Spring campaign')
             ->assertDontSee('Autumn campaign');
 
-        $this->assertSame(['search' => 'Spring', 'label' => '', 'platform' => 'all', 'state' => 'incidents', 'content_match' => 'all', 'http_status' => '', 'signal' => '', 'sort' => 'name'], $response->viewData('filters'));
+        $this->assertSame(['search' => 'Spring', 'label' => '', 'platform' => 'all', 'state' => 'incidents', 'content_match' => 'all', 'http_status' => '', 'signal' => '', 'client_id' => '', 'sort' => 'name'], $response->viewData('filters'));
         $this->assertSame(1, $response->viewData('monitors')->total());
     }
 
@@ -86,7 +86,7 @@ class MonitorIncidentFilterTest extends TestCase
             ]));
 
         $this->assertSame(51, $response->viewData('monitors')->total());
-        $this->assertSame(['search' => 'Campaign', 'label' => '', 'platform' => 'all', 'state' => 'incidents', 'content_match' => 'all', 'http_status' => '', 'signal' => '', 'sort' => 'name'], $response->viewData('filters'));
+        $this->assertSame(['search' => 'Campaign', 'label' => '', 'platform' => 'all', 'state' => 'incidents', 'content_match' => 'all', 'http_status' => '', 'signal' => '', 'client_id' => '', 'sort' => 'name'], $response->viewData('filters'));
     }
 
     public function test_monitor_list_explains_active_incident_reasons_and_ignores_old_configuration_incidents(): void
