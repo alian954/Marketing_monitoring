@@ -203,8 +203,47 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertSame(10.0, $report['rows'][0]['ctr_percent']);
         $this->assertSame(2.0, (float) $report['rows'][0]['purchases']);
         $this->assertSame(2.0, $report['rows'][0]['cost_per_click']);
+        $this->assertSame(10.0, $report['rows'][0]['purchase_roas']);
+        $this->assertSame(10.0, $report['rows'][0]['cost_per_purchase']);
         $this->assertSame('expired', $builder->build($snapshot, CarbonImmutable::now()->subSecond())['status']);
         $this->assertSame([], $builder->build($snapshot, CarbonImmutable::now()->subSecond())['rows']);
+    }
+
+    public function test_ad_report_sorts_purchase_efficiency_and_keeps_missing_metrics_last(): void
+    {
+        $builder = new MetaMarketingAdPerformanceReport;
+        $snapshot = [
+            'status' => 'complete',
+            'rows' => [
+                $this->adInsightRow(1, '20', [
+                    'actions' => [['action_type' => 'omni_purchase', 'value' => '2']],
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '200']],
+                ]),
+                $this->adInsightRow(2, '10', [
+                    'actions' => [['action_type' => 'omni_purchase', 'value' => '2']],
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '50']],
+                ]),
+                $this->adInsightRow(3, '5', [
+                    'actions' => [],
+                    'action_values' => [],
+                ]),
+                $this->adInsightRow(4, '4', [
+                    'actions' => [['action_type' => 'omni_purchase', 'value' => '2']],
+                    'action_values' => [['action_type' => 'omni_purchase', 'value' => '0']],
+                ]),
+            ],
+        ];
+
+        $roasReport = $builder->build($snapshot, CarbonImmutable::now()->addDay(), 'purchase_roas');
+        $this->assertSame(['10001', '10002', '10004', '10003'], array_column($roasReport['rows'], 'ad_id'));
+        $this->assertSame(10.0, $roasReport['rows'][0]['purchase_roas']);
+        $this->assertSame(0.0, $roasReport['rows'][2]['purchase_roas']);
+        $this->assertNull($roasReport['rows'][3]['purchase_roas']);
+
+        $cpaReport = $builder->build($snapshot, CarbonImmutable::now()->addDay(), 'cost_per_purchase');
+        $this->assertSame(['10004', '10002', '10001', '10003'], array_column($cpaReport['rows'], 'ad_id'));
+        $this->assertSame(2.0, $cpaReport['rows'][0]['cost_per_purchase']);
+        $this->assertNull($cpaReport['rows'][3]['cost_per_purchase']);
     }
 
     public function test_report_view_and_csv_export_use_the_current_users_encrypted_ad_snapshot(): void
@@ -258,13 +297,19 @@ class MetaMarketingAdReportTest extends TestCase
         $response
             ->assertSee('Meta Ads 廣告成效')
             ->assertSee('匯出廣告明細 CSV')
+            ->assertSee('購買 ROAS')
+            ->assertSee('單次購買成本')
             ->assertSee('10000');
+        $this->assertSame(2.9608, $response->viewData('metaMarketingAdReport')['rows'][0]['purchase_roas']);
+        $this->assertSame(12.75, $response->viewData('metaMarketingAdReport')['rows'][0]['cost_per_purchase']);
 
         $csvResponse = $this->get(route('social-engagement-targets.meta-marketing.ads', $target));
         $csvResponse->assertOk();
         $csvLines = str_getcsv($csvResponse->streamedContent(), "\n");
         $csvFields = str_getcsv($csvLines[1]);
         $this->assertSame("'".$adName, $csvFields[1]);
+        $this->assertSame('2.9608', $csvFields[13]);
+        $this->assertSame('12.75', $csvFields[14]);
 
         $otherUser = User::factory()->create();
         $this->createConnection($otherUser);

@@ -28,6 +28,8 @@ class MetaMarketingAdReportCsv
                 $row['cost_per_thousand_impressions'] === null ? '' : (string) $row['cost_per_thousand_impressions'],
                 $row['purchases'] === null ? '' : (string) $row['purchases'],
                 $row['purchase_value'] === null ? '' : (string) $row['purchase_value'],
+                $row['purchase_roas'] === null ? '' : (string) $row['purchase_roas'],
+                $row['cost_per_purchase'] === null ? '' : (string) $row['cost_per_purchase'],
                 (string) $currencyCode,
             ];
         }
@@ -47,6 +49,8 @@ class MetaMarketingAdReportCsv
                 'cost_per_thousand_impressions',
                 'omni_purchase_actions',
                 'omni_purchase_value',
+                'purchase_roas',
+                'cost_per_purchase',
                 'currency_code',
             ],
             'rows' => $rows,

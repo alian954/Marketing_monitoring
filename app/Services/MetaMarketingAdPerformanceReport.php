@@ -27,7 +27,7 @@ class MetaMarketingAdPerformanceReport
             $status = 'expired';
         }
 
-        $sort = in_array($sort, ['spend', 'impressions', 'clicks', 'ctr', 'purchases', 'purchase_value'], true)
+        $sort = in_array($sort, ['spend', 'impressions', 'clicks', 'ctr', 'purchases', 'purchase_value', 'purchase_roas', 'cost_per_purchase'], true)
             ? $sort
             : 'spend';
         $rows = [];
@@ -49,14 +49,18 @@ class MetaMarketingAdPerformanceReport
             $spendAmount = (float) $row['spend_amount'];
             $impressions = (int) $row['impressions'];
             $clicks = (int) $row['clicks'];
+            $purchases = $this->actionValue($actions, 'omni_purchase');
+            $purchaseValue = $this->actionValue($actionValues, 'omni_purchase');
 
             $rows[] = [
                 ...$row,
                 'ctr_percent' => $this->calculatedMetric($clicks, $impressions, 100),
                 'cost_per_click' => $this->calculatedMetric($spendAmount, $clicks),
                 'cost_per_thousand_impressions' => $this->calculatedMetric($spendAmount * 1000, $impressions),
-                'purchases' => $this->actionValue($actions, 'omni_purchase'),
-                'purchase_value' => $this->actionValue($actionValues, 'omni_purchase'),
+                'purchases' => $purchases,
+                'purchase_value' => $purchaseValue,
+                'purchase_roas' => $this->calculatedMetric($purchaseValue, $spendAmount),
+                'cost_per_purchase' => $this->calculatedMetric($spendAmount, $purchases),
             ];
         }
 
@@ -67,6 +71,8 @@ class MetaMarketingAdPerformanceReport
             'ctr' => 'ctr_percent',
             'purchases' => 'purchases',
             'purchase_value' => 'purchase_value',
+            'purchase_roas' => 'purchase_roas',
+            'cost_per_purchase' => 'cost_per_purchase',
         ];
         $sortField = $sortFields[$sort];
         usort($rows, function (array $first, array $second) use ($sortField): int {
@@ -78,6 +84,10 @@ class MetaMarketingAdPerformanceReport
                     return $firstValue === null ? 1 : -1;
                 }
             } elseif ((float) $firstValue !== (float) $secondValue) {
+                if ($sortField === 'cost_per_purchase') {
+                    return (float) $firstValue < (float) $secondValue ? -1 : 1;
+                }
+
                 return (float) $firstValue > (float) $secondValue ? -1 : 1;
             }
 

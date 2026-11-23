@@ -293,6 +293,8 @@
                                 <option value="ctr" @selected($metaMarketingAdReport['sort'] === 'ctr')>CTR</option>
                                 <option value="purchases" @selected($metaMarketingAdReport['sort'] === 'purchases')>購買</option>
                                 <option value="purchase_value" @selected($metaMarketingAdReport['sort'] === 'purchase_value')>購買價值</option>
+                                <option value="purchase_roas" @selected($metaMarketingAdReport['sort'] === 'purchase_roas')>購買 ROAS</option>
+                                <option value="cost_per_purchase" @selected($metaMarketingAdReport['sort'] === 'cost_per_purchase')>單次購買成本</option>
                             </select>
                             <button class="button button-secondary button-small" type="submit">套用</button>
                         </form>
@@ -312,6 +314,8 @@
                                         <th scope="col" class="numeric">CPM</th>
                                         <th scope="col" class="numeric">購買</th>
                                         <th scope="col" class="numeric">購買價值</th>
+                                        <th scope="col" class="numeric">購買 ROAS</th>
+                                        <th scope="col" class="numeric">單次購買成本</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -328,12 +332,14 @@
                                             <td class="numeric">{{ $adRow['cost_per_thousand_impressions'] === null ? '—' : number_format($adRow['cost_per_thousand_impressions'], 4).' '.$metaMarketingAdReport['currency_code'] }}</td>
                                             <td class="numeric">{{ $adRow['purchases'] === null ? '—' : number_format((float) $adRow['purchases'], 2) }}</td>
                                             <td class="numeric">{{ $adRow['purchase_value'] === null ? '—' : number_format((float) $adRow['purchase_value'], 2).' '.$metaMarketingAdReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $adRow['purchase_roas'] === null ? '—' : number_format($adRow['purchase_roas'], 2).'×' }}</td>
+                                            <td class="numeric">{{ $adRow['cost_per_purchase'] === null ? '—' : number_format($adRow['cost_per_purchase'], 2).' '.$metaMarketingAdReport['currency_code'] }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         </div>
-                        <p class="campaign-report-secondary">CTR、CPC 與 CPM 依廣告層級花費及曝光計算；購買僅採用 Meta 回傳的 <code>omni_purchase</code>，其他行動類型不合併。</p>
+                        <p class="campaign-report-secondary">CTR、CPC、CPM、購買 ROAS 與單次購買成本依廣告層級資料計算；購買僅採用 Meta 回傳的 <code>omni_purchase</code>，其他行動類型不合併。</p>
                     @endif
                 @endif
 
