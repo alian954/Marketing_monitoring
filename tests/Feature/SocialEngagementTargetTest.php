@@ -536,6 +536,20 @@ class SocialEngagementTargetTest extends TestCase
             'target_interactions' => 1000,
         ]);
 
+        $firstTarget = SocialEngagementTarget::query()->where('client_id', $firstClient->id)->sole();
+
+        $campaignReport = $this->get(route('social-engagement-targets.report', $firstTarget))->assertOk();
+        $this->assertSame(1, $campaignReport->viewData('report')['tracked_post_count']);
+
+        $postDetails = $this->get(route('social-engagement-targets.posts', $firstTarget))->assertOk();
+        $this->assertSame(1, $postDetails->viewData('paginator')->total());
+
+        $postCsv = $this->get(route('social-engagement-targets.report.posts.export', $firstTarget))
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('Facebook CLIENT-A-01', $postCsv);
+        $this->assertStringNotContainsString('Facebook CLIENT-B-01', $postCsv);
+
         $firstDashboard = $this->get(route('dashboard', ['client_id' => $firstClient->id]))->assertOk();
         $firstTargets = $firstDashboard->viewData('socialEngagementTargets');
         $this->assertCount(1, $firstTargets);

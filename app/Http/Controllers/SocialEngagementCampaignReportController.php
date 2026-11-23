@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClientSelectionContext;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\MetaMarketingConnection;
@@ -265,6 +266,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementCampaignPostDetailReport $postDetailReport,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
     ): View {
+        $this->selectClientContextForTarget($request, $socialEngagementTarget);
         $analyticsReport = $this->googleAnalyticsReportForTarget(
             $socialEngagementTarget,
             $request->user()->googleAnalyticsConnection,
@@ -1063,6 +1065,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementCampaignPostCsv $socialEngagementCampaignPostCsv,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
     ): StreamedResponse {
+        $this->selectClientContextForTarget($request, $socialEngagementTarget);
         $analyticsReport = $this->googleAnalyticsReportForTarget(
             $socialEngagementTarget,
             $request->user()->googleAnalyticsConnection,
@@ -1101,6 +1104,7 @@ class SocialEngagementCampaignReportController extends Controller
         SocialEngagementCampaignCreativePerformanceCsv $creativePerformanceCsv,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
     ): StreamedResponse {
+        $this->selectClientContextForTarget($request, $socialEngagementTarget);
         $analyticsReport = $this->googleAnalyticsReportForTarget(
             $socialEngagementTarget,
             $request->user()->googleAnalyticsConnection,
@@ -1206,6 +1210,7 @@ class SocialEngagementCampaignReportController extends Controller
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         bool $includeHistoricalDetails = true,
     ): array {
+        $this->selectClientContextForTarget($request, $socialEngagementTarget);
         $campaignName = $socialEngagementTarget->googleAnalyticsCampaignName();
         $usesGoogleAdsAutoTagging = $socialEngagementTarget->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging';
         $sourceName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsSourceName();
@@ -1338,6 +1343,13 @@ class SocialEngagementCampaignReportController extends Controller
      *     googleAdsReport: SocialEngagementTargetGoogleAdsReport|null
      * }
      */
+    private function selectClientContextForTarget(Request $request, SocialEngagementTarget $target): void
+    {
+        $clientId = is_numeric($target->client_id) ? (int) $target->client_id : null;
+
+        ClientSelectionContext::select($request, $clientId);
+    }
+
     private function paidMediaReportsForTarget(Request $request, SocialEngagementTarget $target): array
     {
         $metaMarketingConnection = $request->user()->metaMarketingConnection;
