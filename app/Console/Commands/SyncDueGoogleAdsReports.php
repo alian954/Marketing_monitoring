@@ -210,5 +210,12 @@ class SyncDueGoogleAdsReports extends Command
                 'responsive_search_ad_asset_performance' => null,
                 'responsive_search_ad_asset_performance_expires_at' => null,
             ]);
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->whereNotNull('pmax_asset_performance_expires_at')
+            ->where('pmax_asset_performance_expires_at', '<=', $asOf)
+            ->update([
+                'pmax_asset_performance' => null,
+                'pmax_asset_performance_expires_at' => null,
+            ]);
     }
 }

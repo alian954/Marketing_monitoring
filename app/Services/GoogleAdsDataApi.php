@@ -16,6 +16,8 @@ class GoogleAdsDataApi
 
     private const RESPONSIVE_SEARCH_AD_ASSET_REPORT_LIMIT = 200;
 
+    private const PERFORMANCE_MAX_ASSET_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, refresh_token: ?string} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -1096,6 +1098,213 @@ class GoogleAdsDataApi
 
     /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
     private function emptyResponsiveSearchAdAssetReport(string $status, string $currencyCode): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => null,
+            'window_end_on' => null,
+            'currency_code' => $currencyCode,
+            'truncated' => false,
+            'rows' => [],
+        ];
+    }
+
+    /**
+     * @return array{
+     *     status: 'complete'|'unsupported'|'no_complete_days',
+     *     window_start_on: string|null,
+     *     window_end_on: string|null,
+     *     currency_code: string,
+     *     truncated: bool,
+     *     rows: list<array{
+     *         asset_group_id: string,
+     *         asset_group_name: string,
+     *         asset_id: string,
+     *         asset_name: string,
+     *         field_type: string,
+     *         asset_type: string,
+     *         content: string,
+     *         youtube_video_id: string|null,
+     *         status: string,
+     *         primary_status: string,
+     *         primary_status_reasons: list<string>,
+     *         source: string,
+     *         impressions: int,
+     *         clicks: int,
+     *         spend_amount: string,
+     *         conversions: string,
+     *         conversions_value: string
+     *     }>
+     * }
+     */
+    public function campaignPerformanceMaxAssetInsights(
+        string $accessToken,
+        string $customerId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+        ?string $loginCustomerId = null,
+    ): array {
+        $this->validateCustomerIds($customerId, $loginCustomerId);
+
+        if (preg_match('/^\d{5,32}$/', $campaignId) !== 1
+            || ! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn
+            || preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new GoogleAdsApiException('Google Ads Performance Max 素材報表設定無效，請確認活動、日期與幣別。');
+        }
+
+        $today = CarbonImmutable::now(config('app.timezone'))->toDateString();
+        $yesterday = CarbonImmutable::parse($today)->subDay()->toDateString();
+        $minimumSupportedDate = $this->minimumSupportedDate();
+        $windowEndOn = min($endsOn, $yesterday);
+
+        if ($windowEndOn < $minimumSupportedDate) {
+            return $this->emptyPerformanceMaxAssetReport('unsupported', $accountCurrency);
+        }
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyPerformanceMaxAssetReport('no_complete_days', $accountCurrency);
+        }
+
+        $thirtyDayStart = CarbonImmutable::parse($windowEndOn)->subDays(29)->toDateString();
+        $windowStartOn = max($startsOn, $thirtyDayStart, $minimumSupportedDate);
+        $query = "SELECT customer.id, customer.currency_code, campaign.id, campaign.advertising_channel_type, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset_group_asset.source, asset_group_asset.primary_status, asset_group_asset.primary_status_reasons, asset.id, asset.name, asset.type, asset.text_asset.text, asset.youtube_video_asset.youtube_video_id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM asset_group_asset WHERE campaign.id = {$campaignId} AND campaign.advertising_channel_type = 'PERFORMANCE_MAX' AND asset_group_asset.status != 'REMOVED' AND segments.date BETWEEN '{$windowStartOn}' AND '{$windowEndOn}' ORDER BY metrics.impressions DESC, asset_group.id ASC, asset.id ASC, asset_group_asset.field_type ASC LIMIT 201";
+        $payload = $this->googleAdsRequest(
+            $accessToken,
+            $customerId,
+            'googleAds:searchStream',
+            $query,
+            $loginCustomerId,
+        );
+        $rawRows = $this->strictRowsFromStream($payload);
+
+        if (count($rawRows) > self::PERFORMANCE_MAX_ASSET_REPORT_LIMIT + 1) {
+            throw new GoogleAdsApiException('Google Ads API 回傳超過 Performance Max 素材讀取上限，未儲存讀值。');
+        }
+
+        $rows = [];
+        $seenAssetLinks = [];
+
+        foreach ($rawRows as $row) {
+            $campaign = $row['campaign'] ?? null;
+            $customer = $row['customer'] ?? null;
+            $assetGroup = $row['assetGroup'] ?? null;
+            $assetGroupAsset = $row['assetGroupAsset'] ?? null;
+            $asset = $row['asset'] ?? null;
+            $metrics = $row['metrics'] ?? null;
+            $customerIdFromRow = is_array($customer) ? ($customer['id'] ?? null) : null;
+            $campaignIdFromRow = is_array($campaign) ? ($campaign['id'] ?? null) : null;
+            $campaignChannelType = is_array($campaign) ? ($campaign['advertisingChannelType'] ?? null) : null;
+            $currencyCode = is_array($customer) ? ($customer['currencyCode'] ?? null) : null;
+            $assetGroupId = is_array($assetGroup) ? ($assetGroup['id'] ?? null) : null;
+            $assetGroupName = is_array($assetGroup) ? ($assetGroup['name'] ?? null) : null;
+            $assetId = is_array($asset) ? ($asset['id'] ?? null) : null;
+            $assetName = is_array($asset) ? ($asset['name'] ?? null) : null;
+            $assetType = is_array($asset) ? ($asset['type'] ?? null) : null;
+            $textAsset = is_array($asset) ? ($asset['textAsset'] ?? null) : null;
+            $youtubeVideoAsset = is_array($asset) ? ($asset['youtubeVideoAsset'] ?? null) : null;
+            $assetText = is_array($textAsset) ? ($textAsset['text'] ?? null) : null;
+            $youtubeVideoId = is_array($youtubeVideoAsset) ? ($youtubeVideoAsset['youtubeVideoId'] ?? null) : null;
+            $fieldType = is_array($assetGroupAsset) ? ($assetGroupAsset['fieldType'] ?? null) : null;
+            $assetStatus = is_array($assetGroupAsset) ? ($assetGroupAsset['status'] ?? null) : null;
+            $assetSource = is_array($assetGroupAsset) ? ($assetGroupAsset['source'] ?? null) : null;
+            $primaryStatus = is_array($assetGroupAsset) ? ($assetGroupAsset['primaryStatus'] ?? 'UNSPECIFIED') : null;
+            $primaryStatusReasons = is_array($assetGroupAsset) ? ($assetGroupAsset['primaryStatusReasons'] ?? []) : null;
+
+            if ((! is_string($customerIdFromRow) && ! is_int($customerIdFromRow))
+                || (string) $customerIdFromRow !== $customerId
+                || (! is_string($campaignIdFromRow) && ! is_int($campaignIdFromRow))
+                || (string) $campaignIdFromRow !== $campaignId
+                || $campaignChannelType !== 'PERFORMANCE_MAX'
+                || $currencyCode !== $accountCurrency
+                || ! is_array($assetGroup)
+                || (! is_string($assetGroupId) && ! is_int($assetGroupId))
+                || preg_match('/^\d{1,32}$/', (string) $assetGroupId) !== 1
+                || ! is_string($assetGroupName)
+                || trim($assetGroupName) === ''
+                || strlen($assetGroupName) > 1024
+                || ! is_array($asset)
+                || (! is_string($assetId) && ! is_int($assetId))
+                || preg_match('/^\d{1,32}$/', (string) $assetId) !== 1
+                || ! is_array($assetGroupAsset)
+                || ! is_array($metrics)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳不同帳戶、活動或格式無效的 Performance Max 素材資料，未儲存讀值。');
+            }
+
+            foreach ([$fieldType, $assetType, $assetStatus, $assetSource, $primaryStatus] as $enumValue) {
+                if (! is_string($enumValue) || preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $enumValue) !== 1) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳格式無效的 Performance Max 素材分類，未儲存讀值。');
+                }
+            }
+
+            if ($assetStatus === 'REMOVED'
+                || ! is_array($primaryStatusReasons)
+                || ! array_is_list($primaryStatusReasons)
+                || ($assetText !== null && (! is_string($assetText) || strlen($assetText) > 2000))
+                || ($assetName !== null && (! is_string($assetName) || strlen($assetName) > 1024))) {
+                throw new GoogleAdsApiException('Google Ads API 回傳格式無效的 Performance Max 素材內容，未儲存讀值。');
+            }
+
+            foreach ($primaryStatusReasons as $reason) {
+                if (! is_string($reason) || preg_match('/^[A-Z][A-Z0-9_]{0,79}$/', $reason) !== 1) {
+                    throw new GoogleAdsApiException('Google Ads API 回傳格式無效的 Performance Max 素材狀態原因，未儲存讀值。');
+                }
+            }
+
+            if ($youtubeVideoId !== null
+                && (! is_string($youtubeVideoId) || preg_match('/^[A-Za-z0-9_-]{11}$/', $youtubeVideoId) !== 1)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳格式無效的 Performance Max YouTube 影片 ID，未儲存讀值。');
+            }
+
+            $assetLinkKey = implode(':', [$assetGroupId, $assetId, $fieldType]);
+
+            if (array_key_exists($assetLinkKey, $seenAssetLinks)) {
+                throw new GoogleAdsApiException('Google Ads API 回傳重複的 Performance Max 素材連結，未儲存讀值。');
+            }
+
+            $seenAssetLinks[$assetLinkKey] = true;
+            $content = is_string($assetText) && trim($assetText) !== ''
+                ? trim($assetText)
+                : (is_string($assetName) && trim($assetName) !== ''
+                    ? trim($assetName)
+                    : ($youtubeVideoId !== null ? 'YouTube 影片 '.$youtubeVideoId : $assetType.' 素材'));
+
+            $rows[] = [
+                'asset_group_id' => (string) $assetGroupId,
+                'asset_group_name' => trim($assetGroupName),
+                'asset_id' => (string) $assetId,
+                'asset_name' => is_string($assetName) ? trim($assetName) : '',
+                'field_type' => $fieldType,
+                'asset_type' => $assetType,
+                'content' => $content,
+                'youtube_video_id' => $youtubeVideoId,
+                'status' => $assetStatus,
+                'primary_status' => $primaryStatus,
+                'primary_status_reasons' => array_values($primaryStatusReasons),
+                'source' => $assetSource,
+                'impressions' => $this->nonNegativeInteger($metrics['impressions'] ?? null),
+                'clicks' => $this->nonNegativeInteger($metrics['clicks'] ?? null),
+                'spend_amount' => $this->microsToDecimal($metrics['costMicros'] ?? null),
+                'conversions' => $this->decimalString($metrics['conversions'] ?? null, false),
+                'conversions_value' => $this->decimalString($metrics['conversionsValue'] ?? null, true),
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $windowStartOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $accountCurrency,
+            'truncated' => count($rows) > self::PERFORMANCE_MAX_ASSET_REPORT_LIMIT,
+            'rows' => array_slice($rows, 0, self::PERFORMANCE_MAX_ASSET_REPORT_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unsupported'|'no_complete_days', window_start_on: null, window_end_on: null, currency_code: string, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyPerformanceMaxAssetReport(string $status, string $currencyCode): array
     {
         return [
             'status' => $status,

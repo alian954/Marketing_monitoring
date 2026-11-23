@@ -2319,6 +2319,10 @@ a.platform-chip:hover {
     min-width: 960px;
 }
 
+.campaign-report-pmax-table {
+    min-width: 1240px;
+}
+
 .campaign-report-video-disclosure {
     margin-top: 14px;
     padding-top: 12px;
@@ -2465,6 +2469,10 @@ a.platform-chip:hover {
     }
 
     .campaign-report .campaign-report-video-table-wrap {
+        overflow-x: auto;
+    }
+
+    .campaign-report .campaign-report-pmax-table-wrap {
         overflow-x: auto;
     }
 

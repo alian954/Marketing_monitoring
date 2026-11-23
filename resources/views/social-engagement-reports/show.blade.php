@@ -1192,6 +1192,95 @@
                     @endif
                 @endif
 
+                @if ($isGoogleAdsPerformanceMaxCampaign)
+                    <div class="campaign-report-section-header">
+                        <h3 id="google-ads-pmax-assets-title">Google Ads Performance Max 素材成效</h3>
+                        @if ($googleAdsPerformanceMaxAssetReport['status'] === 'complete' && $googleAdsPerformanceMaxAssetReport['rows'] !== [])
+                            <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-ads.performance-max-assets', $target) }}">匯出素材 CSV</a>
+                        @endif
+                    </div>
+                    @if ($googleAdsPerformanceMaxAssetReport['status'] === 'not_synced')
+                        <p class="campaign-report-empty">尚無 Performance Max 素材明細；更新 Google Ads 數據後即可查看。</p>
+                    @elseif ($googleAdsPerformanceMaxAssetReport['status'] === 'unavailable')
+                        <p class="campaign-report-empty">Performance Max 素材明細暫時無法讀取，其他 Google Ads 報表仍可使用。{{ $googleAdsPerformanceMaxAssetReport['message'] }}</p>
+                    @elseif ($googleAdsPerformanceMaxAssetReport['status'] === 'expired')
+                        <p class="campaign-report-empty">Performance Max 素材明細已超過 30 天保存期限，更新 Google Ads 數據後可重新讀取。</p>
+                    @elseif ($googleAdsPerformanceMaxAssetReport['status'] === 'unsupported')
+                        <p class="campaign-report-empty">此活動日期超出 Google Ads 可讀取範圍。</p>
+                    @elseif ($googleAdsPerformanceMaxAssetReport['status'] === 'no_complete_days')
+                        <p class="campaign-report-empty">尚無完整日期可供 Performance Max 素材分析。</p>
+                    @else
+                        <p class="campaign-report-secondary">
+                            {{ $googleAdsPerformanceMaxAssetReport['window_start_on'] }} 至 {{ $googleAdsPerformanceMaxAssetReport['window_end_on'] }} ·
+                            最近 30 個完整日，最多列出曝光最高的 200 項素材，明細加密保存 30 天。
+                        </p>
+                        @if ($googleAdsPerformanceMaxAssetReport['truncated'])
+                            <p class="campaign-report-note">素材超過 200 項，表格僅列出曝光最高的 200 項。</p>
+                        @endif
+                        @if ($googleAdsPerformanceMaxAssetReport['rows'] === [])
+                            <p class="campaign-report-empty">此期間沒有可用的 Performance Max 素材。</p>
+                        @else
+                            <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                                <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                                <input type="hidden" name="google_ads_keyword_sort" value="{{ request('google_ads_keyword_sort', 'spend') }}">
+                                <input type="hidden" name="delivery_unit_sort" value="{{ request('delivery_unit_sort', 'spend') }}">
+                                <input type="hidden" name="google_ads_asset_sort" value="{{ request('google_ads_asset_sort', 'impressions') }}">
+                                <label for="google-ads-pmax-assets-sort">排序</label>
+                                <select id="google-ads-pmax-assets-sort" name="google_ads_pmax_asset_sort">
+                                    <option value="impressions" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'impressions')>曝光</option>
+                                    <option value="spend" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'spend')>花費</option>
+                                    <option value="conversions" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'conversions')>轉換</option>
+                                    <option value="conversions_value" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'conversions_value')>轉換價值</option>
+                                    <option value="roas" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'roas')>ROAS</option>
+                                    <option value="ctr" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'ctr')>CTR</option>
+                                    <option value="cost_per_conversion" @selected($googleAdsPerformanceMaxAssetReport['sort'] === 'cost_per_conversion')>CPA</option>
+                                </select>
+                                <button class="button button-secondary button-small" type="submit">套用</button>
+                            </form>
+                            <div class="data-table-wrap campaign-report-pmax-table-wrap" role="region" aria-labelledby="google-ads-pmax-assets-title" tabindex="0">
+                                <table class="data-table campaign-report-table campaign-report-pmax-table">
+                                    <caption>Google Ads Performance Max 素材成效（{{ $googleAdsPerformanceMaxAssetReport['currency_code'] }}）</caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">素材內容</th>
+                                            <th scope="col">素材類型</th>
+                                            <th scope="col">資產群組</th>
+                                            <th scope="col">狀態</th>
+                                            <th scope="col" class="numeric">曝光</th>
+                                            <th scope="col" class="numeric">點擊</th>
+                                            <th scope="col" class="numeric">CTR</th>
+                                            <th scope="col" class="numeric">花費</th>
+                                            <th scope="col" class="numeric">轉換</th>
+                                            <th scope="col" class="numeric">CPA</th>
+                                            <th scope="col" class="numeric">轉換價值</th>
+                                            <th scope="col" class="numeric">ROAS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($googleAdsPerformanceMaxAssetReport['rows'] as $pmaxAssetRow)
+                                            <tr>
+                                                <th scope="row">{{ $pmaxAssetRow['content'] }}<br><span class="campaign-report-secondary"><code>{{ $pmaxAssetRow['asset_id'] }}</code></span></th>
+                                                <td>{{ $pmaxAssetRow['field_type_label'] }} · {{ $pmaxAssetRow['asset_type_label'] }} · {{ $pmaxAssetRow['source_label'] }}</td>
+                                                <td>{{ $pmaxAssetRow['asset_group_name'] }}<br><span class="campaign-report-secondary"><code>{{ $pmaxAssetRow['asset_group_id'] }}</code></span></td>
+                                                <td>{{ $pmaxAssetRow['status_label'] }} · {{ $pmaxAssetRow['primary_status_label'] }}@if ($pmaxAssetRow['primary_status_reasons'] !== [])<br><span class="campaign-report-secondary">{{ implode('、', $pmaxAssetRow['primary_status_reasons']) }}</span>@endif</td>
+                                                <td class="numeric">{{ number_format((int) $pmaxAssetRow['impressions']) }}</td>
+                                                <td class="numeric">{{ number_format((int) $pmaxAssetRow['clicks']) }}</td>
+                                                <td class="numeric">{{ $pmaxAssetRow['ctr_percent'] === null ? '—' : number_format($pmaxAssetRow['ctr_percent'], 2).'%' }}</td>
+                                                <td class="numeric">{{ number_format((float) $pmaxAssetRow['spend_amount'], 2) }} {{ $googleAdsPerformanceMaxAssetReport['currency_code'] }}</td>
+                                                <td class="numeric">{{ number_format((float) $pmaxAssetRow['conversions'], 2) }}</td>
+                                                <td class="numeric">{{ $pmaxAssetRow['cost_per_conversion'] === null ? '—' : number_format($pmaxAssetRow['cost_per_conversion'], 4).' '.$googleAdsPerformanceMaxAssetReport['currency_code'] }}</td>
+                                                <td class="numeric">{{ number_format((float) $pmaxAssetRow['conversions_value'], 2) }} {{ $googleAdsPerformanceMaxAssetReport['currency_code'] }}</td>
+                                                <td class="numeric">{{ $pmaxAssetRow['roas'] === null ? '—' : number_format($pmaxAssetRow['roas'], 2).'x' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="campaign-report-secondary">每列代表一項素材在資產群組中的成效，不代表單則廣告表現。Google 主要狀態反映放送資格，不是素材成效排名；轉換依帳戶歸因設定。</p>
+                        @endif
+                    @endif
+                @endif
+
                 <div class="campaign-report-section-header">
                     <h3 id="google-ads-devices-title">Google Ads 裝置成效</h3>
                     @if ($googleAdsDeviceReport['status'] === 'complete' && $googleAdsDeviceReport['rows'] !== [])

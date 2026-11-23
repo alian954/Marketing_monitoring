@@ -35,10 +35,12 @@ use Illuminate\Database\Eloquent\Model;
     'auction_insights_expires_at',
     'responsive_search_ad_asset_performance',
     'responsive_search_ad_asset_performance_expires_at',
+    'pmax_asset_performance',
+    'pmax_asset_performance_expires_at',
     'currency_code',
     'synced_at',
 ])]
-#[Hidden(['search_terms_data', 'search_terms_expires_at', 'keyword_performance', 'keyword_performance_expires_at', 'delivery_unit_performance', 'delivery_unit_performance_expires_at', 'device_performance', 'device_performance_expires_at', 'auction_insights', 'auction_insights_expires_at', 'responsive_search_ad_asset_performance', 'responsive_search_ad_asset_performance_expires_at'])]
+#[Hidden(['search_terms_data', 'search_terms_expires_at', 'keyword_performance', 'keyword_performance_expires_at', 'delivery_unit_performance', 'delivery_unit_performance_expires_at', 'device_performance', 'device_performance_expires_at', 'auction_insights', 'auction_insights_expires_at', 'responsive_search_ad_asset_performance', 'responsive_search_ad_asset_performance_expires_at', 'pmax_asset_performance', 'pmax_asset_performance_expires_at'])]
 class SocialEngagementTargetGoogleAdsReport extends Model
 {
     /** @use HasFactory<SocialEngagementTargetGoogleAdsReportFactory> */
@@ -68,6 +70,8 @@ class SocialEngagementTargetGoogleAdsReport extends Model
             'auction_insights_expires_at' => 'immutable_datetime',
             'responsive_search_ad_asset_performance' => 'encrypted:array',
             'responsive_search_ad_asset_performance_expires_at' => 'immutable_datetime',
+            'pmax_asset_performance' => 'encrypted:array',
+            'pmax_asset_performance_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }
