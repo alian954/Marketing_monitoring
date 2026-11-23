@@ -537,6 +537,124 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(50.0, $twd['projected_under_budget_amount']);
     }
 
+    public function test_dashboard_sorts_fresh_budget_forecasts_by_overrun_percent_and_keeps_within_budget_rows(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $user = User::factory()->create();
+        $googleAdsConnection = $this->createGoogleAdsConnection($user);
+        $highRiskTarget = $this->createTarget([
+            'tag' => 'High budget risk',
+            'google_ads_campaign_id' => 'high-budget-risk',
+            'meta_campaign_id' => null,
+            'campaign_budget_amount' => '1000.0000',
+        ]);
+        $moderateRiskTarget = $this->createTarget([
+            'tag' => 'Moderate budget risk',
+            'google_ads_campaign_id' => 'moderate-budget-risk',
+            'meta_campaign_id' => null,
+            'campaign_budget_amount' => '1000.0000',
+        ]);
+        $withinBudgetTarget = $this->createTarget([
+            'tag' => 'Within budget',
+            'google_ads_campaign_id' => 'within-budget',
+            'meta_campaign_id' => null,
+            'campaign_budget_amount' => '1000.0000',
+        ]);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $highRiskTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $moderateRiskTarget, ['spend_amount' => '600.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $withinBudgetTarget, ['spend_amount' => '400.0000']);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('逐活動預算預測')
+            ->assertSee('預估超支比例較高者優先')
+            ->assertSee('資料 24 小時內更新')
+            ->assertSee('可能超支')
+            ->assertSee('TWD 1,400.00');
+        $forecastRows = $response->viewData('campaignPortfolioMarketingSummary')['budget_risk_rows'];
+        $forecastsByTag = collect($forecastRows)->keyBy('tag');
+
+        $this->assertSame(['High budget risk', 'Moderate budget risk', 'Within budget'], array_column($forecastRows, 'tag'));
+        $this->assertSame(40.0, $forecastsByTag['High budget risk']['projected_overrun_percent']);
+        $this->assertSame(700.0, $forecastsByTag['High budget risk']['spend_amount']);
+        $this->assertSame(1400.0, $forecastsByTag['High budget risk']['projected_spend_amount']);
+        $this->assertSame('fresh', $forecastsByTag['High budget risk']['freshness_status']);
+        $this->assertSame('projected_under_budget', $forecastsByTag['Within budget']['status']);
+        $this->assertSame(-200.0, $forecastsByTag['Within budget']['projected_overrun_amount']);
+    }
+
+    public function test_dashboard_budget_forecasts_exclude_duplicates_and_unavailable_or_inactive_campaigns(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $user = User::factory()->create();
+        $googleAdsConnection = $this->createGoogleAdsConnection($user);
+        $validTarget = $this->createTarget([
+            'tag' => 'Valid duplicate mapping',
+            'google_ads_campaign_id' => 'shared-risk-campaign',
+            'meta_campaign_id' => null,
+        ]);
+        $duplicateTarget = $this->createTarget([
+            'tag' => 'Duplicate mapping',
+            'google_ads_campaign_id' => 'shared-risk-campaign',
+            'meta_campaign_id' => null,
+        ]);
+        $staleTarget = $this->createTarget([
+            'tag' => 'Stale budget data',
+            'google_ads_campaign_id' => 'stale-budget-data',
+            'meta_campaign_id' => null,
+        ]);
+        $this->createTarget([
+            'tag' => 'Missing budget data',
+            'google_ads_campaign_id' => 'missing-budget-data',
+            'meta_campaign_id' => null,
+        ]);
+        $currencyMismatchTarget = $this->createTarget([
+            'tag' => 'Mismatched budget currency',
+            'google_ads_campaign_id' => 'mismatched-budget-currency',
+            'meta_campaign_id' => null,
+            'campaign_budget_currency' => 'USD',
+        ]);
+        $notStartedTarget = $this->createTarget([
+            'tag' => 'Not started budget',
+            'google_ads_campaign_id' => 'not-started-budget',
+            'meta_campaign_id' => null,
+            'starts_on' => '2026-11-16',
+        ]);
+        $completedTarget = $this->createTarget([
+            'tag' => 'Completed budget',
+            'google_ads_campaign_id' => 'completed-budget',
+            'meta_campaign_id' => null,
+            'ends_on' => '2026-11-14',
+        ]);
+        $noBudgetTarget = $this->createTarget([
+            'tag' => 'No campaign budget',
+            'google_ads_campaign_id' => 'no-campaign-budget',
+            'meta_campaign_id' => null,
+            'campaign_budget_amount' => null,
+            'campaign_budget_currency' => null,
+        ]);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $validTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $duplicateTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $staleTarget, [
+            'spend_amount' => '700.0000',
+            'synced_at' => now()->subDay()->subSecond(),
+        ]);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $currencyMismatchTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $notStartedTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $completedTarget, ['spend_amount' => '700.0000']);
+        $this->createGoogleAdsReportForConnection($googleAdsConnection, $noBudgetTarget, ['spend_amount' => '700.0000']);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk();
+        $forecastRows = $response->viewData('campaignPortfolioMarketingSummary')['budget_risk_rows'];
+
+        $this->assertSame(['Valid duplicate mapping'], array_column($forecastRows, 'tag'));
+        $this->assertSame($validTarget->id, $forecastRows[0]['target_id']);
+        $this->assertSame(1, count($forecastRows));
+    }
+
     public function test_campaign_portfolio_calculates_source_specific_interaction_costs_with_deduplication_and_coverage(): void
     {
         $sharedCampaignTarget = $this->createTarget([
@@ -1082,5 +1200,29 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'currency_code' => 'TWD',
             'synced_at' => now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function createGoogleAdsReportForConnection(
+        GoogleAdsConnection $connection,
+        SocialEngagementTarget $target,
+        array $overrides = [],
+    ): SocialEngagementTargetGoogleAdsReport {
+        return SocialEngagementTargetGoogleAdsReport::query()->create(array_replace([
+            'google_ads_connection_id' => $connection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => $connection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'campaign_name' => $target->tag,
+            'starts_on' => $target->starts_on->toDateString(),
+            'ends_on' => $target->ends_on->toDateString(),
+            'spend_amount' => '700.0000',
+            'impressions' => 2000,
+            'clicks' => 100,
+            'conversions' => '10.0000',
+            'conversions_value' => '300.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ], $overrides));
     }
 }

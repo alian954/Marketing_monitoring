@@ -20,6 +20,7 @@ class CampaignPortfolioMarketingSummary
      *     ga4_business_goal_coverage: array{configured_campaigns: int, available_campaigns: int, unavailable_campaigns: int, ahead_campaigns: int, behind_campaigns: int, on_track_campaigns: int, not_started_campaigns: int, completed_campaigns: int, data_unavailable_campaigns: int},
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
+     *     budget_risk_rows: list<array{target_id: int, tag: string, currency_code: string, spend_source_label: string, freshness_status: string, freshness_label: string, spend_amount: float, budget_amount: float, projected_spend_amount: float, projected_overrun_amount: float, projected_overrun_percent: float, status: string, status_label: string, starts_on: string, ends_on: string}>,
      *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
      *     campaign_ranks: array<int, array{rank: int, currency_code: string, roas: float}>,
      *     campaign_interaction_cost_ranks: array<int, array<string, array{rank: int, source: string, source_label: string, currency_code: string, cost_per_public_interaction: float, status: string}>>
@@ -101,10 +102,20 @@ class CampaignPortfolioMarketingSummary
                 $budgetParents[$targetId] = $targetId;
                 $budgetCandidatesByTarget[$targetId] = [
                     'target_id' => $targetId,
+                    'tag' => $target->tag,
+                    'starts_on' => $target->starts_on?->toDateString(),
+                    'ends_on' => $target->ends_on?->toDateString(),
                     'budget_amount' => (float) $budgetAmount,
                     'currency_code' => $budgetCurrency,
                     'spend_amount' => $hasComparableSpend ? (float) $spendAmount : null,
                     'spend_status' => $hasComparableSpend && is_string($spendStatus) ? $spendStatus : 'missing',
+                    'spend_source' => is_string($spendSource) ? $spendSource : null,
+                    'spend_source_label' => is_string($efficiency['ad_spend_source_label'] ?? null)
+                        ? $efficiency['ad_spend_source_label']
+                        : null,
+                    'budget_status' => is_string($efficiency['budget_status'] ?? null)
+                        ? $efficiency['budget_status']
+                        : 'missing_spend',
                     'pacing_difference_amount' => $hasComparableSpend && is_numeric($efficiency['budget_pacing_difference_amount'] ?? null)
                         ? (float) $efficiency['budget_pacing_difference_amount']
                         : null,
@@ -268,6 +279,7 @@ class CampaignPortfolioMarketingSummary
             'projected_under_budget_campaigns' => 0,
         ];
         $budgetCurrencyGroups = [];
+        $budgetRiskRows = [];
         $interactionCostGroups = [];
         $interactionRankingCandidates = [];
         $rankingCandidates = [];
@@ -288,6 +300,16 @@ class CampaignPortfolioMarketingSummary
             $candidate = $this->preferredBudgetCandidate($candidates);
             $currencyCode = $candidate['currency_code'];
             $budgetCoverage['configured_campaigns']++;
+
+            $forecastCandidates = array_values(array_filter(
+                $candidates,
+                fn (array $budgetCandidate): bool => $this->hasAvailableBudgetForecast($budgetCandidate),
+            ));
+
+            if ($forecastCandidates !== []) {
+                $forecastCandidate = $this->preferredBudgetCandidate($forecastCandidates);
+                $budgetRiskRows[] = $this->budgetRiskRow($forecastCandidate);
+            }
 
             if (! isset($budgetCurrencyGroups[$currencyCode])) {
                 $budgetCurrencyGroups[$currencyCode] = [
@@ -579,6 +601,13 @@ class CampaignPortfolioMarketingSummary
         ksort($nativeRoasGroups);
         ksort($budgetCurrencyGroups);
         ksort($interactionCostGroups);
+        usort($budgetRiskRows, static function (array $first, array $second): int {
+            $riskOrder = $second['projected_overrun_percent'] <=> $first['projected_overrun_percent'];
+
+            return $riskOrder !== 0
+                ? $riskOrder
+                : (strcasecmp($first['tag'], $second['tag']) ?: ($first['target_id'] <=> $second['target_id']));
+        });
         $campaignInteractionCostRanks = [];
 
         foreach ($interactionRankingCandidates as $candidates) {
@@ -655,6 +684,7 @@ class CampaignPortfolioMarketingSummary
             'ga4_business_goal_coverage' => $ga4BusinessGoalCoverage,
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
+            'budget_risk_rows' => $budgetRiskRows,
             'interaction_cost_groups' => array_values($interactionCostGroups),
             'campaign_interaction_cost_ranks' => $campaignInteractionCostRanks,
             'campaign_ranks' => $campaignRanks,
@@ -740,6 +770,71 @@ class CampaignPortfolioMarketingSummary
         });
 
         return $candidates[0];
+    }
+
+    /** @param array<string, mixed> $candidate */
+    private function hasAvailableBudgetForecast(array $candidate): bool
+    {
+        return ($candidate['budget_status'] ?? null) === 'in_progress'
+            && ($candidate['spend_status'] ?? null) === 'fresh'
+            && in_array($candidate['spend_source'] ?? null, ['meta_marketing', 'google_ads', 'combined_paid_ads', 'manual'], true)
+            && is_numeric($candidate['budget_amount'] ?? null)
+            && is_finite((float) $candidate['budget_amount'])
+            && (float) $candidate['budget_amount'] > 0
+            && is_numeric($candidate['spend_amount'] ?? null)
+            && is_finite((float) $candidate['spend_amount'])
+            && (float) $candidate['spend_amount'] >= 0
+            && is_string($candidate['currency_code'] ?? null)
+            && $this->currencyCode($candidate['currency_code']) !== null
+            && is_numeric($candidate['projected_spend_amount'] ?? null)
+            && is_finite((float) $candidate['projected_spend_amount'])
+            && is_numeric($candidate['projected_overrun_amount'] ?? null)
+            && is_finite((float) $candidate['projected_overrun_amount'])
+            && is_string($candidate['starts_on'] ?? null)
+            && is_string($candidate['ends_on'] ?? null);
+    }
+
+    /** @param array<string, mixed> $candidate
+     * @return array{target_id: int, tag: string, currency_code: string, spend_source_label: string, freshness_status: string, freshness_label: string, spend_amount: float, budget_amount: float, projected_spend_amount: float, projected_overrun_amount: float, projected_overrun_percent: float, status: string, status_label: string, starts_on: string, ends_on: string}
+     */
+    private function budgetRiskRow(array $candidate): array
+    {
+        $projectedOverrunAmount = (float) $candidate['projected_overrun_amount'];
+        $projectedOverrunPercent = round($projectedOverrunAmount / (float) $candidate['budget_amount'] * 100, 2);
+        $status = match (true) {
+            $projectedOverrunAmount > 0 => 'projected_over_budget',
+            $projectedOverrunAmount < 0 => 'projected_under_budget',
+            default => 'projected_on_budget',
+        };
+
+        return [
+            'target_id' => (int) $candidate['target_id'],
+            'tag' => (string) $candidate['tag'],
+            'currency_code' => (string) $candidate['currency_code'],
+            'spend_source_label' => is_string($candidate['spend_source_label'] ?? null)
+                ? $candidate['spend_source_label']
+                : match ($candidate['spend_source'] ?? null) {
+                    'meta_marketing' => 'Meta Ads 花費',
+                    'google_ads' => 'Google Ads 花費',
+                    'combined_paid_ads' => 'Meta Ads + Google Ads 花費',
+                    default => '人工記錄花費',
+                },
+            'freshness_status' => 'fresh',
+            'freshness_label' => ($candidate['spend_source'] ?? null) === 'manual' ? '人工記錄' : '24 小時內更新',
+            'spend_amount' => round((float) $candidate['spend_amount'], 4),
+            'budget_amount' => round((float) $candidate['budget_amount'], 4),
+            'projected_spend_amount' => round((float) $candidate['projected_spend_amount'], 4),
+            'projected_overrun_amount' => round($projectedOverrunAmount, 4),
+            'projected_overrun_percent' => $projectedOverrunPercent,
+            'status' => $status,
+            'status_label' => match ($status) {
+                'projected_over_budget' => '可能超支',
+                'projected_under_budget' => '預估低於預算',
+                default => '預估符合預算',
+            },
+            'starts_on' => (string) $candidate['starts_on'],
+            'ends_on' => (string) $candidate['ends_on'],
+        ];
     }
 
     /** @param array<string, mixed> $marketing */

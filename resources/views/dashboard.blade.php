@@ -799,6 +799,53 @@
                         </table>
                     </div>
                 @endif
+                <h4 id="campaign-budget-risk-list-title" class="panel-title spaced-top">逐活動預算預測</h4>
+                <p class="campaign-report-secondary">
+                    僅列進行中、預算與花費幣別相同且來源可用的活動；廣告資料需在 24 小時內更新，人工花費會標示。相同廣告活動只列一次，預估超支比例較高者優先。
+                </p>
+                @if ($campaignPortfolioMarketingSummary['budget_risk_rows'] === [])
+                    <p class="campaign-report-secondary">目前沒有可比較的活動預算預測。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-budget-risk-list-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">進行中活動目前花費、預估總花費與預估超支風險，按相對預算超支比例由高到低排序</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">活動</th>
+                                    <th scope="col">期間</th>
+                                    <th scope="col">花費來源／資料新鮮度</th>
+                                    <th scope="col" class="numeric">目前花費</th>
+                                    <th scope="col" class="numeric">預估總花費</th>
+                                    <th scope="col" class="numeric">預估超支／餘額</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($campaignPortfolioMarketingSummary['budget_risk_rows'] as $budgetRiskRow)
+                                    <tr>
+                                        <th scope="row">{{ $budgetRiskRow['tag'] }}</th>
+                                        <td>{{ $budgetRiskRow['starts_on'] }} 至 {{ $budgetRiskRow['ends_on'] }}</td>
+                                        <td>
+                                            {{ $budgetRiskRow['spend_source_label'] }}
+                                            <span class="secondary-text">資料 {{ $budgetRiskRow['freshness_label'] }}</span>
+                                        </td>
+                                        <td class="numeric">{{ $budgetRiskRow['currency_code'] }} {{ number_format($budgetRiskRow['spend_amount'], 2) }}</td>
+                                        <td class="numeric">{{ $budgetRiskRow['currency_code'] }} {{ number_format($budgetRiskRow['projected_spend_amount'], 2) }}</td>
+                                        <td class="numeric">
+                                            <strong>{{ $budgetRiskRow['status_label'] }}</strong>
+                                            @if ($budgetRiskRow['projected_overrun_amount'] > 0)
+                                                <span class="secondary-text">{{ $budgetRiskRow['currency_code'] }} {{ number_format($budgetRiskRow['projected_overrun_amount'], 2) }} · +{{ number_format($budgetRiskRow['projected_overrun_percent'], 1) }}%</span>
+                                            @elseif ($budgetRiskRow['projected_overrun_amount'] < 0)
+                                                <span class="secondary-text">{{ $budgetRiskRow['currency_code'] }} {{ number_format(abs($budgetRiskRow['projected_overrun_amount']), 2) }} · {{ number_format($budgetRiskRow['projected_overrun_percent'], 1) }}%</span>
+                                            @else
+                                                <span class="secondary-text">{{ $budgetRiskRow['currency_code'] }} 0.00 · 0.0%</span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             </section>
             <section class="spaced-top" aria-labelledby="campaign-public-interaction-cost-title">
                 <h3 id="campaign-public-interaction-cost-title" class="panel-title">社群貼文互動成本</h3>
