@@ -70,10 +70,14 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
         $withoutReport = $service->attachToPosts($target, $posts, null, null);
         $expiredReport = $service->attachToPosts($target, $posts, $this->completeAdContentReport('creative-a'), now()->subSecond()->toImmutable());
         $unmatchedReport = $service->attachToPosts($target, $posts, $this->completeAdContentReport('different-creative'), now()->addDay()->toImmutable());
+        $truncatedReportData = $this->completeAdContentReport('different-creative');
+        $truncatedReportData['truncated'] = true;
+        $truncatedReport = $service->attachToPosts($target, $posts, $truncatedReportData, now()->addDay()->toImmutable());
 
         $this->assertSame('report_unavailable', $withoutReport[0]['google_analytics_attribution']['status']);
         $this->assertSame('report_expired', $expiredReport[0]['google_analytics_attribution']['status']);
         $this->assertSame('no_ga4_match', $unmatchedReport[0]['google_analytics_attribution']['status']);
+        $this->assertSame('ga4_report_truncated', $truncatedReport[0]['google_analytics_attribution']['status']);
     }
 
     public function test_missing_utm_and_ga4_thresholding_are_reported_without_fabricating_metrics(): void

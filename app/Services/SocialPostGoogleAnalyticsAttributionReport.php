@@ -56,6 +56,7 @@ class SocialPostGoogleAnalyticsAttributionReport
 
         $reportStatus = $adContentReport['status'] ?? null;
         $reportRows = is_array($adContentReport['rows'] ?? null) ? $adContentReport['rows'] : [];
+        $reportTruncated = ($adContentReport['truncated'] ?? false) === true;
         $currencyCode = is_string($adContentReport['currency_code'] ?? null) ? $adContentReport['currency_code'] : null;
         $reportIsFresh = $adContentExpiresAt?->isFuture() === true;
 
@@ -64,6 +65,7 @@ class SocialPostGoogleAnalyticsAttributionReport
             $utmContentCounts,
             $reportStatus,
             $reportRows,
+            $reportTruncated,
             $adContentReport,
             $currencyCode,
             $reportIsFresh,
@@ -96,8 +98,12 @@ class SocialPostGoogleAnalyticsAttributionReport
                 ));
 
                 if (count($matchingRows) !== 1) {
-                    $attribution['status'] = count($matchingRows) > 1 ? 'ambiguous_ga4_rows' : 'no_ga4_match';
-                    $attribution['status_label'] = count($matchingRows) > 1 ? 'GA4 素材資料重複' : 'GA4 尚無相同素材值';
+                    $attribution['status'] = count($matchingRows) > 1
+                        ? 'ambiguous_ga4_rows'
+                        : ($reportTruncated ? 'ga4_report_truncated' : 'no_ga4_match');
+                    $attribution['status_label'] = count($matchingRows) > 1
+                        ? 'GA4 素材資料重複'
+                        : ($reportTruncated ? 'GA4 素材明細遭截斷，無法確認' : 'GA4 尚無相同素材值');
                 } else {
                     $row = $matchingRows[0];
                     $attribution['status'] = 'matched';
