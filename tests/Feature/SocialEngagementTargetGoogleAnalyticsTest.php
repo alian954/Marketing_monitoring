@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsCampaignSnapshot;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
 use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsCampaignReportSync;
@@ -504,6 +508,138 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
 
         $this->get(route('social-engagement-targets.google-analytics.events', $target))
             ->assertNotFound();
+    }
+
+    public function test_campaign_report_displays_per_event_cost_for_fresh_matching_meta_spend(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
+        $user = User::factory()->create();
+        $target = $this->createEventCostScenario($user, now()->toImmutable());
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('每次重要事件成本')
+            ->assertSee('TWD 40.0000')
+            ->assertSee('TWD 25.0000')
+            ->assertSee('各列重用同一筆花費，不能加總');
+        $events = collect($response->viewData('googleAnalyticsEventNameReport')['rows'])->keyBy('event_name');
+
+        $this->assertSame('Meta Ads 花費', $events['purchase']['cost_per_key_event_source_label']);
+        $this->assertSame('available', $events['purchase']['cost_per_key_event_status']);
+        $this->assertSame(40.0, $events['purchase']['cost_per_key_event']);
+        $this->assertSame(25.0, $events['generate_lead']['cost_per_key_event']);
+    }
+
+    public function test_campaign_report_hides_per_event_cost_when_the_selected_paid_snapshot_is_stale(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
+        $user = User::factory()->create();
+        $target = $this->createEventCostScenario($user, now()->subDay()->subSecond()->toImmutable());
+
+        $response = $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('花費讀值已超過 24 小時');
+
+        $events = $response->viewData('googleAnalyticsEventNameReport')['rows'];
+        $this->assertNull($events[0]['cost_per_key_event']);
+        $this->assertSame('spend_stale', $events[0]['cost_per_key_event_status']);
+    }
+
+    public function test_event_csv_exports_reference_cost_with_the_selected_spend_source_and_currency(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
+        $user = User::factory()->create();
+        $target = $this->createEventCostScenario($user, now()->toImmutable());
+
+        $csv = $this->actingAs($user)
+            ->get(route('social-engagement-targets.google-analytics.events', $target))
+            ->assertDownload('ga4-event-names-'.$target->id.'.csv')
+            ->streamedContent();
+
+        $lines = preg_split('/\r\n|\r|\n/', trim($csv)) ?: [];
+        $headers = str_getcsv(array_shift($lines) ?: '');
+        $rows = array_map(static fn (string $line): array => array_combine($headers, str_getcsv($line)), $lines);
+        $purchase = collect($rows)->firstWhere('event_name', 'purchase');
+
+        $this->assertSame('40.0000', $purchase['cost_per_key_event_reference']);
+        $this->assertSame('TWD', $purchase['cost_per_key_event_currency_code']);
+        $this->assertSame('Meta Ads 花費', $purchase['cost_per_key_event_source']);
+        $this->assertSame('available', $purchase['cost_per_key_event_status']);
+    }
+
+    public function test_event_csv_uses_google_ads_spend_for_an_auto_tagged_campaign(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
+        $user = User::factory()->create();
+        $target = $this->createTarget(['google_ads_campaign_id' => '987654321']);
+        $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'ga-refresh-token',
+        ]);
+        $googleAdsConnection = GoogleAdsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'ads-refresh-token',
+            'customer_id' => '1234567890',
+            'customer_name' => 'Example Ads',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $googleAnalyticsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'attribution_mode' => 'google_ads_auto_tagging',
+            'campaign_id' => $target->google_ads_campaign_id,
+            'source_name' => null,
+            'medium_name' => null,
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 10,
+            'engaged_sessions' => 8,
+            'key_events' => '2.5000',
+            'total_revenue' => '150.0000',
+            'currency_code' => 'TWD',
+            'event_name_report' => [
+                'status' => 'complete',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'currency_code' => 'TWD',
+                'truncated' => false,
+                'rows' => [['event_name' => 'purchase', 'event_count' => 25, 'key_events' => '2.5000', 'total_revenue' => '150.0000']],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+            'synced_at' => now(),
+        ]);
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => $googleAdsConnection->customer_id,
+            'campaign_id' => $target->google_ads_campaign_id,
+            'campaign_name' => $target->tag,
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '150.0000',
+            'impressions' => 2000,
+            'clicks' => 100,
+            'conversions' => '5.0000',
+            'conversions_value' => '150.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $csv = $this->actingAs($user)
+            ->get(route('social-engagement-targets.google-analytics.events', $target))
+            ->assertDownload('ga4-event-names-'.$target->id.'.csv')
+            ->streamedContent();
+        $lines = preg_split('/\r\n|\r|\n/', trim($csv)) ?: [];
+        $headers = str_getcsv(array_shift($lines) ?: '');
+        $purchase = array_combine($headers, str_getcsv($lines[0]));
+
+        $this->assertSame('60.0000', $purchase['cost_per_key_event_reference']);
+        $this->assertSame('Google Ads 花費', $purchase['cost_per_key_event_source']);
+        $this->assertSame('available', $purchase['cost_per_key_event_status']);
     }
 
     public function test_ga4_event_name_data_is_cleared_after_its_retention_expires(): void
@@ -1475,6 +1611,76 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+    }
+
+    private function createEventCostScenario(User $user, CarbonImmutable $metaSyncedAt): SocialEngagementTarget
+    {
+        $target = $this->createTarget([
+            'tag' => 'Event cost campaign',
+            'meta_campaign_id' => '987654321',
+        ]);
+        $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+        $metaMarketingConnection = MetaMarketingConnection::query()->create([
+            'user_id' => $user->id,
+            'access_token' => 'authorized-token',
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Example Ads',
+            'currency_code' => 'TWD',
+        ]);
+
+        SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+            'google_analytics_connection_id' => $googleAnalyticsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'campaign_name' => $target->googleAnalyticsCampaignName(),
+            'attribution_mode' => $target->googleAnalyticsAttributionMode(),
+            'campaign_id' => null,
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'sessions' => 400,
+            'engaged_sessions' => 300,
+            'key_events' => '6.5000',
+            'total_revenue' => '800.2500',
+            'currency_code' => 'TWD',
+            'event_name_report' => [
+                'status' => 'complete',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'currency_code' => 'TWD',
+                'truncated' => true,
+                'rows' => [
+                    ['event_name' => 'purchase', 'event_count' => 400, 'key_events' => '2.5000', 'total_revenue' => '800.2500'],
+                    ['event_name' => 'generate_lead', 'event_count' => 20, 'key_events' => '4.0000', 'total_revenue' => '0.0000'],
+                ],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+            'synced_at' => now(),
+        ]);
+
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $metaMarketingConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => $metaMarketingConnection->ad_account_id,
+            'campaign_id' => $target->meta_campaign_id,
+            'campaign_name' => $target->tag,
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '100.0000',
+            'impressions' => 2000,
+            'reach' => 1600,
+            'clicks' => 100,
+            'actions' => [],
+            'action_values' => [],
+            'currency_code' => 'TWD',
+            'synced_at' => $metaSyncedAt,
+        ]);
+
+        return $target;
     }
 
     /**

@@ -1941,6 +1941,7 @@
                 @else
                     <p class="campaign-report-secondary">
                         {{ $googleAnalyticsEventNameReport['window_start_on'] }} 至 {{ $googleAnalyticsEventNameReport['window_end_on'] }} · 最多顯示 200 個事件名稱，依 GA4 指標排序；重要事件數依資源標記設定，明細加密保存 30 天。
+                        CPA 為活動花費除以該事件重要事件數；各列重用同一筆花費，不能加總。
                     </p>
                     @if ($googleAnalyticsEventNameReport['truncated'])
                         <p class="campaign-report-note">事件名稱超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有事件。</p>
@@ -1958,13 +1959,14 @@
                     </form>
                     <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-event-name-title" tabindex="0">
                         <table class="data-table campaign-report-table campaign-report-ga4-event-name-table">
-                            <caption>GA4 事件名稱、事件次數、重要事件與營收</caption>
+                            <caption>GA4 事件名稱、事件次數、重要事件、營收與參考 CPA</caption>
                             <thead>
                                 <tr>
                                     <th scope="col">事件名稱</th>
                                     <th scope="col" class="numeric">事件次數</th>
                                     <th scope="col" class="numeric">重要事件數</th>
                                     <th scope="col" class="numeric">營收（{{ $googleAnalyticsEventNameReport['currency_code'] ?? '幣別未知' }}）</th>
+                                    <th scope="col" class="numeric">每次重要事件成本</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1974,6 +1976,16 @@
                                         <td class="numeric">{{ number_format((int) $event['event_count']) }}</td>
                                         <td class="numeric">{{ number_format((float) $event['key_events'], 2) }}</td>
                                         <td class="numeric">{{ number_format((float) $event['total_revenue'], 2) }}</td>
+                                        <td class="numeric">
+                                            @if ($event['cost_per_key_event'] !== null)
+                                                {{ $event['cost_per_key_event_currency'] }} {{ number_format($event['cost_per_key_event'], 4) }}
+                                            @else
+                                                {{ $event['cost_per_key_event_status_label'] }}
+                                            @endif
+                                            @if (is_string($event['cost_per_key_event_source_label']))
+                                                <span class="secondary-text">{{ $event['cost_per_key_event_source_label'] }}</span>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>

@@ -19,6 +19,11 @@ class GoogleAnalyticsEventNameReportCsv
             'window_start_on',
             'window_end_on',
             'truncated',
+            'cost_per_key_event_reference',
+            'cost_per_key_event_currency_code',
+            'cost_per_key_event_source',
+            'cost_per_key_event_status',
+            'cost_per_key_event_status_label',
         ];
         $rows = [];
 
@@ -36,6 +41,13 @@ class GoogleAnalyticsEventNameReportCsv
                 $this->value($report['window_start_on'] ?? null),
                 $this->value($report['window_end_on'] ?? null),
                 ($report['truncated'] ?? false) === true ? 'true' : 'false',
+                is_numeric($row['cost_per_key_event'] ?? null)
+                    ? number_format((float) $row['cost_per_key_event'], 4, '.', '')
+                    : '',
+                $this->value($row['cost_per_key_event_currency'] ?? null),
+                $this->value($row['cost_per_key_event_source_label'] ?? null),
+                $this->value($row['cost_per_key_event_status'] ?? null),
+                $this->value($row['cost_per_key_event_status_label'] ?? null),
             ];
         }
 

@@ -22,7 +22,7 @@ class GoogleAnalyticsEventNamePerformanceReport
     {
         $status = is_string($snapshot['status'] ?? null) ? $snapshot['status'] : 'not_synced';
 
-        if ($status === 'complete' && $expiresAt !== null && $expiresAt->isPast()) {
+        if ($status === 'complete' && $expiresAt?->isFuture() !== true) {
             $status = 'expired';
         }
 
@@ -39,8 +39,10 @@ class GoogleAnalyticsEventNamePerformanceReport
                 || $eventCount === false
                 || $eventCount < 0
                 || ! is_numeric($row['key_events'] ?? null)
+                || ! is_finite((float) $row['key_events'])
                 || (float) $row['key_events'] < 0
-                || ! is_numeric($row['total_revenue'] ?? null)) {
+                || ! is_numeric($row['total_revenue'] ?? null)
+                || ! is_finite((float) $row['total_revenue'])) {
                 continue;
             }
 

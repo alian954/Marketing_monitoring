@@ -34,6 +34,7 @@ use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsAdContentPerformanceReport;
 use App\Services\GoogleAnalyticsAdContentReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\GoogleAnalyticsEventNameCostPerKeyEventReport;
 use App\Services\GoogleAnalyticsEventNamePerformanceReport;
 use App\Services\GoogleAnalyticsEventNameReportCsv;
 use App\Services\GoogleAnalyticsItemPerformanceReport;
@@ -60,6 +61,7 @@ use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignPostDetailReport;
 use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -81,6 +83,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
         GoogleAnalyticsLandingPagePerformanceReport $googleAnalyticsLandingPagePerformanceReport,
         GoogleAnalyticsEventNamePerformanceReport $googleAnalyticsEventNamePerformanceReport,
+        GoogleAnalyticsEventNameCostPerKeyEventReport $googleAnalyticsEventNameCostPerKeyEventReport,
         MetaMarketingAdPerformanceReport $metaMarketingAdPerformanceReport,
         MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
         MetaMarketingDemographicPerformanceReport $metaMarketingDemographicPerformanceReport,
@@ -159,6 +162,14 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReport']?->event_name_report,
             $viewData['googleAnalyticsReport']?->event_name_expires_at,
             (string) $request->query('event_name_sort', 'key_events'),
+        );
+        $viewData['googleAnalyticsEventNameReport'] = $googleAnalyticsEventNameCostPerKeyEventReport->attach(
+            $viewData['googleAnalyticsEventNameReport'],
+            $viewData['googleAnalyticsReport']?->event_name_expires_at,
+            now()->toImmutable(),
+            $viewData['adSpendAnalysis'],
+            $viewData['googleAnalyticsReport'] !== null && ! $viewData['googleAnalyticsReportIsStale'],
+            $viewData['roasSpendSnapshotIsFresh'],
         );
         $viewData['googleAnalyticsItemReport'] = $googleAnalyticsItemPerformanceReport->build(
             $viewData['googleAnalyticsReport']?->item_report,
@@ -544,7 +555,9 @@ class SocialEngagementCampaignReportController extends Controller
     public function exportGoogleAnalyticsEventNames(
         Request $request,
         SocialEngagementTarget $socialEngagementTarget,
+        CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         GoogleAnalyticsEventNamePerformanceReport $googleAnalyticsEventNamePerformanceReport,
+        GoogleAnalyticsEventNameCostPerKeyEventReport $googleAnalyticsEventNameCostPerKeyEventReport,
         GoogleAnalyticsEventNameReportCsv $googleAnalyticsEventNameReportCsv,
     ): StreamedResponse {
         $analyticsReport = $this->googleAnalyticsReportForTarget(
@@ -562,6 +575,31 @@ class SocialEngagementCampaignReportController extends Controller
             $analyticsReport->event_name_report,
             $analyticsReport->event_name_expires_at,
             'key_events',
+        );
+        $paidMediaReports = $this->paidMediaReportsForTarget($request, $socialEngagementTarget);
+        $adSpendAnalysis = $marketingEfficiencyReport->build(
+            $socialEngagementTarget,
+            $analyticsReport,
+            null,
+            $paidMediaReports['metaMarketingReport'],
+            $paidMediaReports['googleAdsReport'],
+        );
+        $reportFreshnessCutoff = now()->toImmutable()->subDay();
+        $googleAnalyticsReportIsFresh = $analyticsReport->synced_at !== null
+            && $analyticsReport->synced_at->greaterThan($reportFreshnessCutoff);
+        $spendSnapshotIsFresh = $this->selectedSpendSnapshotIsFresh(
+            $adSpendAnalysis,
+            $paidMediaReports['metaMarketingReport'],
+            $paidMediaReports['googleAdsReport'],
+            $reportFreshnessCutoff,
+        );
+        $eventNameReport = $googleAnalyticsEventNameCostPerKeyEventReport->attach(
+            $eventNameReport,
+            $analyticsReport->event_name_expires_at,
+            now()->toImmutable(),
+            $adSpendAnalysis,
+            $googleAnalyticsReportIsFresh,
+            $spendSnapshotIsFresh,
         );
         abort_if($eventNameReport['status'] !== 'complete' || $eventNameReport['rows'] === [], 404);
         $csv = $googleAnalyticsEventNameReportCsv->build($eventNameReport);
@@ -1134,6 +1172,7 @@ class SocialEngagementCampaignReportController extends Controller
      *     googleAnalyticsMediumName: string|null,
      *     googleAnalyticsTrend: list<array<string, mixed>>,
      *     adSpendAnalysis: array<string, mixed>,
+     *     roasSpendSnapshotIsFresh: bool,
      *     dailyMarketingPerformance: array<string, array<string, mixed>>
      * }
      */
@@ -1155,38 +1194,11 @@ class SocialEngagementCampaignReportController extends Controller
         $mediumName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsMediumName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
         $analyticsReport = $this->googleAnalyticsReportForTarget($socialEngagementTarget, $googleAnalyticsConnection);
-
-        $metaMarketingConnection = $request->user()->metaMarketingConnection;
-        $metaMarketingReport = $metaMarketingConnection === null
-            || $metaMarketingConnection->ad_account_id === null
-            || $socialEngagementTarget->meta_campaign_id === null
-            || $socialEngagementTarget->starts_on === null
-            || $socialEngagementTarget->ends_on === null
-            ? null
-            : SocialEngagementTargetMetaMarketingReport::query()
-                ->where('meta_marketing_connection_id', $metaMarketingConnection->getKey())
-                ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-                ->where('ad_account_id', $metaMarketingConnection->ad_account_id)
-                ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
-                ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-                ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-                ->first();
-
-        $googleAdsConnection = $request->user()->googleAdsConnection;
-        $googleAdsReport = $googleAdsConnection === null
-            || $googleAdsConnection->customer_id === null
-            || $socialEngagementTarget->google_ads_campaign_id === null
-            || $socialEngagementTarget->starts_on === null
-            || $socialEngagementTarget->ends_on === null
-            ? null
-            : SocialEngagementTargetGoogleAdsReport::query()
-                ->where('google_ads_connection_id', $googleAdsConnection->getKey())
-                ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-                ->where('customer_id', $googleAdsConnection->customer_id)
-                ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-                ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-                ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-                ->first();
+        $paidMediaReports = $this->paidMediaReportsForTarget($request, $socialEngagementTarget);
+        $metaMarketingConnection = $paidMediaReports['metaMarketingConnection'];
+        $metaMarketingReport = $paidMediaReports['metaMarketingReport'];
+        $googleAdsConnection = $paidMediaReports['googleAdsConnection'];
+        $googleAdsReport = $paidMediaReports['googleAdsReport'];
 
         $googleAdsCampaignOptions = session('google_ads_campaign_options');
         $googleAdsCampaignOptions = is_array($googleAdsCampaignOptions)
@@ -1196,7 +1208,28 @@ class SocialEngagementCampaignReportController extends Controller
             : null;
 
         $campaignData = $campaignReport->build($socialEngagementTarget, $includeHistoricalDetails);
-        $reportFreshnessCutoff = now()->subDay();
+        $reportFreshnessCutoff = now()->toImmutable()->subDay();
+        $googleAnalyticsReportIsStale = $analyticsReport !== null
+            && $analyticsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff);
+        $metaMarketingReportIsStale = $metaMarketingReport !== null
+            && $metaMarketingReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff);
+        $googleAdsReportIsStale = $googleAdsReport !== null
+            && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff);
+        $adSpendAnalysis = $marketingEfficiencyReport->build(
+            $socialEngagementTarget,
+            $analyticsReport,
+            $campaignData['report']['interaction_total'],
+            $metaMarketingReport,
+            $googleAdsReport,
+            observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
+            comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
+        );
+        $roasSpendSnapshotIsFresh = $this->selectedSpendSnapshotIsFresh(
+            $adSpendAnalysis,
+            $metaMarketingReport,
+            $googleAdsReport,
+            $reportFreshnessCutoff,
+        );
         $dailyMarketingPerformance = $dailyMarketingPerformanceReport->build(
             $analyticsReport,
             $metaMarketingReport,
@@ -1229,20 +1262,17 @@ class SocialEngagementCampaignReportController extends Controller
             ...$campaignData,
             'googleAnalyticsConnection' => $googleAnalyticsConnection,
             'googleAnalyticsReport' => $analyticsReport,
-            'googleAnalyticsReportIsStale' => $analyticsReport !== null
-                && $analyticsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
+            'googleAnalyticsReportIsStale' => $googleAnalyticsReportIsStale,
             'metaMarketingConnection' => $metaMarketingConnection,
             'metaMarketingReport' => $metaMarketingReport,
-            'metaMarketingReportIsStale' => $metaMarketingReport !== null
-                && $metaMarketingReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
+            'metaMarketingReportIsStale' => $metaMarketingReportIsStale,
             'metaMarketingTrend' => $includeHistoricalDetails
                 ? $paidMediaTrendReport->metaMarketingChanges($metaMarketingConnection, $socialEngagementTarget)
                 : [],
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
             'googleAdsCampaignOptions' => $googleAdsCampaignOptions,
-            'googleAdsReportIsStale' => $googleAdsReport !== null
-                && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff),
+            'googleAdsReportIsStale' => $googleAdsReportIsStale,
             'googleAdsTrend' => $includeHistoricalDetails
                 ? $paidMediaTrendReport->googleAdsChanges($googleAdsConnection, $socialEngagementTarget)
                 : [],
@@ -1260,17 +1290,76 @@ class SocialEngagementCampaignReportController extends Controller
                     $usesGoogleAdsAutoTagging ? trim((string) $socialEngagementTarget->google_ads_campaign_id) : null,
                 )
                 : [],
-            'adSpendAnalysis' => $marketingEfficiencyReport->build(
-                $socialEngagementTarget,
-                $analyticsReport,
-                $campaignData['report']['interaction_total'],
-                $metaMarketingReport,
-                $googleAdsReport,
-                observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
-                comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
-            ),
+            'adSpendAnalysis' => $adSpendAnalysis,
+            'roasSpendSnapshotIsFresh' => $roasSpendSnapshotIsFresh,
             'dailyMarketingPerformance' => $dailyMarketingPerformance,
         ];
+    }
+
+    /**
+     * @return array{
+     *     metaMarketingConnection: MetaMarketingConnection|null,
+     *     metaMarketingReport: SocialEngagementTargetMetaMarketingReport|null,
+     *     googleAdsConnection: GoogleAdsConnection|null,
+     *     googleAdsReport: SocialEngagementTargetGoogleAdsReport|null
+     * }
+     */
+    private function paidMediaReportsForTarget(Request $request, SocialEngagementTarget $target): array
+    {
+        $metaMarketingConnection = $request->user()->metaMarketingConnection;
+        $metaMarketingReport = $metaMarketingConnection === null
+            || $metaMarketingConnection->ad_account_id === null
+            || $target->meta_campaign_id === null
+            || $target->starts_on === null
+            || $target->ends_on === null
+            ? null
+            : SocialEngagementTargetMetaMarketingReport::query()
+                ->where('meta_marketing_connection_id', $metaMarketingConnection->getKey())
+                ->where('social_engagement_target_id', $target->getKey())
+                ->where('ad_account_id', $metaMarketingConnection->ad_account_id)
+                ->where('campaign_id', $target->meta_campaign_id)
+                ->whereDate('starts_on', $target->starts_on)
+                ->whereDate('ends_on', $target->ends_on)
+                ->first();
+        $googleAdsConnection = $request->user()->googleAdsConnection;
+        $googleAdsReport = $googleAdsConnection === null
+            || $googleAdsConnection->customer_id === null
+            || $target->google_ads_campaign_id === null
+            || $target->starts_on === null
+            || $target->ends_on === null
+            ? null
+            : SocialEngagementTargetGoogleAdsReport::query()
+                ->where('google_ads_connection_id', $googleAdsConnection->getKey())
+                ->where('social_engagement_target_id', $target->getKey())
+                ->where('customer_id', $googleAdsConnection->customer_id)
+                ->where('campaign_id', $target->google_ads_campaign_id)
+                ->whereDate('starts_on', $target->starts_on)
+                ->whereDate('ends_on', $target->ends_on)
+                ->first();
+
+        return [
+            'metaMarketingConnection' => $metaMarketingConnection,
+            'metaMarketingReport' => $metaMarketingReport,
+            'googleAdsConnection' => $googleAdsConnection,
+            'googleAdsReport' => $googleAdsReport,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $adSpendAnalysis
+     */
+    private function selectedSpendSnapshotIsFresh(
+        array $adSpendAnalysis,
+        ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
+        ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
+        CarbonImmutable $freshnessCutoff,
+    ): bool {
+        return match ($adSpendAnalysis['roas_spend_source'] ?? null) {
+            'meta_marketing' => $metaMarketingReport?->synced_at?->greaterThan($freshnessCutoff) === true,
+            'google_ads' => $googleAdsReport?->synced_at?->greaterThan($freshnessCutoff) === true,
+            'manual' => is_numeric($adSpendAnalysis['roas_spend_amount'] ?? null),
+            default => false,
+        };
     }
 
     public function exportGoogleAnalyticsChannelBreakdown(
