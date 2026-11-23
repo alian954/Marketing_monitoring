@@ -722,6 +722,10 @@ textarea {
     background: var(--surface-hover);
 }
 
+.dashboard-focus-card--attention {
+    border-color: var(--red);
+}
+
 .dashboard-focus-card:focus-visible {
     outline: 3px solid var(--focus);
     outline-offset: 2px;
@@ -804,6 +808,48 @@ textarea {
     grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr);
     gap: 16px;
     margin-bottom: 16px;
+}
+
+.dashboard-attention-panel {
+    margin-top: 16px;
+}
+
+.dashboard-attention-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.dashboard-attention-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    padding: 13px 20px;
+    border-top: 1px solid var(--line);
+}
+
+.dashboard-attention-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+}
+
+.dashboard-attention-empty {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 20px 20px;
+    color: var(--muted);
+}
+
+.dashboard-attention-more {
+    margin: 0;
+    padding: 10px 20px 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
 }
 
 .stat-grid {
@@ -2177,6 +2223,21 @@ a.platform-chip:hover {
     .dashboard-focus-grid {
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;
+    }
+
+    .dashboard-attention-item {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+        gap: 6px;
+        padding: 12px 15px;
+    }
+
+    .dashboard-attention-empty {
+        padding: 4px 15px 15px;
+    }
+
+    .dashboard-attention-more {
+        padding: 10px 15px 14px;
     }
 
     .dashboard-focus-card {

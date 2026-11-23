@@ -5,6 +5,10 @@
 @section('content')
     @php
         $totalMonitors = $monitorCount;
+        $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
+        $attentionMonitors = $monitors
+            ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
+            ->take(5);
     @endphp
 
     <div class="page-heading">
@@ -12,37 +16,16 @@
             <h1 class="page-title">監測總覽</h1>
         </div>
         <div class="heading-actions">
-            <a class="button button-secondary" href="{{ route('features.index') }}">功能說明</a>
-            <a class="button button-secondary" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
-            <a class="button button-secondary" href="{{ route('monitors.export') }}">匯出 CSV</a>
             <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
         </div>
     </div>
 
-    <section class="stat-grid" aria-label="監測項目摘要">
-        <article class="stat-card">
-            <div class="stat-topline"><span class="stat-label">正常</span><x-state-badge state="healthy" /></div>
-            <strong class="stat-value">{{ $counts['healthy'] ?? 0 }}</strong>
-        </article>
-        <article class="stat-card">
-            <div class="stat-topline"><span class="stat-label">需留意</span><x-state-badge state="issue" /></div>
-            <strong class="stat-value">{{ $counts['issue'] ?? 0 }}</strong>
-        </article>
-        <article class="stat-card">
-            <div class="stat-topline"><span class="stat-label">效能警告</span><x-state-badge state="warning" /></div>
-            <strong class="stat-value">{{ $counts['warning'] ?? 0 }}</strong>
-        </article>
-        <article class="stat-card">
-            <div class="stat-topline"><span class="stat-label">資料逾時</span><x-state-badge state="stale" /></div>
-            <strong class="stat-value">{{ $counts['stale'] ?? 0 }}</strong>
-        </article>
-        <article class="stat-card">
-            <div class="stat-topline"><span class="stat-label">已暫停</span><x-state-badge state="paused" /></div>
-            <strong class="stat-value">{{ $counts['paused'] ?? 0 }}</strong>
-        </article>
-    </section>
-
     <section class="dashboard-focus-grid" aria-label="快速摘要">
+        <a class="dashboard-focus-card panel{{ $attentionCount > 0 ? ' dashboard-focus-card--attention' : '' }}" href="#dashboard-attention">
+            <span class="dashboard-focus-label">需要處理</span>
+            <strong class="dashboard-focus-value">{{ number_format($attentionCount) }}</strong>
+            <span class="dashboard-focus-action">查看項目 <span aria-hidden="true">→</span></span>
+        </a>
         <a class="dashboard-focus-card panel" href="{{ route('incidents.index') }}">
             <span class="dashboard-focus-label">進行中的事件</span>
             <strong class="dashboard-focus-value">{{ number_format($incidents->count()) }}</strong>
@@ -51,22 +34,61 @@
         <a class="dashboard-focus-card panel" href="{{ route('monitors.index') }}">
             <span class="dashboard-focus-label">監測項目</span>
             <strong class="dashboard-focus-value">{{ number_format($totalMonitors) }}</strong>
-            <span class="dashboard-focus-action">管理監測 <span aria-hidden="true">→</span></span>
-        </a>
-        <a class="dashboard-focus-card panel" href="#dashboard-marketing-summary">
-            <span class="dashboard-focus-label">社群貼文</span>
-            <strong class="dashboard-focus-value">{{ number_format(collect($platformCounts)->sum('total')) }}</strong>
-            <span class="dashboard-focus-action">查看行銷數據 <span aria-hidden="true">→</span></span>
+            <span class="dashboard-focus-action">查看全部 <span aria-hidden="true">→</span></span>
         </a>
     </section>
 
+    <section class="panel dashboard-attention-panel" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="dashboard-attention-title" class="panel-title">需要處理</h2>
+            </div>
+            <a class="strong-link" href="{{ route('monitors.index') }}">全部監測項目 <span aria-hidden="true">→</span></a>
+        </div>
+        @if ($attentionMonitors->isEmpty())
+            <div class="dashboard-attention-empty">
+                <x-state-badge state="healthy" />
+                <span>目前沒有需要處理的項目</span>
+            </div>
+        @else
+            <ul class="dashboard-attention-list">
+                @foreach ($attentionMonitors as $monitor)
+                    <li class="dashboard-attention-item">
+                        <a class="monitor-name-link" href="{{ route('monitors.show', $monitor) }}">{{ $monitor->name }}</a>
+                        <div class="dashboard-attention-meta">
+                            <x-state-badge :state="$monitor->health_state" />
+                            @if ($monitor->last_checked_at)
+                                <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
+                            @else
+                                <span class="secondary-text">等待檢查</span>
+                            @endif
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+            @if ($attentionCount > $attentionMonitors->count())
+                <p class="dashboard-attention-more">另有 {{ number_format($attentionCount - $attentionMonitors->count()) }} 項</p>
+            @endif
+        @endif
+    </section>
+
+    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-monitor-summary">
+        <summary>
+            <span id="dashboard-monitor-summary">監測清單與執行狀態</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項 · 排程器 {{ $heartbeatStatus === 'healthy' ? '正常' : '需留意' }}</span>
+        </summary>
+        <div class="dashboard-disclosure-content">
     <div class="dashboard-top">
         <section class="panel" id="dashboard-monitors">
             <div class="panel-header">
                 <div>
                     <h2 class="panel-title">監測項目</h2>
                 </div>
-                <a class="strong-link" href="{{ route('monitors.index') }}">查看全部 <span aria-hidden="true">→</span></a>
+                <div class="row-actions">
+                    <a class="strong-link" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
+                    <a class="strong-link" href="{{ route('monitors.export') }}">匯出 CSV</a>
+                    <a class="strong-link" href="{{ route('monitors.index') }}">查看全部 <span aria-hidden="true">→</span></a>
+                </div>
             </div>
 
             @if ($monitors->isEmpty())
@@ -226,11 +248,13 @@
             @endif
         </section>
     </div>
+        </div>
+    </details>
 
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-marketing-summary" @if ($socialEngagementSelectedPlatform !== 'all' || $socialEngagementSelectedTag !== 'all' || $socialEngagementChangePeriodDays !== 7) open @endif>
         <summary>
             <span id="dashboard-marketing-summary">行銷數據</span>
-            <span class="dashboard-disclosure-meta">公開互動、活動成效與趨勢</span>
+            <span class="dashboard-disclosure-meta">互動 · 活動 · 投放</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="social-platform-summary-title">
@@ -1851,7 +1875,7 @@
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-operations-summary">
         <summary>
             <span id="dashboard-operations-summary">服務品質與維運</span>
-            <span class="dashboard-disclosure-meta">可用率、SLO、憑證與網域</span>
+            <span class="dashboard-disclosure-meta">SLO · 憑證 · 網域</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
