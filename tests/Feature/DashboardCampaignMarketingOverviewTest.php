@@ -55,6 +55,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertSee('跨活動預算節奏')
             ->assertSee('社群貼文互動成本')
             ->assertSee('120 工作階段')
+            ->assertSee('每次參與工作階段成本：2.5000 TWD')
             ->assertSee('900.00')
             ->assertSee('300.00 TWD')
             ->assertSee('4.50x')
@@ -76,6 +77,8 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame('Google Ads 花費', $marketing['efficiency']['roas_spend_source_label']);
         $this->assertSame('200.0000', $marketing['efficiency']['roas_spend_amount']);
         $this->assertSame(4.5, $marketing['efficiency']['roas']);
+        $this->assertSame(2.5, $marketing['efficiency']['cost_per_engaged_session']);
+        $this->assertSame('available', $marketing['efficiency']['cost_per_engaged_session_status']);
         $this->assertSame(30.0, $marketing['efficiency']['budget_utilization_percent']);
         $this->assertSame(95, $marketing['public_engagement']['interaction_total']);
         $this->assertSame(100.0, $marketing['public_engagement']['coverage_percent']);
@@ -105,6 +108,24 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $interactionCosts = collect($portfolio['interaction_cost_groups'])->keyBy('source');
         $this->assertSame(1.0526, $interactionCosts['meta_marketing']['cost_per_public_interaction']);
         $this->assertSame(2.1053, $interactionCosts['google_ads']['cost_per_public_interaction']);
+    }
+
+    public function test_dashboard_marks_engaged_session_cost_unavailable_for_stale_google_ads_spend(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createGoogleAnalyticsReport($user, $target);
+        $this->createGoogleAdsReport($user, $target, ['synced_at' => now()->subDays(2)]);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('每次參與工作階段成本：花費資料已過期');
+        $marketing = $response->viewData('socialEngagementTargets')[0]['marketing'];
+
+        $this->assertNull($marketing['efficiency']['cost_per_engaged_session']);
+        $this->assertSame('stale_spend', $marketing['efficiency']['cost_per_engaged_session_status']);
     }
 
     public function test_dashboard_shows_ga4_business_goal_pacing_and_portfolio_coverage(): void

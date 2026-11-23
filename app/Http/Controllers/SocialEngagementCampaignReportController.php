@@ -1233,6 +1233,12 @@ class SocialEngagementCampaignReportController extends Controller
             && $metaMarketingReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff);
         $googleAdsReportIsStale = $googleAdsReport !== null
             && $googleAdsReport->synced_at->lessThanOrEqualTo($reportFreshnessCutoff);
+        $selectedSpendSnapshotIsFresh = $this->selectedSpendSnapshotIsFreshForTarget(
+            $socialEngagementTarget,
+            $metaMarketingReport,
+            $googleAdsReport,
+            $reportFreshnessCutoff,
+        );
         $adSpendAnalysis = $marketingEfficiencyReport->build(
             $socialEngagementTarget,
             $analyticsReport,
@@ -1242,6 +1248,7 @@ class SocialEngagementCampaignReportController extends Controller
             observedCampaignInteractionChange: $campaignData['report']['observed_interaction_change'],
             comparableInteractionPostCount: $campaignData['report']['comparable_interaction_post_count'],
             googleAnalyticsReportIsStale: $googleAnalyticsReportIsStale,
+            roasSpendSnapshotIsFresh: $selectedSpendSnapshotIsFresh,
         );
         $roasSpendSnapshotIsFresh = $this->selectedSpendSnapshotIsFresh(
             $adSpendAnalysis,
@@ -1387,6 +1394,27 @@ class SocialEngagementCampaignReportController extends Controller
             'manual' => is_numeric($adSpendAnalysis['roas_spend_amount'] ?? null),
             default => false,
         };
+    }
+
+    private function selectedSpendSnapshotIsFreshForTarget(
+        SocialEngagementTarget $target,
+        ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
+        ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
+        CarbonImmutable $freshnessCutoff,
+    ): bool {
+        if ($target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging') {
+            return $googleAdsReport?->synced_at?->greaterThan($freshnessCutoff) === true;
+        }
+
+        if ($metaMarketingReport?->spend_amount !== null) {
+            return $metaMarketingReport->synced_at?->greaterThan($freshnessCutoff) === true;
+        }
+
+        if ($target->ad_spend_amount !== null) {
+            return is_numeric($target->ad_spend_amount);
+        }
+
+        return false;
     }
 
     /**

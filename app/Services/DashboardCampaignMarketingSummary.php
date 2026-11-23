@@ -136,11 +136,39 @@ class DashboardCampaignMarketingSummary
                     $publicInteractionTotal,
                     $metaMarketingReport,
                     $googleAdsReport,
+                    googleAnalyticsReportIsStale: $googleAnalyticsSummary['status'] === 'stale',
+                    roasSpendSnapshotIsFresh: $this->selectedSpendSnapshotIsFreshForTarget(
+                        $target,
+                        $metaMarketingReport,
+                        $googleAdsReport,
+                        $freshnessCutoff,
+                    ),
                 ),
             ];
         }
 
         return $summaries;
+    }
+
+    private function selectedSpendSnapshotIsFreshForTarget(
+        SocialEngagementTarget $target,
+        ?SocialEngagementTargetMetaMarketingReport $metaMarketingReport,
+        ?SocialEngagementTargetGoogleAdsReport $googleAdsReport,
+        CarbonImmutable $freshnessCutoff,
+    ): bool {
+        if ($target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging') {
+            return $googleAdsReport?->synced_at?->greaterThan($freshnessCutoff) === true;
+        }
+
+        if ($metaMarketingReport?->spend_amount !== null) {
+            return $metaMarketingReport->synced_at?->greaterThan($freshnessCutoff) === true;
+        }
+
+        if ($target->ad_spend_amount !== null) {
+            return is_numeric($target->ad_spend_amount);
+        }
+
+        return false;
     }
 
     private function googleAnalyticsReportMatchesTarget(

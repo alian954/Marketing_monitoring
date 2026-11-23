@@ -33,6 +33,9 @@ class CampaignMarketingEfficiencyReport
      *     ga4_key_events_per_100_sessions: float|null,
      *     ga4_key_events_per_100_sessions_status: string,
      *     ga4_key_events_per_100_sessions_status_label: string,
+     *     cost_per_engaged_session: float|null,
+     *     cost_per_engaged_session_status: string,
+     *     cost_per_engaged_session_status_label: string,
      *     meta_ads_omni_purchase_value: string|null,
      *     meta_ads_purchase_roas: float|null,
      *     meta_ads_purchase_roas_unrounded: float|null,
@@ -74,6 +77,7 @@ class CampaignMarketingEfficiencyReport
         ?int $observedCampaignInteractionChange = null,
         int $comparableInteractionPostCount = 0,
         bool $googleAnalyticsReportIsStale = false,
+        bool $roasSpendSnapshotIsFresh = false,
     ): array {
         $metaSpendAmount = $metaMarketingReport?->spend_amount;
         $metaSpendCurrency = $this->currencyCode($metaMarketingReport?->currency_code);
@@ -129,6 +133,13 @@ class CampaignMarketingEfficiencyReport
         $keyEventsPer100Sessions = $this->keyEventsPer100Sessions(
             $googleAnalyticsReport,
             $googleAnalyticsReportIsStale,
+        );
+        $costPerEngagedSession = $this->costPerEngagedSession(
+            $googleAnalyticsReport,
+            $googleAnalyticsReportIsStale,
+            $roasSpendAmount,
+            $roasSpendCurrency,
+            $roasSpendSnapshotIsFresh,
         );
         $googleAdsConversions = $googleAdsReport === null ? null : (float) $googleAdsReport->conversions;
         $metaPurchaseValue = $this->metaOmniPurchaseValue($metaMarketingReport?->action_values);
@@ -195,6 +206,7 @@ class CampaignMarketingEfficiencyReport
             'roas_unrounded' => $roasUnrounded,
             ...$paidClickSessionDiagnostic,
             ...$keyEventsPer100Sessions,
+            ...$costPerEngagedSession,
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
             'meta_ads_purchase_roas_unrounded' => $metaRoasUnrounded,
@@ -314,6 +326,68 @@ class CampaignMarketingEfficiencyReport
                 'zero_sessions' => '工作階段為 0',
                 'missing_key_events' => '缺少重要事件數',
                 'invalid_key_events' => '重要事件數無效',
+                'calculation_unavailable' => '無法計算',
+                default => '可計算',
+            },
+        ];
+    }
+
+    /**
+     * @return array{
+     *     cost_per_engaged_session: float|null,
+     *     cost_per_engaged_session_status: string,
+     *     cost_per_engaged_session_status_label: string
+     * }
+     */
+    private function costPerEngagedSession(
+        ?SocialEngagementTargetGoogleAnalyticsReport $googleAnalyticsReport,
+        bool $googleAnalyticsReportIsStale,
+        mixed $spendAmount,
+        ?string $spendCurrency,
+        bool $spendSnapshotIsFresh,
+    ): array {
+        $ga4Currency = $this->currencyCode($googleAnalyticsReport?->currency_code);
+        $engagedSessions = $googleAnalyticsReport?->engaged_sessions;
+        $status = match (true) {
+            $googleAnalyticsReport === null => 'missing_ga4',
+            $googleAnalyticsReportIsStale => 'stale_ga4',
+            $spendAmount === null => 'missing_spend',
+            ! $spendSnapshotIsFresh => 'stale_spend',
+            ! is_numeric($spendAmount) || ! is_finite((float) $spendAmount) || (float) $spendAmount < 0 => 'invalid_spend',
+            $spendCurrency === null => 'missing_spend_currency',
+            $ga4Currency === null => 'missing_ga4_currency',
+            $spendCurrency !== $ga4Currency => 'currency_mismatch',
+            $engagedSessions === null => 'missing_engaged_sessions',
+            ! is_int($engagedSessions) || $engagedSessions < 0 => 'invalid_engaged_sessions',
+            $engagedSessions === 0 => 'zero_engaged_sessions',
+            default => 'available',
+        };
+        $cost = null;
+
+        if ($status === 'available') {
+            $cost = round((float) $spendAmount / $engagedSessions, 4);
+
+            if (! is_finite($cost)) {
+                $cost = null;
+                $status = 'calculation_unavailable';
+            }
+        }
+
+        return [
+            'cost_per_engaged_session' => $cost,
+            'cost_per_engaged_session_status' => $status,
+            'cost_per_engaged_session_status_label' => match ($status) {
+                'missing_ga4' => '缺少 GA4 數據',
+                'stale_ga4' => 'GA4 數據已過期',
+                'missing_spend' => '缺少花費資料',
+                'stale_spend' => '花費資料已過期',
+                'invalid_spend' => '花費資料無效',
+                'missing_spend_currency' => '缺少花費幣別',
+                'missing_ga4_currency' => '缺少 GA4 幣別',
+                'currency_mismatch' => 'GA4 與花費幣別不一致',
+                'missing_engaged_sessions' => '缺少參與工作階段數',
+                'invalid_engaged_sessions' => '參與工作階段數無效',
+                'zero_engaged_sessions' => '參與工作階段為 0',
                 'calculation_unavailable' => '無法計算',
                 default => '可計算',
             },

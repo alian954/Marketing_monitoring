@@ -2801,6 +2801,12 @@
                     </dd>
                 </div>
                 <div>
+                    <dt>每次參與工作階段成本</dt>
+                    <dd>
+                        {{ $adSpendAnalysis['cost_per_engaged_session'] === null ? $adSpendAnalysis['cost_per_engaged_session_status_label'] : number_format($adSpendAnalysis['cost_per_engaged_session'], 4).' '.$adSpendAnalysis['roas_spend_currency'] }}
+                    </dd>
+                </div>
+                <div>
                     <dt>GA4 工作階段／{{ $adSpendAnalysis['paid_click_source_label'] ?? '廣告' }}點擊</dt>
                     <dd>
                         {{ $adSpendAnalysis['ga4_sessions_per_paid_click'] === null ? $adSpendAnalysis['paid_click_session_status_label'] : number_format($adSpendAnalysis['ga4_sessions_per_paid_click'], 2).' 次／點擊' }}

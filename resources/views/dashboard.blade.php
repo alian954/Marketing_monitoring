@@ -1090,6 +1090,9 @@
                                     @else
                                         {{ $roasUnavailableLabel }}
                                     @endif
+                                    <span class="secondary-text">
+                                        每次參與工作階段成本：{{ $efficiency['cost_per_engaged_session'] === null ? $efficiency['cost_per_engaged_session_status_label'] : number_format($efficiency['cost_per_engaged_session'], 4).' '.$efficiency['roas_spend_currency'] }}
+                                    </span>
                                     @if ($paidMediaRoasGoal !== null && $paidMediaRoasGoal['status'] !== 'not_configured')
                                         <span class="secondary-text">{{ $paidMediaRoasGoal['source_label'] }}目標 {{ number_format($paidMediaRoasGoal['target_roas'], 4) }}x · 實際 {{ $paidMediaRoasGoal['actual_roas'] === null ? '—' : number_format($paidMediaRoasGoal['actual_roas'], 4).'x' }}{{ $paidMediaRoasGoal['attainment_percent'] === null ? ' · '.$paidMediaRoasGoal['status_label'] : ' · 達成率 '.number_format($paidMediaRoasGoal['attainment_percent'], 1).'%' }}</span>
                                     @endif
