@@ -51,6 +51,7 @@ use App\Services\MetaMarketingPlacementPerformanceReport;
 use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignAttributionCoverageReport;
+use App\Services\SocialEngagementCampaignBusinessGoalReport;
 use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
@@ -89,6 +90,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsNewVsReturningPerformanceReport $googleAnalyticsNewVsReturningPerformanceReport,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
         SocialEngagementCampaignAttributionCoverageReport $socialEngagementCampaignAttributionCoverageReport,
+        SocialEngagementCampaignBusinessGoalReport $socialEngagementCampaignBusinessGoalReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -100,6 +102,11 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingPerformanceReport,
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
+        );
+        $viewData['businessGoal'] = $socialEngagementCampaignBusinessGoalReport->build(
+            $socialEngagementTarget,
+            $viewData['googleAnalyticsReport'],
+            $viewData['googleAnalyticsReportIsStale'],
         );
         $viewData['report']['top_posts'] = $socialPostGoogleAnalyticsAttributionReport->attachToPosts(
             $socialEngagementTarget,
@@ -884,6 +891,7 @@ class SocialEngagementCampaignReportController extends Controller
         CampaignDailyMarketingEfficiencyReport $dailyMarketingEfficiencyReport,
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         CampaignMarketingReportCsv $campaignMarketingReportCsv,
+        SocialEngagementCampaignBusinessGoalReport $socialEngagementCampaignBusinessGoalReport,
     ): StreamedResponse {
         $data = $this->reportData(
             $request,
@@ -896,6 +904,11 @@ class SocialEngagementCampaignReportController extends Controller
             $dailyMarketingEfficiencyReport,
             $dailyMarketingTrendChart,
             false,
+        );
+        $data['businessGoal'] = $socialEngagementCampaignBusinessGoalReport->build(
+            $socialEngagementTarget,
+            $data['googleAnalyticsReport'],
+            $data['googleAnalyticsReportIsStale'],
         );
         $csv = $campaignMarketingReportCsv->build($data);
 

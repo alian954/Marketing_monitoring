@@ -36,6 +36,211 @@ class SocialEngagementTargetTest extends TestCase
             ->assertSee('aria-labelledby="social-engagement-targets-title"', false);
     }
 
+    public function test_dashboard_exposes_labeled_ga4_business_goal_inputs(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('GA4 商業目標')
+            ->assertSee('name="ga4_goal_metric"', false)
+            ->assertSee('name="ga4_goal_value"', false)
+            ->assertSee('name="ga4_goal_currency"', false)
+            ->assertSee('營收目標需填', false);
+    }
+
+    public function test_authenticated_user_can_create_and_update_a_ga4_business_goal(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-GOAL-01', 'Spring launch');
+        $user = User::factory()->create();
+        $campaignDates = [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ];
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                ...$campaignDates,
+                'ga4_goal_metric' => 'key_events',
+                'ga4_goal_value' => '25.5000',
+                'ga4_goal_currency' => 'TWD',
+            ])
+            ->assertRedirect(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_tag' => 'tag:Spring launch',
+            ]));
+
+        $target = SocialEngagementTarget::query()->sole();
+        $this->assertSame('key_events', $target->ga4_goal_metric);
+        $this->assertSame('25.5000', $target->ga4_goal_value);
+        $this->assertNull($target->ga4_goal_currency);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                ...$campaignDates,
+                'ga4_goal_metric' => 'total_revenue',
+                'ga4_goal_value' => '10000.0000',
+                'ga4_goal_currency' => 'TWD',
+            ])
+            ->assertRedirect(route('dashboard', [
+                'engagement_platform' => 'instagram',
+                'engagement_tag' => 'tag:Spring launch',
+            ]));
+
+        $target->refresh();
+        $this->assertDatabaseCount('social_engagement_targets', 1);
+        $this->assertSame('total_revenue', $target->ga4_goal_metric);
+        $this->assertSame('10000.0000', $target->ga4_goal_value);
+        $this->assertSame('TWD', $target->ga4_goal_currency);
+
+        $this->actingAs($user)
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                ...$campaignDates,
+                'ga4_goal_metric' => '',
+                'ga4_goal_value' => '10000.0000',
+                'ga4_goal_currency' => 'TWD',
+            ])
+            ->assertRedirect();
+
+        $target->refresh();
+        $this->assertNull($target->ga4_goal_metric);
+        $this->assertNull($target->ga4_goal_value);
+        $this->assertNull($target->ga4_goal_currency);
+    }
+
+    public function test_ga4_goal_requires_a_positive_value_and_campaign_period(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-GOAL-02', 'Spring launch');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'ga4_goal_metric' => 'key_events',
+                'ga4_goal_value' => '0',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_value' => 'GA4 商業目標必須大於 0。',
+            ]);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'ga4_goal_metric' => 'key_events',
+                'ga4_goal_value' => '25.12345',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_value' => 'GA4 商業目標最多可輸入 4 位小數。',
+            ]);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'ga4_goal_metric' => 'key_events',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_value' => '請輸入 GA4 商業目標數值。',
+            ]);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'ga4_goal_metric' => 'key_events',
+                'ga4_goal_value' => '10',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_metric' => '設定 GA4 商業目標前，請先設定活動期間。',
+            ]);
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
+    }
+
+    public function test_revenue_goal_requires_a_valid_ga4_currency_code(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-GOAL-03', 'Spring launch');
+        $user = User::factory()->create();
+        $payload = [
+            'tag' => 'Spring launch',
+            'social_platform' => 'instagram',
+            'target_interactions' => 1000,
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_goal_metric' => 'total_revenue',
+            'ga4_goal_value' => '10000',
+        ];
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), $payload)
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_currency' => '營收目標需要設定幣別。',
+            ]);
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [...$payload, 'ga4_goal_currency' => 'twd'])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_currency' => '營收目標幣別請使用 3 位大寫代碼，例如 TWD。',
+            ]);
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
+    }
+
+    public function test_invalid_ga4_goal_metric_is_rejected(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-GOAL-05', 'Spring launch');
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'ga4_goal_metric' => 'views',
+                'ga4_goal_value' => '100',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_metric' => 'GA4 商業目標指標無效。',
+            ]);
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
+    }
+
     public function test_authenticated_user_can_create_and_update_a_tag_platform_target(): void
     {
         $this->createSocialMonitor('facebook', 'POST123', 'Summer launch');

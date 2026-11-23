@@ -23,6 +23,7 @@ class CampaignMarketingReportCsv
      *     googleAnalyticsCampaignName: string,
      *     googleAnalyticsSourceName: string|null,
      *     googleAnalyticsMediumName: string|null,
+     *     businessGoal: array<string, mixed>,
      *     adSpendAnalysis: array<string, mixed>
      * }  $data
      * @return array{headers: list<string>, fields: list<string>}
@@ -34,6 +35,7 @@ class CampaignMarketingReportCsv
         $metrics = $report['metrics'];
         $goalForecast = $report['goal_forecast'];
         $analyticsReport = $data['googleAnalyticsReport'];
+        $businessGoal = $data['businessGoal'];
         $metaMarketingReport = $data['metaMarketingReport'];
         $googleAdsReport = $data['googleAdsReport'];
         $adSpendAnalysis = $data['adSpendAnalysis'];
@@ -93,6 +95,14 @@ class CampaignMarketingReportCsv
             'ga4_engaged_sessions',
             'ga4_key_events',
             'ga4_total_revenue',
+            'ga4_business_goal_metric',
+            'ga4_business_goal_target_value',
+            'ga4_business_goal_currency',
+            'ga4_business_goal_actual_value',
+            'ga4_business_goal_report_currency',
+            'ga4_business_goal_completion_percent',
+            'ga4_business_goal_remaining_value',
+            'ga4_business_goal_status',
             'ga4_source_medium_breakdown_json',
             'ga4_source_medium_breakdown_truncated',
             'ga4_currency_code',
@@ -203,6 +213,14 @@ class CampaignMarketingReportCsv
             $analyticsReport === null ? '' : (string) $analyticsReport->engaged_sessions,
             $analyticsReport?->key_events ?? '',
             $analyticsReport?->total_revenue ?? '',
+            $businessGoal['metric'] ?? '',
+            $this->formatDecimal($businessGoal['target_value'] ?? null, 4),
+            $businessGoal['goal_currency_code'] ?? '',
+            $this->formatDecimal($businessGoal['actual_value'] ?? null, 4),
+            $businessGoal['report_currency_code'] ?? '',
+            $this->formatDecimal($businessGoal['completion_percent'] ?? null, 1),
+            $this->formatDecimal($businessGoal['remaining_value'] ?? null, 4),
+            $businessGoal['status_label'] ?? '',
             $analyticsReport?->source_medium_breakdown === null
                 ? ''
                 : $this->encodeJson($analyticsReport->source_medium_breakdown),

@@ -27,6 +27,13 @@ class SocialEngagementTargetController extends Controller
                 'ga4_campaign_name' => filled($data['ga4_campaign_name'] ?? null) ? trim($data['ga4_campaign_name']) : null,
                 'ga4_source_name' => filled($data['ga4_source_name'] ?? null) ? trim($data['ga4_source_name']) : null,
                 'ga4_medium_name' => filled($data['ga4_medium_name'] ?? null) ? trim($data['ga4_medium_name']) : null,
+                'ga4_goal_metric' => $data['ga4_goal_metric'] ?? null,
+                'ga4_goal_value' => ($data['ga4_goal_metric'] ?? null) !== null
+                    ? $data['ga4_goal_value']
+                    : null,
+                'ga4_goal_currency' => ($data['ga4_goal_metric'] ?? null) === 'total_revenue'
+                    ? $data['ga4_goal_currency']
+                    : null,
                 'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
                 'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
             ],
@@ -36,7 +43,7 @@ class SocialEngagementTargetController extends Controller
             'engagement_platform' => $data['social_platform'],
             'engagement_tag' => 'tag:'.$data['tag'],
         ])
-            ->with('status', '活動互動目標已儲存。');
+            ->with('status', '活動目標已儲存。');
     }
 
     public function destroy(Request $request, SocialEngagementTarget $socialEngagementTarget): RedirectResponse

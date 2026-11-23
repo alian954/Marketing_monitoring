@@ -37,6 +37,9 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ga4_campaign_name' => ['nullable', 'string', 'max:100'],
             'ga4_source_name' => ['nullable', 'string', 'max:100'],
             'ga4_medium_name' => ['nullable', 'string', 'max:100'],
+            'ga4_goal_metric' => ['nullable', 'string', Rule::in(['key_events', 'total_revenue'])],
+            'ga4_goal_value' => ['nullable', 'numeric', 'decimal:0,4', 'gt:0', 'max:9999999999999999'],
+            'ga4_goal_currency' => ['nullable', 'string', 'regex:/^[A-Z]{3}$/'],
             'meta_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
             'google_ads_campaign_id' => ['nullable', 'string', 'between:5,32', 'regex:/^\d+$/'],
             'engagement_platform' => ['nullable', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
@@ -64,7 +67,30 @@ class StoreSocialEngagementTargetRequest extends FormRequest
 
             if (is_string($startsOn) && is_string($endsOn) && $endsOn < $startsOn) {
                 $validator->errors()->add('ends_on', '活動結束日不可早於開始日。');
+
+                return;
             }
+
+            $goalMetric = $this->input('ga4_goal_metric');
+            $goalValue = $this->input('ga4_goal_value');
+            $goalCurrency = $this->input('ga4_goal_currency');
+
+            if ($goalMetric === null) {
+                return;
+            }
+
+            if ($goalValue === null) {
+                $validator->errors()->add('ga4_goal_value', '請輸入 GA4 商業目標數值。');
+            }
+
+            if ($startsOn === null || $endsOn === null) {
+                $validator->errors()->add('ga4_goal_metric', '設定 GA4 商業目標前，請先設定活動期間。');
+            }
+
+            if ($goalMetric === 'total_revenue' && $goalCurrency === null) {
+                $validator->errors()->add('ga4_goal_currency', '營收目標需要設定幣別。');
+            }
+
         }];
     }
 
@@ -104,6 +130,12 @@ class StoreSocialEngagementTargetRequest extends FormRequest
             'ga4_campaign_name.max' => 'GA4 活動名稱不可超過 100 個字元。',
             'ga4_source_name.max' => 'GA4 來源名稱不可超過 100 個字元。',
             'ga4_medium_name.max' => 'GA4 媒介名稱不可超過 100 個字元。',
+            'ga4_goal_metric.in' => 'GA4 商業目標指標無效。',
+            'ga4_goal_value.numeric' => 'GA4 商業目標必須是數字。',
+            'ga4_goal_value.decimal' => 'GA4 商業目標最多可輸入 4 位小數。',
+            'ga4_goal_value.gt' => 'GA4 商業目標必須大於 0。',
+            'ga4_goal_value.max' => 'GA4 商業目標數值過大。',
+            'ga4_goal_currency.regex' => '營收目標幣別請使用 3 位大寫代碼，例如 TWD。',
             'meta_campaign_id.between' => 'Meta 活動 ID 需為 5 至 32 位數字。',
             'meta_campaign_id.regex' => 'Meta 活動 ID 必須是數字。',
             'google_ads_campaign_id.between' => 'Google Ads 活動 ID 需為 5 至 32 位數字。',

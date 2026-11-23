@@ -1440,6 +1440,32 @@ a.platform-chip:hover {
     margin: 0;
 }
 
+.campaign-business-goal-fields {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+}
+
+.campaign-business-goal-fields legend {
+    padding-inline: 6px;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.campaign-business-goal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 10px;
+}
+
+.check-history-filter .campaign-business-goal-grid .field-group {
+    max-width: none;
+}
+
 @media (pointer: coarse) {
     .check-history-filter .field-select,
     .check-history-filter-actions .button {

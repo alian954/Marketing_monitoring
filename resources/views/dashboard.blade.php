@@ -431,6 +431,33 @@
                     <p id="social-engagement-target-count-help" class="field-help">至少 1；再次儲存相同標籤與平台會更新目標。</p>
                     @error('target_interactions', 'socialEngagementTarget')<p id="social-engagement-target-count-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
+                <fieldset class="campaign-business-goal-fields">
+                    <legend>GA4 商業目標</legend>
+                    <div class="campaign-business-goal-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-ga4-goal-metric">目標指標</label>
+                            <select class="field-select{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_metric') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-goal-metric" name="ga4_goal_metric" aria-describedby="social-engagement-target-ga4-goal-metric-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_metric') ? ' social-engagement-target-ga4-goal-metric-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_goal_metric')) aria-invalid="true" @endif>
+                                <option value="" @selected(old('ga4_goal_metric', $socialEngagementTargetFormTarget?->ga4_goal_metric) === null)>不設定</option>
+                                <option value="key_events" @selected(old('ga4_goal_metric', $socialEngagementTargetFormTarget?->ga4_goal_metric) === 'key_events')>GA4 重要事件</option>
+                                <option value="total_revenue" @selected(old('ga4_goal_metric', $socialEngagementTargetFormTarget?->ga4_goal_metric) === 'total_revenue')>GA4 營收</option>
+                            </select>
+                            <p id="social-engagement-target-ga4-goal-metric-help" class="field-help">每個活動擇一追蹤，不混合不同平台的歸因數據。</p>
+                            @error('ga4_goal_metric', 'socialEngagementTarget')<p id="social-engagement-target-ga4-goal-metric-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-ga4-goal-value">目標數值</label>
+                            <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_value') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-goal-value" name="ga4_goal_value" type="number" inputmode="decimal" min="0.0001" max="9999999999999999" step="0.0001" value="{{ old('ga4_goal_value', $socialEngagementTargetFormTarget?->ga4_goal_value) }}" aria-describedby="social-engagement-target-ga4-goal-value-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_value') ? ' social-engagement-target-ga4-goal-value-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_goal_value')) aria-invalid="true" @endif>
+                            <p id="social-engagement-target-ga4-goal-value-help" class="field-help">重要事件或營收目標都需大於 0。</p>
+                            @error('ga4_goal_value', 'socialEngagementTarget')<p id="social-engagement-target-ga4-goal-value-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-ga4-goal-currency">營收幣別</label>
+                            <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_currency') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-goal-currency" name="ga4_goal_currency" type="text" inputmode="text" maxlength="3" pattern="[A-Z]{3}" autocapitalize="characters" spellcheck="false" value="{{ old('ga4_goal_currency', $socialEngagementTargetFormTarget?->ga4_goal_currency) }}" aria-describedby="social-engagement-target-ga4-goal-currency-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_currency') ? ' social-engagement-target-ga4-goal-currency-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_goal_currency')) aria-invalid="true" @endif>
+                            <p id="social-engagement-target-ga4-goal-currency-help" class="field-help">營收目標需填 GA4 報表的 3 位大寫幣別；重要事件不使用幣別。</p>
+                            @error('ga4_goal_currency', 'socialEngagementTarget')<p id="social-engagement-target-ga4-goal-currency-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                </fieldset>
                 <div class="field-group">
                     <label class="field-label" for="social-engagement-target-starts-on">活動開始日</label>
                     <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' is-invalid' : '' }}" id="social-engagement-target-starts-on" name="starts_on" type="date" value="{{ old('starts_on', $socialEngagementTargetFormTarget?->starts_on?->toDateString()) }}" aria-describedby="social-engagement-target-period-help{{ $errors->getBag('socialEngagementTarget')->has('starts_on') ? ' social-engagement-target-start-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('starts_on')) aria-invalid="true" @endif>

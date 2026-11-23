@@ -131,6 +131,72 @@
             </p>
         </section>
 
+        <section class="campaign-report-panel" aria-labelledby="campaign-report-business-goal-title">
+            <div class="campaign-report-section-header">
+                <div>
+                    <h2 id="campaign-report-business-goal-title">GA4 商業目標</h2>
+                    <p class="campaign-report-secondary">只比較活動設定的單一 GA4 指標；營收需與報表幣別相同。</p>
+                </div>
+                <span class="badge badge-{{ $businessGoal['status'] === 'available' ? 'healthy' : 'warning' }}">
+                    {{ $businessGoal['status_label'] }}
+                </span>
+            </div>
+            @if ($businessGoal['status'] === 'not_configured')
+                <p class="campaign-report-empty">
+                    尚未設定 GA4 商業目標。<a href="{{ route('dashboard', ['engagement_platform' => $target->social_platform, 'engagement_tag' => 'tag:'.$target->tag]) }}">前往活動目標設定</a>
+                </p>
+            @else
+                <dl class="campaign-report-summary campaign-efficiency-summary">
+                    <div>
+                        <dt>目標指標</dt>
+                        <dd>{{ $businessGoal['metric_label'] }}</dd>
+                    </div>
+                    <div>
+                        <dt>目標</dt>
+                        <dd>
+                            {{ number_format($businessGoal['target_value'], 2) }}
+                            @if ($businessGoal['goal_currency_code'])
+                                {{ $businessGoal['goal_currency_code'] }}
+                            @endif
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>目前成果</dt>
+                        <dd>
+                            {{ $businessGoal['actual_value'] === null ? '—' : number_format($businessGoal['actual_value'], 2) }}
+                            @if ($businessGoal['actual_value'] !== null && $businessGoal['report_currency_code'])
+                                {{ $businessGoal['report_currency_code'] }}
+                            @endif
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>達成率</dt>
+                        <dd>{{ $businessGoal['completion_percent'] === null ? '—' : number_format($businessGoal['completion_percent'], 1).'%' }}</dd>
+                    </div>
+                    <div>
+                        <dt>尚差</dt>
+                        <dd>
+                            {{ $businessGoal['remaining_value'] === null ? '—' : number_format($businessGoal['remaining_value'], 2) }}
+                            @if ($businessGoal['remaining_value'] !== null && $businessGoal['goal_currency_code'])
+                                {{ $businessGoal['goal_currency_code'] }}
+                            @endif
+                        </dd>
+                    </div>
+                </dl>
+                @if ($businessGoal['status'] === 'currency_mismatch')
+                    <p class="campaign-report-empty">目標幣別 {{ $businessGoal['goal_currency_code'] }}，GA4 報表幣別 {{ $businessGoal['report_currency_code'] }}；請修改目標幣別或 GA4 設定後再比較。</p>
+                @elseif ($businessGoal['status'] === 'missing_period')
+                    <p class="campaign-report-empty">請設定活動開始日與結束日後再追蹤 GA4 商業目標。</p>
+                @elseif ($businessGoal['status'] === 'currency_unknown')
+                    <p class="campaign-report-empty">GA4 報表沒有幣別，無法確認營收目標的達成率。</p>
+                @elseif ($businessGoal['status'] === 'stale')
+                    <p class="campaign-report-empty">GA4 數據已超過 24 小時；目前值保留供參考，更新後才會計算達成率。</p>
+                @elseif ($businessGoal['status'] === 'unavailable')
+                    <p class="campaign-report-empty">尚無可用 GA4 指標；請確認 GA4 連線、活動條件與資料讀取狀態。</p>
+                @endif
+            @endif
+        </section>
+
         <section class="campaign-report-panel" aria-labelledby="campaign-report-meta-title">
             <div class="campaign-report-section-header">
                 <div>
