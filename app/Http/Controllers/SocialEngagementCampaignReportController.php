@@ -60,6 +60,7 @@ use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -238,6 +239,21 @@ class SocialEngagementCampaignReportController extends Controller
             $analyticsReport?->ad_content_report_expires_at,
             $socialPostGoogleAnalyticsAttributionReport,
         );
+        $creativePageSize = 25;
+        $creativeTotal = count($creativePerformance['groups']);
+        $creativeLastPage = max(1, (int) ceil($creativeTotal / $creativePageSize));
+        $creativePage = min(LengthAwarePaginator::resolveCurrentPage('creative_page'), $creativeLastPage);
+        $creativeGroups = new LengthAwarePaginator(
+            array_slice($creativePerformance['groups'], ($creativePage - 1) * $creativePageSize, $creativePageSize),
+            $creativeTotal,
+            $creativePageSize,
+            $creativePage,
+            [
+                'path' => $request->url(),
+                'pageName' => 'creative_page',
+            ],
+        );
+        $creativeGroups->withQueryString();
         $postDetails = $postDetailReport->build(
             $socialEngagementTarget,
             $analyticsReport?->ad_content_report,
@@ -250,7 +266,7 @@ class SocialEngagementCampaignReportController extends Controller
         return view('social-engagement-reports.posts', [
             'target' => $socialEngagementTarget,
             'posts' => $postDetails['posts'],
-            'creativeGroups' => $creativePerformance['groups'],
+            'creativeGroups' => $creativeGroups,
             'paginator' => $postDetails['paginator'],
             'sort' => $postDetails['sort'],
         ]);

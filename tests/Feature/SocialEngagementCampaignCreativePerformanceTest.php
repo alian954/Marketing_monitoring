@@ -12,6 +12,7 @@ use App\Services\SocialEngagementCampaignCreativePerformanceReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Tests\TestCase;
 
 class SocialEngagementCampaignCreativePerformanceTest extends TestCase
@@ -50,9 +51,9 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             ->assertSee('匯出素材 CSV')
             ->assertSee(route('social-engagement-targets.creative-performance.export', $target))
             ->assertSee('完整互動合計')
-            ->assertViewHas('creativeGroups', function (array $groups): bool {
+            ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
+                $groups = $creativeGroups->items();
                 $sharedCreative = collect($groups)->firstWhere('utm_content', 'shared-creative');
-                $matchedCreative = collect($groups)->firstWhere('utm_content', 'matched-creative');
                 $unconfiguredCreative = collect($groups)->firstWhere('utm_content', null);
 
                 $this->assertNotNull($sharedCreative);
@@ -63,9 +64,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
                 $this->assertSame('matched', $sharedCreative['google_analytics_attribution']['status']);
                 $this->assertSame(99, $sharedCreative['google_analytics_attribution']['sessions']);
                 $this->assertSame('7.0000', $sharedCreative['google_analytics_attribution']['key_events']);
-
-                $this->assertNotNull($matchedCreative);
-                $this->assertSame(125, $matchedCreative['google_analytics_attribution']['sessions']);
+                $this->assertSame(26, $creativeGroups->total());
 
                 $this->assertNotNull($unconfiguredCreative);
                 $this->assertSame(1, $unconfiguredCreative['post_count']);
@@ -85,6 +84,16 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             });
 
         $response->assertSee('共用相同素材值的貼文會合併互動');
+
+        $this->get(route('social-engagement-targets.posts', $target).'?creative_page=2')
+            ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
+                $matchedCreative = collect($creativeGroups->items())->firstWhere('utm_content', 'matched-creative');
+
+                $this->assertNotNull($matchedCreative);
+                $this->assertSame(125, $matchedCreative['google_analytics_attribution']['sessions']);
+
+                return true;
+            });
     }
 
     public function test_creative_groups_follow_campaign_dates_but_keep_ga4_values_at_the_group_level(): void
@@ -111,17 +120,51 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
         $this->actingAs($user)
             ->get(route('social-engagement-targets.posts', $target))
             ->assertOk()
-            ->assertViewHas('creativeGroups', function (array $groups): bool {
+            ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
+                $groups = $creativeGroups->items();
                 $creative = collect($groups)->firstWhere('utm_content', 'same-campaign-creative');
 
                 $this->assertNotNull($creative);
                 $this->assertSame(2, $creative['post_count']);
                 $this->assertSame(16, $creative['public_interaction_total']);
                 $this->assertSame(64, $creative['google_analytics_attribution']['sessions']);
-                $this->assertCount(1, $groups);
+                $this->assertSame(1, $creativeGroups->total());
 
                 return true;
             });
+    }
+
+    public function test_creative_and_post_pagination_are_independent_and_keep_query_filters(): void
+    {
+        $user = User::factory()->create();
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Large launch',
+            'social_platform' => 'instagram',
+        ]);
+
+        for ($index = 0; $index < 26; $index++) {
+            $this->createPost($target, $index, 'creative-'.$index, now());
+        }
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.posts', $target).'?page=2&creative_page=2&sort=name')
+            ->assertOk()
+            ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
+                $this->assertSame(2, $creativeGroups->currentPage());
+                $this->assertSame(26, $creativeGroups->total());
+                $this->assertCount(1, $creativeGroups->items());
+
+                return true;
+            })
+            ->assertViewHas('paginator', function (LengthAwarePaginator $posts): bool {
+                $this->assertSame(2, $posts->currentPage());
+                $this->assertSame(26, $posts->total());
+                $this->assertCount(1, $posts->items());
+
+                return true;
+            })
+            ->assertSee('creative_page=1')
+            ->assertSee('sort=name', false);
     }
 
     public function test_creative_ga4_status_distinguishes_expired_truncated_and_ambiguous_reports(): void

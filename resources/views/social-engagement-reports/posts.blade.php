@@ -51,7 +51,7 @@
                 <h3 id="campaign-creative-summary-title">素材成效彙總</h3>
                 <p class="campaign-report-secondary">共 {{ number_format($paginator->total()) }} 篇貼文。共用相同素材值的貼文會合併互動，GA4 數據只計入該素材群一次。</p>
 
-                @if ($creativeGroups === [])
+                @if ($creativeGroups->isEmpty())
                     <p class="campaign-report-empty">目前沒有可彙總的貼文。</p>
                 @else
                     <div class="data-table-wrap campaign-post-details-table-wrap" role="region" aria-labelledby="campaign-creative-table-caption" tabindex="0">
@@ -106,6 +106,7 @@
                             </tbody>
                         </table>
                     </div>
+                    {{ $creativeGroups->links('vendor.pagination.monitor') }}
                 @endif
             </section>
 
