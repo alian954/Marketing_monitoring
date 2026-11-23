@@ -33,6 +33,7 @@ class CampaignMarketingEfficiencyReport
      *     meta_ads_omni_purchase_value: string|null,
      *     meta_ads_purchase_roas: float|null,
      *     meta_ads_purchase_roas_unrounded: float|null,
+     *     google_ads_conversion_value: string|null,
      *     google_ads_conversion_value_roas: float|null,
      *     google_ads_conversion_value_roas_unrounded: float|null,
      *     cost_per_session: float|null,
@@ -188,6 +189,7 @@ class CampaignMarketingEfficiencyReport
             'meta_ads_omni_purchase_value' => $metaPurchaseValue,
             'meta_ads_purchase_roas' => $metaRoas,
             'meta_ads_purchase_roas_unrounded' => $metaRoasUnrounded,
+            'google_ads_conversion_value' => $googleAdsConversionValue,
             'google_ads_conversion_value_roas' => $googleAdsRoas,
             'google_ads_conversion_value_roas_unrounded' => $googleAdsRoasUnrounded,
             'cost_per_session' => $roasSpendAmount !== null && $googleAnalyticsReport !== null && $googleAnalyticsReport->sessions > 0

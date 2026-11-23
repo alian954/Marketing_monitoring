@@ -32,9 +32,11 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         ]);
         $this->createMetaMarketingReport($user, $target, [
             'spend_amount' => '100.0000',
+            'action_values' => [['action_type' => 'omni_purchase', 'value' => '450.0000']],
         ]);
         $this->createGoogleAdsReport($user, $target, [
             'spend_amount' => '200.0000',
+            'conversions_value' => '300.0000',
         ]);
         $this->createPublicEngagementPost($target, 'overview-cost');
 
@@ -43,6 +45,12 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertOk()
             ->assertSee('活動行銷成效')
             ->assertSee('跨活動行銷數據總覽')
+            ->assertSee('廣告平台歸因 ROAS')
+            ->assertSee('平台歸因價值可能重疊')
+            ->assertSee('450.00')
+            ->assertSee('300.00')
+            ->assertSee('4.50x')
+            ->assertSee('1.50x')
             ->assertSee('同幣別 ROAS 排名')
             ->assertSee('跨活動預算節奏')
             ->assertSee('社群貼文互動成本')
@@ -80,6 +88,13 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(900.0, $portfolio['currency_groups'][0]['ga4_revenue']);
         $this->assertSame(4.5, $portfolio['currency_groups'][0]['roas']);
         $this->assertSame(1, $portfolio['currency_groups'][0]['roas_campaign_count']);
+        $nativeRoasGroups = collect($portfolio['native_roas_groups'])->keyBy('source');
+        $this->assertSame(450.0, $nativeRoasGroups['meta_marketing']['conversion_value_amount']);
+        $this->assertSame(100.0, $nativeRoasGroups['meta_marketing']['matched_spend_amount']);
+        $this->assertSame(4.5, $nativeRoasGroups['meta_marketing']['roas']);
+        $this->assertSame(300.0, $nativeRoasGroups['google_ads']['conversion_value_amount']);
+        $this->assertSame(200.0, $nativeRoasGroups['google_ads']['matched_spend_amount']);
+        $this->assertSame(1.5, $nativeRoasGroups['google_ads']['roas']);
         $this->assertSame(1000.0, $portfolio['budget_currency_groups'][0]['budget_amount']);
         $this->assertSame(300.0, $portfolio['budget_currency_groups'][0]['current_spend_amount']);
         $this->assertSame(1, $portfolio['budget_currency_groups'][0]['projected_campaign_count']);
@@ -164,6 +179,122 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(1, $portfolio['campaign_ranks'][$targets[5]->id]['rank']);
         $this->assertSame(3, $portfolio['campaign_ranks'][$targets[1]->id]['rank']);
         $this->assertSame(1, $portfolio['campaign_ranks'][$targets[2]->id]['rank']);
+    }
+
+    public function test_campaign_portfolio_calculates_native_paid_media_roas_by_source_and_currency(): void
+    {
+        $metaTarget = $this->createTarget([
+            'tag' => 'Native Meta and Google',
+            'meta_campaign_id' => 'meta-native-first',
+            'google_ads_campaign_id' => 'google-native-twd',
+        ]);
+        $staleDuplicate = $this->createTarget([
+            'tag' => 'Native Meta duplicate stale',
+            'meta_campaign_id' => 'meta-native-shared',
+            'google_ads_campaign_id' => null,
+        ]);
+        $freshDuplicate = $this->createTarget([
+            'tag' => 'Native Meta duplicate fresh',
+            'meta_campaign_id' => 'meta-native-shared',
+            'google_ads_campaign_id' => null,
+        ]);
+        $zeroValueTarget = $this->createTarget([
+            'tag' => 'Native Meta zero value',
+            'meta_campaign_id' => 'meta-native-zero-value',
+            'google_ads_campaign_id' => null,
+        ]);
+        $missingValueTarget = $this->createTarget([
+            'tag' => 'Native Meta missing value',
+            'meta_campaign_id' => 'meta-native-missing-value',
+            'google_ads_campaign_id' => null,
+        ]);
+        $zeroSpendTarget = $this->createTarget([
+            'tag' => 'Native Meta zero spend',
+            'meta_campaign_id' => 'meta-native-zero-spend',
+            'google_ads_campaign_id' => null,
+        ]);
+        $negativeSpendTarget = $this->createTarget([
+            'tag' => 'Native Meta negative spend',
+            'meta_campaign_id' => 'meta-native-negative-spend',
+            'google_ads_campaign_id' => null,
+        ]);
+        $googleUsdTarget = $this->createTarget([
+            'tag' => 'Native Google USD',
+            'meta_campaign_id' => null,
+            'google_ads_campaign_id' => 'google-native-usd',
+        ]);
+        $marketingSummaries = [
+            $metaTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                googleAds: ['status' => 'fresh', 'spend_amount' => '200.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '300.0000', 'google_ads_conversion_value' => '500.0000'],
+            ),
+            $staleDuplicate->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'stale', 'spend_amount' => '80.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '900.0000'],
+            ),
+            $freshDuplicate->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '100.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '400.0000'],
+            ),
+            $zeroValueTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '50.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '0.0000'],
+            ),
+            $missingValueTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '25.0000', 'currency_code' => 'TWD'],
+            ),
+            $zeroSpendTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '0.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '100.0000'],
+            ),
+            $negativeSpendTarget->id => $this->portfolioMarketingSummary(
+                metaMarketing: ['status' => 'fresh', 'spend_amount' => '-20.0000', 'currency_code' => 'TWD'],
+                efficiency: ['meta_ads_omni_purchase_value' => '100.0000'],
+            ),
+            $googleUsdTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'stale', 'spend_amount' => '40.0000', 'currency_code' => 'USD'],
+                efficiency: ['google_ads_conversion_value' => '200.0000'],
+            ),
+        ];
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection([
+                $metaTarget,
+                $staleDuplicate,
+                $freshDuplicate,
+                $zeroValueTarget,
+                $missingValueTarget,
+                $zeroSpendTarget,
+                $negativeSpendTarget,
+                $googleUsdTarget,
+            ]),
+            $marketingSummaries,
+        );
+        $nativeRoasGroups = collect($portfolio['native_roas_groups'])
+            ->keyBy(fn (array $group): string => $group['source'].'|'.$group['currency_code']);
+        $metaTwd = $nativeRoasGroups['meta_marketing|TWD'];
+        $googleTwd = $nativeRoasGroups['google_ads|TWD'];
+        $googleUsd = $nativeRoasGroups['google_ads|USD'];
+
+        $this->assertSame(700.0, $metaTwd['conversion_value_amount']);
+        $this->assertSame(250.0, $metaTwd['matched_spend_amount']);
+        $this->assertSame(2.8, $metaTwd['roas']);
+        $this->assertSame(6, $metaTwd['campaign_count']);
+        $this->assertSame(3, $metaTwd['comparable_campaign_count']);
+        $this->assertSame(3, $metaTwd['missing_campaign_count']);
+        $this->assertSame(1, $metaTwd['duplicate_mappings_excluded']);
+        $this->assertSame(0, $metaTwd['stale_campaign_count']);
+        $this->assertSame(500.0, $googleTwd['conversion_value_amount']);
+        $this->assertSame(200.0, $googleTwd['matched_spend_amount']);
+        $this->assertSame(2.5, $googleTwd['roas']);
+        $this->assertSame('USD', $googleUsd['currency_code']);
+        $this->assertSame(5.0, $googleUsd['roas']);
+        $this->assertSame(1, $googleUsd['stale_campaign_count']);
+        $this->assertSame(6, $portfolio['native_roas_coverage']['meta_marketing']['configured_campaigns']);
+        $this->assertSame(3, $portfolio['native_roas_coverage']['meta_marketing']['comparable_campaigns']);
+        $this->assertSame(3, $portfolio['native_roas_coverage']['meta_marketing']['missing_campaigns']);
+        $this->assertSame(1, $portfolio['native_roas_coverage']['meta_marketing']['duplicate_mappings_excluded']);
     }
 
     public function test_campaign_portfolio_excludes_duplicate_campaign_mappings_and_prefers_fresh_snapshots(): void

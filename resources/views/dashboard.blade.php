@@ -669,6 +669,56 @@
                     </tbody>
                 </table>
             </div>
+            <section class="spaced-top" aria-labelledby="campaign-native-roas-overview-title">
+                <h3 id="campaign-native-roas-overview-title" class="panel-title">廣告平台歸因 ROAS</h3>
+                <p class="campaign-report-secondary">
+                    Meta Purchase ROAS 與 Google Ads 轉換價值 ROAS 依平台及幣別分開加權彙總；平台歸因價值可能重疊，不與 GA4 營收相加。
+                </p>
+                <div class="data-table-wrap" role="region" aria-labelledby="campaign-native-roas-overview-title" tabindex="0">
+                    <table class="data-table">
+                        <caption class="sr-only">Meta 與 Google Ads 平台歸因轉換價值、相符花費、加權 ROAS 與活動資料覆蓋</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">廣告來源</th>
+                                <th scope="col">幣別</th>
+                                <th scope="col" class="numeric">平台轉換價值</th>
+                                <th scope="col" class="numeric">相符花費</th>
+                                <th scope="col" class="numeric">加權 ROAS</th>
+                                <th scope="col">資料涵蓋</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($campaignPortfolioMarketingSummary['native_roas_groups'] as $nativeRoasGroup)
+                                <tr>
+                                    <th scope="row">{{ $nativeRoasGroup['source_label'] }}</th>
+                                    <td>{{ $nativeRoasGroup['currency_code'] }}</td>
+                                    <td class="numeric">{{ number_format($nativeRoasGroup['conversion_value_amount'], 2) }}</td>
+                                    <td class="numeric">{{ number_format($nativeRoasGroup['matched_spend_amount'], 2) }}</td>
+                                    <td class="numeric">
+                                        @if ($nativeRoasGroup['roas'] !== null)
+                                            {{ number_format($nativeRoasGroup['roas'], 2) }}x
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td>
+                                        {{ number_format($nativeRoasGroup['comparable_campaign_count']) }} / {{ number_format($nativeRoasGroup['campaign_count']) }} 個可比較
+                                        <span class="secondary-text">新鮮 {{ number_format($nativeRoasGroup['fresh_campaign_count']) }}、過期 {{ number_format($nativeRoasGroup['stale_campaign_count']) }}、缺漏 {{ number_format($nativeRoasGroup['missing_campaign_count']) }}</span>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="secondary-text">尚無可彙總的平台轉換價值與花費。</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <p class="campaign-report-secondary spaced-top">
+                    Meta Ads：{{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['meta_marketing']['comparable_campaigns']) }} / {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['meta_marketing']['configured_campaigns']) }} 個可比較，缺漏 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['meta_marketing']['missing_campaigns']) }}，排除重複映射 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['meta_marketing']['duplicate_mappings_excluded']) }} 筆；
+                    Google Ads：{{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['comparable_campaigns']) }} / {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['configured_campaigns']) }} 個可比較，缺漏 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['missing_campaigns']) }}，排除重複映射 {{ number_format($campaignPortfolioMarketingSummary['native_roas_coverage']['google_ads']['duplicate_mappings_excluded']) }} 筆。
+                </p>
+            </section>
             <section class="spaced-top" aria-labelledby="campaign-budget-pacing-overview-title">
                 <h3 id="campaign-budget-pacing-overview-title" class="panel-title">跨活動預算節奏</h3>
                 <p class="campaign-report-secondary">

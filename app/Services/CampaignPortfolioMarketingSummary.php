@@ -15,6 +15,8 @@ class CampaignPortfolioMarketingSummary
      *     target_count: int,
      *     coverage: array<string, array{configured_campaigns: int, available_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
      *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>,
+     *     native_roas_groups: list<array{source: string, source_label: string, currency_code: string, conversion_value_amount: float, matched_spend_amount: float, roas: float|null, campaign_count: int, comparable_campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, missing_campaign_count: int, duplicate_mappings_excluded: int}>,
+     *     native_roas_coverage: array<string, array{configured_campaigns: int, comparable_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
      *     budget_coverage: array{configured_campaigns: int, spend_campaigns: int, fresh_spend_campaigns: int, stale_spend_campaigns: int, duplicate_mappings_excluded: int, pacing_campaigns: int, projected_campaigns: int, projected_over_budget_campaigns: int, projected_under_budget_campaigns: int},
      *     budget_currency_groups: list<array{currency_code: string, budget_amount: float, budget_campaign_count: int, current_spend_amount: float, current_spend_campaign_count: int, pacing_difference_amount: float, pacing_campaign_count: int, projected_spend_amount: float, projected_campaign_count: int, projected_over_budget_amount: float, projected_under_budget_amount: float, projected_over_budget_campaign_count: int, projected_under_budget_campaign_count: int}>,
      *     interaction_cost_groups: list<array{source: string, source_label: string, currency_code: string, comparable_spend_amount: float, public_interactions: int, cost_per_public_interaction: float|null, campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, comparable_campaign_count: int, available_post_count: int, tracked_post_count: int, coverage_percent: float|null}>,
@@ -32,6 +34,7 @@ class CampaignPortfolioMarketingSummary
         $sourceCandidates = array_fill_keys(array_keys($sourceDefinitions), []);
         $interactionCostCandidates = ['meta_marketing' => [], 'google_ads' => [], 'manual' => []];
         $roasCandidates = [];
+        $nativeRoasCandidates = ['meta_marketing' => [], 'google_ads' => []];
         $budgetParents = [];
         $budgetMappingMembers = [];
         $budgetCandidatesByTarget = [];
@@ -125,6 +128,35 @@ class CampaignPortfolioMarketingSummary
             }
 
             $efficiency = is_array($marketing['efficiency'] ?? null) ? $marketing['efficiency'] : [];
+            foreach ([
+                'meta_marketing' => 'meta_ads_omni_purchase_value',
+                'google_ads' => 'google_ads_conversion_value',
+            ] as $source => $conversionValueKey) {
+                $mappingKey = $this->campaignMappingKey($source, $target);
+
+                if ($mappingKey === null) {
+                    continue;
+                }
+
+                $summary = is_array($marketing[$source] ?? null) ? $marketing[$source] : [];
+                $conversionValue = $efficiency[$conversionValueKey] ?? null;
+                $spendAmount = $summary['spend_amount'] ?? null;
+                $currencyCode = $this->currencyCode($summary['currency_code'] ?? null);
+                $hasConversionValue = is_numeric($conversionValue) && is_finite((float) $conversionValue);
+                $hasPositiveSpend = is_numeric($spendAmount)
+                    && is_finite((float) $spendAmount)
+                    && (float) $spendAmount > 0;
+
+                $nativeRoasCandidates[$source][$mappingKey][] = [
+                    'target_id' => (int) $target->getKey(),
+                    'status' => is_string($summary['status'] ?? null) ? $summary['status'] : 'missing',
+                    'revenue' => $hasConversionValue ? (float) $conversionValue : null,
+                    'spend' => $hasPositiveSpend ? (float) $spendAmount : null,
+                    'currency_code' => $currencyCode,
+                    'period_days' => $this->periodDays($target),
+                ];
+            }
+
             if (($efficiency['ad_spend_source'] ?? null) === 'manual') {
                 $publicEngagement = is_array($marketing['public_engagement'] ?? null)
                     ? $marketing['public_engagement']
@@ -180,6 +212,8 @@ class CampaignPortfolioMarketingSummary
 
         $coverage = [];
         $currencyGroups = [];
+        $nativeRoasGroups = [];
+        $nativeRoasCoverage = [];
         $budgetCoverage = [
             'configured_campaigns' => 0,
             'spend_campaigns' => 0,
@@ -300,6 +334,81 @@ class CampaignPortfolioMarketingSummary
                 $currencyGroups[$candidate['currency_code']][$definition['count_key']]++;
             }
         }
+
+        foreach ($nativeRoasCandidates as $source => $campaignCandidates) {
+            $nativeRoasCoverage[$source] = [
+                'configured_campaigns' => count($campaignCandidates),
+                'comparable_campaigns' => 0,
+                'fresh_campaigns' => 0,
+                'stale_campaigns' => 0,
+                'missing_campaigns' => 0,
+                'duplicate_mappings_excluded' => 0,
+            ];
+
+            foreach ($campaignCandidates as $candidates) {
+                $nativeRoasCoverage[$source]['duplicate_mappings_excluded'] += max(0, count($candidates) - 1);
+                $candidate = $this->preferredCandidate($candidates);
+                $currencyCode = $candidate['currency_code'];
+                $isComparable = $candidate['revenue'] !== null
+                    && $candidate['spend'] !== null
+                    && $candidate['currency_code'] !== null;
+
+                if ($isComparable) {
+                    $nativeRoasCoverage[$source]['comparable_campaigns']++;
+                    if ($candidate['status'] === 'fresh') {
+                        $nativeRoasCoverage[$source]['fresh_campaigns']++;
+                    } elseif ($candidate['status'] === 'stale') {
+                        $nativeRoasCoverage[$source]['stale_campaigns']++;
+                    }
+                } else {
+                    $nativeRoasCoverage[$source]['missing_campaigns']++;
+                }
+
+                if ($currencyCode === null) {
+                    continue;
+                }
+
+                $groupKey = $source.'|'.$currencyCode;
+                $nativeRoasGroups[$groupKey] ??= [
+                    'source' => $source,
+                    'source_label' => $source === 'meta_marketing' ? 'Meta Ads' : 'Google Ads',
+                    'currency_code' => $currencyCode,
+                    'conversion_value_amount' => 0.0,
+                    'matched_spend_amount' => 0.0,
+                    'roas' => null,
+                    'campaign_count' => 0,
+                    'comparable_campaign_count' => 0,
+                    'fresh_campaign_count' => 0,
+                    'stale_campaign_count' => 0,
+                    'missing_campaign_count' => 0,
+                    'duplicate_mappings_excluded' => 0,
+                ];
+
+                $nativeRoasGroups[$groupKey]['campaign_count']++;
+                $nativeRoasGroups[$groupKey]['duplicate_mappings_excluded'] += max(0, count($candidates) - 1);
+                $nativeRoasGroups[$groupKey]['fresh_campaign_count'] += $candidate['status'] === 'fresh' ? 1 : 0;
+                $nativeRoasGroups[$groupKey]['stale_campaign_count'] += $candidate['status'] === 'stale' ? 1 : 0;
+
+                if (! $isComparable) {
+                    $nativeRoasGroups[$groupKey]['missing_campaign_count']++;
+
+                    continue;
+                }
+
+                $nativeRoasGroups[$groupKey]['conversion_value_amount'] += $candidate['revenue'];
+                $nativeRoasGroups[$groupKey]['matched_spend_amount'] += $candidate['spend'];
+                $nativeRoasGroups[$groupKey]['comparable_campaign_count']++;
+            }
+        }
+
+        foreach ($nativeRoasGroups as &$group) {
+            $group['conversion_value_amount'] = round($group['conversion_value_amount'], 4);
+            $group['matched_spend_amount'] = round($group['matched_spend_amount'], 4);
+            $group['roas'] = $group['matched_spend_amount'] > 0
+                ? round($group['conversion_value_amount'] / $group['matched_spend_amount'], 4)
+                : null;
+        }
+        unset($group);
 
         foreach ($interactionCostCandidates as $source => $campaignCandidates) {
             foreach ($campaignCandidates as $candidates) {
@@ -425,6 +534,7 @@ class CampaignPortfolioMarketingSummary
         unset($group);
 
         ksort($currencyGroups);
+        ksort($nativeRoasGroups);
         ksort($budgetCurrencyGroups);
         ksort($interactionCostGroups);
         $campaignInteractionCostRanks = [];
@@ -498,6 +608,8 @@ class CampaignPortfolioMarketingSummary
             'target_count' => $targets->count(),
             'coverage' => $coverage,
             'currency_groups' => array_values($currencyGroups),
+            'native_roas_groups' => array_values($nativeRoasGroups),
+            'native_roas_coverage' => $nativeRoasCoverage,
             'budget_coverage' => $budgetCoverage,
             'budget_currency_groups' => array_values($budgetCurrencyGroups),
             'interaction_cost_groups' => array_values($interactionCostGroups),
