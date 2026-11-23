@@ -51,6 +51,14 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
                     'truncated' => false,
                     'rows' => [],
                 ],
+                'event_name_report' => [
+                    'status' => 'complete',
+                    'window_start_on' => '2026-11-01',
+                    'window_end_on' => '2026-11-30',
+                    'currency_code' => 'TWD',
+                    'truncated' => false,
+                    'rows' => [],
+                ],
                 'daily_metrics' => [[
                     'date' => '2026-11-01',
                     'sessions' => 12,

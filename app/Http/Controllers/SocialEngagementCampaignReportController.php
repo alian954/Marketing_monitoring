@@ -23,6 +23,8 @@ use App\Services\GoogleAdsDeviceReportCsv;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\GoogleAnalyticsEventNamePerformanceReport;
+use App\Services\GoogleAnalyticsEventNameReportCsv;
 use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
 use App\Services\GoogleAnalyticsLandingPageReportCsv;
 use App\Services\MetaMarketingAdPerformanceReport;
@@ -50,6 +52,7 @@ class SocialEngagementCampaignReportController extends Controller
         CampaignDailyMarketingTrendChart $dailyMarketingTrendChart,
         GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
         GoogleAnalyticsLandingPagePerformanceReport $googleAnalyticsLandingPagePerformanceReport,
+        GoogleAnalyticsEventNamePerformanceReport $googleAnalyticsEventNamePerformanceReport,
         MetaMarketingAdPerformanceReport $metaMarketingAdPerformanceReport,
         MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
@@ -75,6 +78,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReport']?->landing_page_report,
             $viewData['googleAnalyticsReport']?->landing_page_expires_at,
             (string) $request->query('landing_page_sort', 'sessions'),
+        );
+        $viewData['googleAnalyticsEventNameReport'] = $googleAnalyticsEventNamePerformanceReport->build(
+            $viewData['googleAnalyticsReport']?->event_name_report,
+            $viewData['googleAnalyticsReport']?->event_name_expires_at,
+            (string) $request->query('event_name_sort', 'key_events'),
         );
         $viewData['metaMarketingAdReport'] = $metaMarketingAdPerformanceReport->build(
             $viewData['metaMarketingReport']?->ad_insights,
@@ -241,6 +249,45 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'ga4-landing-pages-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAnalyticsEventNames(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAnalyticsEventNamePerformanceReport $googleAnalyticsEventNamePerformanceReport,
+        GoogleAnalyticsEventNameReportCsv $googleAnalyticsEventNameReportCsv,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        abort_if(
+            $analyticsReport === null
+                || ! is_array($analyticsReport->event_name_report)
+                || $analyticsReport->event_name_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $eventNameReport = $googleAnalyticsEventNamePerformanceReport->build(
+            $analyticsReport->event_name_report,
+            $analyticsReport->event_name_expires_at,
+            'key_events',
+        );
+        abort_if($eventNameReport['status'] !== 'complete' || $eventNameReport['rows'] === [], 404);
+        $csv = $googleAnalyticsEventNameReportCsv->build($eventNameReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-event-names-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

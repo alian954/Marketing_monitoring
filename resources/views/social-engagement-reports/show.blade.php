@@ -1085,6 +1085,65 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-event-name-title">重要事件名稱成效</h3>
+                    @if ($googleAnalyticsEventNameReport['status'] === 'complete' && $googleAnalyticsEventNameReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.events', $target) }}">匯出事件 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAnalyticsEventNameReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含事件明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsEventNameReport['status'] === 'thresholded')
+                    <p class="campaign-report-empty">GA4 因資料門檻未提供事件明細。</p>
+                @elseif ($googleAnalyticsEventNameReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">目前無法讀取事件明細；活動總成效仍可查看。</p>
+                @elseif ($googleAnalyticsEventNameReport['status'] === 'expired')
+                    <p class="campaign-report-empty">事件明細已超過 30 天保存期限，更新數據後可重新讀取。</p>
+                @elseif ($googleAnalyticsEventNameReport['rows'] === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的事件明細。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAnalyticsEventNameReport['window_start_on'] }} 至 {{ $googleAnalyticsEventNameReport['window_end_on'] }} · 最多顯示 200 個事件名稱，依 GA4 指標排序；重要事件數依資源標記設定，明細加密保存 30 天。
+                    </p>
+                    @if ($googleAnalyticsEventNameReport['truncated'])
+                        <p class="campaign-report-note">事件名稱超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有事件。</p>
+                    @endif
+                    <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                        <input type="hidden" name="search_term_sort" value="{{ request('search_term_sort', 'spend') }}">
+                        <label for="ga4-event-name-sort">排序</label>
+                        <select id="ga4-event-name-sort" name="event_name_sort">
+                            <option value="key_events" @selected($googleAnalyticsEventNameReport['sort'] === 'key_events')>重要事件數</option>
+                            <option value="event_count" @selected($googleAnalyticsEventNameReport['sort'] === 'event_count')>事件次數</option>
+                            <option value="total_revenue" @selected($googleAnalyticsEventNameReport['sort'] === 'total_revenue')>營收</option>
+                            <option value="event_name" @selected($googleAnalyticsEventNameReport['sort'] === 'event_name')>事件名稱</option>
+                        </select>
+                        <button class="button button-secondary button-small" type="submit">套用</button>
+                    </form>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-event-name-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-event-name-table">
+                            <caption>GA4 事件名稱、事件次數、重要事件與營收</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">事件名稱</th>
+                                    <th scope="col" class="numeric">事件次數</th>
+                                    <th scope="col" class="numeric">重要事件數</th>
+                                    <th scope="col" class="numeric">營收（{{ $googleAnalyticsEventNameReport['currency_code'] ?? '幣別未知' }}）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsEventNameReport['rows'] as $event)
+                                    <tr>
+                                        <th scope="row">{{ $event['event_name'] }}</th>
+                                        <td class="numeric">{{ number_format((int) $event['event_count']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $event['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $event['total_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="campaign-report-ga4-landing-page-title">登陸頁成效</h3>
                     @if ($googleAnalyticsLandingPageReport['status'] === 'complete' && $googleAnalyticsLandingPageReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.landing-pages', $target) }}">匯出登陸頁 CSV</a>

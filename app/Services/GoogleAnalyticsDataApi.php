@@ -14,6 +14,8 @@ class GoogleAnalyticsDataApi
 
     private const CAMPAIGN_LANDING_PAGE_ROW_LIMIT = 200;
 
+    private const CAMPAIGN_EVENT_NAME_ROW_LIMIT = 200;
+
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
@@ -106,6 +108,14 @@ class GoogleAnalyticsDataApi
      *         currency_code: ?string,
      *         truncated: bool,
      *         rows: list<array{landing_page: string, sessions: int, engaged_sessions: int, engagement_rate: string, bounce_rate: string, key_events: string, total_revenue: string}>
+     *     },
+     *     event_name_report: array{
+     *         status: 'complete'|'thresholded'|'unavailable',
+     *         window_start_on: string,
+     *         window_end_on: string,
+     *         currency_code: ?string,
+     *         truncated: bool,
+     *         rows: list<array{event_name: string, event_count: int, key_events: string, total_revenue: string}>
      *     },
      *     daily_metrics: list<array{
      *         date: string,
@@ -271,6 +281,17 @@ class GoogleAnalyticsDataApi
         } catch (GoogleAnalyticsApiException|ConnectionException) {
             $landingPageReport = $this->emptyLandingPageReport('unavailable', $startsOn, $endsOn);
         }
+        try {
+            $eventNameReport = $this->eventNameBreakdown(
+                $accessToken,
+                $propertyId,
+                $startsOn,
+                $endsOn,
+                $dimensionFilter,
+            );
+        } catch (GoogleAnalyticsApiException|ConnectionException) {
+            $eventNameReport = $this->emptyEventNameReport('unavailable', $startsOn, $endsOn);
+        }
 
         return [
             ...$totalMetrics,
@@ -279,7 +300,136 @@ class GoogleAnalyticsDataApi
             'source_medium_breakdown_truncated' => $rowCount > count($rows)
                 || count($channelRows) > self::CAMPAIGN_BREAKDOWN_ROW_LIMIT,
             'landing_page_report' => $landingPageReport,
+            'event_name_report' => $eventNameReport,
             'daily_metrics' => $dailyMetrics,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return array{
+     *     status: 'complete'|'thresholded',
+     *     window_start_on: string,
+     *     window_end_on: string,
+     *     currency_code: ?string,
+     *     truncated: bool,
+     *     rows: list<array{event_name: string, event_count: int, key_events: string, total_revenue: string}>
+     * }
+     */
+    private function eventNameBreakdown(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $endsOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'eventName'],
+                ],
+                'metrics' => [
+                    ['name' => 'eventCount'],
+                    ['name' => 'keyEvents'],
+                    ['name' => 'totalRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'orderBys' => [
+                    ['metric' => ['metricName' => 'keyEvents'], 'desc' => true],
+                    ['metric' => ['metricName' => 'totalRevenue'], 'desc' => true],
+                    ['metric' => ['metricName' => 'eventCount'], 'desc' => true],
+                    ['dimension' => ['dimensionName' => 'eventName']],
+                ],
+                'limit' => self::CAMPAIGN_EVENT_NAME_ROW_LIMIT + 1,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+        $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $currencyCode = $this->currencyCode($metadata['currencyCode'] ?? null);
+
+        if (($metadata['subjectToThresholding'] ?? false) === true) {
+            return [
+                ...$this->emptyEventNameReport('thresholded', $startsOn, $endsOn),
+                'currency_code' => $currencyCode,
+            ];
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的事件名稱報表格式無效，請稍後再試。');
+        }
+
+        $eventRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的事件名稱報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($dimensionValues)
+                || ! array_is_list($dimensionValues)
+                || count($dimensionValues) !== 1
+                || ! is_array($metricValues)
+                || ! array_is_list($metricValues)
+                || count($metricValues) !== 3) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的事件名稱欄位數量無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的事件指標格式無效，請稍後再試。');
+                }
+            }
+
+            $eventName = $this->dimensionValue($dimensionValues[0]);
+
+            if (mb_strlen($eventName) > 256) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的事件名稱過長，請稍後再試。');
+            }
+
+            $eventRows[] = [
+                'event_name' => $eventName,
+                'event_count' => $this->nonNegativeInteger($metricValues[0]['value']),
+                'key_events' => $this->decimalString($metricValues[1]['value'], false),
+                'total_revenue' => $this->decimalString($metricValues[2]['value'], true),
+            ];
+        }
+
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($eventRows);
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => $currencyCode,
+            'truncated' => $rowCount > count($eventRows)
+                || count($eventRows) > self::CAMPAIGN_EVENT_NAME_ROW_LIMIT
+                || ($metadata['dataLossFromOtherRow'] ?? false) === true,
+            'rows' => array_slice($eventRows, 0, self::CAMPAIGN_EVENT_NAME_ROW_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unavailable'|'thresholded', window_start_on: string, window_end_on: string, currency_code: null, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyEventNameReport(string $status, string $startsOn, string $endsOn): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => null,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 
