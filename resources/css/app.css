@@ -2319,6 +2319,32 @@ a.platform-chip:hover {
     min-width: 960px;
 }
 
+.campaign-report-video-disclosure {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.campaign-report-video-disclosure summary {
+    width: fit-content;
+    color: var(--blue-dark);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.campaign-report-video-disclosure[open] summary {
+    margin-bottom: 8px;
+}
+
+.campaign-report-video-table {
+    min-width: 940px;
+}
+
+.campaign-report-video-disclosure .campaign-report-secondary {
+    margin: 8px 0;
+}
+
 .campaign-report-empty,
 .campaign-report-note {
     margin: 0;
@@ -2436,6 +2462,10 @@ a.platform-chip:hover {
 
     .campaign-report .data-table-wrap {
         overflow: visible;
+    }
+
+    .campaign-report .campaign-report-video-table-wrap {
+        overflow-x: auto;
     }
 
     .campaign-report-table,

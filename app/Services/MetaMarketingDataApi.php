@@ -365,7 +365,14 @@ class MetaMarketingDataApi
      *         reach: int,
      *         clicks: int,
      *         actions: list<array{action_type: string, value: string}>,
-     *         action_values: list<array{action_type: string, value: string}>
+     *         action_values: list<array{action_type: string, value: string}>,
+     *         video_play_actions: list<array{action_type: string, value: string}>,
+     *         video_thruplay_watched_actions: list<array{action_type: string, value: string}>,
+     *         video_p25_watched_actions: list<array{action_type: string, value: string}>,
+     *         video_p50_watched_actions: list<array{action_type: string, value: string}>,
+     *         video_p75_watched_actions: list<array{action_type: string, value: string}>,
+     *         video_p95_watched_actions: list<array{action_type: string, value: string}>,
+     *         video_p100_watched_actions: list<array{action_type: string, value: string}>
      *     }>,
      *     truncated: bool
      * }
@@ -393,7 +400,7 @@ class MetaMarketingDataApi
         }
 
         $parameters = [
-            'fields' => 'account_id,campaign_id,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions,action_values,account_currency',
+            'fields' => 'account_id,campaign_id,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions,action_values,video_play_actions,video_thruplay_watched_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions,account_currency',
             'level' => 'ad',
             'filtering' => json_encode([[
                 'field' => 'campaign.id',
@@ -463,6 +470,13 @@ class MetaMarketingDataApi
                     'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
                     'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
                     'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
+                    'video_play_actions' => $this->actionMetrics($row['video_play_actions'] ?? null, 'video_play_actions'),
+                    'video_thruplay_watched_actions' => $this->actionMetrics($row['video_thruplay_watched_actions'] ?? null, 'video_thruplay_watched_actions'),
+                    'video_p25_watched_actions' => $this->actionMetrics($row['video_p25_watched_actions'] ?? null, 'video_p25_watched_actions'),
+                    'video_p50_watched_actions' => $this->actionMetrics($row['video_p50_watched_actions'] ?? null, 'video_p50_watched_actions'),
+                    'video_p75_watched_actions' => $this->actionMetrics($row['video_p75_watched_actions'] ?? null, 'video_p75_watched_actions'),
+                    'video_p95_watched_actions' => $this->actionMetrics($row['video_p95_watched_actions'] ?? null, 'video_p95_watched_actions'),
+                    'video_p100_watched_actions' => $this->actionMetrics($row['video_p100_watched_actions'] ?? null, 'video_p100_watched_actions'),
                 ];
             }
 

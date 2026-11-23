@@ -125,6 +125,16 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['metaMarketingReport']?->ad_insights_expires_at,
             (string) $request->query('meta_ad_sort', 'spend'),
         );
+        $viewData['metaMarketingVideoAdRows'] = array_values(array_filter(
+            $viewData['metaMarketingAdReport']['rows'],
+            static fn (array $row): bool => $row['video_plays'] !== null
+                || $row['thruplays'] !== null
+                || $row['video_p25_views'] !== null
+                || $row['video_p50_views'] !== null
+                || $row['video_p75_views'] !== null
+                || $row['video_p95_views'] !== null
+                || $row['video_p100_views'] !== null,
+        ));
         $viewData['metaMarketingPlacementReport'] = $metaMarketingPlacementPerformanceReport->build(
             $viewData['metaMarketingReport']?->placement_insights,
             $viewData['metaMarketingReport']?->placement_insights_expires_at,

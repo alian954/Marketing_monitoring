@@ -26,6 +26,10 @@ class MetaMarketingAdReportTest extends TestCase
         Http::preventStrayRequests();
         $firstPage = array_map(fn (int $index): array => $this->adInsightRow($index, (string) ($index * 100 + 1)), range(0, 99));
         $secondPage = array_map(fn (int $index): array => $this->adInsightRow($index, (string) ($index * 100 + 1)), range(100, 199));
+        $firstPage[99] = $this->adInsightRow(99, '9901', [
+            'video_play_actions' => [['action_type' => 'video_view', 'value' => '100']],
+            'video_thruplay_watched_actions' => [['action_type' => 'video_view', 'value' => '45']],
+        ]);
         Http::fake([
             'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::sequence()
                 ->push([
@@ -61,6 +65,14 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertSame([
             ['action_type' => 'omni_purchase', 'value' => '2.5000'],
         ], $report['rows'][0]['actions']);
+        $videoInsightRowsById = array_column($report['rows'], null, 'ad_id');
+        $this->assertSame([
+            ['action_type' => 'video_view', 'value' => '100.0000'],
+        ], $videoInsightRowsById['10099']['video_play_actions']);
+        $this->assertSame([
+            ['action_type' => 'video_view', 'value' => '45.0000'],
+        ], $videoInsightRowsById['10099']['video_thruplay_watched_actions']);
+        $this->assertSame([], $report['rows'][0]['video_play_actions']);
         Http::assertSentCount(3);
         Http::assertSent(function (ClientRequest $request): bool {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -69,7 +81,7 @@ class MetaMarketingAdReportTest extends TestCase
                 && $request->hasHeader('Authorization', 'Bearer access-token')
                 && $query['level'] === 'ad'
                 && $query['limit'] === '100'
-                && $query['fields'] === 'account_id,campaign_id,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions,action_values,account_currency'
+                && $query['fields'] === 'account_id,campaign_id,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions,action_values,video_play_actions,video_thruplay_watched_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions,account_currency'
                 && json_decode($query['filtering'], true)[0]['value'] === '987654321'
                 && json_decode($query['time_range'], true) === ['since' => '2026-11-01', 'until' => '2026-11-30'];
         });
@@ -148,7 +160,10 @@ class MetaMarketingAdReportTest extends TestCase
                     'account_currency' => 'TWD',
                 ]]])
                 ->push(['data' => []])
-                ->push(['data' => [$this->adInsightRow(0, '42.5')]])
+                ->push(['data' => [$this->adInsightRow(0, '42.5', [
+                    'video_play_actions' => [['action_type' => 'video_view', 'value' => '100']],
+                    'video_thruplay_watched_actions' => [['action_type' => 'video_view', 'value' => '35']],
+                ])]])
                 ->push(['data' => []])
                 ->push(['data' => []])
                 ->push(['data' => []]),
@@ -162,6 +177,12 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertSame('complete', $report->ad_insights['status']);
         $this->assertSame('10000', $report->ad_insights['rows'][0]['ad_id']);
         $this->assertSame('42.5000', $report->ad_insights['rows'][0]['spend_amount']);
+        $this->assertSame([
+            ['action_type' => 'video_view', 'value' => '100.0000'],
+        ], $report->ad_insights['rows'][0]['video_play_actions']);
+        $this->assertSame([
+            ['action_type' => 'video_view', 'value' => '35.0000'],
+        ], $report->ad_insights['rows'][0]['video_thruplay_watched_actions']);
         $this->assertTrue($report->ad_insights_expires_at->isFuture());
         $this->assertStringNotContainsString('Winter Ad 10000', $report->getRawOriginal('ad_insights'));
         $this->assertArrayNotHasKey('ad_insights', $report->toArray());
@@ -246,6 +267,45 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertNull($cpaReport['rows'][3]['cost_per_purchase']);
     }
 
+    public function test_ad_report_builds_video_funnel_rates_cost_and_completion_sort(): void
+    {
+        $builder = new MetaMarketingAdPerformanceReport;
+        $snapshot = [
+            'status' => 'complete',
+            'rows' => [
+                $this->adInsightRow(1, '20', [
+                    'video_play_actions' => [['action_type' => 'video_view', 'value' => '100']],
+                    'video_thruplay_watched_actions' => [['action_type' => 'video_view', 'value' => '40']],
+                    'video_p25_watched_actions' => [['action_type' => 'video_view', 'value' => '80']],
+                    'video_p50_watched_actions' => [['action_type' => 'video_view', 'value' => '60']],
+                    'video_p75_watched_actions' => [['action_type' => 'video_view', 'value' => '50']],
+                    'video_p95_watched_actions' => [['action_type' => 'video_view', 'value' => '35']],
+                    'video_p100_watched_actions' => [['action_type' => 'video_view', 'value' => '30']],
+                ]),
+                $this->adInsightRow(2, '10', [
+                    'video_play_actions' => [['action_type' => 'video_view', 'value' => '50']],
+                    'video_thruplay_watched_actions' => [['action_type' => 'video_view', 'value' => '20']],
+                    'video_p100_watched_actions' => [['action_type' => 'video_view', 'value' => '10']],
+                ]),
+                $this->adInsightRow(3, '5'),
+            ],
+        ];
+
+        $report = $builder->build($snapshot, CarbonImmutable::now()->addDay(), 'video_completion_rate');
+
+        $this->assertSame(['10001', '10002', '10003'], array_column($report['rows'], 'ad_id'));
+        $this->assertSame('100', $report['rows'][0]['video_plays']);
+        $this->assertSame('40', $report['rows'][0]['thruplays']);
+        $this->assertSame(0.5, $report['rows'][0]['cost_per_thruplay']);
+        $this->assertSame(80.0, $report['rows'][0]['video_p25_rate_percent']);
+        $this->assertSame(60.0, $report['rows'][0]['video_p50_rate_percent']);
+        $this->assertSame(50.0, $report['rows'][0]['video_p75_rate_percent']);
+        $this->assertSame(35.0, $report['rows'][0]['video_p95_rate_percent']);
+        $this->assertSame(30.0, $report['rows'][0]['video_p100_rate_percent']);
+        $this->assertNull($report['rows'][2]['video_plays']);
+        $this->assertNull($report['rows'][2]['video_p100_rate_percent']);
+    }
+
     public function test_report_view_and_csv_export_use_the_current_users_encrypted_ad_snapshot(): void
     {
         $user = User::factory()->create();
@@ -280,6 +340,13 @@ class MetaMarketingAdReportTest extends TestCase
                     'clicks' => '40',
                     'actions' => [['action_type' => 'omni_purchase', 'value' => '2']],
                     'action_values' => [['action_type' => 'omni_purchase', 'value' => '75.5']],
+                    'video_play_actions' => [['action_type' => 'video_view', 'value' => '200']],
+                    'video_thruplay_watched_actions' => [['action_type' => 'video_view', 'value' => '80']],
+                    'video_p25_watched_actions' => [['action_type' => 'video_view', 'value' => '150']],
+                    'video_p50_watched_actions' => [['action_type' => 'video_view', 'value' => '120']],
+                    'video_p75_watched_actions' => [['action_type' => 'video_view', 'value' => '100']],
+                    'video_p95_watched_actions' => [['action_type' => 'video_view', 'value' => '60']],
+                    'video_p100_watched_actions' => [['action_type' => 'video_view', 'value' => '40']],
                 ])],
             ],
             'ad_insights_expires_at' => now()->addDays(10),
@@ -299,9 +366,14 @@ class MetaMarketingAdReportTest extends TestCase
             ->assertSee('匯出廣告明細 CSV')
             ->assertSee('購買 ROAS')
             ->assertSee('單次購買成本')
+            ->assertSee('影片觀看漏斗')
+            ->assertSee('200')
+            ->assertSee('20.0%')
             ->assertSee('10000');
         $this->assertSame(2.9608, $response->viewData('metaMarketingAdReport')['rows'][0]['purchase_roas']);
         $this->assertSame(12.75, $response->viewData('metaMarketingAdReport')['rows'][0]['cost_per_purchase']);
+        $this->assertCount(1, $response->viewData('metaMarketingVideoAdRows'));
+        $this->assertSame(20.0, $response->viewData('metaMarketingVideoAdRows')[0]['video_p100_rate_percent']);
 
         $csvResponse = $this->get(route('social-engagement-targets.meta-marketing.ads', $target));
         $csvResponse->assertOk();
@@ -310,6 +382,10 @@ class MetaMarketingAdReportTest extends TestCase
         $this->assertSame("'".$adName, $csvFields[1]);
         $this->assertSame('2.9608', $csvFields[13]);
         $this->assertSame('12.75', $csvFields[14]);
+        $this->assertSame('200', $csvFields[15]);
+        $this->assertSame('80', $csvFields[16]);
+        $this->assertSame('0.3188', $csvFields[17]);
+        $this->assertSame('20', $csvFields[27]);
 
         $otherUser = User::factory()->create();
         $this->createConnection($otherUser);

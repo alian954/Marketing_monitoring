@@ -295,6 +295,9 @@
                                 <option value="purchase_value" @selected($metaMarketingAdReport['sort'] === 'purchase_value')>購買價值</option>
                                 <option value="purchase_roas" @selected($metaMarketingAdReport['sort'] === 'purchase_roas')>購買 ROAS</option>
                                 <option value="cost_per_purchase" @selected($metaMarketingAdReport['sort'] === 'cost_per_purchase')>單次購買成本</option>
+                                <option value="thruplays" @selected($metaMarketingAdReport['sort'] === 'thruplays')>ThruPlay</option>
+                                <option value="cost_per_thruplay" @selected($metaMarketingAdReport['sort'] === 'cost_per_thruplay')>每次 ThruPlay 成本</option>
+                                <option value="video_completion_rate" @selected($metaMarketingAdReport['sort'] === 'video_completion_rate')>影片完播率</option>
                             </select>
                             <button class="button button-secondary button-small" type="submit">套用</button>
                         </form>
@@ -340,6 +343,46 @@
                             </table>
                         </div>
                         <p class="campaign-report-secondary">CTR、CPC、CPM、購買 ROAS 與單次購買成本依廣告層級資料計算；購買僅採用 Meta 回傳的 <code>omni_purchase</code>，其他行動類型不合併。</p>
+                    @endif
+                    @if (($metaMarketingVideoAdRows ?? []) !== [])
+                        <details class="campaign-report-video-disclosure">
+                            <summary>影片觀看漏斗（{{ count($metaMarketingVideoAdRows) }} 則廣告）</summary>
+                            <p class="campaign-report-secondary">ThruPlay 代表完整看完影片或觀看至少 15 秒；各段觀看率以影片播放數為分母。</p>
+                            <div class="data-table-wrap campaign-report-video-table-wrap" role="region" aria-label="Meta Ads 影片觀看漏斗" tabindex="0">
+                                <table class="data-table campaign-report-table campaign-report-video-table">
+                                    <caption>Meta Ads 影片觀看數與相對影片播放率</caption>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">廣告</th>
+                                            <th scope="col" class="numeric">播放</th>
+                                            <th scope="col" class="numeric">ThruPlay</th>
+                                            <th scope="col" class="numeric">每次 ThruPlay 成本</th>
+                                            <th scope="col" class="numeric">25%</th>
+                                            <th scope="col" class="numeric">50%</th>
+                                            <th scope="col" class="numeric">75%</th>
+                                            <th scope="col" class="numeric">95%</th>
+                                            <th scope="col" class="numeric">100%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($metaMarketingVideoAdRows as $videoAdRow)
+                                            <tr>
+                                                <th scope="row">{{ $videoAdRow['ad_name'] }}<br><span class="campaign-report-secondary"><code>{{ $videoAdRow['ad_id'] }}</code></span></th>
+                                                <td class="numeric">{{ $videoAdRow['video_plays'] === null ? '—' : number_format((float) $videoAdRow['video_plays'], 0) }}</td>
+                                                <td class="numeric">{{ $videoAdRow['thruplays'] === null ? '—' : number_format((float) $videoAdRow['thruplays'], 0) }}</td>
+                                                <td class="numeric">{{ $videoAdRow['cost_per_thruplay'] === null ? '—' : number_format($videoAdRow['cost_per_thruplay'], 4).' '.$metaMarketingAdReport['currency_code'] }}</td>
+                                                <td class="numeric">{{ $videoAdRow['video_p25_views'] === null ? '—' : number_format((float) $videoAdRow['video_p25_views'], 0).' · '.($videoAdRow['video_p25_rate_percent'] === null ? '—' : number_format($videoAdRow['video_p25_rate_percent'], 1).'%') }}</td>
+                                                <td class="numeric">{{ $videoAdRow['video_p50_views'] === null ? '—' : number_format((float) $videoAdRow['video_p50_views'], 0).' · '.($videoAdRow['video_p50_rate_percent'] === null ? '—' : number_format($videoAdRow['video_p50_rate_percent'], 1).'%') }}</td>
+                                                <td class="numeric">{{ $videoAdRow['video_p75_views'] === null ? '—' : number_format((float) $videoAdRow['video_p75_views'], 0).' · '.($videoAdRow['video_p75_rate_percent'] === null ? '—' : number_format($videoAdRow['video_p75_rate_percent'], 1).'%') }}</td>
+                                                <td class="numeric">{{ $videoAdRow['video_p95_views'] === null ? '—' : number_format((float) $videoAdRow['video_p95_views'], 0).' · '.($videoAdRow['video_p95_rate_percent'] === null ? '—' : number_format($videoAdRow['video_p95_rate_percent'], 1).'%') }}</td>
+                                                <td class="numeric">{{ $videoAdRow['video_p100_views'] === null ? '—' : number_format((float) $videoAdRow['video_p100_views'], 0).' · '.($videoAdRow['video_p100_rate_percent'] === null ? '—' : number_format($videoAdRow['video_p100_rate_percent'], 1).'%') }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="campaign-report-secondary">每段顯示觀看次數與播放完成率；缺少的影片指標以 — 顯示。</p>
+                        </details>
                     @endif
                 @endif
 
