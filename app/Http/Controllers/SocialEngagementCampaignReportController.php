@@ -29,6 +29,8 @@ use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
 use App\Services\GoogleAnalyticsLandingPageReportCsv;
 use App\Services\MetaMarketingAdPerformanceReport;
 use App\Services\MetaMarketingAdReportCsv;
+use App\Services\MetaMarketingDemographicPerformanceReport;
+use App\Services\MetaMarketingDemographicReportCsv;
 use App\Services\MetaMarketingPlacementPerformanceReport;
 use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
@@ -55,6 +57,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsEventNamePerformanceReport $googleAnalyticsEventNamePerformanceReport,
         MetaMarketingAdPerformanceReport $metaMarketingAdPerformanceReport,
         MetaMarketingPlacementPerformanceReport $metaMarketingPlacementPerformanceReport,
+        MetaMarketingDemographicPerformanceReport $metaMarketingDemographicPerformanceReport,
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
     ): View {
@@ -93,6 +96,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['metaMarketingReport']?->placement_insights,
             $viewData['metaMarketingReport']?->placement_insights_expires_at,
             (string) $request->query('meta_placement_sort', 'spend'),
+        );
+        $viewData['metaMarketingDemographicReport'] = $metaMarketingDemographicPerformanceReport->build(
+            $viewData['metaMarketingReport']?->demographic_insights,
+            $viewData['metaMarketingReport']?->demographic_insights_expires_at,
+            (string) $request->query('meta_demographic_sort', 'spend'),
         );
         $viewData['googleAdsDeliveryUnitReport'] = $googleAdsDeliveryUnitPerformanceReport->build(
             $viewData['googleAdsReport']?->delivery_unit_performance,
@@ -210,6 +218,59 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'meta-ads-placement-performance-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportMetaMarketingDemographics(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        MetaMarketingDemographicPerformanceReport $metaMarketingDemographicPerformanceReport,
+        MetaMarketingDemographicReportCsv $metaMarketingDemographicReportCsv,
+    ): StreamedResponse {
+        $connection = $request->user()->metaMarketingConnection;
+        abort_if(
+            $connection === null
+                || $connection->ad_account_id === null
+                || $socialEngagementTarget->meta_campaign_id === null
+                || $socialEngagementTarget->starts_on === null
+                || $socialEngagementTarget->ends_on === null,
+            404,
+        );
+
+        $report = SocialEngagementTargetMetaMarketingReport::query()
+            ->where('meta_marketing_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
+            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
+            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
+            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
+            ->first();
+        abort_if(
+            $report === null
+                || ! is_array($report->demographic_insights)
+                || $report->demographic_insights_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $demographicReport = $metaMarketingDemographicPerformanceReport->build(
+            $report->demographic_insights,
+            $report->demographic_insights_expires_at,
+            'spend',
+        );
+        abort_if($demographicReport['status'] !== 'complete' || $demographicReport['rows'] === [], 404);
+        $csv = $metaMarketingDemographicReportCsv->build($demographicReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'meta-ads-demographic-performance-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

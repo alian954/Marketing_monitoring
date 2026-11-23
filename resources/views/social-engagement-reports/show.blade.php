@@ -413,6 +413,80 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="meta-marketing-demographic-report-title">Meta Ads 年齡與性別成效</h3>
+                    @if ($metaMarketingDemographicReport['status'] === 'complete' && $metaMarketingDemographicReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.meta-marketing.demographics', $target) }}">匯出受眾 CSV</a>
+                    @endif
+                </div>
+                @if ($metaMarketingDemographicReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">尚未讀取年齡與性別資料；更新 Meta Ads 數據後即可查看。</p>
+                @elseif ($metaMarketingDemographicReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">年齡與性別明細暫時無法讀取，其他 Meta Ads 報表仍可使用。{{ $metaMarketingDemographicReport['message'] }}</p>
+                @elseif ($metaMarketingDemographicReport['status'] === 'expired')
+                    <p class="campaign-report-empty">年齡與性別明細已超過 30 天保存期限，更新 Meta Ads 數據後可重新讀取。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $metaMarketingDemographicReport['window_start_on'] }} 至 {{ $metaMarketingDemographicReport['window_end_on'] }} · 明細加密保存 30 天。受眾拆分為 Meta 估算值；觸及為分群讀值，不代表去重後總觸及。
+                    </p>
+                    @if ($metaMarketingDemographicReport['truncated'])
+                        <p class="campaign-report-note">受眾資料超過 200 筆，表格僅列出花費最高的 200 筆。</p>
+                    @endif
+                    @if ($metaMarketingDemographicReport['rows'] === [])
+                        <p class="campaign-report-empty">此活動期間沒有可用的年齡與性別明細。</p>
+                    @else
+                        <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                            <label for="meta-marketing-demographic-sort">排序</label>
+                            <select id="meta-marketing-demographic-sort" name="meta_demographic_sort">
+                                <option value="spend" @selected($metaMarketingDemographicReport['sort'] === 'spend')>花費</option>
+                                <option value="impressions" @selected($metaMarketingDemographicReport['sort'] === 'impressions')>曝光</option>
+                                <option value="clicks" @selected($metaMarketingDemographicReport['sort'] === 'clicks')>點擊</option>
+                                <option value="ctr" @selected($metaMarketingDemographicReport['sort'] === 'ctr')>CTR</option>
+                                <option value="purchases" @selected($metaMarketingDemographicReport['sort'] === 'purchases')>購買</option>
+                                <option value="purchase_value" @selected($metaMarketingDemographicReport['sort'] === 'purchase_value')>購買價值</option>
+                            </select>
+                            <button class="button button-secondary button-small" type="submit">套用</button>
+                        </form>
+                        <div class="data-table-wrap" role="region" aria-labelledby="meta-marketing-demographic-report-title" tabindex="0">
+                            <table class="data-table campaign-report-table">
+                                <caption>Meta Ads 年齡與性別投放成效（{{ $metaMarketingDemographicReport['currency_code'] ?? '幣別未知' }}）</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">年齡</th>
+                                        <th scope="col">性別</th>
+                                        <th scope="col" class="numeric">曝光</th>
+                                        <th scope="col" class="numeric">觸及</th>
+                                        <th scope="col" class="numeric">點擊</th>
+                                        <th scope="col" class="numeric">CTR</th>
+                                        <th scope="col" class="numeric">花費</th>
+                                        <th scope="col" class="numeric">CPC</th>
+                                        <th scope="col" class="numeric">CPM</th>
+                                        <th scope="col" class="numeric">購買</th>
+                                        <th scope="col" class="numeric">購買價值</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($metaMarketingDemographicReport['rows'] as $demographicRow)
+                                        <tr>
+                                            <th scope="row">{{ $demographicRow['age'] }}</th>
+                                            <td>{{ $demographicRow['gender_label'] }}</td>
+                                            <td class="numeric">{{ number_format((int) $demographicRow['impressions']) }}</td>
+                                            <td class="numeric">{{ $demographicRow['reach'] === null ? '—' : number_format((int) $demographicRow['reach']) }}</td>
+                                            <td class="numeric">{{ number_format((int) $demographicRow['clicks']) }}</td>
+                                            <td class="numeric">{{ $demographicRow['ctr_percent'] === null ? '—' : number_format($demographicRow['ctr_percent'], 2).'%' }}</td>
+                                            <td class="numeric">{{ number_format((float) $demographicRow['spend_amount'], 2) }} {{ $metaMarketingDemographicReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $demographicRow['cost_per_click'] === null ? '—' : number_format($demographicRow['cost_per_click'], 4).' '.$metaMarketingDemographicReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $demographicRow['cost_per_thousand_impressions'] === null ? '—' : number_format($demographicRow['cost_per_thousand_impressions'], 4).' '.$metaMarketingDemographicReport['currency_code'] }}</td>
+                                            <td class="numeric">{{ $demographicRow['purchases'] === null ? '—' : number_format((float) $demographicRow['purchases'], 2) }}</td>
+                                            <td class="numeric">{{ $demographicRow['purchase_value'] === null ? '—' : number_format((float) $demographicRow['purchase_value'], 2).' '.$metaMarketingDemographicReport['currency_code'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="meta-marketing-trend-title">Meta Ads 歷史讀值</h3>
                     @if ($metaMarketingTrend !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.paid-media.history', [$target, 'meta-marketing']) }}">匯出趨勢 CSV</a>

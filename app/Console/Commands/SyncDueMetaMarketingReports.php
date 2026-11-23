@@ -25,6 +25,7 @@ class SyncDueMetaMarketingReports extends Command
         $asOf = CarbonImmutable::now('Asia/Taipei');
         $this->clearExpiredAdInsights($asOf);
         $this->clearExpiredPlacementInsights($asOf);
+        $this->clearExpiredDemographicInsights($asOf);
 
         if (! $this->dueTargets($asOf)->exists()) {
             $this->info('目前沒有需要更新 Meta Ads 的活動。');
@@ -129,6 +130,17 @@ class SyncDueMetaMarketingReports extends Command
             ->update([
                 'placement_insights' => null,
                 'placement_insights_expires_at' => null,
+            ]);
+    }
+
+    private function clearExpiredDemographicInsights(CarbonImmutable $asOf): void
+    {
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->whereNotNull('demographic_insights_expires_at')
+            ->where('demographic_insights_expires_at', '<=', $asOf)
+            ->update([
+                'demographic_insights' => null,
+                'demographic_insights_expires_at' => null,
             ]);
     }
 }

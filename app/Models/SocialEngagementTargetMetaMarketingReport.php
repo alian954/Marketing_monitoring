@@ -25,10 +25,19 @@ use Illuminate\Database\Eloquent\Model;
     'ad_insights_expires_at',
     'placement_insights',
     'placement_insights_expires_at',
+    'demographic_insights',
+    'demographic_insights_expires_at',
     'currency_code',
     'synced_at',
 ])]
-#[Hidden(['ad_insights', 'ad_insights_expires_at', 'placement_insights', 'placement_insights_expires_at'])]
+#[Hidden([
+    'ad_insights',
+    'ad_insights_expires_at',
+    'placement_insights',
+    'placement_insights_expires_at',
+    'demographic_insights',
+    'demographic_insights_expires_at',
+])]
 class SocialEngagementTargetMetaMarketingReport extends Model
 {
     protected function casts(): array
@@ -47,6 +56,8 @@ class SocialEngagementTargetMetaMarketingReport extends Model
             'ad_insights_expires_at' => 'immutable_datetime',
             'placement_insights' => 'encrypted:array',
             'placement_insights_expires_at' => 'immutable_datetime',
+            'demographic_insights' => 'encrypted:array',
+            'demographic_insights_expires_at' => 'immutable_datetime',
             'synced_at' => 'immutable_datetime',
         ];
     }

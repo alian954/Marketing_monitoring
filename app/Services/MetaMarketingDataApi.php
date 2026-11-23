@@ -23,6 +23,12 @@ class MetaMarketingDataApi
 
     private const PLACEMENT_INSIGHTS_REPORT_LIMIT = 200;
 
+    private const DEMOGRAPHIC_INSIGHTS_PAGE_LIMIT = 100;
+
+    private const MAX_DEMOGRAPHIC_INSIGHTS_PAGES = 100;
+
+    private const DEMOGRAPHIC_INSIGHTS_REPORT_LIMIT = 200;
+
     /** @return array{access_token: string, expires_in: int|null} */
     public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
@@ -653,6 +659,162 @@ class MetaMarketingDataApi
         }
 
         throw new MetaMarketingApiException('Meta Ads Insights API 版位資料超過分頁上限，未回傳不完整結果。');
+    }
+
+    /**
+     * @return array{
+     *     rows: list<array{
+     *         age: string,
+     *         gender: string,
+     *         spend_amount: string,
+     *         impressions: int,
+     *         reach: int|null,
+     *         clicks: int,
+     *         actions: list<array{action_type: string, value: string}>,
+     *         action_values: list<array{action_type: string, value: string}>
+     *     }>,
+     *     truncated: bool
+     * }
+     */
+    public function campaignDemographicInsights(
+        string $accessToken,
+        string $adAccountId,
+        string $campaignId,
+        string $startsOn,
+        string $endsOn,
+        string $accountCurrency,
+    ): array {
+        if (preg_match('/^\d{5,32}$/', $adAccountId) !== 1 || preg_match('/^\d{5,32}$/', $campaignId) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶或活動 ID 格式無效。');
+        }
+
+        if (! $this->isCalendarDate($startsOn)
+            || ! $this->isCalendarDate($endsOn)
+            || $startsOn > $endsOn) {
+            throw new MetaMarketingApiException('Meta 活動日期區間無效，請重新設定開始日與結束日。');
+        }
+
+        if (preg_match('/^[A-Z]{3}$/', $accountCurrency) !== 1) {
+            throw new MetaMarketingApiException('Meta 廣告帳戶幣別格式無效，請重新連結帳戶。');
+        }
+
+        $parameters = [
+            'fields' => 'account_id,campaign_id,age,gender,spend,impressions,reach,clicks,actions,action_values,account_currency',
+            'level' => 'campaign',
+            'breakdowns' => 'age,gender',
+            'filtering' => json_encode([[
+                'field' => 'campaign.id',
+                'operator' => 'EQUAL',
+                'value' => $campaignId,
+            ]], JSON_THROW_ON_ERROR),
+            'time_range' => json_encode([
+                'since' => $startsOn,
+                'until' => $endsOn,
+            ], JSON_THROW_ON_ERROR),
+            'limit' => self::DEMOGRAPHIC_INSIGHTS_PAGE_LIMIT,
+        ];
+        $insightsByDemographic = [];
+        $seenCursors = [];
+        $afterCursor = null;
+
+        for ($pageNumber = 1; $pageNumber <= self::MAX_DEMOGRAPHIC_INSIGHTS_PAGES; $pageNumber++) {
+            $pageParameters = $parameters;
+
+            if ($afterCursor !== null) {
+                $pageParameters['after'] = $afterCursor;
+            }
+
+            $response = Http::withToken($accessToken)
+                ->acceptJson()
+                ->timeout(20)
+                ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
+            $payload = $this->successfulPayload($response, 'Meta Ads Insights API 年齡與性別成效');
+            $rows = $payload['data'] ?? null;
+
+            if (! is_array($rows) || ! array_is_list($rows)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的年齡與性別成效格式無效。');
+            }
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的年齡與性別成效格式無效。');
+                }
+
+                $this->assertDailyInsightIdentity($row, $adAccountId, $campaignId, $accountCurrency);
+                $age = $row['age'] ?? null;
+                $gender = $row['gender'] ?? null;
+
+                if (! is_string($age)
+                    || trim($age) === ''
+                    || mb_strlen($age) > 50
+                    || ! is_string($gender)
+                    || trim($gender) === ''
+                    || mb_strlen($gender) > 50) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳的年齡或性別欄位無效。');
+                }
+
+                $demographicKey = json_encode([
+                    mb_strtolower(trim($age)),
+                    mb_strtolower(trim($gender)),
+                ], JSON_THROW_ON_ERROR);
+
+                if (array_key_exists($demographicKey, $insightsByDemographic)) {
+                    throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的年齡與性別資料。');
+                }
+
+                $insightsByDemographic[$demographicKey] = [
+                    'age' => trim($age),
+                    'gender' => trim($gender),
+                    'spend_amount' => $this->decimalString($row['spend'] ?? null),
+                    'impressions' => $this->nonNegativeInteger($row['impressions'] ?? null),
+                    'reach' => ($row['reach'] ?? null) === null ? null : $this->nonNegativeInteger($row['reach']),
+                    'clicks' => $this->nonNegativeInteger($row['clicks'] ?? null),
+                    'actions' => $this->actionMetrics($row['actions'] ?? null, 'actions'),
+                    'action_values' => $this->actionMetrics($row['action_values'] ?? null, 'action_values'),
+                ];
+            }
+
+            $nextPage = $payload['paging']['next'] ?? null;
+
+            if ($nextPage === null || $nextPage === '') {
+                $allInsights = array_values($insightsByDemographic);
+                usort($allInsights, static function (array $first, array $second): int {
+                    $spendOrder = (float) $second['spend_amount'] <=> (float) $first['spend_amount'];
+
+                    if ($spendOrder !== 0) {
+                        return $spendOrder;
+                    }
+
+                    $ageOrder = strcmp($first['age'], $second['age']);
+
+                    return $ageOrder !== 0 ? $ageOrder : strcmp($first['gender'], $second['gender']);
+                });
+
+                return [
+                    'rows' => array_slice($allInsights, 0, self::DEMOGRAPHIC_INSIGHTS_REPORT_LIMIT),
+                    'truncated' => count($allInsights) > self::DEMOGRAPHIC_INSIGHTS_REPORT_LIMIT,
+                ];
+            }
+
+            $nextCursor = $payload['paging']['cursors']['after'] ?? null;
+
+            if (! is_string($nextPage) || ! is_string($nextCursor) || trim($nextCursor) === '') {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳的年齡與性別分頁資訊無效。');
+            }
+
+            if (array_key_exists($nextCursor, $seenCursors)) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 回傳重複的年齡與性別分頁游標。');
+            }
+
+            if ($pageNumber === self::MAX_DEMOGRAPHIC_INSIGHTS_PAGES) {
+                throw new MetaMarketingApiException('Meta Ads Insights API 年齡與性別資料超過分頁上限，未回傳不完整結果。');
+            }
+
+            $seenCursors[$nextCursor] = true;
+            $afterCursor = $nextCursor;
+        }
+
+        throw new MetaMarketingApiException('Meta Ads Insights API 年齡與性別資料超過分頁上限，未回傳不完整結果。');
     }
 
     /** @param array<string, mixed> $row */

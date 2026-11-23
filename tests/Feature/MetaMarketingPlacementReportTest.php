@@ -151,7 +151,8 @@ class MetaMarketingPlacementReportTest extends TestCase
                 ]]])
                 ->push(['data' => []])
                 ->push(['data' => []])
-                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400),
+                ->push(['error' => ['code' => 200, 'message' => 'Permission denied']], 400)
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -163,7 +164,7 @@ class MetaMarketingPlacementReportTest extends TestCase
         $this->assertSame('complete', $report->ad_insights['status']);
         $this->assertSame('unavailable', $report->placement_insights['status']);
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 1);
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
     }
 
     public function test_successful_placement_insights_are_encrypted_and_expire_after_thirty_days(): void
@@ -183,7 +184,8 @@ class MetaMarketingPlacementReportTest extends TestCase
                 ]]])
                 ->push(['data' => []])
                 ->push(['data' => []])
-                ->push(['data' => [$this->placementInsightRow(['spend' => '42.50'])]]),
+                ->push(['data' => [$this->placementInsightRow(['spend' => '42.50'])]])
+                ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
@@ -196,7 +198,7 @@ class MetaMarketingPlacementReportTest extends TestCase
         $this->assertTrue($report->placement_insights_expires_at->isFuture());
         $this->assertStringNotContainsString('facebook', $report->getRawOriginal('placement_insights'));
         $this->assertArrayNotHasKey('placement_insights', $report->toArray());
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
     }
 
     public function test_placement_report_view_and_csv_are_scoped_to_the_current_users_encrypted_snapshot(): void
