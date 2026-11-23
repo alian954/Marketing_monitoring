@@ -34,7 +34,7 @@
             </div>
             <div class="campaign-report-actions">
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report', $target) }}">返回活動報告</a>
-                <a class="button button-secondary" href="{{ route('social-engagement-targets.creative-performance.export', $target) }}">匯出素材 CSV</a>
+                <a class="button button-secondary" href="{{ route('social-engagement-targets.creative-performance.export', $target) }}?creative_sort={{ urlencode($creativeSort) }}">匯出素材 CSV</a>
                 <a class="button button-secondary" href="{{ route('social-engagement-targets.report.posts.export', $target) }}">匯出全部 CSV</a>
             </div>
         </header>
@@ -50,6 +50,21 @@
             <section aria-labelledby="campaign-creative-summary-title">
                 <h3 id="campaign-creative-summary-title">素材成效彙總</h3>
                 <p class="campaign-report-secondary">共 {{ number_format($paginator->total()) }} 篇貼文。共用相同素材值的貼文會合併互動，GA4 數據只計入該素材群一次。</p>
+                <p class="campaign-report-secondary">收益／互動為 GA4 活動期收益除以目前公開互動總數，僅供素材參考，不代表 ROI 或因果歸因。</p>
+
+                <form method="GET" action="{{ route('social-engagement-targets.posts', $target) }}" class="check-history-filter" aria-labelledby="campaign-creative-sort-title">
+                    <input type="hidden" name="sort" value="{{ $sort }}">
+                    <div class="field-group">
+                        <label class="field-label" id="campaign-creative-sort-title" for="campaign-creative-sort">素材排序</label>
+                        <select class="field-select" id="campaign-creative-sort" name="creative_sort">
+                            <option value="interactions" @selected($creativeSort === 'interactions')>公開互動：高到低</option>
+                            <option value="revenue_per_interaction" @selected($creativeSort === 'revenue_per_interaction')>收益／互動：高到低</option>
+                        </select>
+                    </div>
+                    <div class="check-history-filter-actions">
+                        <button class="button button-primary" type="submit">套用排序</button>
+                    </div>
+                </form>
 
                 @if ($creativeGroups->isEmpty())
                     <p class="campaign-report-empty">目前沒有可彙總的貼文。</p>
@@ -69,6 +84,7 @@
                                     <th scope="col">GA4 參與率</th>
                                     <th scope="col">GA4 重要事件</th>
                                     <th scope="col">GA4 收益</th>
+                                    <th scope="col">GA4 收益／公開互動</th>
                                     <th scope="col">GA4 對應</th>
                                     <th scope="col">最近讀取</th>
                                 </tr>
@@ -91,6 +107,13 @@
                                                 {{ $attribution['currency_code'] ?? '' }} {{ number_format((float) $attribution['total_revenue'], 2) }}
                                             @else
                                                 —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($creativeGroup['revenue_per_public_interaction'] !== null)
+                                                {{ $creativeGroup['revenue_per_public_interaction_currency'] }} {{ number_format($creativeGroup['revenue_per_public_interaction'], 4) }}
+                                            @else
+                                                {{ $creativeGroup['revenue_per_public_interaction_status_label'] }}
                                             @endif
                                         </td>
                                         <td>{{ $attribution['status_label'] }}</td>

@@ -16,7 +16,8 @@ class SocialEngagementCampaignCreativePerformanceReport
      * @param  array<string, mixed>|null  $adContentReport
      * @return array{
      *     groups: list<array<string, mixed>>,
-     *     utm_content_counts: array<string, int>
+     *     utm_content_counts: array<string, int>,
+     *     sort: 'interactions'|'revenue_per_interaction'
      * }
      */
     public function build(
@@ -24,7 +25,11 @@ class SocialEngagementCampaignCreativePerformanceReport
         ?array $adContentReport,
         ?CarbonImmutable $adContentExpiresAt,
         SocialPostGoogleAnalyticsAttributionReport $attributionReport,
+        string $sort = 'interactions',
     ): array {
+        $sort = in_array($sort, ['interactions', 'revenue_per_interaction'], true)
+            ? $sort
+            : 'interactions';
         $campaignStart = $target->starts_on?->toDateString();
         $campaignEnd = $target->ends_on?->toDateString();
         $hasCampaignPeriod = $campaignStart !== null && $campaignEnd !== null;
@@ -135,28 +140,102 @@ class SocialEngagementCampaignCreativePerformanceReport
                 ? round($group['public_interaction_total'] / $completeReadCount, 2)
                 : null;
             $group['google_analytics_attribution'] = $groupsWithAttribution[$index]['google_analytics_attribution'];
+            $group = $this->addRevenuePerPublicInteraction($group);
             $groups[$index] = $group;
         }
 
-        usort($groups, static function (array $first, array $second): int {
-            if ($first['public_interaction_total'] === null && $second['public_interaction_total'] !== null) {
-                return 1;
-            }
-
-            if ($first['public_interaction_total'] !== null && $second['public_interaction_total'] === null) {
-                return -1;
-            }
-
-            $interactionComparison = ($second['public_interaction_total'] ?? 0) <=> ($first['public_interaction_total'] ?? 0);
-
-            return $interactionComparison !== 0
-                ? $interactionComparison
-                : strnatcasecmp((string) $first['utm_content'], (string) $second['utm_content']);
-        });
+        usort($groups, fn (array $first, array $second): int => $this->compareGroups($first, $second, $sort));
 
         return [
             'groups' => $groups,
             'utm_content_counts' => $utmContentCounts,
+            'sort' => $sort,
         ];
+    }
+
+    /** @param array<string, mixed> $group
+     * @return array<string, mixed>
+     */
+    private function addRevenuePerPublicInteraction(array $group): array
+    {
+        $attribution = $group['google_analytics_attribution'];
+        $currencyCode = is_string($attribution['currency_code'] ?? null)
+            ? strtoupper(trim($attribution['currency_code']))
+            : '';
+        $revenue = $attribution['total_revenue'] ?? null;
+        $status = 'available';
+        $statusLabel = '參考值';
+        $value = null;
+
+        if (($attribution['status'] ?? null) !== 'matched') {
+            $status = 'ga4_unavailable';
+            $statusLabel = 'GA4 對應不足';
+        } elseif (preg_match('/^[A-Z]{3}$/D', $currencyCode) !== 1) {
+            $status = 'currency_unknown';
+            $statusLabel = 'GA4 貨幣未知';
+        } elseif (! is_numeric($revenue) || ! is_finite((float) $revenue)) {
+            $status = 'revenue_unavailable';
+            $statusLabel = 'GA4 收益不可用';
+        } elseif ($group['complete_read_count'] !== $group['post_count']) {
+            $status = 'incomplete_public_reads';
+            $statusLabel = '公開互動讀值未完整';
+        } elseif (! is_numeric($group['public_interaction_total']) || (int) $group['public_interaction_total'] < 1) {
+            $status = 'no_public_interactions';
+            $statusLabel = '沒有公開互動';
+        } else {
+            $value = (float) $revenue / (int) $group['public_interaction_total'];
+
+            if (! is_finite($value)) {
+                $status = 'revenue_unavailable';
+                $statusLabel = 'GA4 收益不可用';
+                $value = null;
+            }
+        }
+
+        $group['revenue_per_public_interaction'] = $value;
+        $group['revenue_per_public_interaction_currency'] = $status === 'available' ? $currencyCode : null;
+        $group['revenue_per_public_interaction_status'] = $status;
+        $group['revenue_per_public_interaction_status_label'] = $statusLabel;
+
+        return $group;
+    }
+
+    /** @param array<string, mixed> $first
+     * @param  array<string, mixed>  $second
+     */
+    private function compareGroups(array $first, array $second, string $sort): int
+    {
+        if ($sort === 'revenue_per_interaction') {
+            $firstValue = $first['revenue_per_public_interaction'];
+            $secondValue = $second['revenue_per_public_interaction'];
+
+            if ($firstValue === null && $secondValue !== null) {
+                return 1;
+            }
+
+            if ($firstValue !== null && $secondValue === null) {
+                return -1;
+            }
+
+            $valueComparison = ($secondValue ?? 0) <=> ($firstValue ?? 0);
+
+            if ($valueComparison !== 0) {
+                return $valueComparison;
+            }
+        }
+
+        if ($first['public_interaction_total'] === null && $second['public_interaction_total'] !== null) {
+            return 1;
+        }
+
+        if ($first['public_interaction_total'] !== null && $second['public_interaction_total'] === null) {
+            return -1;
+        }
+
+        $interactionComparison = ($second['public_interaction_total'] ?? 0) <=> ($first['public_interaction_total'] ?? 0);
+
+        return $interactionComparison !== 0
+            ? $interactionComparison
+            : strnatcasecmp((string) $first['utm_content'], (string) $second['utm_content']);
     }
 }

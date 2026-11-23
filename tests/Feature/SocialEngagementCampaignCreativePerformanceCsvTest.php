@@ -87,6 +87,9 @@ class SocialEngagementCampaignCreativePerformanceCsvTest extends TestCase
         $this->assertSame('41', $byContent['shared-creative']['ga4_sessions']);
         $this->assertSame('3.0000', $byContent['shared-creative']['ga4_key_events']);
         $this->assertSame('125.5000', $byContent['shared-creative']['ga4_total_revenue']);
+        $this->assertSame('7.8438', $byContent['shared-creative']['ga4_revenue_per_public_interaction_reference']);
+        $this->assertSame('TWD', $byContent['shared-creative']['revenue_per_public_interaction_currency']);
+        $this->assertSame('available', $byContent['shared-creative']['revenue_per_public_interaction_status']);
         $this->assertSame('\'=HYPERLINK("https://example.com")', $byContent['\'=HYPERLINK("https://example.com")']['utm_content']);
         $this->assertSame('not_configured', $byContent['']['ga4_attribution_status']);
     }

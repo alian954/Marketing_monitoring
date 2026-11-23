@@ -27,6 +27,10 @@ class SocialEngagementCampaignCreativePerformanceCsv
             'ga4_key_events',
             'ga4_total_revenue',
             'ga4_currency_code',
+            'ga4_revenue_per_public_interaction_reference',
+            'revenue_per_public_interaction_currency',
+            'revenue_per_public_interaction_status',
+            'revenue_per_public_interaction_status_label',
         ], ',', '"', '');
 
         foreach ($groups as $group) {
@@ -53,6 +57,12 @@ class SocialEngagementCampaignCreativePerformanceCsv
                 $this->value($attribution['key_events'] ?? null),
                 $this->value($attribution['total_revenue'] ?? null),
                 $this->value($attribution['currency_code'] ?? null),
+                is_numeric($group['revenue_per_public_interaction'] ?? null)
+                    ? number_format((float) $group['revenue_per_public_interaction'], 4, '.', '')
+                    : '',
+                $this->value($group['revenue_per_public_interaction_currency'] ?? null),
+                $this->value($group['revenue_per_public_interaction_status'] ?? null),
+                $this->value($group['revenue_per_public_interaction_status_label'] ?? null),
             ];
 
             fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');

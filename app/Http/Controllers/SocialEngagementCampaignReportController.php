@@ -254,6 +254,7 @@ class SocialEngagementCampaignReportController extends Controller
             $analyticsReport?->ad_content_report,
             $analyticsReport?->ad_content_report_expires_at,
             $socialPostGoogleAnalyticsAttributionReport,
+            is_string($request->query('creative_sort')) ? $request->query('creative_sort') : 'interactions',
         );
         $creativePageSize = 25;
         $creativeTotal = count($creativePerformance['groups']);
@@ -285,6 +286,7 @@ class SocialEngagementCampaignReportController extends Controller
             'creativeGroups' => $creativeGroups,
             'paginator' => $postDetails['paginator'],
             'sort' => $postDetails['sort'],
+            'creativeSort' => $creativePerformance['sort'],
         ]);
     }
 
@@ -1053,6 +1055,7 @@ class SocialEngagementCampaignReportController extends Controller
             $analyticsReport?->ad_content_report,
             $analyticsReport?->ad_content_report_expires_at,
             $socialPostGoogleAnalyticsAttributionReport,
+            is_string($request->query('creative_sort')) ? $request->query('creative_sort') : 'interactions',
         );
 
         return response()->streamDownload(function () use ($creativePerformanceCsv, $creativePerformance): void {

@@ -49,6 +49,8 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             ->assertOk()
             ->assertSee('素材成效彙總')
             ->assertSee('匯出素材 CSV')
+            ->assertSee('GA4 收益／公開互動')
+            ->assertSee('素材排序')
             ->assertSee(route('social-engagement-targets.creative-performance.export', $target))
             ->assertSee('完整互動合計')
             ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
@@ -64,6 +66,9 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
                 $this->assertSame('matched', $sharedCreative['google_analytics_attribution']['status']);
                 $this->assertSame(99, $sharedCreative['google_analytics_attribution']['sessions']);
                 $this->assertSame('7.0000', $sharedCreative['google_analytics_attribution']['key_events']);
+                $this->assertSame(2.8125, $sharedCreative['revenue_per_public_interaction']);
+                $this->assertSame('TWD', $sharedCreative['revenue_per_public_interaction_currency']);
+                $this->assertSame('available', $sharedCreative['revenue_per_public_interaction_status']);
                 $this->assertSame(26, $creativeGroups->total());
 
                 $this->assertNotNull($unconfiguredCreative);
@@ -147,8 +152,9 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
         }
 
         $this->actingAs($user)
-            ->get(route('social-engagement-targets.posts', $target).'?page=2&creative_page=2&sort=name')
+            ->get(route('social-engagement-targets.posts', $target).'?page=2&creative_page=2&sort=name&creative_sort=revenue_per_interaction')
             ->assertOk()
+            ->assertViewHas('creativeSort', 'revenue_per_interaction')
             ->assertViewHas('creativeGroups', function (LengthAwarePaginator $creativeGroups): bool {
                 $this->assertSame(2, $creativeGroups->currentPage());
                 $this->assertSame(26, $creativeGroups->total());
@@ -165,6 +171,67 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             })
             ->assertSee('creative_page=1')
             ->assertSee('sort=name', false);
+    }
+
+    public function test_revenue_per_interaction_requires_complete_reads_matching_ga4_revenue_and_currency(): void
+    {
+        $target = SocialEngagementTarget::factory()->create([
+            'tag' => 'Revenue reference',
+            'social_platform' => 'instagram',
+        ]);
+        $this->createPost($target, 1, 'high', now());
+        $this->createPost($target, 2, 'high', now());
+        $this->createPost($target, 3, 'low', now());
+        $this->createPost($target, 4, 'incomplete', now());
+        $this->createPost($target, 5, 'incomplete', now(), metrics: []);
+        $this->createPost($target, 6, 'zero', now(), metrics: ['likes' => 0, 'comments' => 0]);
+        $this->createPost($target, 7, 'missing-revenue', now());
+        $this->createPost($target, 8, 'unmatched', now());
+
+        $report = [
+            'status' => 'complete',
+            'currency_code' => 'TWD',
+            'truncated' => false,
+            'rows' => [
+                ['ad_content' => 'high', 'total_revenue' => '80.0000'],
+                ['ad_content' => 'low', 'total_revenue' => '20.0000'],
+                ['ad_content' => 'incomplete', 'total_revenue' => '40.0000'],
+                ['ad_content' => 'zero', 'total_revenue' => '10.0000'],
+                ['ad_content' => 'missing-revenue'],
+            ],
+        ];
+        $service = app(SocialEngagementCampaignCreativePerformanceReport::class);
+        $attributionReport = app(SocialPostGoogleAnalyticsAttributionReport::class);
+        $result = $service->build(
+            $target,
+            $report,
+            CarbonImmutable::now()->addDay(),
+            $attributionReport,
+            'revenue_per_interaction',
+        );
+
+        $groupsByUtm = collect($result['groups'])->keyBy('utm_content');
+        $this->assertSame('revenue_per_interaction', $result['sort']);
+        $this->assertSame(['high', 'low'], array_slice(collect($result['groups'])->pluck('utm_content')->all(), 0, 2));
+        $this->assertSame(5.0, $groupsByUtm['high']['revenue_per_public_interaction']);
+        $this->assertSame(2.5, $groupsByUtm['low']['revenue_per_public_interaction']);
+        $this->assertSame('incomplete_public_reads', $groupsByUtm['incomplete']['revenue_per_public_interaction_status']);
+        $this->assertSame('no_public_interactions', $groupsByUtm['zero']['revenue_per_public_interaction_status']);
+        $this->assertSame('revenue_unavailable', $groupsByUtm['missing-revenue']['revenue_per_public_interaction_status']);
+        $this->assertSame('ga4_unavailable', $groupsByUtm['unmatched']['revenue_per_public_interaction_status']);
+        $this->assertNull($groupsByUtm['incomplete']['revenue_per_public_interaction']);
+
+        $unknownCurrency = $service->build(
+            $target,
+            [...$report, 'currency_code' => ''],
+            CarbonImmutable::now()->addDay(),
+            $attributionReport,
+        );
+
+        $this->assertSame(
+            'currency_unknown',
+            $this->creativeByUtm($unknownCurrency['groups'], 'high')['revenue_per_public_interaction_status'],
+        );
     }
 
     public function test_creative_ga4_status_distinguishes_expired_truncated_and_ambiguous_reports(): void
@@ -267,6 +334,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
         ?string $platform = null,
         int $configVersion = 1,
         ?int $runConfigVersion = null,
+        ?array $metrics = null,
     ): Monitor {
         $url = ($platform ?? $target->social_platform) === 'facebook'
             ? 'https://www.facebook.com/posts/creative-'.$index
@@ -284,7 +352,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             'config_version' => $runConfigVersion ?? $monitor->config_version,
             'status' => 'completed',
             'response_published_at' => $publishedAt,
-            'response_public_engagement_metrics' => [
+            'response_public_engagement_metrics' => $metrics ?? [
                 'views' => 1000,
                 'likes' => 5,
                 'comments' => 3,
