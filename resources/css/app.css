@@ -2353,6 +2353,10 @@ a.platform-chip:hover {
     min-width: 1440px;
 }
 
+.campaign-report .campaign-post-creative-table {
+    min-width: 1320px;
+}
+
 .campaign-report-pmax-table {
     min-width: 1240px;
 }
@@ -2523,6 +2527,10 @@ a.platform-chip:hover {
 
     .campaign-report .campaign-post-details-table {
         min-width: 1440px;
+    }
+
+    .campaign-report .campaign-post-creative-table {
+        min-width: 1320px;
     }
 
     .campaign-report-table th,

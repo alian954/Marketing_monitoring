@@ -17,6 +17,7 @@ class SocialEngagementCampaignPostDetailReport
 
     /**
      * @param  array<string, mixed>|null  $adContentReport
+     * @param  array<string, int>|null  $utmContentCounts
      * @return array{
      *     posts: list<array<string, mixed>>,
      *     paginator: LengthAwarePaginator,
@@ -29,6 +30,7 @@ class SocialEngagementCampaignPostDetailReport
         ?CarbonImmutable $adContentExpiresAt,
         SocialPostGoogleAnalyticsAttributionReport $attributionReport,
         ?string $sort = null,
+        ?array $utmContentCounts = null,
     ): array {
         $sort = in_array($sort, ['published_at', 'name'], true) ? $sort : 'published_at';
         $query = Monitor::query()
@@ -81,7 +83,7 @@ class SocialEngagementCampaignPostDetailReport
             ->orderBy('monitors.id')
             ->paginate(self::PAGE_SIZE)
             ->withQueryString();
-        $utmContentCounts = $attributionReport->utmContentCountsForTarget($target);
+        $utmContentCounts ??= $attributionReport->utmContentCountsForTarget($target);
         $posts = [];
 
         foreach ($paginator->items() as $monitor) {

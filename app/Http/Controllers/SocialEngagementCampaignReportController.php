@@ -52,6 +52,7 @@ use App\Services\MetaMarketingPlacementReportCsv;
 use App\Services\PaidMediaCampaignTrendReport;
 use App\Services\SocialEngagementCampaignAttributionCoverageReport;
 use App\Services\SocialEngagementCampaignBusinessGoalReport;
+use App\Services\SocialEngagementCampaignCreativePerformanceReport;
 use App\Services\SocialEngagementCampaignPostCsv;
 use App\Services\SocialEngagementCampaignPostDetailReport;
 use App\Services\SocialEngagementCampaignReport;
@@ -222,6 +223,7 @@ class SocialEngagementCampaignReportController extends Controller
     public function postDetails(
         Request $request,
         SocialEngagementTarget $socialEngagementTarget,
+        SocialEngagementCampaignCreativePerformanceReport $creativePerformanceReport,
         SocialEngagementCampaignPostDetailReport $postDetailReport,
         SocialPostGoogleAnalyticsAttributionReport $socialPostGoogleAnalyticsAttributionReport,
     ): View {
@@ -229,17 +231,25 @@ class SocialEngagementCampaignReportController extends Controller
             $socialEngagementTarget,
             $request->user()->googleAnalyticsConnection,
         );
+        $creativePerformance = $creativePerformanceReport->build(
+            $socialEngagementTarget,
+            $analyticsReport?->ad_content_report,
+            $analyticsReport?->ad_content_report_expires_at,
+            $socialPostGoogleAnalyticsAttributionReport,
+        );
         $postDetails = $postDetailReport->build(
             $socialEngagementTarget,
             $analyticsReport?->ad_content_report,
             $analyticsReport?->ad_content_report_expires_at,
             $socialPostGoogleAnalyticsAttributionReport,
             is_string($request->query('sort')) ? $request->query('sort') : null,
+            $creativePerformance['utm_content_counts'],
         );
 
         return view('social-engagement-reports.posts', [
             'target' => $socialEngagementTarget,
             'posts' => $postDetails['posts'],
+            'creativeGroups' => $creativePerformance['groups'],
             'paginator' => $postDetails['paginator'],
             'sort' => $postDetails['sort'],
         ]);

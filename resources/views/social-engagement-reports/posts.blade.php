@@ -43,10 +43,72 @@
                 <div>
                     <h2 id="campaign-post-details-title">貼文成效</h2>
                     <p class="campaign-report-secondary">公開互動數依平台可取得的讀值呈現；GA4 依 utm_content 完全相同值配對。</p>
-                    <p class="campaign-report-secondary">共 {{ number_format($paginator->total()) }} 篇貼文</p>
                 </div>
             </div>
 
+            <section aria-labelledby="campaign-creative-summary-title">
+                <h3 id="campaign-creative-summary-title">素材成效彙總</h3>
+                <p class="campaign-report-secondary">共 {{ number_format($paginator->total()) }} 篇貼文。共用相同素材值的貼文會合併互動，GA4 數據只計入該素材群一次。</p>
+
+                @if ($creativeGroups === [])
+                    <p class="campaign-report-empty">目前沒有可彙總的貼文。</p>
+                @else
+                    <div class="data-table-wrap campaign-post-details-table-wrap" role="region" aria-labelledby="campaign-creative-table-caption" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-post-creative-table">
+                            <caption id="campaign-creative-table-caption">{{ $target->tag }} 活動素材群的貼文數、公開互動與 GA4 成效</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">素材 utm_content</th>
+                                    <th scope="col">貼文數</th>
+                                    <th scope="col">完整互動讀值</th>
+                                    <th scope="col">完整互動合計</th>
+                                    <th scope="col">平均互動／篇</th>
+                                    <th scope="col">GA4 工作階段</th>
+                                    <th scope="col">GA4 參與工作階段</th>
+                                    <th scope="col">GA4 參與率</th>
+                                    <th scope="col">GA4 重要事件</th>
+                                    <th scope="col">GA4 收益</th>
+                                    <th scope="col">GA4 對應</th>
+                                    <th scope="col">最近讀取</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($creativeGroups as $creativeGroup)
+                                    @php($attribution = $creativeGroup['google_analytics_attribution'])
+                                    <tr>
+                                        <th scope="row">{{ $creativeGroup['utm_content'] ?? '未設定素材值' }}</th>
+                                        <td class="numeric">{{ number_format($creativeGroup['post_count']) }}</td>
+                                        <td class="numeric">{{ number_format($creativeGroup['complete_read_count']) }}／{{ number_format($creativeGroup['post_count']) }}</td>
+                                        <td class="numeric">{{ $creativeGroup['public_interaction_total'] === null ? '—' : number_format($creativeGroup['public_interaction_total']) }}</td>
+                                        <td class="numeric">{{ $creativeGroup['average_public_interactions'] === null ? '—' : number_format($creativeGroup['average_public_interactions'], 2) }}</td>
+                                        <td class="numeric">{{ $attribution['sessions'] === null ? '—' : number_format($attribution['sessions']) }}</td>
+                                        <td class="numeric">{{ $attribution['engaged_sessions'] === null ? '—' : number_format($attribution['engaged_sessions']) }}</td>
+                                        <td class="numeric">{{ $attribution['engagement_rate'] === null ? '—' : number_format((float) $attribution['engagement_rate'] * 100, 2).'%' }}</td>
+                                        <td class="numeric">{{ $attribution['key_events'] === null ? '—' : number_format((float) $attribution['key_events'], 2) }}</td>
+                                        <td class="numeric">
+                                            @if ($attribution['total_revenue'] !== null)
+                                                {{ $attribution['currency_code'] ?? '' }} {{ number_format((float) $attribution['total_revenue'], 2) }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td>{{ $attribution['status_label'] }}</td>
+                                        <td>
+                                            @if ($creativeGroup['latest_capture_at'])
+                                                <time datetime="{{ $creativeGroup['latest_capture_at']->toIso8601String() }}">{{ $creativeGroup['latest_capture_at']->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
+
+            <h3 id="campaign-post-list-title">逐篇貼文歸因</h3>
             <form method="GET" action="{{ route('social-engagement-targets.posts', $target) }}" class="check-history-filter" aria-labelledby="campaign-post-sort-title">
                 <div class="field-group">
                     <label class="field-label" id="campaign-post-sort-title" for="campaign-post-sort">排序方式</label>
