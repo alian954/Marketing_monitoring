@@ -13,7 +13,7 @@
     <a class="skip-link" href="#main-content">跳至主要內容</a>
     <main id="main-content" class="public-status-shell">
         @yield('content')
-        <footer class="public-status-footer">狀態資料由網站監測服務提供</footer>
+        <footer class="public-status-footer">@yield('footer', '狀態資料由網站監測服務提供')</footer>
     </main>
 </body>
 </html>

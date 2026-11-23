@@ -13,6 +13,7 @@ class AccountScopeContext
 
         if ($userId === null || request()->routeIs(
             'status-pages.public',
+            'client-report-shares.public',
             'status-page-subscriptions.*',
             'status-subscriptions.*',
         )) {

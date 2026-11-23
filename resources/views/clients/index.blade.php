@@ -88,6 +88,7 @@
                             <td class="numeric">{{ number_format($client->monitors_count) }}</td>
                             <td class="numeric">{{ number_format($client->social_engagement_targets_count) }}</td>
                             <td>
+                                <a class="button button-secondary button-small" href="{{ route('clients.report-shares.index', $client) }}">報表分享</a>
                                 @unless ($client->isDefault() || $hasAssignments)
                                     <form action="{{ route('clients.destroy', $client) }}" method="POST" class="inline-form">
                                         @csrf

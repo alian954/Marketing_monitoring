@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RobotsReviewController;
+use App\Http\Controllers\SharedClientReportController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
 use App\Http\Controllers\SocialEngagementTargetController;
 use App\Http\Controllers\SocialEngagementTargetGoogleAdsController;
@@ -35,6 +37,10 @@ Route::middleware('guest')->group(function (): void {
 Route::get('/status/{token}', [StatusPageController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{64}')
     ->name('status-pages.public');
+Route::get('/shared/client-reports/{token}', SharedClientReportController::class)
+    ->where('token', '[a-f0-9]{64}')
+    ->middleware('throttle:60,1')
+    ->name('client-report-shares.public');
 Route::post('/status/{token}/subscriptions', [StatusPageSubscriptionController::class, 'subscribe'])
     ->where('token', '[A-Za-z0-9]{64}')
     ->middleware('throttle:status-page-subscription')
@@ -60,6 +66,12 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
     Route::put('/clients/{client}', [ClientController::class, 'update'])->whereNumber('client')->name('clients.update');
     Route::delete('/clients/{client}', [ClientController::class, 'destroy'])->whereNumber('client')->name('clients.destroy');
+    Route::get('/clients/{client}/report-shares', [ClientReportShareController::class, 'index'])->whereNumber('client')->name('clients.report-shares.index');
+    Route::post('/clients/{client}/report-shares', [ClientReportShareController::class, 'store'])->whereNumber('client')->name('clients.report-shares.store');
+    Route::delete('/clients/{client}/report-shares/{reportShare}', [ClientReportShareController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('reportShare')
+        ->name('clients.report-shares.destroy');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');

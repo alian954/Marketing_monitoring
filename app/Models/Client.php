@@ -46,6 +46,11 @@ class Client extends Model
         return $this->hasMany(SocialEngagementTarget::class);
     }
 
+    public function reportShares(): HasMany
+    {
+        return $this->hasMany(ClientReportShare::class);
+    }
+
     public function isDefault(): bool
     {
         return $this->name === self::DEFAULT_NAME;
