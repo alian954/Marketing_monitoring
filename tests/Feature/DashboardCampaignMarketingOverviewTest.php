@@ -41,6 +41,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertSee('活動行銷成效')
             ->assertSee('跨活動行銷數據總覽')
             ->assertSee('同幣別 ROAS 排名')
+            ->assertSee('跨活動預算節奏')
             ->assertSee('120 工作階段')
             ->assertSee('900.00')
             ->assertSee('300.00 TWD')
@@ -64,6 +65,11 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(900.0, $portfolio['currency_groups'][0]['ga4_revenue']);
         $this->assertSame(4.5, $portfolio['currency_groups'][0]['roas']);
         $this->assertSame(1, $portfolio['currency_groups'][0]['roas_campaign_count']);
+        $this->assertSame(1000.0, $portfolio['budget_currency_groups'][0]['budget_amount']);
+        $this->assertSame(300.0, $portfolio['budget_currency_groups'][0]['current_spend_amount']);
+        $this->assertSame(1, $portfolio['budget_currency_groups'][0]['projected_campaign_count']);
+        $this->assertSame(1, $portfolio['budget_coverage']['projected_campaigns']);
+        $this->assertSame(1, $response->viewData('campaignPortfolioMarketingSummary')['budget_coverage']['configured_campaigns']);
         $this->assertSame(1, $marketing['efficiency']['portfolio_roas_rank']['rank']);
         $this->assertSame('TWD', $marketing['efficiency']['portfolio_roas_rank']['currency_code']);
     }
@@ -184,6 +190,81 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame(1, $portfolio['coverage']['google_analytics']['duplicate_mappings_excluded']);
         $this->assertSame(1, $portfolio['campaign_ranks'][$freshTarget->id]['rank']);
         $this->assertArrayNotHasKey($staleTarget->id, $portfolio['campaign_ranks']);
+    }
+
+    public function test_campaign_portfolio_aggregates_budget_pacing_without_double_counting_shared_ad_campaigns(): void
+    {
+        $firstTarget = $this->createTarget([
+            'tag' => 'Budget primary mapping',
+            'google_ads_campaign_id' => 'shared-budget-campaign',
+            'meta_campaign_id' => 'meta-budget-first',
+            'campaign_budget_amount' => '1000.0000',
+        ]);
+        $duplicateTarget = $this->createTarget([
+            'tag' => 'Budget duplicate mapping',
+            'google_ads_campaign_id' => 'shared-budget-campaign',
+            'meta_campaign_id' => 'meta-budget-second',
+            'campaign_budget_amount' => '1000.0000',
+        ]);
+        $secondTarget = $this->createTarget([
+            'tag' => 'Budget separate mapping',
+            'google_ads_campaign_id' => 'separate-budget-campaign',
+            'meta_campaign_id' => null,
+            'campaign_budget_amount' => '500.0000',
+        ]);
+
+        $marketingSummaries = [
+            $firstTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh'],
+                efficiency: [
+                    'ad_spend_amount' => '900.0000',
+                    'ad_spend_currency' => 'TWD',
+                    'ad_spend_source' => 'google_ads',
+                    'budget_pacing_difference_amount' => 100.0,
+                    'budget_projected_spend_amount' => 1300.0,
+                    'budget_projected_overrun_amount' => 300.0,
+                ],
+            ),
+            $duplicateTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'stale'],
+                efficiency: [
+                    'ad_spend_amount' => '700.0000',
+                    'ad_spend_currency' => 'TWD',
+                    'ad_spend_source' => 'google_ads',
+                    'budget_pacing_difference_amount' => 50.0,
+                    'budget_projected_spend_amount' => 1200.0,
+                    'budget_projected_overrun_amount' => 200.0,
+                ],
+            ),
+            $secondTarget->id => $this->portfolioMarketingSummary(
+                googleAds: ['status' => 'fresh'],
+                efficiency: [
+                    'ad_spend_amount' => '400.0000',
+                    'ad_spend_currency' => 'TWD',
+                    'ad_spend_source' => 'google_ads',
+                    'budget_pacing_difference_amount' => -50.0,
+                    'budget_projected_spend_amount' => 450.0,
+                    'budget_projected_overrun_amount' => -50.0,
+                ],
+            ),
+        ];
+
+        $portfolio = app(CampaignPortfolioMarketingSummary::class)->build(
+            new EloquentCollection([$firstTarget, $duplicateTarget, $secondTarget]),
+            $marketingSummaries,
+        );
+        $twd = $portfolio['budget_currency_groups'][0];
+
+        $this->assertSame(2, $portfolio['budget_coverage']['configured_campaigns']);
+        $this->assertSame(1, $portfolio['budget_coverage']['duplicate_mappings_excluded']);
+        $this->assertSame(2, $portfolio['budget_coverage']['spend_campaigns']);
+        $this->assertSame(2, $portfolio['budget_coverage']['fresh_spend_campaigns']);
+        $this->assertSame(1500.0, $twd['budget_amount']);
+        $this->assertSame(1300.0, $twd['current_spend_amount']);
+        $this->assertSame(50.0, $twd['pacing_difference_amount']);
+        $this->assertSame(1750.0, $twd['projected_spend_amount']);
+        $this->assertSame(300.0, $twd['projected_over_budget_amount']);
+        $this->assertSame(50.0, $twd['projected_under_budget_amount']);
     }
 
     public function test_dashboard_portfolio_follows_the_selected_social_platform_filter(): void

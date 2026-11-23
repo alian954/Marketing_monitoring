@@ -553,6 +553,7 @@
         @else
             @php
                 $portfolioCoverage = $campaignPortfolioMarketingSummary['coverage'];
+                $budgetCoverage = $campaignPortfolioMarketingSummary['budget_coverage'];
                 $portfolioSourceLabels = [
                     'google_analytics' => 'GA4',
                     'meta_marketing' => 'Meta Ads',
@@ -619,6 +620,81 @@
                     </tbody>
                 </table>
             </div>
+            <section class="spaced-top" aria-labelledby="campaign-budget-pacing-overview-title">
+                <h3 id="campaign-budget-pacing-overview-title" class="panel-title">跨活動預算節奏</h3>
+                <p class="campaign-report-secondary">
+                    依幣別彙總 {{ number_format($budgetCoverage['configured_campaigns']) }} 個去重活動；花費可比 {{ number_format($budgetCoverage['spend_campaigns']) }} 個（新鮮 {{ number_format($budgetCoverage['fresh_spend_campaigns']) }}、過期 {{ number_format($budgetCoverage['stale_spend_campaigns']) }}），排除重複廣告活動 {{ number_format($budgetCoverage['duplicate_mappings_excluded']) }} 筆。預估值僅含進行中且花費幣別相符的活動。
+                </p>
+                @if ($campaignPortfolioMarketingSummary['budget_currency_groups'] === [])
+                    <p class="campaign-report-secondary">尚未設定可彙總的活動預算與幣別。</p>
+                @else
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-budget-pacing-overview-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">各幣別的活動預算、實際花費、對比時間進度的差額與預估超支</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">幣別</th>
+                                    <th scope="col">活動預算</th>
+                                    <th scope="col">目前花費</th>
+                                    <th scope="col">較時間進度</th>
+                                    <th scope="col">預估總花費</th>
+                                    <th scope="col">預估超支／餘額</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($campaignPortfolioMarketingSummary['budget_currency_groups'] as $budgetGroup)
+                                    <tr>
+                                        <th scope="row">{{ $budgetGroup['currency_code'] }}</th>
+                                        <td class="numeric">
+                                            {{ number_format($budgetGroup['budget_amount'], 2) }}
+                                            <span class="secondary-text">{{ number_format($budgetGroup['budget_campaign_count']) }} 個活動</span>
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($budgetGroup['current_spend_campaign_count'] > 0)
+                                                {{ number_format($budgetGroup['current_spend_amount'], 2) }}
+                                                <span class="secondary-text">花費相符 {{ number_format($budgetGroup['current_spend_campaign_count']) }} 個活動</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($budgetGroup['pacing_campaign_count'] > 0)
+                                                {{ $budgetGroup['pacing_difference_amount'] > 0 ? '+' : '' }}{{ number_format($budgetGroup['pacing_difference_amount'], 2) }}
+                                                <span class="secondary-text">實際花費減時間進度預算（{{ number_format($budgetGroup['pacing_campaign_count']) }} 個活動）</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($budgetGroup['projected_campaign_count'] > 0)
+                                                {{ number_format($budgetGroup['projected_spend_amount'], 2) }}
+                                                <span class="secondary-text">進行中 {{ number_format($budgetGroup['projected_campaign_count']) }} 個活動</span>
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td class="numeric">
+                                            @if ($budgetGroup['projected_over_budget_campaign_count'] > 0)
+                                                <span>超支 {{ number_format($budgetGroup['projected_over_budget_amount'], 2) }}</span>
+                                                <span class="secondary-text">{{ number_format($budgetGroup['projected_over_budget_campaign_count']) }} 個活動</span>
+                                            @endif
+                                            @if ($budgetGroup['projected_under_budget_campaign_count'] > 0)
+                                                <span>低於預算 {{ number_format($budgetGroup['projected_under_budget_amount'], 2) }}</span>
+                                                <span class="secondary-text">{{ number_format($budgetGroup['projected_under_budget_campaign_count']) }} 個活動</span>
+                                            @endif
+                                            @if ($budgetGroup['projected_campaign_count'] === 0)
+                                                —
+                                            @elseif ($budgetGroup['projected_over_budget_campaign_count'] === 0 && $budgetGroup['projected_under_budget_campaign_count'] === 0)
+                                                符合預算
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </section>
             <p class="campaign-report-secondary spaced-top">
                 資料涵蓋（依外部活動去重）：
                 @foreach ($portfolioSourceLabels as $source => $sourceLabel)
