@@ -24,6 +24,8 @@ use App\Services\GoogleAdsKeywordPerformanceReport;
 use App\Services\GoogleAdsKeywordReportCsv;
 use App\Services\GoogleAdsSearchTermPerformanceReport;
 use App\Services\GoogleAdsSearchTermReportCsv;
+use App\Services\GoogleAnalyticsAdContentPerformanceReport;
+use App\Services\GoogleAnalyticsAdContentReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\GoogleAnalyticsEventNamePerformanceReport;
 use App\Services\GoogleAnalyticsEventNameReportCsv;
@@ -66,6 +68,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
         GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
+        GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -102,6 +105,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReport']?->item_report,
             $viewData['googleAnalyticsReport']?->item_report_expires_at,
             (string) $request->query('item_sort', 'item_revenue'),
+        );
+        $viewData['googleAnalyticsAdContentReport'] = $googleAnalyticsAdContentPerformanceReport->build(
+            $viewData['googleAnalyticsReport']?->ad_content_report,
+            $viewData['googleAnalyticsReport']?->ad_content_report_expires_at,
+            (string) $request->query('ad_content_sort', 'total_revenue'),
         );
         $viewData['metaMarketingAdReport'] = $metaMarketingAdPerformanceReport->build(
             $viewData['metaMarketingReport']?->ad_insights,
@@ -941,6 +949,45 @@ class SocialEngagementCampaignReportController extends Controller
 
             fclose($stream);
         }, 'ga4-items-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function exportGoogleAnalyticsAdContent(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAnalyticsAdContentPerformanceReport $googleAnalyticsAdContentPerformanceReport,
+        GoogleAnalyticsAdContentReportCsv $googleAnalyticsAdContentReportCsv,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        abort_if(
+            $analyticsReport === null
+                || ! is_array($analyticsReport->ad_content_report)
+                || $analyticsReport->ad_content_report_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $adContentReport = $googleAnalyticsAdContentPerformanceReport->build(
+            $analyticsReport->ad_content_report,
+            $analyticsReport->ad_content_report_expires_at,
+            'total_revenue',
+        );
+        abort_if($adContentReport['status'] !== 'complete' || $adContentReport['rows'] === [], 404);
+        $csv = $googleAnalyticsAdContentReportCsv->build($adContentReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-ad-content-'.$socialEngagementTarget->getKey().'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

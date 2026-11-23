@@ -47,7 +47,7 @@ class GoogleAnalyticsItemPerformanceReportTest extends TestCase
             ]],
         ], $report['item_report']);
 
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && $request->data()['dateRanges'] === [[
                 'startDate' => '2026-11-01',
@@ -164,7 +164,7 @@ class GoogleAnalyticsItemPerformanceReportTest extends TestCase
         $this->assertSame('unavailable', $report['item_report']['status']);
         $this->assertSame('2026-11-01', $report['item_report']['window_start_on']);
         $this->assertSame('2026-11-22', $report['item_report']['window_end_on']);
-        Http::assertSentCount(5);
+        Http::assertSentCount(6);
     }
 
     public function test_campaign_item_report_caps_rows_and_marks_ga4_aggregation(): void

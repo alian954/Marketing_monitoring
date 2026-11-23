@@ -1250,6 +1250,75 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-ad-content-title">UTM 素材成效</h3>
+                    @if ($googleAnalyticsAdContentReport['status'] === 'complete' && $googleAnalyticsAdContentReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.ad-content', $target) }}">匯出素材 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAnalyticsAdContentReport['status'] === 'not_applicable')
+                    <p class="campaign-report-empty">此活動使用 Google Ads 自動標記，不適用 UTM 素材拆分。</p>
+                @elseif ($googleAnalyticsAdContentReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含 UTM 素材明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsAdContentReport['status'] === 'thresholded')
+                    <p class="campaign-report-empty">GA4 因資料門檻未提供 UTM 素材數據。</p>
+                @elseif ($googleAnalyticsAdContentReport['status'] === 'unavailable' && $googleAnalyticsAdContentReport['window_start_on'] === null)
+                    <p class="campaign-report-empty">目前沒有已完成日期可供 UTM 素材分析。</p>
+                @elseif ($googleAnalyticsAdContentReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">目前無法讀取 UTM 素材明細；活動總成效仍可查看。</p>
+                @elseif ($googleAnalyticsAdContentReport['status'] === 'expired')
+                    <p class="campaign-report-empty">UTM 素材明細已超過 30 天保存期限，更新數據後可重新讀取。</p>
+                @elseif ($googleAnalyticsAdContentReport['rows'] === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的 UTM 素材數據。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAnalyticsAdContentReport['window_start_on'] }} 至 {{ $googleAnalyticsAdContentReport['window_end_on'] }} · 最多顯示 200 個素材值，明細加密保存 30 天。素材值來自 `utm_content`；「(not set)」代表 GA4 未提供素材值。
+                    </p>
+                    @if ($googleAnalyticsAdContentReport['truncated'])
+                        <p class="campaign-report-note">素材值超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有素材。</p>
+                    @endif
+                    <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                        <input type="hidden" name="event_name_sort" value="{{ request('event_name_sort', 'key_events') }}">
+                        <label for="ga4-ad-content-sort">排序</label>
+                        <select id="ga4-ad-content-sort" name="ad_content_sort">
+                            <option value="total_revenue" @selected($googleAnalyticsAdContentReport['sort'] === 'total_revenue')>營收</option>
+                            <option value="sessions" @selected($googleAnalyticsAdContentReport['sort'] === 'sessions')>工作階段</option>
+                            <option value="engaged_sessions" @selected($googleAnalyticsAdContentReport['sort'] === 'engaged_sessions')>參與工作階段</option>
+                            <option value="engagement_rate" @selected($googleAnalyticsAdContentReport['sort'] === 'engagement_rate')>參與率</option>
+                            <option value="key_events" @selected($googleAnalyticsAdContentReport['sort'] === 'key_events')>重要事件</option>
+                            <option value="ad_content" @selected($googleAnalyticsAdContentReport['sort'] === 'ad_content')>素材值</option>
+                        </select>
+                        <button class="button button-secondary button-small" type="submit">套用</button>
+                    </form>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-ad-content-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-ad-content-table">
+                            <caption>GA4 UTM 素材值工作階段、參與、重要事件與營收（{{ $googleAnalyticsAdContentReport['currency_code'] ?? '幣別未知' }}）</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">UTM 素材值</th>
+                                    <th scope="col" class="numeric">工作階段</th>
+                                    <th scope="col" class="numeric">參與工作階段</th>
+                                    <th scope="col" class="numeric">參與率</th>
+                                    <th scope="col" class="numeric">重要事件</th>
+                                    <th scope="col" class="numeric">營收</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsAdContentReport['rows'] as $adContentRow)
+                                    <tr>
+                                        <th scope="row">{{ $adContentRow['ad_content'] }}</th>
+                                        <td class="numeric">{{ number_format((int) $adContentRow['sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((int) $adContentRow['engaged_sessions']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $adContentRow['engagement_rate'] * 100, 2) }}%</td>
+                                        <td class="numeric">{{ number_format((float) $adContentRow['key_events'], 2) }}</td>
+                                        <td class="numeric">{{ number_format((float) $adContentRow['total_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="campaign-report-ga4-event-name-title">重要事件名稱成效</h3>
                     @if ($googleAnalyticsEventNameReport['status'] === 'complete' && $googleAnalyticsEventNameReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.events', $target) }}">匯出事件 CSV</a>

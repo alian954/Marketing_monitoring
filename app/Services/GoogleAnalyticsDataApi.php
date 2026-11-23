@@ -18,6 +18,8 @@ class GoogleAnalyticsDataApi
 
     private const CAMPAIGN_ITEM_ROW_LIMIT = 200;
 
+    private const CAMPAIGN_AD_CONTENT_ROW_LIMIT = 200;
+
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
@@ -126,6 +128,14 @@ class GoogleAnalyticsDataApi
      *         currency_code: ?string,
      *         truncated: bool,
      *         rows: list<array{item_name: string, items_viewed: int, items_added_to_cart: int, items_purchased: int, item_revenue: string}>
+     *     },
+     *     ad_content_report: array{
+     *         status: 'complete'|'thresholded'|'unavailable'|'not_applicable',
+     *         window_start_on: ?string,
+     *         window_end_on: ?string,
+     *         currency_code: ?string,
+     *         truncated: bool,
+     *         rows: list<array{ad_content: string, sessions: int, engaged_sessions: int, engagement_rate: string, key_events: string, total_revenue: string}>
      *     },
      *     daily_metrics: list<array{
      *         date: string,
@@ -317,6 +327,25 @@ class GoogleAnalyticsDataApi
                 min($endsOn, now('Asia/Taipei')->subDay()->toDateString()),
             );
         }
+        if ($usesGoogleAdsAutoTagging) {
+            $adContentReport = $this->emptyAdContentReport('not_applicable', null, null);
+        } else {
+            try {
+                $adContentReport = $this->campaignAdContentBreakdown(
+                    $accessToken,
+                    $propertyId,
+                    $startsOn,
+                    $endsOn,
+                    $dimensionFilter,
+                );
+            } catch (GoogleAnalyticsApiException|ConnectionException) {
+                $adContentReport = $this->emptyAdContentReport(
+                    'unavailable',
+                    $startsOn,
+                    min($endsOn, now('Asia/Taipei')->subDay()->toDateString()),
+                );
+            }
+        }
 
         return [
             ...$totalMetrics,
@@ -327,7 +356,151 @@ class GoogleAnalyticsDataApi
             'landing_page_report' => $landingPageReport,
             'event_name_report' => $eventNameReport,
             'item_report' => $itemReport,
+            'ad_content_report' => $adContentReport,
             'daily_metrics' => $dailyMetrics,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return array{
+     *     status: 'complete'|'thresholded'|'unavailable',
+     *     window_start_on: ?string,
+     *     window_end_on: ?string,
+     *     currency_code: ?string,
+     *     truncated: bool,
+     *     rows: list<array{ad_content: string, sessions: int, engaged_sessions: int, engagement_rate: string, key_events: string, total_revenue: string}>
+     * }
+     */
+    private function campaignAdContentBreakdown(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $windowEndOn = min($endsOn, now('Asia/Taipei')->subDay()->toDateString());
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyAdContentReport('unavailable', null, null);
+        }
+
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $windowEndOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'sessionManualAdContent'],
+                ],
+                'metrics' => [
+                    ['name' => 'sessions'],
+                    ['name' => 'engagedSessions'],
+                    ['name' => 'engagementRate'],
+                    ['name' => 'keyEvents'],
+                    ['name' => 'totalRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'orderBys' => [
+                    ['metric' => ['metricName' => 'sessions'], 'desc' => true],
+                    ['metric' => ['metricName' => 'totalRevenue'], 'desc' => true],
+                    ['dimension' => ['dimensionName' => 'sessionManualAdContent']],
+                ],
+                'limit' => self::CAMPAIGN_AD_CONTENT_ROW_LIMIT + 1,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+        $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $currencyCode = $this->currencyCode($metadata['currencyCode'] ?? null);
+
+        if (($metadata['subjectToThresholding'] ?? false) === true) {
+            return [
+                ...$this->emptyAdContentReport('thresholded', $startsOn, $windowEndOn),
+                'currency_code' => $currencyCode,
+            ];
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材內容報表格式無效，請稍後再試。');
+        }
+
+        $adContentRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材內容報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($dimensionValues)
+                || ! array_is_list($dimensionValues)
+                || count($dimensionValues) !== 1
+                || ! is_array($metricValues)
+                || ! array_is_list($metricValues)
+                || count($metricValues) !== 5) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材內容欄位數量無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材內容指標格式無效，請稍後再試。');
+                }
+            }
+
+            $adContent = $this->dimensionValue($dimensionValues[0]);
+
+            if (mb_strlen($adContent) > 4096) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材內容過長，請稍後再試。');
+            }
+
+            $engagementRate = $this->decimalString($metricValues[2]['value'], false);
+
+            if ((float) $engagementRate > 1) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的素材參與率格式無效，請稍後再試。');
+            }
+
+            $adContentRows[] = [
+                'ad_content' => $adContent,
+                'sessions' => $this->nonNegativeInteger($metricValues[0]['value']),
+                'engaged_sessions' => $this->nonNegativeInteger($metricValues[1]['value']),
+                'engagement_rate' => $engagementRate,
+                'key_events' => $this->decimalString($metricValues[3]['value'], false),
+                'total_revenue' => $this->decimalString($metricValues[4]['value'], true),
+            ];
+        }
+
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($adContentRows);
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $currencyCode,
+            'truncated' => $rowCount > count($adContentRows)
+                || count($adContentRows) > self::CAMPAIGN_AD_CONTENT_ROW_LIMIT
+                || ($metadata['dataLossFromOtherRow'] ?? false) === true,
+            'rows' => array_slice($adContentRows, 0, self::CAMPAIGN_AD_CONTENT_ROW_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unavailable'|'thresholded'|'not_applicable', window_start_on: ?string, window_end_on: ?string, currency_code: null, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyAdContentReport(string $status, ?string $startsOn, ?string $endsOn): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => null,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 
