@@ -26,6 +26,7 @@
                 <p class="panel-description">活動互動目標可依標籤與平台設定期間，只計入期間內發布的貼文；未提供發布日期的貼文另列。進行中有完整讀值時，以尚差互動數除以剩餘活動日並進位。尚未開始則按活動日數分配目標；進行中資料不足、已達成或活動結束時不估算。目標、達成進度與每日所需互動可匯出 CSV。</p>
                 <p class="panel-description">活動報告顯示 Meta Ads 的頻率、CTR、CPC、CPM、各行動類型數量與轉換價值，以及 Google Ads 的轉換動作、每次轉換成本與點擊轉換率。各平台行動數據依帳戶追蹤與歸因設定回傳，類型可能重疊，不合併計算。兩平台歷史趨勢可匯出 CSV；資料超過 24 小時未更新時會提示。跨平台花費僅同幣別合計；ROAS 以同幣別 GA4 營收計算且不扣商品成本。</p>
                 <p class="panel-description">GA4 重要事件明細按事件名稱拆分事件次數、重要事件數與營收，可排序及匯出 CSV；明細加密保存 30 天。重要事件數依資源中的事件標記設定，事件名稱及營收由 GA4 回傳。</p>
+                <p class="panel-description">GA4 商品成效列出商品瀏覽、加入購物車、購買件數與商品營收，可排序及匯出 CSV；最多顯示 200 個商品，明細加密保存 30 天。商品營收已扣退款，不含稅與運費；需由 GA4 電商事件送出商品資料，否則報表可能沒有資料。</p>
                 <p class="panel-description">Meta Ads 活動報告另提供廣告層級曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase 數據；依花費排序最多列出 200 則並可匯出 CSV，明細加密保存 30 天。</p>
                 <p class="panel-description">Meta Ads 另按 Facebook、Instagram 等平台與版位拆分曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase；可排序及匯出 CSV，明細加密保存 30 天。版位觸及可能重疊，不應加總；轉換依 Meta 歸因設定回傳。</p>
                 <p class="panel-description">Meta Ads 年齡與性別報表提供分群曝光、觸及、點擊、CTR、花費、CPC、CPM 與 omni_purchase；依花費排序最多列出 200 筆，可排序及匯出 CSV，明細加密保存 30 天。Meta 受眾拆分為估算值，分群觸及不代表去重後的總觸及。</p>

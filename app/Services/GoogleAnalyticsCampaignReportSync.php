@@ -44,6 +44,11 @@ class GoogleAnalyticsCampaignReportSync
             ? CarbonImmutable::now()->addDays(30)
             : null;
         unset($metrics['event_name_report']);
+        $itemReport = $metrics['item_report'];
+        $itemReportExpiresAt = $itemReport['status'] === 'complete'
+            ? CarbonImmutable::now()->addDays(30)
+            : null;
+        unset($metrics['item_report']);
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
         $dailyMetrics = [
@@ -80,6 +85,8 @@ class GoogleAnalyticsCampaignReportSync
             'landing_page_expires_at' => $landingPageExpiresAt,
             'event_name_report' => $eventNameReport,
             'event_name_expires_at' => $eventNameExpiresAt,
+            'item_report' => $itemReport,
+            'item_report_expires_at' => $itemReportExpiresAt,
             ...$metrics,
             'synced_at' => $syncedAt,
         ];
@@ -100,6 +107,8 @@ class GoogleAnalyticsCampaignReportSync
                 $snapshotAttributes['landing_page_expires_at'],
                 $snapshotAttributes['event_name_report'],
                 $snapshotAttributes['event_name_expires_at'],
+                $snapshotAttributes['item_report'],
+                $snapshotAttributes['item_report_expires_at'],
             );
 
             GoogleAnalyticsCampaignSnapshot::query()->updateOrCreate(

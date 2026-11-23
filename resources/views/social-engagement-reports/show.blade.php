@@ -1309,6 +1309,68 @@
                 @endif
 
                 <div class="campaign-report-section-header">
+                    <h3 id="campaign-report-ga4-item-title">商品成效</h3>
+                    @if ($googleAnalyticsItemReport['status'] === 'complete' && $googleAnalyticsItemReport['rows'] !== [])
+                        <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.items', $target) }}">匯出商品 CSV</a>
+                    @endif
+                </div>
+                @if ($googleAnalyticsItemReport['status'] === 'not_synced')
+                    <p class="campaign-report-empty">這筆 GA4 讀值尚未包含商品明細，更新數據後即可查看。</p>
+                @elseif ($googleAnalyticsItemReport['status'] === 'thresholded')
+                    <p class="campaign-report-empty">GA4 因資料門檻未提供商品數據。</p>
+                @elseif ($googleAnalyticsItemReport['status'] === 'unavailable')
+                    <p class="campaign-report-empty">目前無法讀取商品明細；活動總成效仍可查看。請確認 GA4 已送出電商商品事件。</p>
+                @elseif ($googleAnalyticsItemReport['status'] === 'expired')
+                    <p class="campaign-report-empty">商品明細已超過 30 天保存期限，更新數據後可重新讀取。</p>
+                @elseif ($googleAnalyticsItemReport['rows'] === [])
+                    <p class="campaign-report-empty">此活動期間沒有可用的商品成效。請確認 GA4 已送出電商商品事件。</p>
+                @else
+                    <p class="campaign-report-secondary">
+                        {{ $googleAnalyticsItemReport['window_start_on'] }} 至 {{ $googleAnalyticsItemReport['window_end_on'] }} · 最多顯示 200 個商品，明細加密保存 30 天。商品資料由 GA4 電商事件提供；購買數是商品件數，商品營收已扣退款、不含稅與運費。
+                    </p>
+                    @if ($googleAnalyticsItemReport['truncated'])
+                        <p class="campaign-report-note">商品超過顯示上限或 GA4 已彙總部分高基數資料，表格可能未包含所有商品。</p>
+                    @endif
+                    <form method="GET" action="{{ route('social-engagement-targets.report', $target) }}" class="campaign-report-filter-form">
+                        <input type="hidden" name="event_name_sort" value="{{ request('event_name_sort', 'key_events') }}">
+                        <label for="ga4-item-sort">排序</label>
+                        <select id="ga4-item-sort" name="item_sort">
+                            <option value="item_revenue" @selected($googleAnalyticsItemReport['sort'] === 'item_revenue')>商品營收</option>
+                            <option value="items_purchased" @selected($googleAnalyticsItemReport['sort'] === 'items_purchased')>購買件數</option>
+                            <option value="items_added_to_cart" @selected($googleAnalyticsItemReport['sort'] === 'items_added_to_cart')>加入購物車</option>
+                            <option value="items_viewed" @selected($googleAnalyticsItemReport['sort'] === 'items_viewed')>商品瀏覽</option>
+                            <option value="item_name" @selected($googleAnalyticsItemReport['sort'] === 'item_name')>商品名稱</option>
+                        </select>
+                        <button class="button button-secondary button-small" type="submit">套用</button>
+                    </form>
+                    <div class="data-table-wrap" role="region" aria-labelledby="campaign-report-ga4-item-title" tabindex="0">
+                        <table class="data-table campaign-report-table campaign-report-ga4-item-table">
+                            <caption>GA4 商品瀏覽、加入購物車、購買件數與商品營收</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">商品</th>
+                                    <th scope="col" class="numeric">瀏覽件數</th>
+                                    <th scope="col" class="numeric">加入購物車</th>
+                                    <th scope="col" class="numeric">購買件數</th>
+                                    <th scope="col" class="numeric">商品營收（{{ $googleAnalyticsItemReport['currency_code'] ?? '幣別未知' }}）</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($googleAnalyticsItemReport['rows'] as $item)
+                                    <tr>
+                                        <th scope="row">{{ $item['item_name'] }}</th>
+                                        <td class="numeric">{{ number_format((int) $item['items_viewed']) }}</td>
+                                        <td class="numeric">{{ number_format((int) $item['items_added_to_cart']) }}</td>
+                                        <td class="numeric">{{ number_format((int) $item['items_purchased']) }}</td>
+                                        <td class="numeric">{{ number_format((float) $item['item_revenue'], 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <div class="campaign-report-section-header">
                     <h3 id="campaign-report-ga4-landing-page-title">登陸頁成效</h3>
                     @if ($googleAnalyticsLandingPageReport['status'] === 'complete' && $googleAnalyticsLandingPageReport['rows'] !== [])
                         <a class="button button-secondary button-small" href="{{ route('social-engagement-targets.google-analytics.landing-pages', $target) }}">匯出登陸頁 CSV</a>

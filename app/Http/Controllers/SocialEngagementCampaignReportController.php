@@ -27,6 +27,8 @@ use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
 use App\Services\GoogleAnalyticsEventNamePerformanceReport;
 use App\Services\GoogleAnalyticsEventNameReportCsv;
+use App\Services\GoogleAnalyticsItemPerformanceReport;
+use App\Services\GoogleAnalyticsItemReportCsv;
 use App\Services\GoogleAnalyticsLandingPagePerformanceReport;
 use App\Services\GoogleAnalyticsLandingPageReportCsv;
 use App\Services\MetaMarketingAdPerformanceReport;
@@ -63,6 +65,7 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
+        GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
     ): View {
         $viewData = $this->reportData(
             $request,
@@ -94,6 +97,11 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAnalyticsReport']?->event_name_report,
             $viewData['googleAnalyticsReport']?->event_name_expires_at,
             (string) $request->query('event_name_sort', 'key_events'),
+        );
+        $viewData['googleAnalyticsItemReport'] = $googleAnalyticsItemPerformanceReport->build(
+            $viewData['googleAnalyticsReport']?->item_report,
+            $viewData['googleAnalyticsReport']?->item_report_expires_at,
+            (string) $request->query('item_sort', 'item_revenue'),
         );
         $viewData['metaMarketingAdReport'] = $metaMarketingAdPerformanceReport->build(
             $viewData['metaMarketingReport']?->ad_insights,
@@ -896,6 +904,45 @@ class SocialEngagementCampaignReportController extends Controller
             ->when($target->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $target->starts_on))
             ->when($target->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $target->ends_on))
             ->first();
+    }
+
+    public function exportGoogleAnalyticsItems(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        GoogleAnalyticsItemPerformanceReport $googleAnalyticsItemPerformanceReport,
+        GoogleAnalyticsItemReportCsv $googleAnalyticsItemReportCsv,
+    ): StreamedResponse {
+        $analyticsReport = $this->googleAnalyticsReportForTarget(
+            $socialEngagementTarget,
+            $request->user()->googleAnalyticsConnection,
+        );
+        abort_if(
+            $analyticsReport === null
+                || ! is_array($analyticsReport->item_report)
+                || $analyticsReport->item_report_expires_at?->isFuture() !== true,
+            404,
+        );
+
+        $itemReport = $googleAnalyticsItemPerformanceReport->build(
+            $analyticsReport->item_report,
+            $analyticsReport->item_report_expires_at,
+            'item_revenue',
+        );
+        abort_if($itemReport['status'] !== 'complete' || $itemReport['rows'] === [], 404);
+        $csv = $googleAnalyticsItemReportCsv->build($itemReport);
+
+        return response()->streamDownload(function () use ($csv): void {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, $csv['headers'], ',', '"', '');
+
+            foreach ($csv['rows'] as $row) {
+                fputcsv($stream, array_map(CsvFormulaSanitizer::escape(...), $row), ',', '"', '');
+            }
+
+            fclose($stream);
+        }, 'ga4-items-'.$socialEngagementTarget->getKey().'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function exportGoogleAnalyticsHistory(

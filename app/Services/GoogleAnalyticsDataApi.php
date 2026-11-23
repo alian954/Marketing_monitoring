@@ -16,6 +16,8 @@ class GoogleAnalyticsDataApi
 
     private const CAMPAIGN_EVENT_NAME_ROW_LIMIT = 200;
 
+    private const CAMPAIGN_ITEM_ROW_LIMIT = 200;
+
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
@@ -116,6 +118,14 @@ class GoogleAnalyticsDataApi
      *         currency_code: ?string,
      *         truncated: bool,
      *         rows: list<array{event_name: string, event_count: int, key_events: string, total_revenue: string}>
+     *     },
+     *     item_report: array{
+     *         status: 'complete'|'thresholded'|'unavailable',
+     *         window_start_on: ?string,
+     *         window_end_on: ?string,
+     *         currency_code: ?string,
+     *         truncated: bool,
+     *         rows: list<array{item_name: string, items_viewed: int, items_added_to_cart: int, items_purchased: int, item_revenue: string}>
      *     },
      *     daily_metrics: list<array{
      *         date: string,
@@ -292,6 +302,21 @@ class GoogleAnalyticsDataApi
         } catch (GoogleAnalyticsApiException|ConnectionException) {
             $eventNameReport = $this->emptyEventNameReport('unavailable', $startsOn, $endsOn);
         }
+        try {
+            $itemReport = $this->campaignItemBreakdown(
+                $accessToken,
+                $propertyId,
+                $startsOn,
+                $endsOn,
+                $dimensionFilter,
+            );
+        } catch (GoogleAnalyticsApiException|ConnectionException) {
+            $itemReport = $this->emptyItemReport(
+                'unavailable',
+                $startsOn,
+                min($endsOn, now('Asia/Taipei')->subDay()->toDateString()),
+            );
+        }
 
         return [
             ...$totalMetrics,
@@ -301,7 +326,144 @@ class GoogleAnalyticsDataApi
                 || count($channelRows) > self::CAMPAIGN_BREAKDOWN_ROW_LIMIT,
             'landing_page_report' => $landingPageReport,
             'event_name_report' => $eventNameReport,
+            'item_report' => $itemReport,
             'daily_metrics' => $dailyMetrics,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $dimensionFilter
+     * @return array{
+     *     status: 'complete'|'thresholded'|'unavailable',
+     *     window_start_on: ?string,
+     *     window_end_on: ?string,
+     *     currency_code: ?string,
+     *     truncated: bool,
+     *     rows: list<array{item_name: string, items_viewed: int, items_added_to_cart: int, items_purchased: int, item_revenue: string}>
+     * }
+     */
+    private function campaignItemBreakdown(
+        string $accessToken,
+        string $propertyId,
+        string $startsOn,
+        string $endsOn,
+        array $dimensionFilter,
+    ): array {
+        $windowEndOn = min($endsOn, now('Asia/Taipei')->subDay()->toDateString());
+
+        if ($startsOn > $windowEndOn) {
+            return $this->emptyItemReport('unavailable', null, null);
+        }
+
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
+                'dateRanges' => [
+                    ['startDate' => $startsOn, 'endDate' => $windowEndOn],
+                ],
+                'dimensions' => [
+                    ['name' => 'itemName'],
+                ],
+                'metrics' => [
+                    ['name' => 'itemsViewed'],
+                    ['name' => 'itemsAddedToCart'],
+                    ['name' => 'itemsPurchased'],
+                    ['name' => 'itemRevenue'],
+                ],
+                'dimensionFilter' => $dimensionFilter,
+                'orderBys' => [
+                    ['metric' => ['metricName' => 'itemRevenue'], 'desc' => true],
+                    ['metric' => ['metricName' => 'itemsPurchased'], 'desc' => true],
+                    ['metric' => ['metricName' => 'itemsViewed'], 'desc' => true],
+                    ['dimension' => ['dimensionName' => 'itemName']],
+                ],
+                'limit' => self::CAMPAIGN_ITEM_ROW_LIMIT + 1,
+            ]);
+
+        $payload = $this->successfulPayload($response, 'Google Analytics Data API');
+        $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $currencyCode = $this->currencyCode($metadata['currencyCode'] ?? null);
+
+        if (($metadata['subjectToThresholding'] ?? false) === true) {
+            return [
+                ...$this->emptyItemReport('thresholded', $startsOn, $windowEndOn),
+                'currency_code' => $currencyCode,
+            ];
+        }
+
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows) || ! array_is_list($rows)) {
+            throw new GoogleAnalyticsApiException('Google Analytics 回傳的商品報表格式無效，請稍後再試。');
+        }
+
+        $itemRows = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的商品報表格式無效，請稍後再試。');
+            }
+
+            $dimensionValues = $row['dimensionValues'] ?? null;
+            $metricValues = $row['metricValues'] ?? null;
+
+            if (! is_array($dimensionValues)
+                || ! array_is_list($dimensionValues)
+                || count($dimensionValues) !== 1
+                || ! is_array($metricValues)
+                || ! array_is_list($metricValues)
+                || count($metricValues) !== 4) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的商品欄位數量無效，請稍後再試。');
+            }
+
+            foreach ($metricValues as $metricValue) {
+                if (! is_array($metricValue) || ! array_key_exists('value', $metricValue)) {
+                    throw new GoogleAnalyticsApiException('Google Analytics 回傳的商品指標格式無效，請稍後再試。');
+                }
+            }
+
+            $itemName = $this->dimensionValue($dimensionValues[0]);
+
+            if (mb_strlen($itemName) > 4096) {
+                throw new GoogleAnalyticsApiException('Google Analytics 回傳的商品名稱過長，請稍後再試。');
+            }
+
+            $itemRows[] = [
+                'item_name' => $itemName,
+                'items_viewed' => $this->nonNegativeInteger($metricValues[0]['value']),
+                'items_added_to_cart' => $this->nonNegativeInteger($metricValues[1]['value']),
+                'items_purchased' => $this->nonNegativeInteger($metricValues[2]['value']),
+                'item_revenue' => $this->decimalString($metricValues[3]['value'], true),
+            ];
+        }
+
+        $rowCount = array_key_exists('rowCount', $payload)
+            ? $this->nonNegativeInteger($payload['rowCount'])
+            : count($itemRows);
+
+        return [
+            'status' => 'complete',
+            'window_start_on' => $startsOn,
+            'window_end_on' => $windowEndOn,
+            'currency_code' => $currencyCode,
+            'truncated' => $rowCount > count($itemRows)
+                || count($itemRows) > self::CAMPAIGN_ITEM_ROW_LIMIT
+                || ($metadata['dataLossFromOtherRow'] ?? false) === true,
+            'rows' => array_slice($itemRows, 0, self::CAMPAIGN_ITEM_ROW_LIMIT),
+        ];
+    }
+
+    /** @return array{status: 'unavailable'|'thresholded', window_start_on: ?string, window_end_on: ?string, currency_code: null, truncated: false, rows: list<array<string, mixed>>} */
+    private function emptyItemReport(string $status, ?string $startsOn, ?string $endsOn): array
+    {
+        return [
+            'status' => $status,
+            'window_start_on' => $startsOn,
+            'window_end_on' => $endsOn,
+            'currency_code' => null,
+            'truncated' => false,
+            'rows' => [],
         ];
     }
 
