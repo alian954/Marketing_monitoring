@@ -50,7 +50,7 @@
                 @if ($attentionMonitors->isNotEmpty())
                     <div class="dashboard-attention-list">
                         <ul>
-                            @foreach ($attentionMonitors as $attentionMonitor)
+                            @foreach ($attentionMonitors->take(1) as $attentionMonitor)
                                 <li>
                                     <a href="{{ route('monitors.show', $attentionMonitor) }}">{{ $attentionMonitor->name }}</a>
                                     <x-state-badge :state="$attentionMonitor->health_state" />

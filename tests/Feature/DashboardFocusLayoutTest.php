@@ -242,9 +242,10 @@ class DashboardFocusLayoutTest extends TestCase
 
         $this->assertStringContainsString('查看全部', $overviewMarkup);
         $this->assertStringContainsString('異常網站 1', $overviewMarkup);
-        $this->assertStringContainsString('異常網站 2', $overviewMarkup);
-        $this->assertStringContainsString('異常網站 3', $overviewMarkup);
+        $this->assertStringNotContainsString('異常網站 2', $overviewMarkup);
+        $this->assertStringNotContainsString('異常網站 3', $overviewMarkup);
         $this->assertStringNotContainsString('異常網站 4', $overviewMarkup);
+        $this->assertSame(1, preg_match_all('/<li>/', $overviewMarkup));
         $this->assertSame(3, $response->viewData('attentionMonitors')->count());
     }
 }
