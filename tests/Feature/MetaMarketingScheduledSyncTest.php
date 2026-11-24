@@ -17,7 +17,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_scheduled_sync_refreshes_active_and_recently_finished_campaigns(): void
+    public function test_scheduled_sync_refreshes_only_campaigns_in_the_connection_workspace(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-22 06:40:00', 'Asia/Taipei'));
         Http::fake([
@@ -63,6 +63,11 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $connection = $this->createConnection($user);
         $activeTarget = $this->createTarget('Active campaign', '987654321', '2026-11-01', '2026-11-30');
         $endedTarget = $this->createTarget('Recently ended campaign', '987654322', '2026-11-01', '2026-11-20');
+        $foreignTarget = $this->createTarget('Other workspace campaign', '987654323', '2026-11-01', '2026-11-30');
+        foreach ([$activeTarget, $endedTarget] as $target) {
+            $target->forceFill(['user_id' => $user->id])->save();
+        }
+        $foreignTarget->forceFill(['user_id' => User::factory()->create()->id])->save();
 
         $exitCode = Artisan::call('meta-marketing:sync-due');
 
@@ -75,6 +80,10 @@ class MetaMarketingScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $endedTarget->id,
             'spend_amount' => '60.0000',
         ]);
+        $this->assertDatabaseMissing('social_engagement_target_meta_marketing_reports', [
+            'social_engagement_target_id' => $foreignTarget->id,
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_meta_marketing_reports', 2);
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 2);
         $snapshot = SocialEngagementTargetPaidAdSnapshot::query()
             ->where('social_engagement_target_id', $activeTarget->id)

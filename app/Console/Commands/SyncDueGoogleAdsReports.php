@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AccountScopeContext;
 use App\Models\GoogleAdsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -60,8 +61,10 @@ class SyncDueGoogleAdsReports extends Command
                     $accessToken = null;
                     $tokenRefreshFailed = false;
 
-                    $this->dueTargets($asOf)
-                        ->orderBy('id')
+                    $targetsForConnection = $this->dueTargets($asOf);
+                    AccountScopeContext::constrainUser($targetsForConnection, (int) $connection->user_id);
+
+                    $targetsForConnection->orderBy('id')
                         ->chunkById(100, function (Collection $targets) use (
                             $connection,
                             &$accessToken,

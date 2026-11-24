@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AccountScopeContext;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
@@ -54,8 +55,10 @@ class SyncDueMetaMarketingReports extends Command
                 &$failedCount,
             ): void {
                 foreach ($connections as $connection) {
-                    $this->dueTargets($asOf)
-                        ->orderBy('id')
+                    $targetsForConnection = $this->dueTargets($asOf);
+                    AccountScopeContext::constrainUser($targetsForConnection, (int) $connection->user_id);
+
+                    $targetsForConnection->orderBy('id')
                         ->chunkById(100, function (Collection $targets) use (
                             $connection,
                             $asOf,

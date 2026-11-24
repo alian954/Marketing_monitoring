@@ -28,7 +28,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertSame('Asia/Taipei', $event->timezone);
     }
 
-    public function test_daily_command_syncs_active_and_recently_ended_campaigns_only(): void
+    public function test_daily_command_syncs_only_campaigns_in_the_connection_workspace(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
         config([
@@ -56,11 +56,16 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
                 ->push($this->emptyReportPayload()),
         ]);
 
-        $this->createConnection();
+        $connection = $this->createConnection();
         $activeTarget = $this->createTarget(['tag' => 'Active campaign', 'ends_on' => '2026-11-30']);
         $recentlyEndedTarget = $this->createTarget(['tag' => 'Recent campaign', 'ends_on' => '2026-11-17']);
         $oldTarget = $this->createTarget(['tag' => 'Old campaign', 'ends_on' => '2026-11-14']);
         $futureTarget = $this->createTarget(['tag' => 'Future campaign', 'starts_on' => '2026-11-23']);
+        $foreignTarget = $this->createTarget(['tag' => 'Other workspace campaign']);
+        foreach ([$activeTarget, $recentlyEndedTarget, $oldTarget, $futureTarget] as $target) {
+            $target->forceFill(['user_id' => $connection->user_id])->save();
+        }
+        $foreignTarget->forceFill(['user_id' => User::factory()->create()->id])->save();
 
         $this->artisan('google-analytics:sync-due')
             ->expectsOutputToContain('完成 2 個活動，略過 0 個近期讀值，失敗 0 個。')
@@ -83,6 +88,10 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $futureTarget->id,
         ]);
+        $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
+            'social_engagement_target_id' => $foreignTarget->id,
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 2);
         Http::assertSentCount(15);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && in_array($request->data()['dimensionFilter']['filter']['stringFilter']['value'], [

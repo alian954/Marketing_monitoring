@@ -29,7 +29,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertSame('Asia/Taipei', $event->timezone);
     }
 
-    public function test_daily_command_syncs_active_and_recently_ended_campaigns_only(): void
+    public function test_daily_command_syncs_only_campaigns_in_the_connection_workspace(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-22 06:50:00', 'Asia/Taipei'));
         Http::fake([
@@ -52,6 +52,11 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $recentlyEndedTarget = $this->createTarget('Recently ended campaign', '987654322', '2026-11-01', '2026-11-17');
         $oldTarget = $this->createTarget('Old campaign', '987654323', '2026-11-01', '2026-11-14');
         $futureTarget = $this->createTarget('Future campaign', '987654324', '2026-11-23', '2026-11-30');
+        $foreignTarget = $this->createTarget('Other workspace campaign', '987654325', '2026-11-01', '2026-11-30');
+        foreach ([$activeTarget, $recentlyEndedTarget, $oldTarget, $futureTarget] as $target) {
+            $target->forceFill(['user_id' => $user->id])->save();
+        }
+        $foreignTarget->forceFill(['user_id' => User::factory()->create()->id])->save();
 
         $this->artisan('google-ads:sync-due')
             ->expectsOutputToContain('完成 2 個活動，略過 0 個近期讀值，失敗 0 個。')
@@ -83,6 +88,10 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
             'social_engagement_target_id' => $futureTarget->id,
         ]);
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $foreignTarget->id,
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 2);
         Http::assertSentCount(9);
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), 'googleAds:searchStream')
