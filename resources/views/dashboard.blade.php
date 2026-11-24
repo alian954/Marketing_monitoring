@@ -36,7 +36,7 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">待處理項目</h2>
+            <h2 id="dashboard-focus-title" class="panel-title">待處理</h2>
             @if ($attentionCount > 0)
                 <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
             @endif
@@ -49,7 +49,6 @@
                 </p>
                 @if ($attentionMonitors->isNotEmpty())
                     <div class="dashboard-attention-list">
-                        <h3 class="dashboard-attention-title">優先處理</h3>
                         <ul>
                             @foreach ($attentionMonitors as $attentionMonitor)
                                 <li>

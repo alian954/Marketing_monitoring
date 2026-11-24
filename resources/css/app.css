@@ -938,13 +938,6 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     border-block-start: 1px solid var(--line);
 }
 
-.dashboard-attention-title {
-    margin: 0 0 6px;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 650;
-}
-
 .dashboard-attention-list ul {
     display: grid;
     gap: 2px;
