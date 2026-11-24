@@ -204,7 +204,17 @@ class MonitorController extends Controller
     private function monitorListFilterRules(Request $request): array
     {
         $rules = self::MONITOR_LIST_FILTER_RULES;
-        $rules['client_id'][] = Rule::exists('clients', 'id')->where('user_id', $request->user()->workspaceOwnerId());
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $clientExistsRule = Rule::exists('clients', 'id')->where('user_id', $user->workspaceOwnerId());
+        $clientIds = $user->workspaceClientIds();
+
+        if ($clientIds !== null) {
+            $clientExistsRule->whereIn('id', $clientIds);
+        }
+
+        $rules['client_id'][] = $clientExistsRule;
 
         return $rules;
     }
@@ -2267,13 +2277,23 @@ class MonitorController extends Controller
             ]);
         }
 
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        $clientExistsRule = Rule::exists('clients', 'id')->where('user_id', $user->workspaceOwnerId());
+        $clientIds = $user->workspaceClientIds();
+
+        if ($clientIds !== null) {
+            $clientExistsRule->whereIn('id', $clientIds);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'client_id' => [
                 'nullable',
                 'integer',
                 'min:1',
-                Rule::exists('clients', 'id')->where('user_id', $request->user()->workspaceOwnerId()),
+                $clientExistsRule,
             ],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
             'label' => ['nullable', 'string', 'max:1200'],

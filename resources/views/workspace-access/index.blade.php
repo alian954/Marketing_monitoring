@@ -66,6 +66,48 @@
                         @enderror
                     </fieldset>
                 </div>
+                @php
+                    $invitationClientScopeErrors = collect($errors->getMessages())
+                        ->filter(static fn (array $messages, string $field): bool => $field === 'client_scope' || $field === 'client_ids' || str_starts_with($field, 'client_ids.'))
+                        ->flatten();
+                @endphp
+                <fieldset class="workspace-client-scope-fieldset" @if ($invitationClientScopeErrors->isNotEmpty()) aria-describedby="invite-client-scope-errors" @endif>
+                    <legend class="field-label">客戶範圍</legend>
+                    <div class="workspace-role-options">
+                        <label class="workspace-role-option" for="invite-client-scope-all">
+                            <input id="invite-client-scope-all" name="client_scope" type="radio" value="all" required @checked(old('client_scope', \App\Models\WorkspaceMembership::CLIENT_SCOPE_ALL) === \App\Models\WorkspaceMembership::CLIENT_SCOPE_ALL) @if ($invitationClientScopeErrors->isNotEmpty()) aria-invalid="true" aria-describedby="invite-client-scope-errors" @endif>
+                            <span><strong>全部客戶</strong><span class="secondary-text">依工作區權限查看或維護</span></span>
+                        </label>
+                        <label class="workspace-role-option" for="invite-client-scope-selected">
+                            <input id="invite-client-scope-selected" name="client_scope" type="radio" value="selected" @checked(old('client_scope') === \App\Models\WorkspaceMembership::CLIENT_SCOPE_SELECTED) @if ($invitationClientScopeErrors->isNotEmpty()) aria-invalid="true" aria-describedby="invite-client-scope-errors" @endif>
+                            <span><strong>指定客戶</strong><span class="secondary-text">至少勾選一個客戶</span></span>
+                        </label>
+                    </div>
+                    @php
+                        $oldInvitationClientIds = old('client_ids', []);
+                        $oldInvitationClientIds = is_array($oldInvitationClientIds) ? array_map('intval', $oldInvitationClientIds) : [];
+                    @endphp
+                    @if ($clients->isEmpty())
+                        <p class="field-help">尚無客戶，請先建立客戶後再指定範圍。</p>
+                    @else
+                        <fieldset class="workspace-client-options">
+                            <legend class="sr-only">指定可存取的客戶</legend>
+                            @foreach ($clients as $client)
+                                <label class="workspace-role-option" for="invite-client-{{ $client->id }}">
+                                    <input id="invite-client-{{ $client->id }}" name="client_ids[]" type="checkbox" value="{{ $client->id }}" @checked(in_array($client->id, $oldInvitationClientIds, true)) @if ($invitationClientScopeErrors->isNotEmpty()) aria-invalid="true" aria-describedby="invite-client-scope-errors" @endif>
+                                    <span>{{ $client->name }}</span>
+                                </label>
+                            @endforeach
+                        </fieldset>
+                    @endif
+                    @if ($invitationClientScopeErrors->isNotEmpty())
+                        <div id="invite-client-scope-errors" class="field-error" role="alert">
+                            @foreach ($invitationClientScopeErrors as $message)
+                                <p>{{ $message }}</p>
+                            @endforeach
+                        </div>
+                    @endif
+                </fieldset>
                 <button class="button button-primary" type="submit">建立邀請連結</button>
             </form>
         </div>
@@ -88,6 +130,7 @@
                         <tr>
                             <th scope="col">成員</th>
                             <th scope="col">權限</th>
+                            <th scope="col">客戶範圍</th>
                             <th scope="col">加入時間</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -110,6 +153,10 @@
                                         </select>
                                         <button class="button button-quiet button-small" type="submit">更新權限</button>
                                     </form>
+                                </td>
+                                <td>
+                                    {{ $membership->clientScopeLabel() }}
+                                    <a class="strong-link" href="{{ route('team.members.clients.edit', $membership) }}">調整</a>
                                 </td>
                                 <td><time datetime="{{ $membership->accepted_at->toIso8601String() }}">{{ $membership->accepted_at->timezone('Asia/Taipei')->format('Y/n/j') }}</time></td>
                                 <td>
@@ -144,6 +191,7 @@
                         <tr>
                             <th scope="col">電子郵件</th>
                             <th scope="col">權限</th>
+                            <th scope="col">客戶範圍</th>
                             <th scope="col">有效期限</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -153,6 +201,7 @@
                             <tr>
                                 <th scope="row">{{ $invitation->email }}</th>
                                 <td>{{ $invitation->roleLabel() }}</td>
+                                <td>{{ $invitation->clientScopeLabel() }}</td>
                                 <td><time datetime="{{ $invitation->expires_at->toIso8601String() }}">{{ $invitation->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
                                 <td>
                                     <form action="{{ route('team.invitations.destroy', $invitation) }}" method="POST" class="inline-form">

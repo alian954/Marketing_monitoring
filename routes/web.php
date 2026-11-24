@@ -94,6 +94,12 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
         Route::patch('/members/{membership}/role', [WorkspaceAccessController::class, 'updateMemberRole'])
             ->whereNumber('membership')
             ->name('members.role.update');
+        Route::get('/members/{membership}/clients', [WorkspaceAccessController::class, 'editMemberClients'])
+            ->whereNumber('membership')
+            ->name('members.clients.edit');
+        Route::patch('/members/{membership}/clients', [WorkspaceAccessController::class, 'updateMemberClients'])
+            ->whereNumber('membership')
+            ->name('members.clients.update');
     });
     Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');

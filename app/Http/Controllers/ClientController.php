@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\User;
+use App\Models\WorkspaceMembership;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -28,6 +30,10 @@ class ClientController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        abort_unless($user->canCreateClient(), 403);
+
         $name = $request->input('name');
 
         if (is_string($name)) {
@@ -92,6 +98,17 @@ class ClientController extends Controller
 
         if ($client->monitors()->exists() || $client->socialEngagementTargets()->exists()) {
             return back()->withErrors(['client' => '請先將監測項目與活動目標移至其他客戶。'], 'clientManagement');
+        }
+
+        $isAssignedToSelectedWorkspaceMember = DB::table('workspace_membership_clients')
+            ->join('workspace_memberships', 'workspace_memberships.id', '=', 'workspace_membership_clients.workspace_membership_id')
+            ->where('workspace_membership_clients.client_id', $client->id)
+            ->where('workspace_memberships.client_scope', WorkspaceMembership::CLIENT_SCOPE_SELECTED)
+            ->whereNull('workspace_memberships.revoked_at')
+            ->exists();
+
+        if ($isAssignedToSelectedWorkspaceMember) {
+            return back()->withErrors(['client' => '此客戶仍指派給工作區成員，請先調整成員的客戶範圍。'], 'clientManagement');
         }
 
         $client->delete();

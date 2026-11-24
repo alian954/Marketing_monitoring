@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
@@ -24,9 +25,10 @@ class WorkspaceAccessController extends Controller
         abort_unless($owner instanceof User, 401);
 
         return view('workspace-access.index', [
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
             'memberships' => $owner->workspaceMemberships()
                 ->whereNull('revoked_at')
-                ->with('memberUser:id,name,email')
+                ->with(['memberUser:id,name,email', 'clients:id,name'])
                 ->orderByDesc('accepted_at')
                 ->get(),
             'invitations' => $owner->workspaceInvitations()
@@ -49,13 +51,17 @@ class WorkspaceAccessController extends Controller
                 WorkspaceMembership::ROLE_READ_ONLY,
                 WorkspaceMembership::ROLE_EDITOR,
             ])],
-        ], [
+        ] + $this->clientScopeValidationRules($owner), [
             'email.required' => '請輸入受邀者的電子郵件。',
             'email.email' => '請輸入有效的電子郵件。',
             'email.max' => '電子郵件不得超過 254 個字元。',
             'role.in' => '請選擇有效的工作區權限。',
-        ]);
+        ] + $this->clientScopeValidationMessages());
         $email = mb_strtolower(trim($validated['email']));
+        $clientScope = $validated['client_scope'] ?? WorkspaceMembership::CLIENT_SCOPE_ALL;
+        $clientIds = $clientScope === WorkspaceMembership::CLIENT_SCOPE_SELECTED
+            ? array_map('intval', $validated['client_ids'])
+            : null;
 
         if (User::query()->whereRaw('lower(email) = ?', [$email])->exists()) {
             throw ValidationException::withMessages([
@@ -73,6 +79,8 @@ class WorkspaceAccessController extends Controller
         $owner->workspaceInvitations()->create([
             'email' => $email,
             'role' => $validated['role'] ?? WorkspaceMembership::ROLE_READ_ONLY,
+            'client_scope' => $clientScope,
+            'client_ids' => $clientIds,
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addDays(WorkspaceInvitation::EXPIRATION_DAYS),
         ]);
@@ -136,10 +144,66 @@ class WorkspaceAccessController extends Controller
         return redirect()->route('team.index')->with('status', '成員權限已更新。');
     }
 
+    public function editMemberClients(Request $request, int $membership): View
+    {
+        $owner = $request->user();
+        abort_unless($owner instanceof User, 401);
+
+        $workspaceMembership = $owner->workspaceMemberships()
+            ->whereKey($membership)
+            ->whereNull('revoked_at')
+            ->with(['memberUser:id,name,email', 'clients:id,name'])
+            ->firstOrFail();
+
+        return view('workspace-access.clients', [
+            'membership' => $workspaceMembership,
+            'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
+            'selectedClientIds' => $workspaceMembership->clients->modelKeys(),
+        ]);
+    }
+
+    public function updateMemberClients(Request $request, int $membership): RedirectResponse
+    {
+        $owner = $request->user();
+        abort_unless($owner instanceof User, 401);
+
+        $validated = $request->validate(
+            $this->clientScopeValidationRules($owner, true),
+            $this->clientScopeValidationMessages(),
+        );
+        $clientScope = $validated['client_scope'];
+        $clientIds = $clientScope === WorkspaceMembership::CLIENT_SCOPE_SELECTED
+            ? array_map('intval', $validated['client_ids'])
+            : [];
+
+        DB::transaction(function () use ($owner, $membership, $clientScope, $clientIds): void {
+            $workspaceMembership = $owner->workspaceMemberships()
+                ->whereKey($membership)
+                ->whereNull('revoked_at')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $workspaceMembership->update(['client_scope' => $clientScope]);
+            $workspaceMembership->clients()->sync($clientIds);
+        });
+
+        return redirect()->route('team.index')->with('status', '成員的客戶存取範圍已更新。');
+    }
+
     public function showInvitation(string $token): View
     {
+        $invitation = $this->findAvailableInvitation($token);
+        $invitationClients = $invitation->client_scope === WorkspaceMembership::CLIENT_SCOPE_SELECTED
+            ? Client::query()
+                ->where('user_id', $invitation->owner_user_id)
+                ->whereIn('id', $invitation->client_ids ?? [])
+                ->orderBy('name')
+                ->get(['id', 'name'])
+            : collect();
+
         return view('workspace-access.accept', [
-            'invitation' => $this->findAvailableInvitation($token),
+            'invitation' => $invitation,
+            'invitationClients' => $invitationClients,
         ]);
     }
 
@@ -177,16 +241,37 @@ class WorkspaceAccessController extends Controller
                 ]);
             }
 
+            $clientScope = $lockedInvitation->client_scope ?? WorkspaceMembership::CLIENT_SCOPE_ALL;
+            $clientIds = [];
+
+            if ($clientScope === WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
+                $clientIds = Client::query()
+                    ->where('user_id', $lockedInvitation->owner_user_id)
+                    ->whereIn('id', $lockedInvitation->client_ids ?? [])
+                    ->orderBy('id')
+                    ->pluck('id')
+                    ->map(static fn (mixed $clientId): int => (int) $clientId)
+                    ->all();
+
+                if ($clientIds === []) {
+                    throw ValidationException::withMessages([
+                        'client_scope' => '邀請指定的客戶已不存在，請聯絡擁有者重新建立邀請。',
+                    ]);
+                }
+            }
+
             $member = User::query()->create([
                 'name' => $validated['name'],
                 'email' => $lockedInvitation->email,
                 'password' => Hash::make($validated['password']),
             ]);
-            $member->workspaceMembership()->create([
+            $membership = $member->workspaceMembership()->create([
                 'owner_user_id' => $lockedInvitation->owner_user_id,
                 'role' => $lockedInvitation->role ?? WorkspaceMembership::ROLE_READ_ONLY,
+                'client_scope' => $clientScope,
                 'accepted_at' => now(),
             ]);
+            $membership->clients()->sync($clientIds);
             $lockedInvitation->forceFill(['accepted_at' => now()])->save();
 
             return $member;
@@ -207,5 +292,41 @@ class WorkspaceAccessController extends Controller
             ->where('expires_at', '>', now())
             ->with('owner:id,name')
             ->firstOrFail();
+    }
+
+    /** @return array<string, array<int, mixed>> */
+    private function clientScopeValidationRules(User $owner, bool $clientScopeRequired = false): array
+    {
+        return [
+            'client_scope' => [$clientScopeRequired ? 'required' : 'sometimes', 'string', Rule::in([
+                WorkspaceMembership::CLIENT_SCOPE_ALL,
+                WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+            ])],
+            'client_ids' => [
+                'exclude_unless:client_scope,selected',
+                'required',
+                'array',
+                'list',
+                'min:1',
+                Rule::exists('clients', 'id')->where('user_id', $owner->id),
+            ],
+            'client_ids.*' => ['integer', 'distinct'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function clientScopeValidationMessages(): array
+    {
+        return [
+            'client_scope.required' => '請選擇客戶存取範圍。',
+            'client_scope.in' => '請選擇有效的客戶存取範圍。',
+            'client_ids.required' => '請至少選擇一個客戶。',
+            'client_ids.array' => '客戶選擇格式無效。',
+            'client_ids.list' => '客戶選擇格式無效。',
+            'client_ids.min' => '指定客戶時，至少需要選擇一個客戶。',
+            'client_ids.exists' => '選取的客戶不存在或不屬於此工作區。',
+            'client_ids.*.integer' => '客戶選擇格式無效。',
+            'client_ids.*.distinct' => '不可重複選擇同一個客戶。',
+        ];
     }
 }

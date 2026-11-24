@@ -23,6 +23,7 @@ class Client extends Model
     protected static function booted(): void
     {
         static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new WorkspaceClientScope);
 
         static::creating(static function (Client $client): void {
             $user = Auth::user();
@@ -65,6 +66,12 @@ class Client extends Model
 
     public static function ensureDefaultFor(User $user): self
     {
+        $membership = $user->workspaceMembership;
+
+        if ($membership?->client_scope === WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
+            return $membership->clients()->orderBy('name')->firstOrFail();
+        }
+
         return $user->clients()->firstOrCreate(['name' => self::DEFAULT_NAME]);
     }
 }

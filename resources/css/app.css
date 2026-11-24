@@ -253,6 +253,18 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     padding: 0;
 }
 
+.workspace-client-scope-fieldset {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.workspace-client-scope-fieldset legend {
+    padding: 0;
+}
+
 .workspace-role-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -265,10 +277,24 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     align-items: start;
     gap: 8px;
     min-width: 0;
+    min-height: 44px;
     padding: 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
     cursor: pointer;
+}
+
+.workspace-client-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+    padding: 0;
+    border: 0;
+}
+
+.workspace-client-options .workspace-role-option {
+    align-items: center;
 }
 
 .workspace-role-option input {
@@ -2439,6 +2465,10 @@ a.platform-chip:hover {
 
     .workspace-access-fields,
     .workspace-role-options {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .workspace-client-options {
         grid-template-columns: minmax(0, 1fr);
     }
 

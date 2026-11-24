@@ -31,6 +31,18 @@ class StoreSocialEngagementTargetRequest extends FormRequest
      */
     public function rules(): array
     {
+        $clientExistsRule = Rule::exists('clients', 'id');
+        $user = $this->user();
+
+        if ($user instanceof User) {
+            $clientExistsRule->where('user_id', $user->workspaceOwnerId());
+            $clientIds = $user->workspaceClientIds();
+
+            if ($clientIds !== null) {
+                $clientExistsRule->whereIn('id', $clientIds);
+            }
+        }
+
         return [
             'tag' => ['required', 'string', 'max:100', Rule::in($this->trackedTagsForPlatform())],
             'social_platform' => ['required', 'string', Rule::in(['facebook', 'instagram', 'threads', 'dcard'])],
@@ -38,7 +50,7 @@ class StoreSocialEngagementTargetRequest extends FormRequest
                 'nullable',
                 'integer',
                 'min:1',
-                Rule::exists('clients', 'id')->where('user_id', $this->user()?->workspaceOwnerId()),
+                $clientExistsRule,
             ],
             'target_interactions' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'starts_on' => ['nullable', 'date_format:Y-m-d'],

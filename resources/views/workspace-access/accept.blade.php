@@ -28,6 +28,12 @@
                     @endif
                 </p>
                 <p class="field-help">受邀電子郵件：{{ $invitation->email }}</p>
+                <p class="field-help">
+                    客戶範圍：{{ $invitation->clientScopeLabel() }}
+                    @if ($invitation->client_scope === \App\Models\WorkspaceMembership::CLIENT_SCOPE_SELECTED)
+                        · {{ $invitationClients->pluck('name')->join('、') ?: '指定客戶目前無法使用' }}
+                    @endif
+                </p>
 
                 @if ($errors->any())
                     <div class="alert alert-error" role="alert">

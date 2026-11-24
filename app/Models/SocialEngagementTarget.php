@@ -20,6 +20,7 @@ class SocialEngagementTarget extends Model
     protected static function booted(): void
     {
         static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new WorkspaceClientScope);
         static::addGlobalScope(new SelectedClientScope);
 
         static::creating(static function (SocialEngagementTarget $target): void {

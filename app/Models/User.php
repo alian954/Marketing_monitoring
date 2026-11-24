@@ -12,11 +12,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    /** @var list<int>|null */
+    private ?array $workspaceClientIdsCache = null;
+
+    private bool $workspaceClientIdsResolved = false;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
@@ -81,6 +87,38 @@ class User extends Authenticatable
     {
         return $this->isWorkspaceOwner()
             || $this->workspaceMembership?->role === WorkspaceMembership::ROLE_EDITOR;
+    }
+
+    /** @return list<int>|null Null means the member can access all workspace clients. */
+    public function workspaceClientIds(): ?array
+    {
+        if ($this->workspaceClientIdsResolved) {
+            return $this->workspaceClientIdsCache;
+        }
+
+        $membership = $this->workspaceMembership;
+
+        if ($membership === null || $membership->client_scope !== WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
+            $this->workspaceClientIdsResolved = true;
+
+            return null;
+        }
+
+        $this->workspaceClientIdsCache = DB::table('workspace_membership_clients')
+            ->where('workspace_membership_id', $membership->getKey())
+            ->orderBy('client_id')
+            ->pluck('client_id')
+            ->map(static fn (mixed $clientId): int => (int) $clientId)
+            ->all();
+        $this->workspaceClientIdsResolved = true;
+
+        return $this->workspaceClientIdsCache;
+    }
+
+    public function canCreateClient(): bool
+    {
+        return $this->isWorkspaceOwner()
+            || ($this->canManageWorkspace() && $this->workspaceClientIds() === null);
     }
 
     public function sendPasswordResetNotification(#[\SensitiveParameter] mixed $token): void

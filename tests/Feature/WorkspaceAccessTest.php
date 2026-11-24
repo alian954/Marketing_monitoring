@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\Monitor;
+use App\Models\NotificationOutbox;
+use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
@@ -323,6 +325,10 @@ class WorkspaceAccessTest extends TestCase
         $this->patch(route('team.members.role.update', $otherMembership), [
             'role' => WorkspaceMembership::ROLE_EDITOR,
         ])->assertNotFound();
+        $this->get(route('team.members.clients.edit', $otherMembership))->assertNotFound();
+        $this->patch(route('team.members.clients.update', $otherMembership), [
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_ALL,
+        ])->assertNotFound();
         $this->get(route('integrations.google-analytics.edit'))
             ->assertOk();
         $this->post(route('clients.store'), ['name' => '擁有者的新客戶'])
@@ -457,6 +463,332 @@ class WorkspaceAccessTest extends TestCase
             ->get(route('monitors.index'))
             ->assertOk()
             ->assertDontSee('原工作區資料');
+    }
+
+    public function test_invitation_limits_a_new_member_to_selected_clients(): void
+    {
+        $owner = User::factory()->create(['name' => '品牌擁有者']);
+        $selectedClient = $owner->clients()->create(['name' => '指定品牌']);
+        $otherClient = $owner->clients()->create(['name' => '其他品牌']);
+
+        $this->actingAs($owner)
+            ->post(route('team.invitations.store'), [
+                'email' => 'limited.member@example.test',
+                'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+                'client_ids' => [$selectedClient->id],
+            ])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHas('createdInviteUrl');
+
+        $inviteUrl = (string) session('createdInviteUrl');
+        $token = basename((string) parse_url($inviteUrl, PHP_URL_PATH));
+        $invitation = WorkspaceInvitation::query()->where('email', 'limited.member@example.test')->firstOrFail();
+
+        $this->assertSame(WorkspaceMembership::CLIENT_SCOPE_SELECTED, $invitation->client_scope);
+        $this->assertSame([$selectedClient->id], $invitation->client_ids);
+
+        $this->post(route('logout'))
+            ->assertRedirect(route('login'));
+        $this->get(route('team.invitations.show', ['token' => $token]))
+            ->assertOk()
+            ->assertSee($selectedClient->name)
+            ->assertDontSee($otherClient->name);
+        $this->post(route('team.invitations.accept', ['token' => $token]), [
+            'name' => '客戶協作者',
+            'password' => 'a-secure-password-123',
+            'password_confirmation' => 'a-secure-password-123',
+        ])->assertRedirect(route('dashboard'));
+
+        $member = User::query()->where('email', 'limited.member@example.test')->firstOrFail();
+        $membership = $member->workspaceMembership;
+
+        $this->assertSame(WorkspaceMembership::CLIENT_SCOPE_SELECTED, $membership?->client_scope);
+        $this->assertSame([$selectedClient->id], $member->workspaceClientIds());
+        $this->assertDatabaseHas('workspace_membership_clients', [
+            'workspace_membership_id' => $membership?->id,
+            'client_id' => $selectedClient->id,
+        ]);
+    }
+
+    public function test_invitation_rejects_clients_from_another_workspace(): void
+    {
+        $owner = User::factory()->create();
+        $otherOwner = User::factory()->create();
+        $otherClient = $otherOwner->clients()->create(['name' => '不屬於邀請者']);
+
+        $this->actingAs($owner)
+            ->from(route('team.index'))
+            ->post(route('team.invitations.store'), [
+                'email' => 'invalid-scope@example.test',
+                'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+                'client_ids' => [$otherClient->id],
+            ])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHasErrors('client_ids');
+
+        $this->assertDatabaseMissing('workspace_invitations', [
+            'owner_user_id' => $owner->id,
+            'email' => 'invalid-scope@example.test',
+        ]);
+    }
+
+    public function test_invitation_requires_at_least_one_client_for_a_selected_scope(): void
+    {
+        $owner = User::factory()->create();
+
+        $this->actingAs($owner)
+            ->from(route('team.index'))
+            ->post(route('team.invitations.store'), [
+                'email' => 'empty-scope@example.test',
+                'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+                'client_ids' => [],
+            ])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHasErrors('client_ids');
+
+        $this->assertDatabaseMissing('workspace_invitations', [
+            'owner_user_id' => $owner->id,
+            'email' => 'empty-scope@example.test',
+        ]);
+    }
+
+    public function test_invitation_fails_if_all_selected_clients_were_deleted_before_acceptance(): void
+    {
+        $owner = User::factory()->create();
+        $selectedClient = $owner->clients()->create(['name' => '即將刪除的客戶']);
+
+        $this->actingAs($owner)
+            ->post(route('team.invitations.store'), [
+                'email' => 'stale-scope@example.test',
+                'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+                'client_ids' => [$selectedClient->id],
+            ])
+            ->assertRedirect(route('team.index'));
+
+        $token = basename((string) parse_url((string) session('createdInviteUrl'), PHP_URL_PATH));
+        $selectedClient->delete();
+        $this->post(route('logout'));
+
+        $this->from(route('team.invitations.show', ['token' => $token]))
+            ->post(route('team.invitations.accept', ['token' => $token]), [
+                'name' => '客戶協作者',
+                'password' => 'a-secure-password-123',
+                'password_confirmation' => 'a-secure-password-123',
+            ])->assertRedirect(route('team.invitations.show', ['token' => $token]))
+            ->assertSessionHasErrors('client_scope');
+
+        $this->assertDatabaseMissing('users', ['email' => 'stale-scope@example.test']);
+    }
+
+    public function test_owner_can_limit_member_access_and_cannot_delete_an_assigned_client(): void
+    {
+        $owner = User::factory()->create();
+        $selectedClient = $owner->clients()->create(['name' => '已指派客戶']);
+        $otherClient = $owner->clients()->create(['name' => '未指派客戶']);
+        $member = User::factory()->create();
+        $membership = WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('team.members.clients.edit', $membership))
+            ->assertOk()
+            ->assertSee($member->email)
+            ->assertSee($selectedClient->name)
+            ->assertSee($otherClient->name);
+
+        $this->patch(route('team.members.clients.update', $membership), [
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+            'client_ids' => [$selectedClient->id],
+        ])->assertRedirect(route('team.index'));
+
+        $this->assertSame(WorkspaceMembership::CLIENT_SCOPE_SELECTED, $membership->fresh()->client_scope);
+        $this->assertDatabaseHas('workspace_membership_clients', [
+            'workspace_membership_id' => $membership->id,
+            'client_id' => $selectedClient->id,
+        ]);
+
+        $this->actingAs($member->fresh())
+            ->get(route('clients.index'))
+            ->assertOk()
+            ->assertSee($selectedClient->name)
+            ->assertDontSee($otherClient->name);
+
+        $this->actingAs($owner)
+            ->from(route('clients.index'))
+            ->delete(route('clients.destroy', $selectedClient))
+            ->assertRedirect(route('clients.index'))
+            ->assertSessionHasErrorsIn('clientManagement', ['client' => '此客戶仍指派給工作區成員，請先調整成員的客戶範圍。']);
+
+        $this->assertModelExists($selectedClient->fresh());
+
+        $this->patch(route('team.members.clients.update', $membership), [
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_ALL,
+        ])->assertRedirect(route('team.index'));
+
+        $this->assertSame(WorkspaceMembership::CLIENT_SCOPE_ALL, $membership->fresh()->client_scope);
+        $this->assertDatabaseMissing('workspace_membership_clients', [
+            'workspace_membership_id' => $membership->id,
+            'client_id' => $selectedClient->id,
+        ]);
+    }
+
+    public function test_selected_member_only_sees_assigned_monitors_campaigns_and_notifications(): void
+    {
+        $owner = User::factory()->create();
+        $selectedClient = $owner->clients()->create(['name' => '可見客戶']);
+        $otherClient = $owner->clients()->create(['name' => '隱藏客戶']);
+        $this->actingAs($owner);
+
+        $selectedMonitor = Monitor::factory()->create([
+            'name' => '可見監測',
+            'url' => 'https://selected.example.test/',
+            'url_hash' => Monitor::fingerprintUrl('https://selected.example.test/'),
+            'client_id' => $selectedClient->id,
+        ]);
+        $otherMonitor = Monitor::factory()->create([
+            'name' => '隱藏監測',
+            'url' => 'https://restricted.example.test/',
+            'url_hash' => Monitor::fingerprintUrl('https://restricted.example.test/'),
+            'client_id' => $otherClient->id,
+        ]);
+        $selectedTarget = SocialEngagementTarget::factory()->create([
+            'tag' => '可見活動',
+            'social_platform' => 'facebook',
+            'client_id' => $selectedClient->id,
+        ]);
+        $otherTarget = SocialEngagementTarget::factory()->create([
+            'tag' => '隱藏活動',
+            'social_platform' => 'facebook',
+            'client_id' => $otherClient->id,
+        ]);
+        NotificationOutbox::factory()->create([
+            'incident_id' => null,
+            'monitor_id' => $selectedMonitor->id,
+            'subject' => '可見通知',
+        ]);
+        NotificationOutbox::factory()->create([
+            'incident_id' => null,
+            'monitor_id' => $otherMonitor->id,
+            'subject' => '隱藏通知',
+        ]);
+
+        $member = User::factory()->create();
+        $membership = WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'role' => WorkspaceMembership::ROLE_EDITOR,
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+        ]);
+        $membership->clients()->sync([$selectedClient->id]);
+
+        $selectedCampaignMonitor = Monitor::factory()->create([
+            'name' => '可見活動貼文',
+            'url' => 'https://www.facebook.com/posts/SELECTEDCAMPAIGN',
+            'url_hash' => Monitor::fingerprintUrl('https://www.facebook.com/posts/SELECTEDCAMPAIGN'),
+            'label' => '指定活動',
+            'client_id' => $selectedClient->id,
+        ]);
+        $otherCampaignMonitor = Monitor::factory()->create([
+            'name' => '隱藏活動貼文',
+            'url' => 'https://www.facebook.com/posts/OTHERCAMPAIGN',
+            'url_hash' => Monitor::fingerprintUrl('https://www.facebook.com/posts/OTHERCAMPAIGN'),
+            'label' => '隱藏活動',
+            'client_id' => $otherClient->id,
+        ]);
+
+        $this->actingAs($member)
+            ->get(route('clients.index'))
+            ->assertOk()
+            ->assertSee($selectedClient->name)
+            ->assertDontSee($otherClient->name)
+            ->assertDontSee('client-create-title');
+
+        $this->get(route('monitors.index'))
+            ->assertOk()
+            ->assertSee($selectedMonitor->name)
+            ->assertDontSee($otherMonitor->name);
+
+        $this->get(route('social-engagement-targets.report', $selectedTarget))
+            ->assertOk()
+            ->assertSee($selectedTarget->tag);
+        $this->get(route('social-engagement-targets.report', $otherTarget))
+            ->assertNotFound();
+
+        $this->get(route('notifications.index'))
+            ->assertOk()
+            ->assertSee($selectedMonitor->name)
+            ->assertDontSee($otherMonitor->name);
+
+        $this->post(route('clients.store'), ['name' => '不可新增客戶'])
+            ->assertForbidden();
+
+        $this->post(route('monitors.store'), [
+            'name' => '指派客戶新監測',
+            'url' => 'https://selected-new.example.test/',
+            'client_id' => $selectedClient->id,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('monitors', [
+            'user_id' => $owner->id,
+            'client_id' => $selectedClient->id,
+            'name' => '指派客戶新監測',
+        ]);
+
+        $this->post(route('monitors.store'), [
+            'name' => '不應建立的監測',
+            'url' => 'https://restricted-new.example.test/',
+            'client_id' => $otherClient->id,
+        ])->assertRedirect()->assertSessionHasErrors('client_id');
+        $this->assertDatabaseMissing('monitors', [
+            'name' => '不應建立的監測',
+        ]);
+
+        $this->post(route('social-engagement-targets.store'), [
+            'tag' => '指定活動',
+            'social_platform' => 'facebook',
+            'client_id' => $selectedClient->id,
+            'target_interactions' => 100,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'client_id' => $selectedClient->id,
+            'tag' => '指定活動',
+            'social_platform' => 'facebook',
+        ]);
+
+        $this->post(route('social-engagement-targets.store'), [
+            'tag' => '不應建立活動',
+            'social_platform' => 'facebook',
+            'client_id' => $otherClient->id,
+            'target_interactions' => 100,
+        ])->assertRedirect()->assertSessionHasErrorsIn('socialEngagementTarget', ['client_id']);
+        $this->assertDatabaseMissing('social_engagement_targets', [
+            'client_id' => $otherClient->id,
+            'tag' => '不應建立活動',
+        ]);
+
+        $this->assertModelExists($selectedCampaignMonitor);
+        $this->assertModelExists($otherCampaignMonitor);
+    }
+
+    public function test_selected_membership_with_no_clients_fails_closed(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_SELECTED,
+        ]);
+
+        $this->actingAs($member)
+            ->get(route('clients.index'))
+            ->assertNotFound();
+
+        $this->assertSame([], $member->workspaceClientIds());
+        $this->assertSame(0, Client::query()->count());
+        $this->assertSame(0, Monitor::query()->count());
+        $this->assertSame(0, SocialEngagementTarget::query()->count());
     }
 
     public function test_manager_password_reset_ignores_read_only_workspace_members(): void

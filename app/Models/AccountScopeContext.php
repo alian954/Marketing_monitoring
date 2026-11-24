@@ -11,17 +11,23 @@ class AccountScopeContext
     {
         $user = Auth::user();
 
-        if (! $user instanceof User || request()->routeIs(
-            'status-pages.public',
-            'client-report-shares.public',
-            'client-report-shares.public.export',
-            'status-page-subscriptions.*',
-            'status-subscriptions.*',
-        )) {
+        if (! $user instanceof User || self::usesPublicWorkspaceScope()) {
             return null;
         }
 
         return $user->workspaceOwnerId();
+    }
+
+    /** @return list<int>|null Null means the authenticated user can access all workspace clients. */
+    public static function authenticatedClientIds(): ?array
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User || self::usesPublicWorkspaceScope()) {
+            return null;
+        }
+
+        return $user->workspaceClientIds();
     }
 
     /**
@@ -45,5 +51,16 @@ class AccountScopeContext
         $query->whereHas($relation, static function (Builder $relatedQuery) use ($userId): void {
             self::constrainUser($relatedQuery, $userId);
         });
+    }
+
+    private static function usesPublicWorkspaceScope(): bool
+    {
+        return request()->routeIs(
+            'status-pages.public',
+            'client-report-shares.public',
+            'client-report-shares.public.export',
+            'status-page-subscriptions.*',
+            'status-subscriptions.*',
+        );
     }
 }

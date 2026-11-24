@@ -48,6 +48,7 @@ class NotificationOutbox extends Model
     protected static function booted(): void
     {
         static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new WorkspaceClientRelationScope);
 
         static::creating(static function (NotificationOutbox $outbox): void {
             $user = Auth::user();

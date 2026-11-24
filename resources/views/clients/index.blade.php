@@ -23,7 +23,8 @@
         </div>
     @endif
 
-    <section class="panel spaced-top" aria-labelledby="client-create-title">
+    @if (auth()->user()?->canCreateClient())
+        <section class="panel spaced-top" aria-labelledby="client-create-title">
         <div class="panel-header">
             <div>
                 <h2 id="client-create-title" class="panel-title">新增客戶</h2>
@@ -41,7 +42,10 @@
                 <button class="button button-primary" type="submit">新增</button>
             </form>
         </div>
-    </section>
+        </section>
+    @else
+        <p class="field-help spaced-top">新增客戶請洽工作區擁有者。</p>
+    @endif
 
     <section class="panel spaced-top" aria-labelledby="client-list-title">
         <div class="panel-header">
