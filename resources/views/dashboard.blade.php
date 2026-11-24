@@ -36,16 +36,16 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">監測狀態</h2>
+            <h2 id="dashboard-focus-title" class="panel-title">待處理項目</h2>
             @if ($attentionCount > 0)
-                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看清單 <span aria-hidden="true">→</span></a>
+                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
             @endif
         </div>
         @if ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
                 <p class="dashboard-focus-count-line">
                     <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
-                    <span>項需處理</span>
+                    <span>項</span>
                 </p>
                 @if ($attentionMonitors->isNotEmpty())
                     <div class="dashboard-attention-list">

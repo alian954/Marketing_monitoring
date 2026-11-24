@@ -61,7 +61,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertSee(route('incidents.index'), false)
             ->assertSee(route('monitors.index'), false)
             ->assertSee(route('features.index'), false)
-            ->assertSee('監測狀態')
+            ->assertSee('待處理項目')
             ->assertDontSee('追蹤活動')
             ->assertSee('行銷成效')
             ->assertSee(route('clients.performance'), false)
@@ -186,9 +186,9 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">1</strong>', false)
-            ->assertSee('項需處理')
+            ->assertSee('<span>項</span>', false)
             ->assertDontSee('dashboard-focus-state--')
-            ->assertSee('查看清單')
+            ->assertSee('查看全部')
             ->assertDontSee('新增監測項目')
             ->assertSee('異常網站');
 
@@ -197,8 +197,10 @@ class DashboardFocusLayoutTest extends TestCase
         $detailReportsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
-        $this->assertStringContainsString('查看清單', $overviewMarkup);
+        $this->assertStringContainsString('查看全部', $overviewMarkup);
+        $this->assertStringContainsString('待處理項目', $overviewMarkup);
         $this->assertStringContainsString('優先處理', $overviewMarkup);
+        $this->assertStringNotContainsString('項需處理', $overviewMarkup);
         $this->assertStringContainsString('異常網站', $overviewMarkup);
         $this->assertStringNotContainsString('健康網站', $overviewMarkup);
         $this->assertSame(1, $response->viewData('counts')['issue']);
@@ -230,7 +232,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">4</strong>', false)
             ->assertDontSee('新增監測項目')
-            ->assertSee('查看清單')
+            ->assertSee('查看全部')
             ->assertSee('優先處理');
 
         $responseContent = $response->getContent();
@@ -238,7 +240,7 @@ class DashboardFocusLayoutTest extends TestCase
         $detailReportsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
-        $this->assertStringContainsString('查看清單', $overviewMarkup);
+        $this->assertStringContainsString('查看全部', $overviewMarkup);
         $this->assertStringContainsString('異常網站 1', $overviewMarkup);
         $this->assertStringContainsString('異常網站 2', $overviewMarkup);
         $this->assertStringContainsString('異常網站 3', $overviewMarkup);
