@@ -14,15 +14,16 @@ class ClientPortfolioCsv
      *     money_groups: list<array<string, mixed>>,
      *     roas_groups: list<array<string, mixed>>,
      *     uses_reporting_currency: bool,
-     *     coverage: array<string, array{configured_campaigns: int, fresh_campaigns: int}>
+     *     coverage: array<string, array{configured_campaigns: int, fresh_campaigns: int, missing_campaigns: int}>
      * }>  $clientPortfolioRows
      * @param  resource  $stream
      */
-    public function write(Collection $clientPortfolioRows, mixed $stream): void
+    public function write(Collection $clientPortfolioRows, mixed $stream, string $fromOn, string $toOn): void
     {
         fwrite($stream, "\xEF\xBB\xBF");
         $headers = [
             '客戶',
+            '報表期間',
             '活動數',
             '報表幣別',
             'GA4 營收',
@@ -40,6 +41,7 @@ class ClientPortfolioCsv
                 : ($row['money_groups'] === [] ? '尚未設定報表幣別' : '原始幣別');
             $fields = [
                 $row['client']->name,
+                $fromOn.' 至 '.$toOn,
                 $row['campaign_count'],
                 $currencyLabel,
                 $this->formatMoneyGroups($row['money_groups'], 'ga4_revenue', 'ga4_campaign_count'),
@@ -47,7 +49,7 @@ class ClientPortfolioCsv
                 $this->formatMoneyGroups($row['money_groups'], 'google_ads_spend', 'google_ads_campaign_count'),
                 $this->formatRoasGroups($row['roas_groups']),
                 $this->formatFreshness($row['coverage']),
-                $this->formatConversionGaps($row['money_groups']),
+                $this->formatConversionGaps($row['money_groups'], $row['coverage']),
             ];
 
             fputcsv(
@@ -96,8 +98,11 @@ class ClientPortfolioCsv
             ->implode('；');
     }
 
-    /** @param list<array<string, mixed>> $moneyGroups */
-    private function formatConversionGaps(array $moneyGroups): string
+    /**
+     * @param  list<array<string, mixed>>  $moneyGroups
+     * @param  array<string, array{configured_campaigns: int, missing_campaigns: int}>  $coverage
+     */
+    private function formatConversionGaps(array $moneyGroups, array $coverage): string
     {
         $sourceLabels = [
             'google_analytics' => 'GA4',
@@ -105,6 +110,13 @@ class ClientPortfolioCsv
             'google_ads' => 'Google Ads',
         ];
         $gaps = [];
+
+        foreach ($coverage as $source => $sourceCoverage) {
+            if ($sourceCoverage['configured_campaigns'] > 0 && $sourceCoverage['missing_campaigns'] > 0) {
+                $sourceLabel = $sourceLabels[$source] ?? $source;
+                $gaps[] = $sourceLabel.' 期間資料不足 '.$sourceCoverage['missing_campaigns'];
+            }
+        }
 
         foreach ($moneyGroups as $group) {
             foreach ($group['conversion_coverage'] ?? [] as $source => $conversionCoverage) {

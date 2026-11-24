@@ -24,10 +24,10 @@
     <div class="page-heading">
         <div class="heading-copy">
             <h1 class="page-title">客戶成效</h1>
-            <p class="page-description">比較各客戶的營收、廣告花費與平台 ROAS。</p>
+            <p class="page-description">比較客戶在相同日期區間的行銷成效。</p>
         </div>
         <div class="heading-actions">
-            <a class="button button-secondary" href="{{ route('clients.performance.export') }}">匯出 CSV</a>
+            <a class="button button-secondary" href="{{ route('clients.performance.export', $reportPeriod) }}">匯出 CSV</a>
             <a class="button button-secondary" href="{{ route('clients.index') }}">客戶管理</a>
         </div>
     </div>
@@ -36,18 +36,71 @@
         <div class="panel-header">
             <div>
                 <h2 id="client-performance-table-title" class="panel-title">行銷成效</h2>
-                <p class="panel-description">ROAS 採平台歸因；營收與花費依報表幣別或原幣列示。</p>
+                <p class="panel-description">
+                    {{ str_replace('-', '/', $reportPeriod['from']) }}–{{ str_replace('-', '/', $reportPeriod['to']) }}
+                    · ROAS 採平台歸因，金額依報表幣別或原幣列示。
+                </p>
             </div>
         </div>
 
-        @if ($clientPortfolioRows->isEmpty())
+        <div class="panel-body">
+            <search aria-label="篩選客戶成效日期區間">
+                <form action="{{ route('clients.performance') }}" method="GET">
+                    <div class="form-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="client-performance-from">開始日期</label>
+                            <input
+                                class="field-input{{ $errors->has('from') ? ' is-invalid' : '' }}"
+                                id="client-performance-from"
+                                name="from"
+                                type="date"
+                                value="{{ old('from', $reportPeriod['from']) }}"
+                                required
+                                aria-describedby="client-performance-period-help{{ $errors->has('from') ? ' client-performance-from-error' : '' }}"
+                                @if ($errors->has('from')) aria-invalid="true" @endif
+                            >
+                            @error('from')
+                                <p id="client-performance-from-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="client-performance-to">結束日期</label>
+                            <input
+                                class="field-input{{ $errors->has('to') ? ' is-invalid' : '' }}"
+                                id="client-performance-to"
+                                name="to"
+                                type="date"
+                                value="{{ old('to', $reportPeriod['to']) }}"
+                                required
+                                aria-describedby="client-performance-period-help{{ $errors->has('to') ? ' client-performance-to-error' : '' }}"
+                                @if ($errors->has('to')) aria-invalid="true" @endif
+                            >
+                            @error('to')
+                                <p id="client-performance-to-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+                    <p id="client-performance-period-help" class="field-help">最多 365 天，結束日期最晚為昨天。</p>
+                    <div class="form-actions">
+                        <button class="button button-secondary" type="submit">套用期間</button>
+                        <a class="strong-link" href="{{ route('clients.performance') }}">清除</a>
+                    </div>
+                </form>
+            </search>
+        </div>
+
+        @if ($errors->has('from') || $errors->has('to'))
+            <div class="empty-state" role="alert">
+                <h3 class="empty-title">請修正日期區間</h3>
+            </div>
+        @elseif ($clientPortfolioRows->isEmpty())
             <div class="empty-state">
                 <h3 class="empty-title">目前沒有可檢視的客戶</h3>
             </div>
         @else
             <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="client-performance-table-title">
                 <table class="data-table">
-                    <caption class="sr-only">各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS 和資料更新狀態</caption>
+                    <caption class="sr-only">{{ $reportPeriod['from'] }} 至 {{ $reportPeriod['to'] }} 各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS 和資料更新狀態</caption>
                     <thead>
                         <tr>
                             <th scope="col">客戶</th>
@@ -104,6 +157,9 @@
                                         <span class="secondary-text" title="{{ $coverageSources[$source] ?? $source }}新資料／已設定活動">
                                             {{ $coverageSources[$source] ?? $source }} 最新 {{ number_format($coverage['fresh_campaigns']) }}/{{ number_format($coverage['configured_campaigns']) }}
                                         </span>
+                                        @if ($coverage['missing_campaigns'] > 0)
+                                            <span class="secondary-text">{{ $coverageSources[$source] ?? $source }} 期間資料不足 {{ number_format($coverage['missing_campaigns']) }}</span>
+                                        @endif
                                     @empty
                                         <span class="secondary-text">—</span>
                                     @endforelse

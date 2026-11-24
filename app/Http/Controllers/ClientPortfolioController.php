@@ -8,10 +8,14 @@ use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\ClientPortfolioCsv;
+use App\Services\ClientPortfolioReportingPeriod;
 use App\Services\DashboardCampaignMarketingSummary;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -21,14 +25,23 @@ class ClientPortfolioController extends Controller
         Request $request,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
-    ): View {
+        ClientPortfolioReportingPeriod $reportingPeriod,
+    ): View|RedirectResponse {
+        $reportPeriod = $this->validatedReportingPeriod($request, $reportingPeriod);
+
+        if ($reportPeriod instanceof RedirectResponse) {
+            return $reportPeriod;
+        }
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $reportingPeriod,
+            $reportPeriod,
         );
 
-        return view('clients.performance', compact('clientPortfolioRows'));
+        return view('clients.performance', compact('clientPortfolioRows', 'reportPeriod'));
     }
 
     public function export(
@@ -36,17 +49,26 @@ class ClientPortfolioController extends Controller
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
         ClientPortfolioCsv $csv,
-    ): StreamedResponse {
+        ClientPortfolioReportingPeriod $reportingPeriod,
+    ): StreamedResponse|RedirectResponse {
+        $reportPeriod = $this->validatedReportingPeriod($request, $reportingPeriod);
+
+        if ($reportPeriod instanceof RedirectResponse) {
+            return $reportPeriod;
+        }
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $reportingPeriod,
+            $reportPeriod,
         );
-        $response = response()->streamDownload(function () use ($clientPortfolioRows, $csv): void {
+        $response = response()->streamDownload(function () use ($clientPortfolioRows, $csv, $reportPeriod): void {
             $stream = fopen('php://output', 'wb');
-            $csv->write($clientPortfolioRows, $stream);
+            $csv->write($clientPortfolioRows, $stream, $reportPeriod['from'], $reportPeriod['to']);
             fclose($stream);
-        }, 'client-performance-'.now()->format('Y-m-d').'.csv', [
+        }, 'client-performance-'.$reportPeriod['from'].'-to-'.$reportPeriod['to'].'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
         $response->headers->set('Cache-Control', 'private, no-store');
@@ -62,14 +84,68 @@ class ClientPortfolioController extends Controller
         return $user;
     }
 
+    /** @return array{from: string, to: string}|RedirectResponse */
+    private function validatedReportingPeriod(
+        Request $request,
+        ClientPortfolioReportingPeriod $reportingPeriod,
+    ): array|RedirectResponse {
+        $query = $request->query();
+
+        if (! array_key_exists('from', $query) && ! array_key_exists('to', $query)) {
+            return $reportingPeriod->defaultPeriod();
+        }
+
+        $latestCompleteDate = CarbonImmutable::now('Asia/Taipei')->startOfDay()->subDay()->toDateString();
+        $validator = Validator::make($query, [
+            'from' => ['required', 'string', 'date_format:Y-m-d'],
+            'to' => ['required', 'string', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:'.$latestCompleteDate],
+        ], [
+            'from.required' => '請選擇報表開始日期。',
+            'from.string' => '報表開始日期格式無效。',
+            'from.date_format' => '報表開始日期格式無效。',
+            'to.required' => '請選擇報表結束日期。',
+            'to.string' => '報表結束日期格式無效。',
+            'to.date_format' => '報表結束日期格式無效。',
+            'to.after_or_equal' => '結束日期不可早於開始日期。',
+            'to.before_or_equal' => '報表結束日期不可晚於昨天。',
+        ]);
+        $validator->after(function ($validator) use ($query): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $from = CarbonImmutable::createFromFormat('!Y-m-d', $query['from'], 'Asia/Taipei');
+            $to = CarbonImmutable::createFromFormat('!Y-m-d', $query['to'], 'Asia/Taipei');
+
+            if ($from !== false && $to !== false && $from->addDays(364)->lessThan($to)) {
+                $validator->errors()->add('from', '報表期間最多 365 天。');
+            }
+        });
+
+        if ($validator->fails()) {
+            return redirect()->route('clients.performance')
+                ->withErrors($validator)
+                ->withInput($query);
+        }
+
+        $validated = $validator->validated();
+
+        return [
+            'from' => $validated['from'],
+            'to' => $validated['to'],
+        ];
+    }
+
+    /** @param array{from: string, to: string} $reportPeriod */
     private function buildClientPortfolioRows(
         User $user,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioReportingPeriod $reportingPeriod,
+        array $reportPeriod,
     ): Collection {
         Client::ensureDefaultFor($user);
         $clients = Client::query()
-            ->withCount(['socialEngagementTargets'])
             ->orderBy('name')
             ->get();
         $clientIds = $clients->modelKeys();
@@ -87,6 +163,14 @@ class ClientPortfolioController extends Controller
             ->whereIn('client_id', $clientIds)
             ->get()
             ->groupBy('client_id');
+        $periodData = $reportingPeriod->apply(
+            $targets,
+            $marketingSummaries,
+            $reportPeriod['from'],
+            $reportPeriod['to'],
+        );
+        $targets = $periodData['targets'];
+        $marketingSummaries = $periodData['marketing_summaries'];
         $targetsByClient = $targets->groupBy('client_id');
 
         $clientPortfolioRows = $clients->map(function (Client $client) use (
@@ -107,11 +191,12 @@ class ClientPortfolioController extends Controller
                 $clientMarketingSummaries,
                 $clientExchangeRates,
             );
-            $usesReportingCurrency = $portfolio['reporting_currency_groups'] !== [];
+            $usesReportingCurrency = is_string($client->reporting_currency_code)
+                && trim($client->reporting_currency_code) !== '';
 
             return [
                 'client' => $client,
-                'campaign_count' => (int) $client->social_engagement_targets_count,
+                'campaign_count' => $clientTargets->count(),
                 'money_groups' => $usesReportingCurrency
                     ? $portfolio['reporting_currency_groups']
                     : $portfolio['currency_groups'],
