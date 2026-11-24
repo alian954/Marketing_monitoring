@@ -7,10 +7,6 @@
         $totalMonitors = $monitorCount;
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
         $campaignTargetCount = count($socialEngagementTargets);
-        $attentionMonitors = $monitors
-            ->filter(fn (\App\Models\Monitor $monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
-            ->take(3);
-        $additionalAttentionCount = max(0, $attentionCount - $attentionMonitors->count());
         $hasSocialEngagementFilters = $socialEngagementSelectedPlatform !== 'all'
             || $socialEngagementSelectedTag !== 'all'
             || $socialEngagementChangePeriodDays !== 7;
@@ -41,35 +37,17 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">需要處理</h2>
+            <h2 id="dashboard-focus-title" class="panel-title">監測狀態</h2>
             @if ($attentionCount > 0)
-                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看監測清單 <span aria-hidden="true">→</span></a>
+                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看清單 <span aria-hidden="true">→</span></a>
             @endif
         </div>
         @if ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
                 <p class="dashboard-focus-count-line">
                     <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
-                    <span>項需要查看</span>
+                    <span>項需處理</span>
                 </p>
-                <ul class="dashboard-attention-list" aria-label="優先處理項目">
-                    @foreach ($attentionMonitors as $attentionMonitor)
-                        <li class="dashboard-attention-item">
-                            <a class="dashboard-attention-name" href="{{ route('monitors.show', $attentionMonitor) }}">{{ $attentionMonitor->name }}</a>
-                            <div class="dashboard-attention-meta">
-                                <x-state-badge :state="$attentionMonitor->health_state" />
-                                @if ($attentionMonitor->last_checked_at)
-                                    <time class="timestamp" datetime="{{ $attentionMonitor->last_checked_at->toIso8601String() }}">{{ $attentionMonitor->last_checked_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
-                                @else
-                                    <span class="secondary-text">尚未檢查</span>
-                                @endif
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-                @if ($additionalAttentionCount > 0)
-                    <p class="dashboard-attention-more">另有 {{ number_format($additionalAttentionCount) }} 項需要查看</p>
-                @endif
             </div>
         @elseif ($totalMonitors === 0)
             <div class="empty-state dashboard-focus-empty">

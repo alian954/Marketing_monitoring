@@ -61,7 +61,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertSee(route('incidents.index'), false)
             ->assertSee(route('monitors.index'), false)
             ->assertSee(route('features.index'), false)
-            ->assertSee('需要處理')
+            ->assertSee('監測狀態')
             ->assertDontSee('追蹤活動')
             ->assertSee('行銷成效')
             ->assertSee(route('clients.performance'), false)
@@ -187,8 +187,8 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">1</strong>', false)
-            ->assertSee('項需要查看')
-            ->assertSee('查看監測清單')
+            ->assertSee('項需處理')
+            ->assertSee('查看清單')
             ->assertDontSee('新增監測項目')
             ->assertSee('異常網站');
 
@@ -197,13 +197,13 @@ class DashboardFocusLayoutTest extends TestCase
         $detailReportsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
-        $this->assertStringContainsString('查看監測清單', $overviewMarkup);
-        $this->assertStringContainsString('異常網站', $overviewMarkup);
+        $this->assertStringContainsString('查看清單', $overviewMarkup);
+        $this->assertStringNotContainsString('異常網站', $overviewMarkup);
         $this->assertStringNotContainsString('健康網站', $overviewMarkup);
         $this->assertSame(1, $response->viewData('counts')['issue']);
     }
 
-    public function test_dashboard_focus_shows_only_three_priority_monitors_and_the_remaining_count(): void
+    public function test_dashboard_attention_summary_stays_compact_when_many_monitors_need_review(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -228,19 +228,17 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">4</strong>', false)
             ->assertDontSee('新增監測項目')
-            ->assertSee('查看監測清單')
-            ->assertSee('另有 1 項需要查看');
+            ->assertSee('查看清單')
+            ->assertDontSee('另有 1 項需要查看');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
         $detailReportsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
-        $this->assertStringContainsString('異常網站 1', $overviewMarkup);
-        $this->assertStringContainsString('異常網站 2', $overviewMarkup);
-        $this->assertStringContainsString('異常網站 3', $overviewMarkup);
+        $this->assertStringContainsString('查看清單', $overviewMarkup);
+        $this->assertStringNotContainsString('異常網站', $overviewMarkup);
         $this->assertStringNotContainsString('異常網站 4', $overviewMarkup);
-        $this->assertSame(3, substr_count($overviewMarkup, 'class="dashboard-attention-name"'));
-        $this->assertSame(1, substr_count($overviewMarkup, '查看監測清單'));
+        $this->assertStringNotContainsString('dashboard-attention-list', $overviewMarkup);
     }
 }
