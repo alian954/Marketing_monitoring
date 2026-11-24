@@ -10,9 +10,6 @@
         $hasSocialEngagementFilters = $socialEngagementSelectedPlatform !== 'all'
             || $socialEngagementSelectedTag !== 'all'
             || $socialEngagementChangePeriodDays !== 7;
-        $attentionMonitors = $monitors
-            ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
-            ->take(1);
     @endphp
 
     <div class="page-heading">
@@ -37,55 +34,52 @@
         </div>
     </div>
 
-    <section class="panel dashboard-attention-panel spaced-top" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
-        <div class="panel-header">
-            <div>
-                <h2 id="dashboard-attention-title" class="panel-title">待處理項目</h2>
-                @if ($attentionCount > 0)
-                    <p class="dashboard-attention-summary" aria-label="待處理 {{ number_format($attentionCount) }} 項">
-                        <strong>{{ number_format($attentionCount) }} 項需要處理</strong>
-                    </p>
-                @endif
+    <section class="dashboard-overview-grid spaced-top" aria-label="總覽摘要" id="dashboard-overview">
+        <article class="panel dashboard-overview-card" aria-labelledby="dashboard-monitor-overview-title">
+            <div class="panel-header">
+                <h2 id="dashboard-monitor-overview-title" class="panel-title">待處理監測</h2>
             </div>
-        </div>
-        @if ($totalMonitors === 0)
-            <div class="dashboard-attention-empty">
-                <span>新增監測項目後，狀態會顯示在這裡。</span>
-                <a class="button button-primary button-small" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+            <div class="panel-body dashboard-overview-card-body">
+                <p class="dashboard-overview-value">{{ number_format($attentionCount) }}</p>
+                <p class="dashboard-overview-copy">
+                    @if ($totalMonitors === 0)
+                        尚未新增監測項目
+                    @elseif ($attentionCount > 0)
+                        項需要查看
+                    @else
+                        目前無待處理項目
+                    @endif
+                </p>
             </div>
-        @elseif ($attentionCount === 0)
-            <div class="dashboard-attention-empty">
-                <span>目前沒有需要處理的項目。</span>
-            </div>
-        @elseif ($attentionMonitors->isEmpty())
-            <div class="dashboard-attention-empty">
-                <span>有項目需要查看，請開啟完整監測清單。</span>
-            </div>
-        @else
-            <ul class="dashboard-attention-list">
-                @foreach ($attentionMonitors as $monitor)
-                    <li class="dashboard-attention-item">
-                        <a class="monitor-name-link" href="{{ route('monitors.show', $monitor) }}">{{ $monitor->name }}</a>
-                        <div class="dashboard-attention-meta">
-                            <x-state-badge :state="$monitor->health_state" />
-                            @if ($monitor->last_checked_at)
-                                <time class="timestamp" datetime="{{ $monitor->last_checked_at->toIso8601String() }}">{{ $monitor->last_checked_at->timezone('Asia/Taipei')->format('n/j H:i') }}</time>
-                            @else
-                                <span class="secondary-text">等待檢查</span>
-                            @endif
-                        </div>
-                    </li>
-                @endforeach
-            </ul>
-            <a class="dashboard-attention-more strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">
-                @if ($attentionCount > $attentionMonitors->count())
-                    查看完整清單 · 還有 {{ number_format($attentionCount - $attentionMonitors->count()) }} 項需處理
+            <div class="dashboard-overview-card-action">
+                @if ($totalMonitors === 0)
+                    <a class="strong-link" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目 <span aria-hidden="true">→</span></a>
                 @else
-                    查看完整監測清單
+                    <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看監測清單 <span aria-hidden="true">→</span></a>
                 @endif
-                <span aria-hidden="true">→</span>
-            </a>
-        @endif
+            </div>
+        </article>
+
+        <article class="panel dashboard-overview-card" aria-labelledby="dashboard-marketing-overview-title">
+            <div class="panel-header">
+                <h2 id="dashboard-marketing-overview-title" class="panel-title">追蹤活動</h2>
+            </div>
+            <div class="panel-body dashboard-overview-card-body">
+                <p class="dashboard-overview-value">{{ number_format($campaignTargetCount) }}</p>
+                <p class="dashboard-overview-copy">
+                    @if ($campaignTargetCount > 0)
+                        {{ $hasSocialEngagementFilters ? '個符合條件的活動' : '個活動正在追蹤' }}
+                    @elseif ($hasSocialEngagementFilters)
+                        目前沒有符合條件的活動
+                    @else
+                        尚未設定活動目標
+                    @endif
+                </p>
+            </div>
+            <div class="dashboard-overview-card-action">
+                <a class="strong-link" href="{{ route('clients.performance') }}">查看客戶成效 <span aria-hidden="true">→</span></a>
+            </div>
+        </article>
     </section>
 
     <details class="dashboard-disclosure dashboard-detail-report spaced-top" aria-labelledby="dashboard-detail-reports-title" @if ($hasSocialEngagementFilters) open @endif>

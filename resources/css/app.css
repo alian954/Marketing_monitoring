@@ -876,68 +876,40 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     margin-bottom: 16px;
 }
 
-.dashboard-attention-panel {
-    margin-top: 16px;
+.dashboard-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
 }
 
-.dashboard-attention-panel .panel-header {
-    align-items: center;
+.dashboard-overview-card {
+    display: flex;
+    flex-direction: column;
 }
 
-.dashboard-attention-summary {
+.dashboard-overview-card-body {
     display: flex;
     align-items: baseline;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-    margin: 7px 0 0;
+    gap: 12px;
+}
+
+.dashboard-overview-value {
+    margin: 0;
+    color: var(--ink);
+    font-size: 34px;
+    font-weight: 760;
+    line-height: 1;
+}
+
+.dashboard-overview-copy {
+    margin: 0;
     color: var(--muted);
     font-size: 13px;
 }
 
-.dashboard-attention-summary strong {
-    color: var(--ink);
-    font-size: 19px;
-    font-weight: 760;
-}
-
-.dashboard-attention-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.dashboard-attention-item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 16px;
-    padding: 13px 20px;
-    border-top: 1px solid var(--line);
-}
-
-.dashboard-attention-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: var(--muted);
-}
-
-.dashboard-attention-empty {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 20px 20px;
-    color: var(--muted);
-}
-
-.dashboard-attention-more {
-    display: block;
-    margin: 0;
-    padding: 10px 20px 16px;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 12px;
-    text-decoration: none;
+.dashboard-overview-card-action {
+    margin-top: auto;
+    padding: 0 20px 18px;
 }
 
 .stat-grid {
@@ -2500,25 +2472,8 @@ a.platform-chip:hover {
         gap: 9px;
     }
 
-    .dashboard-attention-item {
+    .dashboard-overview-grid {
         grid-template-columns: minmax(0, 1fr);
-        align-items: start;
-        gap: 6px;
-        padding: 12px 15px;
-    }
-
-    .dashboard-attention-empty {
-        align-items: flex-start;
-        flex-direction: column;
-        padding: 4px 15px 15px;
-    }
-
-    .dashboard-attention-summary strong {
-        font-size: 17px;
-    }
-
-    .dashboard-attention-more {
-        padding: 10px 15px 14px;
     }
 
     .dashboard-disclosure > summary {
