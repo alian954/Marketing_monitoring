@@ -54,6 +54,11 @@ class Client extends Model
         return $this->hasMany(ClientReportShare::class);
     }
 
+    public function reportTemplates(): HasMany
+    {
+        return $this->hasMany(ClientReportTemplate::class);
+    }
+
     public function exchangeRates(): HasMany
     {
         return $this->hasMany(ClientExchangeRate::class);

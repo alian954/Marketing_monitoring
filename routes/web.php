@@ -6,6 +6,7 @@ use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\ClientReportSnapshotController;
+use App\Http\Controllers\ClientReportTemplateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
@@ -127,6 +128,14 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
         ->name('clients.exchange-rates.destroy');
     Route::get('/clients/{client}/report-shares', [ClientReportShareController::class, 'index'])->whereNumber('client')->name('clients.report-shares.index');
     Route::post('/clients/{client}/report-shares', [ClientReportShareController::class, 'store'])->whereNumber('client')->name('clients.report-shares.store');
+    Route::post('/clients/{client}/report-shares/templates', [ClientReportTemplateController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.report-shares.templates.store');
+    Route::delete('/clients/{client}/report-shares/templates/{reportTemplate}', [ClientReportTemplateController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('reportTemplate')
+        ->scopeBindings()
+        ->name('clients.report-shares.templates.destroy');
     Route::delete('/clients/{client}/report-shares/{reportShare}', [ClientReportShareController::class, 'destroy'])
         ->whereNumber('client')
         ->whereNumber('reportShare')

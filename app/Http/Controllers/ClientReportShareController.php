@@ -14,7 +14,7 @@ use Illuminate\Validation\Rule;
 
 class ClientReportShareController extends Controller
 {
-    public function index(Client $client, ClientPortfolioReportingPeriod $reportingPeriod): Response
+    public function index(Request $request, Client $client, ClientPortfolioReportingPeriod $reportingPeriod): Response
     {
         $shares = $client->reportShares()
             ->with(['snapshots' => static fn ($query) => $query->select([
@@ -33,12 +33,25 @@ class ClientReportShareController extends Controller
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get(['id', 'tag', 'social_platform']);
+        $templates = $client->reportTemplates()
+            ->latest('updated_at')
+            ->latest('id')
+            ->get();
+        $templateId = $request->query('template_id');
+        $validTemplateId = is_string($templateId) || is_int($templateId)
+            ? filter_var($templateId, FILTER_VALIDATE_INT)
+            : false;
+        $selectedTemplate = $templateId === null
+            ? null
+            : $client->reportTemplates()->findOrFail($validTemplateId ?: 0);
 
         return response()
             ->view('client-report-shares.index', [
                 'client' => $client,
                 'shares' => $shares,
                 'campaignTargets' => $campaignTargets,
+                'templates' => $templates,
+                'selectedTemplate' => $selectedTemplate,
                 'reportPeriod' => $reportingPeriod->defaultPeriod(),
             ])
             ->header('Cache-Control', 'private, no-store')

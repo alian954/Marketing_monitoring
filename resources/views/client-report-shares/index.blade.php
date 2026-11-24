@@ -10,10 +10,12 @@
         $reportSectionErrors = collect($errors->getMessages())
             ->filter(static fn (array $messages, string $key): bool => $key === 'report_sections' || str_starts_with($key, 'report_sections.'))
             ->flatten();
-        $selectedCampaignIds = old('target_ids', $campaignTargets->modelKeys());
+        $selectedCampaignIds = old('target_ids', $selectedTemplate?->campaign_target_ids ?? $campaignTargets->modelKeys());
         $selectedCampaignIds = is_array($selectedCampaignIds) ? array_map('intval', $selectedCampaignIds) : [];
-        $selectedReportSections = old('report_sections', \App\Models\ClientReportShare::DEFAULT_REPORT_SECTIONS);
+        $selectedReportSections = old('report_sections', $selectedTemplate?->selectedReportSections() ?? \App\Models\ClientReportShare::DEFAULT_REPORT_SECTIONS);
         $selectedReportSections = is_array($selectedReportSections) ? $selectedReportSections : [];
+        $selectedReportBrandName = old('report_brand_name', $selectedTemplate?->report_brand_name ?? '');
+        $selectedComparePreviousPeriod = old('compare_previous_period', $selectedTemplate?->compare_previous_period ?? false);
     @endphp
 
     <div class="breadcrumbs" aria-label="頁面導覽">
@@ -46,6 +48,57 @@
         </section>
     @endif
 
+    <section class="panel spaced-top" aria-labelledby="report-template-list-title">
+        <div class="panel-header">
+            <h2 id="report-template-list-title" class="panel-title">報表樣板</h2>
+        </div>
+        @if ($templates->isEmpty())
+            <p class="empty-copy panel-body">建立報表時可另存設定為樣板。</p>
+        @else
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <caption class="sr-only">報表樣板名稱、活動數量、內容區塊與操作</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">名稱</th>
+                            <th scope="col">活動</th>
+                            <th scope="col">報表內容</th>
+                            <th scope="col"><span class="sr-only">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($templates as $template)
+                            @php
+                                $templateReportSectionLabels = collect($template->selectedReportSections())
+                                    ->map(static fn (string $section): ?string => \App\Models\ClientReportShare::REPORT_SECTION_LABELS[$section] ?? null)
+                                    ->filter()
+                                    ->implode('、');
+                                $templateCampaignCount = $campaignTargets->whereIn('id', $template->campaign_target_ids)->count();
+                            @endphp
+                            <tr>
+                                <th scope="row">{{ $template->name }}</th>
+                                <td>{{ number_format($templateCampaignCount) }} 個</td>
+                                <td>{{ $templateReportSectionLabels }}</td>
+                                <td>
+                                    <div class="row-actions">
+                                        <a class="button button-secondary button-small" href="{{ route('clients.report-shares.index', ['client' => $client, 'template_id' => $template->id]) }}" @if ($selectedTemplate?->is($template)) aria-current="page" @endif>套用</a>
+                                        @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                                            <form action="{{ route('clients.report-shares.templates.destroy', [$client, $template]) }}" method="POST" class="inline-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="button button-quiet button-small" type="submit" aria-label="刪除{{ $template->name }}樣板">刪除</button>
+                                            </form>
+                                        @endunless
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="create-report-share-title">
         <div class="panel-header">
             <h2 id="create-report-share-title" class="panel-title">建立分享連結</h2>
@@ -58,12 +111,12 @@
                     @csrf
                     <div class="field-group">
                         <label class="field-label" for="report-share-name">連結名稱</label>
-                        <input class="field-input{{ $errors->has('name') ? ' is-invalid' : '' }}" id="report-share-name" name="name" type="text" maxlength="80" value="{{ old('name') }}" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="report-share-name-error" @endif>
+                        <input class="field-input{{ $errors->has('name') ? ' is-invalid' : '' }}" id="report-share-name" name="name" type="text" maxlength="80" value="{{ old('name', $selectedTemplate?->name ?? '') }}" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="report-share-name-error" @endif>
                         @error('name')<p id="report-share-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="field-group">
                         <label class="field-label" for="report-share-brand-name">報表品牌名稱（選填）</label>
-                        <input class="field-input{{ $errors->has('report_brand_name') ? ' is-invalid' : '' }}" id="report-share-brand-name" name="report_brand_name" type="text" maxlength="80" value="{{ old('report_brand_name') }}" aria-describedby="report-share-brand-help{{ $errors->has('report_brand_name') ? ' report-share-brand-error' : '' }}" @if ($errors->has('report_brand_name')) aria-invalid="true" @endif>
+                        <input class="field-input{{ $errors->has('report_brand_name') ? ' is-invalid' : '' }}" id="report-share-brand-name" name="report_brand_name" type="text" maxlength="80" value="{{ $selectedReportBrandName }}" aria-describedby="report-share-brand-help{{ $errors->has('report_brand_name') ? ' report-share-brand-error' : '' }}" @if ($errors->has('report_brand_name')) aria-invalid="true" @endif>
                         <p id="report-share-brand-help" class="field-help">留白時顯示監測台品牌。</p>
                         @error('report_brand_name')<p id="report-share-brand-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
@@ -116,7 +169,7 @@
                                 type="checkbox"
                                 name="compare_previous_period"
                                 value="1"
-                                @checked(old('compare_previous_period'))
+                                @checked($selectedComparePreviousPeriod)
                                 @if ($errors->has('compare_previous_period')) aria-invalid="true" @endif
                             >
                             <span><strong>顯示前期變化</strong></span>
@@ -143,7 +196,18 @@
                             <p id="report-share-targets-error" class="field-error" role="alert">{{ $campaignSelectionErrors->first() }}</p>
                         @endif
                     </fieldset>
-                    <button class="button button-primary" type="submit">建立連結</button>
+                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                        <div class="field-group">
+                            <label class="field-label" for="report-template-name">樣板名稱</label>
+                            <input class="field-input{{ $errors->has('template_name') ? ' is-invalid' : '' }}" id="report-template-name" name="template_name" type="text" maxlength="80" value="{{ old('template_name') }}" aria-describedby="report-template-name-help{{ $errors->has('template_name') ? ' report-template-name-error' : '' }}" @if ($errors->has('template_name')) aria-invalid="true" @endif>
+                            <p id="report-template-name-help" class="field-help">儲存活動、品牌與報表區塊；日期和有效期限每次另選。</p>
+                            @error('template_name')<p id="report-template-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="form-actions">
+                            <button class="button button-secondary" type="submit" formaction="{{ route('clients.report-shares.templates.store', $client) }}" formnovalidate>儲存樣板</button>
+                            <button class="button button-primary" type="submit">建立連結</button>
+                        </div>
+                    @endunless
                 </form>
             @endif
         </div>
