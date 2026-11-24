@@ -36,12 +36,21 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">待處理</h2>
-            @if ($attentionCount > 0)
+            <h2 id="dashboard-focus-title" class="panel-title">{{ $dashboardSystemAttention !== null ? '系統待處理' : '待處理' }}</h2>
+            @if ($dashboardSystemAttention !== null)
+                <a class="strong-link" href="{{ route('features.index') }}#monitoring-runtime">查看處理方式 <span aria-hidden="true">→</span></a>
+            @elseif ($attentionCount > 0)
                 <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
             @endif
         </div>
-        @if ($attentionCount > 0)
+        @if ($dashboardSystemAttention !== null)
+            <div class="panel-body dashboard-focus-body">
+                <div class="alert alert-warning dashboard-system-attention">
+                    <p class="alert-title">{{ $dashboardSystemAttention['title'] }}</p>
+                    {{ $dashboardSystemAttention['description'] }}
+                </div>
+            </div>
+        @elseif ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
                 <p class="dashboard-focus-count-line">
                     <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>

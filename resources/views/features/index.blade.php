@@ -80,6 +80,16 @@
         </div>
     </section>
 
+    <section class="panel spaced-top" id="monitoring-runtime" aria-labelledby="monitoring-runtime-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="monitoring-runtime-title" class="panel-title">排程與佇列</h2>
+                <p class="panel-description">排程器或 Queue worker 超過 2 分鐘未回報時，總覽會優先提示服務問題。排程器負責派送監測；非 sync 佇列需持續執行 <code>queue:work</code>。</p>
+                <p class="panel-description">到期檢查等待超過 2 分鐘或執行超過 3 分鐘也會提示。可在總覽「詳細資料」的「執行服務」查看最近成功時間、佇列數與失敗工作；處理後確認心跳更新。</p>
+            </div>
+        </div>
+    </section>
+
     <section class="panel spaced-top" id="events-notifications" aria-labelledby="events-notifications-title">
         <div class="panel-header">
             <div>

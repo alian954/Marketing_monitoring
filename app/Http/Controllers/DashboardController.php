@@ -580,6 +580,37 @@ class DashboardController extends Controller
             }
         }
 
+        $dashboardSystemAttention = null;
+
+        if ($monitorCount > 0) {
+            if ($heartbeatError !== null) {
+                $dashboardSystemAttention = [
+                    'title' => '排程器最近執行失敗',
+                    'description' => '監測排程可能未正常執行，請查看服務狀態與最近錯誤。',
+                ];
+            } elseif ($heartbeat !== null && ! $heartbeatFresh) {
+                $dashboardSystemAttention = [
+                    'title' => '排程器未正常回報',
+                    'description' => '監測項目可能尚未依排程更新，請確認排程服務。',
+                ];
+            } elseif ($queueWorkerEnabled && $workerHeartbeat !== null && ! $workerHeartbeatFresh) {
+                $dashboardSystemAttention = [
+                    'title' => 'Queue worker 未正常回報',
+                    'description' => '排入佇列的監測工作可能無法執行，請確認 worker 服務。',
+                ];
+            } elseif ($checkRunQueueHealth['queued_warning'] ?? false) {
+                $dashboardSystemAttention = [
+                    'title' => '監測檢查正在排隊',
+                    'description' => '到期檢查等待超過 2 分鐘，請確認佇列服務。',
+                ];
+            } elseif ($checkRunQueueHealth['running_warning'] ?? false) {
+                $dashboardSystemAttention = [
+                    'title' => '監測檢查執行過久',
+                    'description' => '有檢查執行超過 3 分鐘，請查看服務狀態。',
+                ];
+            }
+        }
+
         return view('dashboard', [
             'clients' => $clientSelection['clients'],
             'selectedClientId' => $selectedClientId,
@@ -605,6 +636,7 @@ class DashboardController extends Controller
             'queueStateCounts' => $queueStateCounts,
             'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
             'failedQueueJobCount' => $failedQueueJobCount,
+            'dashboardSystemAttention' => $dashboardSystemAttention,
             'counts' => $counts,
             'platformCounts' => $platformCounts,
             'socialEngagementMonitors' => $socialEngagementMonitors,

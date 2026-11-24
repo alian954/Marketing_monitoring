@@ -100,8 +100,121 @@ class QueueWorkerHeartbeatTest extends TestCase
         $this->assertSame('healthy', $staleResponse->viewData('heartbeatStatus'));
     }
 
+    public function test_dashboard_prioritizes_stalled_monitoring_services_over_an_individual_monitor_alert(): void
+    {
+        $this->travelTo(now()->startOfMinute());
+        Config::set('queue.default', 'database');
+
+        $monitor = Monitor::factory()->create(['name' => '個別網站異常']);
+        $monitor->forceFill(['last_checked_at' => now()])->save();
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'status' => 'completed',
+            'normal_status' => 503,
+            'error_type' => 'normal_http_status',
+            'scheduled_at' => now(),
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'queued',
+            'scheduled_at' => now()->subMinutes(5),
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_succeeded_at' => now()->subMinutes(5),
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-worker',
+            'last_succeeded_at' => now()->subMinutes(5),
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('排程器未正常回報')
+            ->assertSee(route('features.index').'#monitoring-runtime', false);
+
+        $responseContent = $response->getContent();
+        $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
+        $detailsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
+        $overviewMarkup = substr($responseContent, $overviewStart, $detailsStart - $overviewStart);
+
+        $this->assertSame('排程器未正常回報', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame(1, $response->viewData('counts')['issue']);
+        $this->assertStringNotContainsString('個別網站異常', $overviewMarkup);
+        $this->assertStringContainsString('查看處理方式', $overviewMarkup);
+    }
+
+    public function test_dashboard_keeps_individual_monitor_focus_when_monitoring_services_are_fresh(): void
+    {
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_succeeded_at' => now(),
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-worker',
+            'last_succeeded_at' => now(),
+        ]);
+        $monitor = Monitor::factory()->create(['name' => '個別網站異常']);
+        $monitor->forceFill(['last_checked_at' => now()])->save();
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'normal_status' => 503,
+            'error_type' => 'normal_http_status',
+            'scheduled_at' => now(),
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('個別網站異常')
+            ->assertDontSee('系統待處理');
+
+        $this->assertNull($response->viewData('dashboardSystemAttention'));
+    }
+
+    public function test_dashboard_prioritizes_a_stale_queue_worker_when_the_scheduler_is_fresh(): void
+    {
+        Config::set('queue.default', 'database');
+        Monitor::factory()->create();
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_succeeded_at' => now(),
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-worker',
+            'last_succeeded_at' => now()->subMinutes(5),
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Queue worker 未正常回報');
+
+        $this->assertSame('Queue worker 未正常回報', $response->viewData('dashboardSystemAttention')['title']);
+    }
+
+    public function test_dashboard_prioritizes_a_recent_scheduler_failure(): void
+    {
+        Monitor::factory()->create();
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_succeeded_at' => now(),
+            'last_error' => '排程器最近執行失敗。',
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('排程器最近執行失敗');
+
+        $this->assertSame('排程器最近執行失敗', $response->viewData('dashboardSystemAttention')['title']);
+    }
+
     public function test_dashboard_marks_a_recent_scheduler_failure_as_an_issue_despite_a_fresh_success(): void
     {
+        Monitor::factory()->create();
         SchedulerHeartbeat::factory()->create([
             'job_key' => 'monitor-scheduler',
             'last_started_at' => now(),
@@ -117,6 +230,7 @@ class QueueWorkerHeartbeatTest extends TestCase
 
         $this->assertTrue($response->viewData('heartbeatFresh'));
         $this->assertSame('issue', $response->viewData('heartbeatStatus'));
+        $this->assertSame('排程器最近執行失敗', $response->viewData('dashboardSystemAttention')['title']);
     }
 
     public function test_dashboard_counts_only_jobs_on_the_default_queue(): void
@@ -193,6 +307,7 @@ class QueueWorkerHeartbeatTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
+            ->assertSee('監測檢查正在排隊')
             ->assertSee('到期排隊 2 筆')
             ->assertSee('最久等待 3.0 分鐘')
             ->assertSee('執行中 2 筆')
@@ -208,6 +323,35 @@ class QueueWorkerHeartbeatTest extends TestCase
             'longest_running_seconds' => 240,
             'running_warning' => true,
         ], $response->viewData('checkRunQueueHealth'));
+        $this->assertSame('監測檢查正在排隊', $response->viewData('dashboardSystemAttention')['title']);
+    }
+
+    public function test_dashboard_warns_when_a_monitor_check_runs_too_long_without_other_service_alerts(): void
+    {
+        $this->travelTo(now()->startOfMinute());
+        Config::set('queue.default', 'database');
+        $monitor = Monitor::factory()->create();
+        CheckRun::factory()->for($monitor)->create([
+            'status' => 'running',
+            'scheduled_at' => now()->subMinutes(4),
+            'started_at' => now()->subMinutes(4),
+            'finished_at' => null,
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-scheduler',
+            'last_succeeded_at' => now(),
+        ]);
+        SchedulerHeartbeat::factory()->create([
+            'job_key' => 'monitor-worker',
+            'last_succeeded_at' => now(),
+        ]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('監測檢查執行過久');
+
+        $this->assertSame('監測檢查執行過久', $response->viewData('dashboardSystemAttention')['title']);
     }
 
     public function test_dashboard_counts_failed_jobs_when_database_storage_is_configured(): void
