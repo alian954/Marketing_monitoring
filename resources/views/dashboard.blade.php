@@ -7,6 +7,9 @@
         $totalMonitors = $monitorCount;
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
         $campaignTargetCount = count($socialEngagementTargets);
+        $hasSocialEngagementFilters = $socialEngagementSelectedPlatform !== 'all'
+            || $socialEngagementSelectedTag !== 'all'
+            || $socialEngagementChangePeriodDays !== 7;
         $attentionMonitors = $monitors
             ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
             ->take(3);
@@ -33,7 +36,7 @@
     <section class="panel dashboard-attention-panel spaced-top" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
         <div class="panel-header">
             <div>
-                <h2 id="dashboard-attention-title" class="panel-title">監測狀態</h2>
+                <h2 id="dashboard-attention-title" class="panel-title">待處理項目</h2>
                 <p class="dashboard-attention-summary" aria-label="待處理 {{ number_format($attentionCount) }} 項，監測項目 {{ number_format($totalMonitors) }} 項">
                     @if ($totalMonitors === 0)
                         <strong>尚未新增監測項目</strong>
@@ -44,9 +47,6 @@
                 </p>
             </div>
             <div class="dashboard-attention-actions">
-                @if ($totalMonitors > 0)
-                    <span class="badge {{ $attentionCount > 0 ? 'badge-issue' : 'badge-healthy' }}">{{ $attentionCount > 0 ? '需查看' : '無待處理' }}</span>
-                @endif
                 <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看監測項目 <span aria-hidden="true">→</span></a>
             </div>
         </div>
@@ -85,7 +85,12 @@
         @endif
     </section>
 
-    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-monitor-summary">
+    <details class="dashboard-disclosure dashboard-detail-report spaced-top" aria-labelledby="dashboard-detail-reports-title" @if ($hasSocialEngagementFilters) open @endif>
+        <summary>
+            <span id="dashboard-detail-reports-title">詳細報表</span>
+        </summary>
+        <div class="dashboard-disclosure-content dashboard-detail-report-content">
+    <details class="dashboard-disclosure" aria-labelledby="dashboard-monitor-summary">
         <summary>
             <span id="dashboard-monitor-summary">監測清單與執行狀態</span>
             <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項 · {{ number_format($attentionCount) }} 項需處理 · 排程器 {{ $heartbeatStatus === 'healthy' ? '正常' : '需留意' }}</span>
@@ -264,7 +269,7 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-marketing-summary" @if ($socialEngagementSelectedPlatform !== 'all' || $socialEngagementSelectedTag !== 'all' || $socialEngagementChangePeriodDays !== 7) open @endif>
+    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary" @if ($hasSocialEngagementFilters) open @endif>
         <summary>
             <span id="dashboard-marketing-summary">行銷數據</span>
             <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動 · 互動與投放</span>
@@ -1936,7 +1941,7 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-operations-summary">
+    <details class="dashboard-disclosure" aria-labelledby="dashboard-operations-summary">
         <summary>
             <span id="dashboard-operations-summary">服務品質與維運</span>
             <span class="dashboard-disclosure-meta">事件清單 {{ number_format($incidents->count()) }} 筆 · {{ number_format($expiringCertificateCount) }} 張憑證 · {{ number_format($expiringDomainCount) }} 個網域</span>
@@ -2346,6 +2351,8 @@
             </div>
         @endif
     </section>
+        </div>
+    </details>
         </div>
     </details>
 

@@ -748,6 +748,11 @@ textarea {
     padding: 0 20px 20px;
 }
 
+.dashboard-detail-report-content {
+    display: grid;
+    gap: 12px;
+}
+
 .dashboard-disclosure-content > .panel:first-child {
     margin-top: 16px;
 }
