@@ -1,6 +1,3 @@
-<div>
-    <!-- Knowing is not enough; we must apply. Being willing is not enough; we must do. - Leonardo da Vinci -->
-</div>
 @extends('layouts.public-status')
 
 @section('title', '行銷成效報表')
@@ -132,6 +129,26 @@
                         <dd>{{ $efficiency['roas'] === null ? '—' : number_format($efficiency['roas'], 2).' 倍' }}</dd>
                         <span class="campaign-report-secondary">{{ $efficiency['roas_unavailable_reason'] === null ? '依同幣別營收與花費計算' : '尚無可比較數據' }}</span>
                     </div>
+                </dl>
+
+                <dl class="campaign-report-freshness" aria-label="各資料來源最近擷取時間">
+                    @foreach ([
+                        '公開互動' => $publicEngagement['latest_at'],
+                        'GA4' => $googleAnalytics['synced_at'],
+                        'Meta Ads' => $metaMarketing['synced_at'],
+                        'Google Ads' => $googleAds['synced_at'],
+                    ] as $sourceLabel => $capturedAt)
+                        <div>
+                            <dt>{{ $sourceLabel }}</dt>
+                            <dd>
+                                @if ($capturedAt !== null)
+                                    <time datetime="{{ $capturedAt->toIso8601String() }}">{{ $capturedAt->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                @else
+                                    尚無成功擷取
+                                @endif
+                            </dd>
+                        </div>
+                    @endforeach
                 </dl>
             </section>
         @endforeach

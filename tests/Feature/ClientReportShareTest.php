@@ -5,10 +5,14 @@ namespace Tests\Feature;
 use App\Models\CheckRun;
 use App\Models\Client;
 use App\Models\ClientReportShare;
+use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
+use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
+use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -114,8 +118,10 @@ class ClientReportShareTest extends TestCase
             ->assertSee('Public Campaign')
             ->assertSee('<dd>30</dd>', false)
             ->assertSee('1 / 1 篇取得完整互動數')
+            ->assertSee('2026/11/24 20:00')
             ->assertSee('<dd>321</dd>', false)
             ->assertSee('456.78 TWD')
+            ->assertSee('尚無成功擷取')
             ->assertDontSee('Other Client')
             ->assertDontSee('Private Campaign')
             ->assertDontSee($token);
@@ -124,6 +130,83 @@ class ClientReportShareTest extends TestCase
         $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
         $this->assertSame('noindex, nofollow', $response->headers->get('X-Robots-Tag'));
         $this->assertSame('no-referrer', $response->headers->get('Referrer-Policy'));
+    }
+
+    public function test_public_client_report_shows_the_latest_capture_time_for_each_data_source(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Timestamped Campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_campaign_name' => 'Timestamped Campaign',
+            'meta_campaign_id' => '777777777',
+            'google_ads_campaign_id' => '888888888',
+        ]);
+        $this->createPublicEngagementPost($client, $target);
+        $this->createGoogleAnalyticsReport($owner, $target);
+
+        $metaConnection = MetaMarketingConnection::query()->create([
+            'user_id' => $owner->id,
+            'access_token' => 'meta-test-token',
+            'ad_account_id' => '123456789',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => '123456789',
+            'campaign_id' => '777777777',
+            'campaign_name' => 'Timestamped Campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '100.0000',
+            'impressions' => 1000,
+            'reach' => 800,
+            'clicks' => 40,
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subMinutes(30),
+        ]);
+
+        $googleAdsConnection = GoogleAdsConnection::query()->create([
+            'user_id' => $owner->id,
+            'refresh_token' => 'google-ads-test-token',
+            'customer_id' => '1234567890',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => '1234567890',
+            'campaign_id' => '888888888',
+            'campaign_name' => 'Timestamped Campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '200.0000',
+            'impressions' => 2000,
+            'clicks' => 80,
+            'conversions' => '4.0000',
+            'conversions_value' => '500.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now()->subMinutes(45),
+        ]);
+
+        $token = str_repeat('7', 64);
+        $this->createShare($client, $token);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('各資料來源最近擷取時間')
+            ->assertSee('公開互動')
+            ->assertSee('GA4')
+            ->assertSee('Meta Ads')
+            ->assertSee('Google Ads')
+            ->assertSee('2026/11/24 20:00')
+            ->assertSee('2026/11/24 19:30')
+            ->assertSee('2026/11/24 19:15');
     }
 
     public function test_public_client_report_escapes_client_and_campaign_names(): void
@@ -272,10 +355,10 @@ class ClientReportShareTest extends TestCase
             'google_analytics_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
-            'attribution_mode' => 'manual_utm',
-            'campaign_id' => null,
-            'source_name' => null,
-            'medium_name' => null,
+            'attribution_mode' => $target->googleAnalyticsAttributionMode(),
+            'campaign_id' => $target->google_ads_campaign_id,
+            'source_name' => $target->googleAnalyticsSourceName(),
+            'medium_name' => $target->googleAnalyticsMediumName(),
             'starts_on' => $target->starts_on->toDateString(),
             'ends_on' => $target->ends_on->toDateString(),
             'sessions' => 321,

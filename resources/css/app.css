@@ -2604,6 +2604,29 @@ a.platform-chip:hover {
     font-weight: 500;
 }
 
+.campaign-report-freshness {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px 14px;
+    margin: 12px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.campaign-report-freshness dt {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.campaign-report-freshness dd {
+    margin: 3px 0 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
 .campaign-report-daily-trend {
     margin: 12px 0 18px;
 }
@@ -2710,6 +2733,10 @@ a.platform-chip:hover {
     }
 
     .campaign-report-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .campaign-report-freshness {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
