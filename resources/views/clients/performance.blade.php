@@ -27,6 +27,7 @@
             <p class="page-description">比較各客戶的營收、廣告花費與平台 ROAS。</p>
         </div>
         <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('clients.performance.export') }}">匯出 CSV</a>
             <a class="button button-secondary" href="{{ route('clients.index') }}">客戶管理</a>
         </div>
     </div>

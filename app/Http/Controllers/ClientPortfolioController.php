@@ -7,10 +7,13 @@ use App\Models\ClientExchangeRate;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
+use App\Services\ClientPortfolioCsv;
 use App\Services\DashboardCampaignMarketingSummary;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClientPortfolioController extends Controller
 {
@@ -19,13 +22,54 @@ class ClientPortfolioController extends Controller
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
     ): View {
+        $clientPortfolioRows = $this->buildClientPortfolioRows(
+            $this->authenticatedUser($request),
+            $dashboardCampaignMarketingSummary,
+            $campaignPortfolioMarketingSummary,
+        );
+
+        return view('clients.performance', compact('clientPortfolioRows'));
+    }
+
+    public function export(
+        Request $request,
+        DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
+        CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioCsv $csv,
+    ): StreamedResponse {
+        $clientPortfolioRows = $this->buildClientPortfolioRows(
+            $this->authenticatedUser($request),
+            $dashboardCampaignMarketingSummary,
+            $campaignPortfolioMarketingSummary,
+        );
+        $response = response()->streamDownload(function () use ($clientPortfolioRows, $csv): void {
+            $stream = fopen('php://output', 'wb');
+            $csv->write($clientPortfolioRows, $stream);
+            fclose($stream);
+        }, 'client-performance-'.now()->format('Y-m-d').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+        $response->headers->set('Cache-Control', 'private, no-store');
+
+        return $response;
+    }
+
+    private function authenticatedUser(Request $request): User
+    {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
 
-        Client::ensureDefaultFor($user);
+        return $user;
+    }
 
+    private function buildClientPortfolioRows(
+        User $user,
+        DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
+        CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+    ): Collection {
+        Client::ensureDefaultFor($user);
         $clients = Client::query()
-            ->withCount(['monitors', 'socialEngagementTargets'])
+            ->withCount(['socialEngagementTargets'])
             ->orderBy('name')
             ->get();
         $clientIds = $clients->modelKeys();
@@ -77,6 +121,6 @@ class ClientPortfolioController extends Controller
             ];
         });
 
-        return view('clients.performance', compact('clientPortfolioRows'));
+        return $clientPortfolioRows;
     }
 }

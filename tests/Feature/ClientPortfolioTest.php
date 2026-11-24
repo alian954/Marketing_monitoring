@@ -23,6 +23,9 @@ class ClientPortfolioTest extends TestCase
     {
         $this->get(route('clients.performance'))
             ->assertRedirect(route('login'));
+
+        $this->get(route('clients.performance.export'))
+            ->assertRedirect(route('login'));
     }
 
     public function test_empty_client_portfolio_renders_without_marketing_connections(): void
@@ -30,7 +33,8 @@ class ClientPortfolioTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('clients.performance'))
             ->assertOk()
-            ->assertSee('行銷成效');
+            ->assertSee('行銷成效')
+            ->assertSee(route('clients.performance.export'), false);
 
         $row = collect($response->viewData('clientPortfolioRows'))
             ->firstWhere('client.name', Client::DEFAULT_NAME);
@@ -133,6 +137,64 @@ class ClientPortfolioTest extends TestCase
         $this->assertSame(25.0, $row['money_groups'][0]['ga4_revenue']);
     }
 
+    public function test_client_portfolio_export_returns_currency_safe_marketing_metrics(): void
+    {
+        $this->travelTo('2026-11-03 12:00:00');
+        $user = User::factory()->create();
+        $client = $user->clients()->create([
+            'name' => 'Northwind',
+            'reporting_currency_code' => 'TWD',
+        ]);
+        $campaign = $this->createCampaign($client, 'Northwind launch');
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '10.0000', '2.0000', '3.0000');
+        $client->exchangeRates()->create([
+            'source_currency_code' => 'USD',
+            'reporting_currency_code' => 'TWD',
+            'effective_on' => '2026-11-01',
+            'rate_to_reporting_currency' => '30.00000000',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('clients.performance.export'))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->assertHeader('content-disposition', 'attachment; filename=client-performance-2026-11-03.csv')
+            ->assertHeader('cache-control', 'no-store, private');
+        $content = $response->streamedContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $content);
+
+        $rows = collect($this->csvRows($content))->keyBy('客戶');
+        $row = $rows->get('Northwind');
+
+        $this->assertSame('TWD', $row['報表幣別']);
+        $this->assertSame('1', $row['活動數']);
+        $this->assertSame('300.00 TWD', $row['GA4 營收']);
+        $this->assertSame('60.00 TWD', $row['Meta Ads 花費']);
+        $this->assertSame('90.00 TWD', $row['Google Ads 花費']);
+        $this->assertSame('Google Ads 13.33× (USD)', $row['平台 ROAS']);
+        $this->assertSame('GA4 最新 1/1；Meta 最新 1/1；Google Ads 最新 1/1', $row['資料更新']);
+        $this->assertSame('', $row['資料缺漏']);
+    }
+
+    public function test_client_portfolio_export_sanitizes_formula_cells(): void
+    {
+        $user = User::factory()->create();
+        $formulaClient = $user->clients()->create([
+            'name' => '=HYPERLINK("https://example.invalid","開啟")',
+        ]);
+
+        $content = $this->actingAs($user)
+            ->get(route('clients.performance.export'))
+            ->assertOk()
+            ->streamedContent();
+        $rows = $this->csvRows($content);
+        $row = collect($rows)->firstWhere('客戶', "'=HYPERLINK(\"https://example.invalid\",\"開啟\")");
+
+        $this->assertNotNull($row);
+        $this->assertSame($formulaClient->name, substr($row['客戶'], 1));
+    }
+
     public function test_missing_daily_exchange_rates_are_reported_without_showing_unconverted_totals(): void
     {
         $this->travelTo('2026-11-03 12:00:00');
@@ -183,6 +245,14 @@ class ClientPortfolioTest extends TestCase
         $this->assertSame(0, $row['money_groups'][0]['ga4_campaign_count']);
         $this->assertSame(1, $conversionCoverage['google_analytics']['missing_rate_campaigns']);
         $this->assertSame(1, $conversionCoverage['google_analytics']['missing_daily_data_campaigns']);
+
+        $csvRows = collect($this->csvRows($this->get(route('clients.performance.export'))->assertOk()->streamedContent()))
+            ->keyBy('客戶');
+        $gaps = $csvRows->get('待補匯率客戶')['資料缺漏'];
+        $this->assertStringContainsString('GA4 缺匯率 1', $gaps);
+        $this->assertStringContainsString('GA4 缺逐日資料 1', $gaps);
+        $this->assertStringContainsString('Meta 缺匯率 1', $gaps);
+        $this->assertStringContainsString('Google Ads 缺匯率 1', $gaps);
     }
 
     public function test_selected_workspace_member_only_sees_assigned_clients_in_the_portfolio(): void
@@ -239,6 +309,9 @@ class ClientPortfolioTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame($selectedClient->id, $rows->sole()['client']->id);
         $this->assertSame(300.0, $rows->sole()['money_groups'][0]['ga4_revenue']);
+
+        $csvRows = $this->csvRows($this->get(route('clients.performance.export'))->assertOk()->streamedContent());
+        $this->assertSame(['可見客戶'], array_column($csvRows, '客戶'));
     }
 
     private function createCampaign(Client $client, string $tag): SocialEngagementTarget
@@ -349,6 +422,21 @@ class ClientPortfolioTest extends TestCase
             ]]),
             'synced_at' => now(),
         ]);
+    }
+
+    /** @return list<array<string, string>> */
+    private function csvRows(string $content): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', substr($content, 3)) ?: [];
+        $headers = str_getcsv(array_shift($lines) ?? '');
+        $dataLines = array_values(array_filter($lines, static fn (string $line): bool => $line !== ''));
+
+        return array_map(static function (string $line) use ($headers): array {
+            $values = str_getcsv($line);
+            $row = array_combine($headers, $values);
+
+            return is_array($row) ? $row : [];
+        }, $dataLines);
     }
 
     /** @param list<array<string, string>> $rows
