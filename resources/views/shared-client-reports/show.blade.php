@@ -20,7 +20,7 @@
     @endphp
 
     <div class="public-status-header">
-        <span class="public-status-brand">監測台｜行銷報表</span>
+        <span class="public-status-brand">{{ $share->report_brand_name ?: '監測台｜行銷報表' }}</span>
     </div>
 
     <header class="public-status-overview">

@@ -41,9 +41,16 @@ class ClientReportShareController extends Controller
             $request->merge(['name' => trim($name)]);
         }
 
+        $reportBrandName = $request->input('report_brand_name');
+
+        if (is_string($reportBrandName)) {
+            $request->merge(['report_brand_name' => trim($reportBrandName)]);
+        }
+
         $latestCompleteDate = CarbonImmutable::now('Asia/Taipei')->startOfDay()->subDay()->toDateString();
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:80'],
+            'report_brand_name' => ['nullable', 'string', 'max:80'],
             'expires_in_days' => ['required', 'integer', Rule::in([7, 30, 90])],
             'from' => ['required', 'string', 'date_format:Y-m-d'],
             'to' => ['required', 'string', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:'.$latestCompleteDate],
@@ -59,6 +66,8 @@ class ClientReportShareController extends Controller
         ], [
             'name.required' => '請輸入分享連結名稱。',
             'name.max' => '分享連結名稱不可超過 80 個字元。',
+            'report_brand_name.string' => '報表品牌名稱格式無效。',
+            'report_brand_name.max' => '報表品牌名稱不可超過 80 個字元。',
             'expires_in_days.in' => '請選擇 7、30 或 90 天的有效期限。',
             'from.required' => '請選擇報表開始日期。',
             'from.string' => '報表開始日期格式無效。',
@@ -106,6 +115,7 @@ class ClientReportShareController extends Controller
         $token = bin2hex(random_bytes(32));
         $share = $client->reportShares()->create([
             'name' => $validated['name'],
+            'report_brand_name' => $validated['report_brand_name'] ?? null,
             'token_hash' => hash('sha256', $token),
             'campaign_target_ids' => array_map('intval', $validated['target_ids']),
             'report_sections' => array_values($validated['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS),

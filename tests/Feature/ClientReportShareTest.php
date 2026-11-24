@@ -32,6 +32,7 @@ class ClientReportShareTest extends TestCase
         $response = $this->actingAs($user)
             ->post(route('clients.report-shares.store', $client), [
                 'name' => '客戶週報',
+                'report_brand_name' => '  好感行銷  ',
                 'expires_in_days' => '7',
                 'target_ids' => [$target->id],
                 ...$this->validSharePeriod(),
@@ -47,6 +48,7 @@ class ClientReportShareTest extends TestCase
         $this->assertSame(hash('sha256', $token), $share->token_hash);
         $this->assertNotSame($token, $share->token_hash);
         $this->assertSame('客戶週報', $share->name);
+        $this->assertSame('好感行銷', $share->report_brand_name);
         $this->assertSame([$target->id], $share->campaign_target_ids);
         $this->assertSame('2026-11-01', $share->report_starts_on->toDateString());
         $this->assertSame('2026-11-23', $share->report_ends_on->toDateString());
@@ -65,6 +67,11 @@ class ClientReportShareTest extends TestCase
         $this->get(route('clients.report-shares.index', $client))
             ->assertOk()
             ->assertDontSee($token);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('好感行銷');
     }
 
     public function test_owner_cannot_create_a_share_with_an_unapproved_expiration_period(): void
@@ -157,6 +164,30 @@ class ClientReportShareTest extends TestCase
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['from' => '報表期間最多 365 天。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_owner_cannot_create_a_share_with_a_brand_name_over_80_characters(): void
+    {
+        $user = User::factory()->create();
+        $client = Client::factory()->for($user)->create();
+        $target = $this->createTarget($client, 'Long brand campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Long brand report',
+                'report_brand_name' => str_repeat('品牌', 41),
+                'expires_in_days' => '30',
+                'target_ids' => [$target->id],
+                ...$this->validSharePeriod(),
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['report_brand_name' => '報表品牌名稱不可超過 80 個字元。']);
 
         $this->assertDatabaseCount('client_report_shares', 0);
     }
@@ -702,13 +733,16 @@ class ClientReportShareTest extends TestCase
         $this->actingAs($user);
         $this->createTarget($client, '<img src=x onerror=alert(1)>');
         $token = str_repeat('c', 64);
-        $this->createShare($client, $token);
+        $share = $this->createShare($client, $token);
+        $share->forceFill(['report_brand_name' => '<script>window.brand()</script>'])->save();
 
         $this->get(route('client-report-shares.public', ['token' => $token]))
             ->assertOk()
             ->assertSee('&lt;script&gt;window.alert(1)&lt;/script&gt;', false)
             ->assertSee('&lt;img src=x onerror=alert(1)&gt;', false)
+            ->assertSee('&lt;script&gt;window.brand()&lt;/script&gt;', false)
             ->assertDontSee('<script>window.alert(1)</script>', false)
+            ->assertDontSee('<script>window.brand()</script>', false)
             ->assertDontSee('<img src=x onerror=alert(1)>', false);
     }
 

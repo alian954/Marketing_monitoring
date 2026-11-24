@@ -62,6 +62,12 @@
                         @error('name')<p id="report-share-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="field-group">
+                        <label class="field-label" for="report-share-brand-name">報表品牌名稱（選填）</label>
+                        <input class="field-input{{ $errors->has('report_brand_name') ? ' is-invalid' : '' }}" id="report-share-brand-name" name="report_brand_name" type="text" maxlength="80" value="{{ old('report_brand_name') }}" aria-describedby="report-share-brand-help{{ $errors->has('report_brand_name') ? ' report-share-brand-error' : '' }}" @if ($errors->has('report_brand_name')) aria-invalid="true" @endif>
+                        <p id="report-share-brand-help" class="field-help">留白時顯示監測台品牌。</p>
+                        @error('report_brand_name')<p id="report-share-brand-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="field-group">
                         <label class="field-label" for="report-share-expiry">有效期限</label>
                         <select class="field-select{{ $errors->has('expires_in_days') ? ' is-invalid' : '' }}" id="report-share-expiry" name="expires_in_days" required @if ($errors->has('expires_in_days')) aria-invalid="true" aria-describedby="report-share-expiry-error" @endif>
                             <option value="7" @selected(old('expires_in_days', '30') === '7')>7 天</option>
