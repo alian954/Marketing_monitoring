@@ -182,7 +182,7 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertSame(1, $response->viewData('counts')['issue']);
     }
 
-    public function test_dashboard_attention_list_shows_three_items_and_one_link_to_the_remaining_work(): void
+    public function test_dashboard_attention_list_shows_the_top_item_and_one_link_to_the_remaining_work(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -206,8 +206,7 @@ class DashboardFocusLayoutTest extends TestCase
         $response = $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee('aria-label="待處理 4 項，監測項目 4 項"', false)
-            ->assertSee('還有 1 項需處理')
-            ->assertDontSee('另有 1 項');
+            ->assertSee('還有 3 項需處理');
 
         $responseContent = $response->getContent();
         $attentionStart = strpos($responseContent, 'id="dashboard-attention"');
@@ -215,9 +214,7 @@ class DashboardFocusLayoutTest extends TestCase
         $attentionMarkup = substr($responseContent, $attentionStart, $collapsedMonitorStart - $attentionStart);
 
         $this->assertStringContainsString('異常網站 1', $attentionMarkup);
-        $this->assertStringContainsString('異常網站 2', $attentionMarkup);
-        $this->assertStringContainsString('異常網站 3', $attentionMarkup);
-        $this->assertStringNotContainsString('異常網站 4', $attentionMarkup);
+        $this->assertStringNotContainsString('異常網站 2', $attentionMarkup);
         $this->assertSame(1, substr_count($attentionMarkup, 'dashboard-attention-more'));
     }
 }

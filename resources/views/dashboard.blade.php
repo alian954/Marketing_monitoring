@@ -12,7 +12,7 @@
             || $socialEngagementChangePeriodDays !== 7;
         $attentionMonitors = $monitors
             ->filter(fn ($monitor): bool => in_array($monitor->health_state, ['issue', 'suspect', 'warning', 'stale'], true))
-            ->take(3);
+            ->take(1);
     @endphp
 
     <div class="page-heading">
