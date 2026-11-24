@@ -3088,6 +3088,49 @@
                     <dd>{{ number_format($attributionCoverage['ga4_unresolved_post_count']) }} 篇</dd>
                 </div>
             </dl>
+            <details class="campaign-report-utm-builder" @if ($errors->getBag('utmBuilder')->any() || $campaignUtmLinkBuilder['result'] !== null) open @endif>
+                <summary>建立 UTM 連結</summary>
+                <div class="campaign-report-utm-builder-content">
+                    <h3 id="campaign-utm-builder-title">追蹤連結產生器</h3>
+                    @if ($campaignUtmLinkBuilder['attribution_mode'] === 'google_ads_auto_tagging')
+                        <p class="campaign-report-secondary">此活動使用 Google Ads 自動標記，不提供手動 UTM 連結。</p>
+                    @elseif ($campaignUtmLinkBuilder['source'] === null || $campaignUtmLinkBuilder['medium'] === null)
+                        <p class="campaign-report-secondary">先設定活動的 GA4 來源與媒介，再產生追蹤連結。</p>
+                        <a class="strong-link" href="{{ $campaignUtmLinkBuilder['settings_url'] }}">設定活動歸因</a>
+                    @else
+                        <p class="campaign-report-secondary">
+                            使用來源 {{ $campaignUtmLinkBuilder['source'] }}、媒介 {{ $campaignUtmLinkBuilder['medium'] }}、活動 {{ $campaignUtmLinkBuilder['campaign'] }}。utm_content 請與貼文設定一致。
+                        </p>
+                        <form action="{{ route('social-engagement-targets.report.utm-link-preview', $target) }}" method="POST" aria-labelledby="campaign-utm-builder-title">
+                            @csrf
+                            <div class="field-group">
+                                <label class="field-label" for="campaign-utm-destination-url">目的網址</label>
+                                <input class="field-input{{ $errors->getBag('utmBuilder')->has('destination_url') ? ' is-invalid' : '' }}" id="campaign-utm-destination-url" name="destination_url" type="url" inputmode="url" autocomplete="url" autocorrect="off" autocapitalize="none" spellcheck="false" maxlength="2048" value="{{ old('destination_url') }}" aria-describedby="campaign-utm-destination-help{{ $errors->getBag('utmBuilder')->has('destination_url') ? ' campaign-utm-destination-error' : '' }}" @if ($errors->getBag('utmBuilder')->has('destination_url')) aria-invalid="true" @endif required>
+                                <p id="campaign-utm-destination-help" class="field-help">僅接受 HTTP 或 HTTPS 網址。</p>
+                                @error('destination_url', 'utmBuilder')<p id="campaign-utm-destination-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="field-group">
+                                <label class="field-label" for="campaign-utm-content">utm_content 素材值</label>
+                                <input class="field-input{{ $errors->getBag('utmBuilder')->has('utm_content') ? ' is-invalid' : '' }}" id="campaign-utm-content" name="utm_content" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" maxlength="4096" value="{{ old('utm_content') }}" aria-describedby="campaign-utm-content-help{{ $errors->getBag('utmBuilder')->has('utm_content') ? ' campaign-utm-content-error' : '' }}" @if ($errors->getBag('utmBuilder')->has('utm_content')) aria-invalid="true" @endif required>
+                                <p id="campaign-utm-content-help" class="field-help">請填入對應貼文的 utm_content。</p>
+                                @error('utm_content', 'utmBuilder')<p id="campaign-utm-content-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                            </div>
+                            <button class="button button-secondary" type="submit">產生連結</button>
+                        </form>
+                        @if ($campaignUtmLinkBuilder['result'] !== null)
+                            <div class="field-group campaign-utm-generated-result">
+                                <label class="field-label" for="campaign-utm-generated-url">追蹤連結</label>
+                                <input class="field-input" id="campaign-utm-generated-url" type="text" value="{{ $campaignUtmLinkBuilder['result']['url'] }}" readonly autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="campaign-utm-generated-help">
+                                <p id="campaign-utm-generated-help" class="field-help">可手動選取複製連結。</p>
+                                <div class="campaign-utm-copy-controls">
+                                    <button class="button button-secondary button-small" type="button" command="--copy" commandfor="campaign-utm-generated-url" hidden>複製連結</button>
+                                    <span class="field-help" role="status"></span>
+                                </div>
+                            </div>
+                        @endif
+                    @endif
+                </div>
+            </details>
         </section>
 
         <section class="campaign-report-panel" aria-labelledby="campaign-report-posts-title">

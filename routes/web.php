@@ -154,6 +154,9 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');
+    Route::post('/social-engagement-targets/{socialEngagementTarget}/report/utm-link-preview', [SocialEngagementCampaignReportController::class, 'previewUtmLink'])
+        ->whereNumber('socialEngagementTarget')
+        ->name('social-engagement-targets.report.utm-link-preview');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/posts', [SocialEngagementCampaignReportController::class, 'postDetails'])
         ->whereNumber('socialEngagementTarget')
         ->name('social-engagement-targets.posts');

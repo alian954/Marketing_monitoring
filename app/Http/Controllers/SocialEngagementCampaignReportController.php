@@ -18,6 +18,7 @@ use App\Services\CampaignEstimatedProfitabilityReport;
 use App\Services\CampaignMarketingEfficiencyReport;
 use App\Services\CampaignMarketingReportCsv;
 use App\Services\CampaignMetaAdsFatigueObservation;
+use App\Services\CampaignUtmLinkBuilder;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAdsAuctionInsightPerformanceReport;
 use App\Services\GoogleAdsAuctionInsightReportCsv;
@@ -65,8 +66,11 @@ use App\Services\SocialEngagementCampaignReport;
 use App\Services\SocialPostGoogleAnalyticsAttributionReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Uri;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -255,8 +259,82 @@ class SocialEngagementCampaignReportController extends Controller
             $viewData['googleAdsReport']?->daily_metrics,
             'campaign_channel_type',
         ) === 'PERFORMANCE_MAX';
+        $viewData['campaignUtmLinkBuilder'] = [
+            'attribution_mode' => $socialEngagementTarget->googleAnalyticsAttributionMode(),
+            'source' => $socialEngagementTarget->googleAnalyticsSourceName(),
+            'medium' => $socialEngagementTarget->googleAnalyticsMediumName(),
+            'campaign' => $socialEngagementTarget->googleAnalyticsCampaignName(),
+            'settings_url' => route('dashboard', [
+                'client_id' => $socialEngagementTarget->client_id,
+                'engagement_platform' => $socialEngagementTarget->social_platform,
+                'engagement_tag' => 'tag:'.$socialEngagementTarget->tag,
+            ]).'#social-engagement-targets-title',
+            'result' => $request->session()->get('campaignUtmLinkBuilderResult'),
+        ];
 
         return view('social-engagement-reports.show', $viewData);
+    }
+
+    public function previewUtmLink(
+        Request $request,
+        SocialEngagementTarget $socialEngagementTarget,
+        CampaignUtmLinkBuilder $utmLinkBuilder,
+    ): RedirectResponse {
+        $this->selectClientContextForTarget($request, $socialEngagementTarget);
+
+        $source = $socialEngagementTarget->googleAnalyticsSourceName();
+        $medium = $socialEngagementTarget->googleAnalyticsMediumName();
+
+        abort_unless(
+            $socialEngagementTarget->googleAnalyticsAttributionMode() === 'manual_utm'
+                && $source !== null
+                && $medium !== null,
+            404,
+        );
+
+        $validator = Validator::make($request->all(), [
+            'destination_url' => ['required', 'url:http,https', 'max:2048'],
+            'utm_content' => ['required', 'string', 'max:4096'],
+        ], [
+            'destination_url.required' => '請輸入目的網址。',
+            'destination_url.url' => '請輸入有效的 HTTP 或 HTTPS 網址。',
+            'destination_url.max' => '目的網址不可超過 2048 個字元。',
+            'utm_content.required' => '請輸入 utm_content。',
+            'utm_content.string' => 'utm_content 必須是文字。',
+            'utm_content.max' => 'utm_content 不可超過 4096 個字元。',
+        ])->after(function ($validator): void {
+            if ($validator->errors()->has('destination_url')) {
+                return;
+            }
+
+            $destinationUrl = $validator->getData()['destination_url'] ?? null;
+
+            if (! is_string($destinationUrl)) {
+                return;
+            }
+
+            $uri = Uri::of($destinationUrl);
+
+            if ($uri->user() !== null || $uri->password() !== null) {
+                $validator->errors()->add('destination_url', '目的網址不可包含帳號或密碼。');
+            }
+        });
+
+        $validated = $validator->validateWithBag('utmBuilder');
+        $generatedUrl = $utmLinkBuilder->build(
+            $validated['destination_url'],
+            $source,
+            $medium,
+            $socialEngagementTarget->googleAnalyticsCampaignName(),
+            $validated['utm_content'],
+        );
+
+        return redirect()->route('social-engagement-targets.report', $socialEngagementTarget)
+            ->with('campaignUtmLinkBuilderResult', [
+                'destination_url' => $validated['destination_url'],
+                'utm_content' => $validated['utm_content'],
+                'url' => $generatedUrl,
+            ]);
     }
 
     public function postDetails(

@@ -18,7 +18,13 @@ class RejectReadOnlyWorkspaceMemberWrites
     {
         $user = $request->user();
 
-        if ($user instanceof User && ! $request->isMethodSafe() && ! $request->routeIs('logout', 'account.password.update')) {
+        if ($user instanceof User
+            && ! $request->isMethodSafe()
+            && ! $request->routeIs(
+                'logout',
+                'account.password.update',
+                'social-engagement-targets.report.utm-link-preview',
+            )) {
             abort_unless($user->canManageWorkspace(), 403, '工作區成員僅有檢視權限。');
         }
 
