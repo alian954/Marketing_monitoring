@@ -126,6 +126,17 @@
         </div>
     </section>
 
+    <section class="panel spaced-top" id="client-report-templates" aria-labelledby="client-report-templates-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="client-report-templates-title" class="panel-title">客戶報表樣板</h2>
+                <p class="panel-description">重用活動、報表區塊、品牌名稱與前期比較設定；樣板只屬於該客戶。</p>
+                <p class="panel-description">分享期間與連結效期每次建立時選擇。唯讀成員可套用樣板，無法管理樣板。</p>
+                <a class="strong-link" href="{{ route('clients.index') }}">前往客戶 <span aria-hidden="true">→</span></a>
+            </div>
+        </div>
+    </section>
+
     <div class="heading-actions spaced-top">
         <a class="button button-primary" href="{{ route('monitors.index') }}">前往監測項目</a>
         <a class="button button-secondary" href="{{ route('status-pages.edit') }}">管理公開狀態頁</a>

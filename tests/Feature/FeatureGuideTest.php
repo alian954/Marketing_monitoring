@@ -71,6 +71,10 @@ class FeatureGuideTest extends TestCase
             ->assertSee('CSV 匯入')
             ->assertSee('公開狀態頁與資料匯出')
             ->assertSee('客戶報表可封存當下的 CSV 數據')
+            ->assertSee('客戶報表樣板')
+            ->assertSee('重用活動、報表區塊、品牌名稱與前期比較設定')
+            ->assertSee('分享期間與連結效期每次建立時選擇')
+            ->assertSee(route('clients.index'), false)
             ->assertSee(route('features.index'))
             ->assertSee('<title>功能說明 · 監測台</title>', false);
     }
