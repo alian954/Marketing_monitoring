@@ -14,6 +14,10 @@
         <p class="public-status-updated">分享連結有效至 {{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</p>
     </header>
 
+    <div class="campaign-report-actions campaign-report-export">
+        <a class="button button-secondary" href="{{ route('client-report-shares.public.export', ['token' => $token]) }}">下載 CSV</a>
+    </div>
+
     @if ($reportingCurrencyGroups !== [])
         <section class="panel public-status-panel" aria-labelledby="shared-report-currency-title">
             <div class="panel-body">

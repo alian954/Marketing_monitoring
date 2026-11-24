@@ -131,6 +131,62 @@ class ClientReportShareTest extends TestCase
             ->assertDontSee('Hidden Campaign');
     }
 
+    public function test_public_client_report_csv_export_respects_share_scope_and_sanitizes_formula_cells(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
+        $this->actingAs($owner);
+        $selectedTarget = $this->createTarget($client, '=Selected Campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_campaign_name' => '=Selected Campaign',
+        ]);
+        $this->createTarget($client, 'Hidden Campaign');
+        $this->createGoogleAnalyticsReport($owner, $selectedTarget);
+        $url = 'https://www.facebook.com/posts/shared-csv-selected-campaign';
+        $monitor = Monitor::factory()->create([
+            'client_id' => $client->id,
+            'name' => 'Selected public post',
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+            'label' => $selectedTarget->tag,
+        ]);
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'response_published_at' => now(),
+            'response_public_engagement_metrics' => [
+                'likes' => 12,
+                'comments' => 3,
+                'shares' => 1,
+            ],
+        ]);
+        $token = str_repeat('8', 64);
+        $this->createShare($client, $token, [$selectedTarget->id]);
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('client-report-shares.public.export', ['token' => $token]))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->assertHeader('content-disposition', 'attachment; filename=marketing-report-2026-11-24.csv')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow')
+            ->assertHeader('Referrer-Policy', 'no-referrer');
+
+        $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+        $content = $response->streamedContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $content);
+        $this->assertStringContainsString("'=Selected Campaign", $content);
+        $this->assertStringContainsString('公開互動', $content);
+        $this->assertStringContainsString('報表幣別彙總', $content);
+        $this->assertStringContainsString('456.78', $content);
+        $this->assertStringContainsString('2026-11-24 20:00:00', $content);
+        $this->assertStringContainsString('16', $content);
+        $this->assertStringNotContainsString('Hidden Campaign', $content);
+        $this->assertStringNotContainsString($token, $content);
+    }
+
     public function test_share_creation_rejects_campaigns_from_another_client(): void
     {
         $owner = User::factory()->create();
@@ -202,9 +258,9 @@ class ClientReportShareTest extends TestCase
             ->assertSee('<dd>321</dd>', false)
             ->assertSee('456.78 TWD')
             ->assertSee('尚無成功擷取')
+            ->assertSee(route('client-report-shares.public.export', ['token' => $token]), false)
             ->assertDontSee('Other Client')
-            ->assertDontSee('Private Campaign')
-            ->assertDontSee($token);
+            ->assertDontSee('Private Campaign');
 
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
@@ -316,6 +372,7 @@ class ClientReportShareTest extends TestCase
         $share->forceFill(['expires_at' => now()->subSecond()])->save();
 
         $this->get(route('client-report-shares.public', ['token' => $token]))->assertNotFound();
+        $this->get(route('client-report-shares.public.export', ['token' => $token]))->assertNotFound();
     }
 
     public function test_revoked_client_report_share_returns_not_found(): void
@@ -326,6 +383,7 @@ class ClientReportShareTest extends TestCase
         $share->forceFill(['revoked_at' => now()])->save();
 
         $this->get(route('client-report-shares.public', ['token' => $token]))->assertNotFound();
+        $this->get(route('client-report-shares.public.export', ['token' => $token]))->assertNotFound();
     }
 
     public function test_malformed_public_report_token_returns_not_found(): void
@@ -450,12 +508,19 @@ class ClientReportShareTest extends TestCase
         ]);
     }
 
-    private function createShare(Client $client, string $token): ClientReportShare
+    /** @param  list<int>|null  $campaignTargetIds */
+    private function createShare(Client $client, string $token, ?array $campaignTargetIds = null): ClientReportShare
     {
-        return $client->reportShares()->create([
+        $attributes = [
             'name' => 'Test report share',
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addDays(30),
-        ]);
+        ];
+
+        if ($campaignTargetIds !== null) {
+            $attributes['campaign_target_ids'] = $campaignTargetIds;
+        }
+
+        return $client->reportShares()->create($attributes);
     }
 }

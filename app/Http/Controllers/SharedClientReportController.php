@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
 use App\Models\ClientReportShare;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\DashboardCampaignMarketingSummary;
+use App\Services\SharedClientReportCsv;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SharedClientReportController extends Controller
 {
@@ -19,6 +22,54 @@ class SharedClientReportController extends Controller
         DashboardCampaignMarketingSummary $marketingSummaryBuilder,
         CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
     ): Response {
+        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder);
+
+        return response()
+            ->view('shared-client-reports.show', $reportData + ['token' => $token])
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Robots-Tag', 'noindex, nofollow')
+            ->header('Referrer-Policy', 'no-referrer');
+    }
+
+    public function export(
+        string $token,
+        DashboardCampaignMarketingSummary $marketingSummaryBuilder,
+        CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
+        SharedClientReportCsv $csv,
+    ): StreamedResponse {
+        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder);
+        $response = response()->streamDownload(function () use ($csv, $reportData): void {
+            $stream = fopen('php://output', 'wb');
+            $csv->write(
+                $reportData['client'],
+                $reportData['campaignRows'],
+                $reportData['reportingCurrencyGroups'],
+                $stream,
+            );
+            fclose($stream);
+        }, 'marketing-report-'.now()->format('Y-m-d').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+        $response->headers->set('Cache-Control', 'private, no-store');
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+        $response->headers->set('Referrer-Policy', 'no-referrer');
+
+        return $response;
+    }
+
+    /**
+     * @return array{
+     *     share: ClientReportShare,
+     *     client: Client,
+     *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>,
+     *     reportingCurrencyGroups: list<array<string, mixed>>
+     * }
+     */
+    private function reportData(
+        string $token,
+        DashboardCampaignMarketingSummary $marketingSummaryBuilder,
+        CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
+    ): array {
         abort_unless(preg_match('/^[a-f0-9]{64}$/', $token) === 1, 404);
 
         $share = ClientReportShare::query()
@@ -65,11 +116,7 @@ class SharedClientReportController extends Controller
             'marketing' => $marketingSummaries[$target->getKey()],
         ]);
 
-        return response()
-            ->view('shared-client-reports.show', compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups'))
-            ->header('Cache-Control', 'private, no-store')
-            ->header('X-Robots-Tag', 'noindex, nofollow')
-            ->header('Referrer-Policy', 'no-referrer');
+        return compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups');
     }
 
     /**

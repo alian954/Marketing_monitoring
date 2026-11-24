@@ -42,6 +42,10 @@ Route::get('/shared/client-reports/{token}', SharedClientReportController::class
     ->where('token', '[a-f0-9]{64}')
     ->middleware('throttle:60,1')
     ->name('client-report-shares.public');
+Route::get('/shared/client-reports/{token}/export.csv', [SharedClientReportController::class, 'export'])
+    ->where('token', '[a-f0-9]{64}')
+    ->middleware('throttle:10,1')
+    ->name('client-report-shares.public.export');
 Route::post('/status/{token}/subscriptions', [StatusPageSubscriptionController::class, 'subscribe'])
     ->where('token', '[A-Za-z0-9]{64}')
     ->middleware('throttle:status-page-subscription')

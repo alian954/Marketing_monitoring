@@ -2550,6 +2550,11 @@ a.platform-chip:hover {
     flex: 0 0 auto;
 }
 
+.campaign-report-export {
+    justify-content: flex-end;
+    margin: -8px 0 18px;
+}
+
 .social-target-actions form {
     margin: 0;
 }
