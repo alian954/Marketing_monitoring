@@ -31,7 +31,7 @@ class DashboardFocusLayoutTest extends TestCase
 
         $response = $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('1 項監測 · 0 項需處理')
+            ->assertSee('1 項')
             ->assertSee('1 個活動');
 
         $responseContent = $response->getContent();
@@ -90,10 +90,12 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertLessThan($monitorListPosition, $monitorSummaryPosition);
         $this->assertLessThan($marketingReportsPosition, $monitorListPosition);
         $this->assertLessThan($operationsReportsPosition, $marketingReportsPosition);
+        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
-        $this->assertSame(3, preg_match_all('/<details[^>]*class="dashboard-disclosure"/', $responseContent));
+        $this->assertSame(1, preg_match_all('/<details[^>]*class="dashboard-disclosure dashboard-detail-disclosure"/', $responseContent));
+        $this->assertSame(3, preg_match_all('/<details[^>]*class="dashboard-subdisclosure"/', $responseContent));
     }
 
     public function test_dashboard_opens_filtered_marketing_results_and_keeps_other_sections_collapsed(): void
@@ -106,7 +108,7 @@ class DashboardFocusLayoutTest extends TestCase
 
         $responseContent = $response->getContent();
 
-        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
     }

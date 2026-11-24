@@ -810,7 +810,8 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     min-height: 92px;
 }
 
-.dashboard-disclosure {
+.dashboard-disclosure,
+.dashboard-subdisclosure {
     overflow: clip;
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -818,7 +819,13 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     box-shadow: var(--shadow);
 }
 
-.dashboard-disclosure > summary {
+.dashboard-subdisclosure {
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+.dashboard-disclosure > summary,
+.dashboard-subdisclosure > summary {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: 60px;
@@ -832,20 +839,24 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     font-weight: 720;
 }
 
-.dashboard-disclosure > summary::before {
+.dashboard-disclosure > summary::before,
+.dashboard-subdisclosure > summary::before {
     content: "▸";
     color: var(--muted);
 }
 
-.dashboard-disclosure[open] > summary::before {
+.dashboard-disclosure[open] > summary::before,
+.dashboard-subdisclosure[open] > summary::before {
     content: "▾";
 }
 
-.dashboard-disclosure > summary::marker {
+.dashboard-disclosure > summary::marker,
+.dashboard-subdisclosure > summary::marker {
     content: "";
 }
 
-.dashboard-disclosure[open] > summary {
+.dashboard-disclosure[open] > summary,
+.dashboard-subdisclosure[open] > summary {
     border-bottom: 1px solid var(--line);
 }
 
@@ -858,6 +869,21 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 
 .dashboard-disclosure-content {
     padding: 0 20px 20px;
+}
+
+.dashboard-detail-disclosure > .dashboard-disclosure-content {
+    display: grid;
+    gap: 10px;
+    padding-top: 12px;
+}
+
+.dashboard-subdisclosure > summary {
+    min-height: 52px;
+    padding: 13px 16px;
+}
+
+.dashboard-subdisclosure > .dashboard-disclosure-content {
+    padding: 0 16px 16px;
 }
 
 .dashboard-detail-report-content {
@@ -2545,7 +2571,8 @@ a.platform-chip:hover {
         gap: 9px;
     }
 
-    .dashboard-disclosure > summary {
+    .dashboard-disclosure > summary,
+    .dashboard-subdisclosure > summary {
         grid-template-columns: auto minmax(0, 1fr);
         gap: 5px 10px;
         padding: 15px;
@@ -2556,8 +2583,13 @@ a.platform-chip:hover {
         text-align: left;
     }
 
-    .dashboard-disclosure-content {
+    .dashboard-disclosure-content,
+    .dashboard-subdisclosure > .dashboard-disclosure-content {
         padding: 0 12px 12px;
+    }
+
+    .dashboard-detail-disclosure > .dashboard-disclosure-content {
+        padding-top: 10px;
     }
 
     .dashboard-focus-clear,

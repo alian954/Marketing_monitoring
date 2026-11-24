@@ -28,7 +28,6 @@
                     <button class="button button-secondary button-small" type="submit">套用</button>
                 </form>
             @endif
-            <a class="strong-link dashboard-performance-link" href="{{ route('clients.performance') }}">行銷成效 <span aria-hidden="true">→</span></a>
             @if ($totalMonitors > 0 && $attentionCount === 0)
                 <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
             @endif
@@ -76,10 +75,15 @@
     </section>
 
     <div class="dashboard-detail-report-content spaced-top">
-    <details class="dashboard-disclosure" aria-labelledby="dashboard-monitor-summary">
+    <details class="dashboard-disclosure dashboard-detail-disclosure" aria-labelledby="dashboard-detail-reports-title" @if ($hasSocialEngagementFilters) open @endif>
+        <summary>
+            <span id="dashboard-detail-reports-title">詳細資料</span>
+        </summary>
+        <div class="dashboard-disclosure-content">
+    <details class="dashboard-subdisclosure" aria-labelledby="dashboard-monitor-summary">
         <summary>
             <span id="dashboard-monitor-summary">監測項目</span>
-            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項監測 · {{ number_format($attentionCount) }} 項需處理</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <div class="dashboard-top">
@@ -257,7 +261,7 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary" @if ($hasSocialEngagementFilters) open @endif>
+    <details class="dashboard-subdisclosure" aria-labelledby="dashboard-marketing-summary" @if ($hasSocialEngagementFilters) open @endif>
         <summary>
             <span id="dashboard-marketing-summary">行銷成效</span>
             <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動{{ $hasSocialEngagementFilters ? ' · 已套用篩選' : '' }}</span>
@@ -268,6 +272,7 @@
             <div>
                 <h2 id="social-platform-summary-title" class="panel-title">社群平台狀態</h2>
             </div>
+            <a class="strong-link" href="{{ route('clients.performance') }}">客戶成效 <span aria-hidden="true">→</span></a>
         </div>
         @if (collect($platformCounts)->sum('total') === 0)
             <div class="empty-state">
@@ -1935,7 +1940,7 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure" aria-labelledby="dashboard-operations-summary">
+    <details class="dashboard-subdisclosure" aria-labelledby="dashboard-operations-summary">
         <summary>
             <span id="dashboard-operations-summary">服務狀態</span>
             <span class="dashboard-disclosure-meta">{{ number_format($incidents->count()) }} 件進行中事件</span>
@@ -2345,6 +2350,8 @@
             </div>
         @endif
     </section>
+        </div>
+    </details>
         </div>
     </details>
     </div>
