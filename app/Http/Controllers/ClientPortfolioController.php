@@ -33,15 +33,22 @@ class ClientPortfolioController extends Controller
             return $reportPeriod;
         }
 
+        $clientSearch = $this->validatedClientSearch($request);
+
+        if ($clientSearch instanceof RedirectResponse) {
+            return $clientSearch;
+        }
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
             $reportingPeriod,
             $reportPeriod,
+            $clientSearch,
         );
 
-        return view('clients.performance', compact('clientPortfolioRows', 'reportPeriod'));
+        return view('clients.performance', compact('clientPortfolioRows', 'reportPeriod', 'clientSearch'));
     }
 
     public function export(
@@ -57,12 +64,19 @@ class ClientPortfolioController extends Controller
             return $reportPeriod;
         }
 
+        $clientSearch = $this->validatedClientSearch($request);
+
+        if ($clientSearch instanceof RedirectResponse) {
+            return $clientSearch;
+        }
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
             $reportingPeriod,
             $reportPeriod,
+            $clientSearch,
         );
         $response = response()->streamDownload(function () use ($clientPortfolioRows, $csv, $reportPeriod): void {
             $stream = fopen('php://output', 'wb');
@@ -136,6 +150,26 @@ class ClientPortfolioController extends Controller
         ];
     }
 
+    private function validatedClientSearch(Request $request): string|RedirectResponse
+    {
+        $validator = Validator::make($request->query(), [
+            'search' => ['sometimes', 'nullable', 'string', 'max:80'],
+        ], [
+            'search.string' => '客戶搜尋格式無效。',
+            'search.max' => '客戶搜尋不可超過 80 個字元。',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->route('clients.performance')
+                ->withErrors($validator)
+                ->withInput($request->query());
+        }
+
+        $search = $validator->validated()['search'] ?? '';
+
+        return is_string($search) ? trim($search) : '';
+    }
+
     /** @param array{from: string, to: string} $reportPeriod */
     private function buildClientPortfolioRows(
         User $user,
@@ -143,11 +177,16 @@ class ClientPortfolioController extends Controller
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
         ClientPortfolioReportingPeriod $reportingPeriod,
         array $reportPeriod,
+        string $clientSearch,
     ): Collection {
         Client::ensureDefaultFor($user);
-        $clients = Client::query()
-            ->orderBy('name')
-            ->get();
+        $clientQuery = Client::query()->orderBy('name');
+
+        if ($clientSearch !== '') {
+            $clientQuery->where('name', 'like', '%'.$clientSearch.'%');
+        }
+
+        $clients = $clientQuery->get();
         $clientIds = $clients->modelKeys();
         $targets = $clientIds === []
             ? new EloquentCollection

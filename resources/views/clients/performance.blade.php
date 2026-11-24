@@ -27,7 +27,7 @@
             <p class="page-description">比較客戶在相同日期區間的行銷成效。</p>
         </div>
         <div class="heading-actions">
-            <a class="button button-secondary" href="{{ route('clients.performance.export', $reportPeriod) }}">匯出 CSV</a>
+            <a class="button button-secondary" href="{{ route('clients.performance.export', $reportPeriod + ($clientSearch === '' ? [] : ['search' => $clientSearch])) }}">匯出 CSV</a>
             <a class="button button-secondary" href="{{ route('clients.index') }}">客戶管理</a>
         </div>
     </div>
@@ -44,9 +44,27 @@
         </div>
 
         <div class="panel-body">
-            <search aria-label="篩選客戶成效日期區間">
+            <search aria-label="篩選客戶成效">
                 <form action="{{ route('clients.performance') }}" method="GET">
                     <div class="form-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="client-performance-search">客戶</label>
+                            <input
+                                class="field-input{{ $errors->has('search') ? ' is-invalid' : '' }}"
+                                id="client-performance-search"
+                                name="search"
+                                type="search"
+                                value="{{ old('search', $clientSearch) }}"
+                                maxlength="80"
+                                placeholder="搜尋客戶名稱"
+                                aria-describedby="client-performance-search-help{{ $errors->has('search') ? ' client-performance-search-error' : '' }}"
+                                @if ($errors->has('search')) aria-invalid="true" @endif
+                            >
+                            <p id="client-performance-search-help" class="field-help">顯示名稱相符的客戶。</p>
+                            @error('search')
+                                <p id="client-performance-search-error" class="field-error" role="alert">{{ $message }}</p>
+                            @enderror
+                        </div>
                         <div class="field-group">
                             <label class="field-label" for="client-performance-from">開始日期</label>
                             <input
@@ -89,7 +107,7 @@
             </search>
         </div>
 
-        @if ($errors->has('from') || $errors->has('to'))
+        @if ($errors->has('from') || $errors->has('to') || $errors->has('search'))
             <div class="empty-state" role="alert">
                 <h3 class="empty-title">請修正日期區間</h3>
             </div>

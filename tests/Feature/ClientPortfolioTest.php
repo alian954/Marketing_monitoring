@@ -60,6 +60,45 @@ class ClientPortfolioTest extends TestCase
         ], $response->viewData('reportPeriod'));
     }
 
+    public function test_client_portfolio_search_filters_page_and_csv_to_matching_clients(): void
+    {
+        $this->travelTo('2026-11-24 12:00:00');
+        $user = User::factory()->create();
+        $user->clients()->create(['name' => 'Northwind Studio']);
+        $user->clients()->create(['name' => 'Contoso Media']);
+        $this->actingAs($user);
+
+        $response = $this->get(route('clients.performance', ['search' => 'Northwind']))
+            ->assertOk()
+            ->assertSee('Northwind Studio')
+            ->assertDontSee('Contoso Media')
+            ->assertSee('name="search"', false)
+            ->assertSee('value="Northwind"', false);
+
+        $this->assertSame(['Northwind Studio'], $response->viewData('clientPortfolioRows')
+            ->map(static fn (array $row): string => $row['client']->name)
+            ->all());
+
+        $csvRows = $this->csvRows(
+            $this->get(route('clients.performance.export', ['search' => 'Northwind']))
+                ->assertOk()
+                ->streamedContent(),
+        );
+
+        $this->assertSame(['Northwind Studio'], array_column($csvRows, '客戶'));
+    }
+
+    public function test_client_portfolio_search_rejects_terms_longer_than_80_characters(): void
+    {
+        $user = User::factory()->create();
+        $search = str_repeat('x', 81);
+
+        $this->actingAs($user)
+            ->get(route('clients.performance', ['search' => $search]))
+            ->assertRedirect(route('clients.performance'))
+            ->assertSessionHasErrors(['search' => '客戶搜尋不可超過 80 個字元。']);
+    }
+
     public function test_portfolio_and_csv_use_the_same_period_and_daily_exchange_rates(): void
     {
         $this->travelTo('2026-11-04 12:00:00');
