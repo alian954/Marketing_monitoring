@@ -31,7 +31,7 @@
                     <button class="button button-secondary button-small" type="submit">套用</button>
                 </form>
             @endif
-            @if ($totalMonitors > 0)
+            @if ($totalMonitors > 0 && $attentionCount === 0)
                 <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
             @endif
         </div>
@@ -41,13 +41,11 @@
         <div class="panel-header">
             <div>
                 <h2 id="dashboard-attention-title" class="panel-title">待處理項目</h2>
-                <p class="dashboard-attention-summary" aria-label="待處理 {{ number_format($attentionCount) }} 項，監測項目 {{ number_format($totalMonitors) }} 項">
-                    @if ($totalMonitors === 0)
-                        <strong>尚未新增監測項目</strong>
-                    @else
+                @if ($attentionCount > 0)
+                    <p class="dashboard-attention-summary" aria-label="待處理 {{ number_format($attentionCount) }} 項">
                         <strong>{{ number_format($attentionCount) }} 項需要處理</strong>
-                    @endif
-                </p>
+                    </p>
+                @endif
             </div>
         </div>
         @if ($totalMonitors === 0)

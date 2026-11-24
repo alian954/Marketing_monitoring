@@ -31,7 +31,7 @@ class DashboardFocusLayoutTest extends TestCase
 
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="待處理 0 項，監測項目 1 項"', false)
+            ->assertSee('1 項 · 0 項需處理')
             ->assertSee('1 個活動 · 互動與投放');
     }
 
@@ -41,8 +41,9 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('<h1 class="page-title">監測總覽</h1>', false)
-            ->assertSee('aria-label="待處理 0 項，監測項目 0 項"', false)
-            ->assertSee('尚未新增監測項目')
+            ->assertDontSee('aria-label="待處理 0 項，監測項目 0 項"', false)
+            ->assertDontSee('0 項需要處理')
+            ->assertSee('新增監測項目後，狀態會顯示在這裡。')
             ->assertDontSee('dashboard-focus-grid')
             ->assertDontSee('dashboard-summary-grid')
             ->assertSee(route('incidents.index'), false)
@@ -114,10 +115,11 @@ class DashboardFocusLayoutTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="待處理 0 項，監測項目 1 項"', false)
-            ->assertSee('0 項需要處理')
+            ->assertDontSee('aria-label="待處理 0 項，監測項目 1 項"', false)
+            ->assertDontSee('0 項需要處理')
             ->assertDontSee('無待處理')
             ->assertSee('目前沒有需要處理的項目。')
+            ->assertSee('新增監測項目')
             ->assertDontSee('dashboard-summary-grid');
     }
 
@@ -169,7 +171,8 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('異常網站')
-            ->assertSee('aria-label="待處理 1 項，監測項目 2 項"', false)
+            ->assertSee('aria-label="待處理 1 項"', false)
+            ->assertDontSee('新增監測項目')
             ->assertSee('健康網站');
 
         $responseContent = $response->getContent();
@@ -205,7 +208,8 @@ class DashboardFocusLayoutTest extends TestCase
 
         $response = $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="待處理 4 項，監測項目 4 項"', false)
+            ->assertSee('aria-label="待處理 4 項"', false)
+            ->assertDontSee('新增監測項目')
             ->assertSee('還有 3 項需處理');
 
         $responseContent = $response->getContent();
