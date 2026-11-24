@@ -580,9 +580,14 @@ class DashboardController extends Controller
             }
         }
 
+        $dashboardMarketingDataAttention = $this->dashboardMarketingDataAttention(
+            $socialEngagementMarketingSummaries,
+            $request->user(),
+        );
+
         $dashboardSystemAttention = null;
 
-        if ($monitorCount > 0) {
+        if ($monitorCount > 0 || $socialEngagementTargetModels->isNotEmpty()) {
             if ($heartbeatError !== null) {
                 $dashboardSystemAttention = [
                     'title' => '排程器最近執行失敗',
@@ -608,6 +613,8 @@ class DashboardController extends Controller
                     'title' => '監測檢查執行過久',
                     'description' => '有檢查執行超過 3 分鐘，請查看服務狀態。',
                 ];
+            } elseif ($dashboardMarketingDataAttention !== null) {
+                $dashboardSystemAttention = $dashboardMarketingDataAttention;
             }
         }
 
@@ -2082,6 +2089,91 @@ class DashboardController extends Controller
             'trend_available' => $observedChanges !== [],
             'growth_posts' => array_slice($growthPosts, 0, self::MAX_DASHBOARD_SOCIAL_TOP_POSTS),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $marketingSummaries
+     * @return array{section_title: string, title: string, description: string, url: string, link_label: string}|null
+     */
+    private function dashboardMarketingDataAttention(array $marketingSummaries, User $user): ?array
+    {
+        $sourceLabels = [
+            'google_analytics' => 'GA4',
+            'meta_marketing' => 'Meta Ads',
+            'google_ads' => 'Google Ads',
+        ];
+        $configuredSources = [];
+        $staleSourceLabels = [];
+        $staleTargetId = null;
+
+        foreach ($marketingSummaries as $targetId => $marketingSummary) {
+            foreach ($sourceLabels as $source => $label) {
+                $sourceStatus = $marketingSummary[$source]['status'] ?? null;
+
+                if (in_array($sourceStatus, ['fresh', 'missing', 'stale'], true)) {
+                    $configuredSources[$source] = true;
+                }
+
+                if ($sourceStatus === 'stale') {
+                    $staleSourceLabels[$source] = $label;
+                    $staleTargetId ??= (int) $targetId;
+                }
+            }
+        }
+
+        $workspaceOwner = $user->workspaceOwner();
+        $syncConnections = [
+            'google_analytics' => [
+                'connection' => $workspaceOwner->googleAnalyticsConnection,
+                'label' => 'GA4',
+                'route' => 'integrations.google-analytics.edit',
+            ],
+            'meta_marketing' => [
+                'connection' => $workspaceOwner->metaMarketingConnection,
+                'label' => 'Meta Ads',
+                'route' => 'integrations.meta-marketing.edit',
+            ],
+            'google_ads' => [
+                'connection' => $workspaceOwner->googleAdsConnection,
+                'label' => 'Google Ads',
+                'route' => 'integrations.google-ads.edit',
+            ],
+        ];
+        $failedSyncLabels = [];
+        $failedSyncUrl = null;
+
+        foreach ($syncConnections as $source => $syncConnection) {
+            $syncStatus = $syncConnection['connection']?->scheduled_sync_status;
+
+            if (! isset($configuredSources[$source]) || ! in_array($syncStatus, ['failed', 'partial'], true)) {
+                continue;
+            }
+
+            $failedSyncLabels[] = $syncConnection['label'];
+            $failedSyncUrl ??= route($syncConnection['route']);
+        }
+
+        if ($failedSyncLabels !== []) {
+            return [
+                'section_title' => '行銷數據待處理',
+                'title' => '行銷數據同步未完成',
+                'description' => implode('、', $failedSyncLabels).' 排程同步未完整完成。',
+                'url' => $failedSyncUrl,
+                'link_label' => '檢查整合',
+            ];
+        }
+
+        if ($staleSourceLabels !== []) {
+            return [
+                'section_title' => '行銷數據待處理',
+                'title' => '行銷數據更新逾時',
+                'description' => implode('、', array_values($staleSourceLabels)).' 資料超過 24 小時未更新。',
+                'url' => route('social-engagement-targets.report', $staleTargetId),
+                'link_label' => '查看活動報告',
+            ];
+        }
+
+        return null;
     }
 
     /**

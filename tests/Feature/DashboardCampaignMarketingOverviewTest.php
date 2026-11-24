@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\MetaMarketingConnection;
@@ -70,6 +71,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $marketing = $response->viewData('socialEngagementTargets')[0]['marketing'];
 
         $this->assertSame('fresh', $marketing['google_analytics']['status']);
+        $this->assertNull($response->viewData('dashboardSystemAttention'));
         $this->assertSame('fresh', $marketing['meta_marketing']['status']);
         $this->assertSame('fresh', $marketing['google_ads']['status']);
         $this->assertSame(120, $marketing['google_analytics']['sessions']);
@@ -127,6 +129,99 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
 
         $this->assertNull($marketing['efficiency']['cost_per_engaged_session']);
         $this->assertSame('stale_spend', $marketing['efficiency']['cost_per_engaged_session_status']);
+    }
+
+    public function test_dashboard_surfaces_stale_marketing_sources_in_the_primary_summary(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $target = $this->createTarget();
+        $this->createGoogleAnalyticsReport($user, $target, [
+            'synced_at' => now()->subDays(2),
+        ]);
+        $this->createGoogleAdsReport($user, $target, [
+            'synced_at' => now()->subDays(2),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('行銷數據待處理')
+            ->assertSee('行銷數據更新逾時')
+            ->assertSee('GA4、Google Ads 資料超過 24 小時未更新')
+            ->assertSee(route('social-engagement-targets.report', $target), false);
+
+        $this->assertSame('行銷數據更新逾時', $response->viewData('dashboardSystemAttention')['title']);
+        $marketing = $response->viewData('socialEngagementTargets')[0]['marketing'];
+        $this->assertSame('stale', $marketing['google_analytics']['status']);
+        $this->assertSame('stale', $marketing['google_ads']['status']);
+    }
+
+    public function test_dashboard_does_not_surface_stale_marketing_sources_from_another_client(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $selectedClient = Client::ensureDefaultFor($user);
+        $otherClient = Client::factory()->for($user)->create(['name' => '其他客戶']);
+        $selectedTarget = $this->createTarget(['tag' => '目前客戶活動']);
+        $otherTarget = $this->createTarget(['tag' => '其他客戶活動']);
+        $otherTarget->forceFill(['client_id' => $otherClient->id])->save();
+        $this->createGoogleAnalyticsReport($user, $otherTarget, [
+            'synced_at' => now()->subDays(2),
+        ]);
+
+        $response = $this->get(route('dashboard', ['client_id' => $selectedClient->id]))
+            ->assertOk()
+            ->assertDontSee('行銷數據更新逾時')
+            ->assertSee('目前客戶活動')
+            ->assertDontSee('其他客戶活動');
+
+        $this->assertNull($response->viewData('dashboardSystemAttention'));
+        $this->assertSame(['目前客戶活動'], array_column($response->viewData('socialEngagementTargets'), 'tag'));
+    }
+
+    public function test_dashboard_surfaces_a_failed_marketing_sync_before_its_metrics_become_stale(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $target = $this->createTarget();
+        GoogleAdsConnection::factory()->create([
+            'user_id' => $user->id,
+            'scheduled_sync_status' => 'failed',
+            'scheduled_sync_failed_count' => 1,
+        ]);
+
+        $response = $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('行銷數據同步未完成')
+            ->assertSee('Google Ads 排程同步未完整完成')
+            ->assertSee(route('integrations.google-ads.edit'), false);
+
+        $this->assertSame('行銷數據同步未完成', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('missing', $response->viewData('socialEngagementTargets')[0]['marketing']['google_ads']['status']);
+        $this->assertSame($target->id, $response->viewData('socialEngagementTargets')[0]['id']);
+    }
+
+    public function test_dashboard_surfaces_a_partial_marketing_sync_failure(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $this->createTarget();
+        GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'refresh-token',
+            'scheduled_sync_status' => 'partial',
+            'scheduled_sync_failed_count' => 1,
+        ]);
+
+        $response = $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('行銷數據同步未完成')
+            ->assertSee('GA4 排程同步未完整完成')
+            ->assertSee(route('integrations.google-analytics.edit'), false);
+
+        $this->assertSame('行銷數據同步未完成', $response->viewData('dashboardSystemAttention')['title']);
     }
 
     public function test_dashboard_shows_ga4_business_goal_pacing_and_portfolio_coverage(): void

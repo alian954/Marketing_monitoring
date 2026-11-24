@@ -7,6 +7,8 @@
         $totalMonitors = $monitorCount;
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
         $campaignTargetCount = count($socialEngagementTargets);
+        $dashboardAttentionUrl = $dashboardSystemAttention['url'] ?? route('features.index').'#monitoring-runtime';
+        $dashboardAttentionLinkLabel = $dashboardSystemAttention['link_label'] ?? '查看處理方式';
         $hasSocialEngagementFilters = $socialEngagementSelectedPlatform !== 'all'
             || $socialEngagementSelectedTag !== 'all'
             || $socialEngagementChangePeriodDays !== 7;
@@ -36,9 +38,9 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">{{ $dashboardSystemAttention !== null ? '系統待處理' : '待處理' }}</h2>
+            <h2 id="dashboard-focus-title" class="panel-title">{{ $dashboardSystemAttention['section_title'] ?? ($dashboardSystemAttention !== null ? '系統待處理' : '待處理') }}</h2>
             @if ($dashboardSystemAttention !== null)
-                <a class="strong-link" href="{{ route('features.index') }}#monitoring-runtime">查看處理方式 <span aria-hidden="true">→</span></a>
+                <a class="strong-link" href="{{ $dashboardAttentionUrl }}">{{ $dashboardAttentionLinkLabel }} <span aria-hidden="true">→</span></a>
             @elseif ($attentionCount > 0)
                 <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
             @endif
