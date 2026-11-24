@@ -213,6 +213,14 @@ class DashboardController extends Controller
         $monitors->each(function (Monitor $monitor) use ($urlMasker): void {
             $monitor->setAttribute('masked_url', $urlMasker->mask($monitor->url));
         });
+        $attentionMonitors = $monitors
+            ->filter(static fn (Monitor $monitor): bool => in_array(
+                $monitor->getAttribute('health_state'),
+                ['issue', 'suspect', 'warning', 'stale'],
+                true,
+            ))
+            ->take(3)
+            ->values();
         $socialEngagementPlatformOptions = [
             'all' => '全部平台',
             'facebook' => 'Facebook',
@@ -577,6 +585,7 @@ class DashboardController extends Controller
             'selectedClientId' => $selectedClientId,
             'defaultClientId' => $clientSelection['default_client_id'],
             'monitors' => $monitors,
+            'attentionMonitors' => $attentionMonitors,
             'monitorCount' => $monitorCount,
             'expiringCertificates' => collect($expiringCertificates)->values(),
             'expiringCertificateCount' => $expiringCertificateCount,

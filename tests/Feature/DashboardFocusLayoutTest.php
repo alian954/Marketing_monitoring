@@ -188,6 +188,10 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">1</strong>', false)
             ->assertSee('項需處理')
+            ->assertSee('需處理項目分類')
+            ->assertSee('dashboard-focus-state--issue', false)
+            ->assertSee('dashboard-focus-state--warning', false)
+            ->assertSee('dashboard-focus-state--stale', false)
             ->assertSee('查看清單')
             ->assertDontSee('新增監測項目')
             ->assertSee('異常網站');
@@ -198,9 +202,11 @@ class DashboardFocusLayoutTest extends TestCase
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
         $this->assertStringContainsString('查看清單', $overviewMarkup);
-        $this->assertStringNotContainsString('異常網站', $overviewMarkup);
+        $this->assertStringContainsString('優先處理', $overviewMarkup);
+        $this->assertStringContainsString('異常網站', $overviewMarkup);
         $this->assertStringNotContainsString('健康網站', $overviewMarkup);
         $this->assertSame(1, $response->viewData('counts')['issue']);
+        $this->assertSame(['異常網站'], $response->viewData('attentionMonitors')->pluck('name')->all());
     }
 
     public function test_dashboard_attention_summary_stays_compact_when_many_monitors_need_review(): void
@@ -229,7 +235,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertSee('class="dashboard-focus-count">4</strong>', false)
             ->assertDontSee('新增監測項目')
             ->assertSee('查看清單')
-            ->assertDontSee('另有 1 項需要查看');
+            ->assertSee('優先處理');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
@@ -237,8 +243,10 @@ class DashboardFocusLayoutTest extends TestCase
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
         $this->assertStringContainsString('查看清單', $overviewMarkup);
-        $this->assertStringNotContainsString('異常網站', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 1', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 2', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 3', $overviewMarkup);
         $this->assertStringNotContainsString('異常網站 4', $overviewMarkup);
-        $this->assertStringNotContainsString('dashboard-attention-list', $overviewMarkup);
+        $this->assertSame(3, $response->viewData('attentionMonitors')->count());
     }
 }

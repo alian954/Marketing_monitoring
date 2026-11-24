@@ -44,10 +44,39 @@
         </div>
         @if ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
-                <p class="dashboard-focus-count-line">
-                    <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
-                    <span>項需處理</span>
-                </p>
+                <div class="dashboard-focus-overview">
+                    <p class="dashboard-focus-count-line">
+                        <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
+                        <span>項需處理</span>
+                    </p>
+                    <dl class="dashboard-focus-breakdown" aria-label="需處理項目分類">
+                        <div class="dashboard-focus-state dashboard-focus-state--issue">
+                            <dt>異常</dt>
+                            <dd>{{ number_format($counts['issue'] ?? 0) }}</dd>
+                        </div>
+                        <div class="dashboard-focus-state dashboard-focus-state--warning">
+                            <dt>警告</dt>
+                            <dd>{{ number_format($counts['warning'] ?? 0) }}</dd>
+                        </div>
+                        <div class="dashboard-focus-state dashboard-focus-state--stale">
+                            <dt>逾時</dt>
+                            <dd>{{ number_format($counts['stale'] ?? 0) }}</dd>
+                        </div>
+                    </dl>
+                </div>
+                @if ($attentionMonitors->isNotEmpty())
+                    <div class="dashboard-attention-list">
+                        <h3 class="dashboard-attention-title">優先處理</h3>
+                        <ul>
+                            @foreach ($attentionMonitors as $attentionMonitor)
+                                <li>
+                                    <a href="{{ route('monitors.show', $attentionMonitor) }}">{{ $attentionMonitor->name }}</a>
+                                    <x-state-badge :state="$attentionMonitor->health_state" />
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
             </div>
         @elseif ($totalMonitors === 0)
             <div class="empty-state dashboard-focus-empty">
