@@ -399,8 +399,13 @@ class MonitorController extends Controller
         $this->validateSocialPostExpectation($normalizedUrl, $validated);
         $fingerprint = Monitor::fingerprintUrl($normalizedUrl);
 
-        if (Monitor::query()->where('url_hash', $fingerprint)->exists()) {
-            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
+        $existingMonitor = Monitor::query()->where('url_hash', $fingerprint)->first();
+
+        if ($existingMonitor !== null) {
+            return back()
+                ->withErrors(['url' => '此網址已在監測中。'])
+                ->with('duplicateMonitorId', $existingMonitor->getKey())
+                ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
         }
 
         $monitor = Monitor::query()->create([
@@ -935,8 +940,16 @@ class MonitorController extends Controller
         $this->validateSocialPostExpectation($normalizedUrl, $validated);
         $fingerprint = Monitor::fingerprintUrl($normalizedUrl);
 
-        if (Monitor::query()->where('url_hash', $fingerprint)->whereKeyNot($monitor->id)->exists()) {
-            return back()->withErrors(['url' => '此網址已在監測中。'])->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
+        $existingMonitor = Monitor::query()
+            ->where('url_hash', $fingerprint)
+            ->whereKeyNot($monitor->id)
+            ->first();
+
+        if ($existingMonitor !== null) {
+            return back()
+                ->withErrors(['url' => '此網址已在監測中。'])
+                ->with('duplicateMonitorId', $existingMonitor->getKey())
+                ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
         }
 
         $user = $request->user();

@@ -108,6 +108,76 @@ class MonitorEditTest extends TestCase
             ->assertSee('Operations, Production');
     }
 
+    public function test_duplicate_url_on_create_links_to_existing_monitor_without_creating_another(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $url = 'https://fixture.test/duplicate';
+        $existingMonitor = Monitor::factory()->create([
+            'url' => $url,
+            'url_hash' => Monitor::fingerprintUrl($url),
+        ]);
+
+        $this->from(route('monitors.create'))
+            ->post(route('monitors.store'), [
+                'name' => 'Duplicate monitor',
+                'url' => $url,
+                'label' => '',
+                'redirect_hosts' => '',
+            ])
+            ->assertRedirect(route('monitors.create'))
+            ->assertSessionHasErrors(['url' => '此網址已在監測中。'])
+            ->assertSessionHas('duplicateMonitorId', $existingMonitor->getKey())
+            ->assertSessionHas('_old_input.url', $url);
+
+        $this->get(route('monitors.create'))
+            ->assertOk()
+            ->assertSee('查看既有監測項目')
+            ->assertSee(route('monitors.show', $existingMonitor), false)
+            ->assertSee($url);
+
+        $this->assertDatabaseCount('monitors', 1);
+    }
+
+    public function test_duplicate_url_on_update_links_to_existing_monitor_and_preserves_current_settings(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $currentUrl = 'https://fixture.test/current';
+        $duplicateUrl = 'https://fixture.test/duplicate';
+        $currentMonitor = Monitor::factory()->create([
+            'name' => 'Current monitor',
+            'url' => $currentUrl,
+            'url_hash' => Monitor::fingerprintUrl($currentUrl),
+        ]);
+        $existingMonitor = Monitor::factory()->create([
+            'url' => $duplicateUrl,
+            'url_hash' => Monitor::fingerprintUrl($duplicateUrl),
+        ]);
+
+        $this->from(route('monitors.edit', $currentMonitor))
+            ->put(route('monitors.update', $currentMonitor), [
+                'name' => 'Changed name',
+                'url' => $duplicateUrl,
+                'label' => '',
+                'redirect_hosts' => '',
+            ])
+            ->assertRedirect(route('monitors.edit', $currentMonitor))
+            ->assertSessionHasErrors(['url' => '此網址已在監測中。'])
+            ->assertSessionHas('duplicateMonitorId', $existingMonitor->getKey());
+
+        $this->get(route('monitors.edit', $currentMonitor))
+            ->assertOk()
+            ->assertSee('查看既有監測項目')
+            ->assertSee(route('monitors.show', $existingMonitor), false);
+
+        $this->assertSame($currentUrl, $currentMonitor->fresh()->url);
+        $this->assertSame('Current monitor', $currentMonitor->fresh()->name);
+        $this->assertDatabaseCount('monitors', 2);
+    }
+
     public function test_unrelated_monitor_updates_preserve_all_tags(): void
     {
         $monitor = Monitor::factory()->create([

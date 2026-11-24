@@ -115,6 +115,9 @@
                             <input class="field-input @error('url') is-invalid @enderror" id="url" name="url" type="url" value="{{ old('url') }}" inputmode="url" autocomplete="url" maxlength="2048" placeholder="{{ $isEditing ? '留空即可保留目前網址' : 'https://example.com/health' }}" @unless ($isEditing) required @endunless aria-describedby="{{ $errors->has('url') ? 'url-help url-error' : 'url-help' }}">
                             <p id="url-help" class="field-help">支援一般網站與公開貼文網址。社群貼文依原始 HTTP 回應比對；限制見<a href="{{ route('features.index') }}#social-monitoring">功能說明</a>。</p>
                             @error('url')<p id="url-error" class="field-error">{{ $message }}</p>@enderror
+                            @if (session('duplicateMonitorId'))
+                                <p class="field-help"><a href="{{ route('monitors.show', session('duplicateMonitorId')) }}">查看既有監測項目</a></p>
+                            @endif
                         </div>
 
                         <div class="field-group">
