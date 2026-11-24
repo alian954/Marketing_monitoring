@@ -14,7 +14,7 @@ class DashboardFocusLayoutTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_summary_counts_monitors_and_campaign_targets(): void
+    public function test_dashboard_keeps_marketing_totals_out_of_the_primary_focus_panel(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -35,15 +35,16 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertSee('1 個活動 · 互動與投放');
 
         $responseContent = $response->getContent();
-        $marketingSummaryStart = strpos($responseContent, 'id="dashboard-marketing-overview-title"');
+        $overviewStart = strpos($responseContent, 'id="dashboard-focus-title"');
         $detailsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
 
-        $this->assertIsInt($marketingSummaryStart);
+        $this->assertIsInt($overviewStart);
         $this->assertIsInt($detailsStart);
 
-        $marketingSummaryMarkup = substr($responseContent, $marketingSummaryStart, $detailsStart - $marketingSummaryStart);
-        $this->assertStringContainsString('class="dashboard-overview-value">1</p>', $marketingSummaryMarkup);
-        $this->assertStringContainsString('個活動正在追蹤', $marketingSummaryMarkup);
+        $overviewMarkup = substr($responseContent, $overviewStart, $detailsStart - $overviewStart);
+        $this->assertStringNotContainsString('個活動正在追蹤', $overviewMarkup);
+        $this->assertStringNotContainsString('追蹤活動', $overviewMarkup);
+        $this->assertStringContainsString('行銷成效', $responseContent);
     }
 
     public function test_dashboard_shows_key_metrics_and_collapses_detailed_reports_when_no_items_need_attention(): void
@@ -60,9 +61,9 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertSee(route('incidents.index'), false)
             ->assertSee(route('monitors.index'), false)
             ->assertSee(route('features.index'), false)
-            ->assertSee('待處理監測')
-            ->assertSee('追蹤活動')
-            ->assertSee('查看客戶成效')
+            ->assertSee('需要處理')
+            ->assertDontSee('追蹤活動')
+            ->assertSee('行銷成效')
             ->assertSee(route('clients.performance'), false)
             ->assertSee('詳細報表')
             ->assertSee('進行中的事件')
@@ -103,7 +104,7 @@ class DashboardFocusLayoutTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard', ['engagement_platform' => 'instagram']))
             ->assertOk()
-            ->assertSee('目前沒有符合條件的活動');
+            ->assertSee('尚無符合條件的貼文可排名');
 
         $responseContent = $response->getContent();
 
@@ -184,11 +185,11 @@ class DashboardFocusLayoutTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('class="dashboard-overview-value">1</p>', false)
+            ->assertSee('class="dashboard-focus-count">1</strong>', false)
             ->assertSee('項需要查看')
             ->assertSee('查看監測清單')
             ->assertDontSee('新增監測項目')
-            ->assertSee('健康網站');
+            ->assertSee('異常網站');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
@@ -196,12 +197,12 @@ class DashboardFocusLayoutTest extends TestCase
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
         $this->assertStringContainsString('查看監測清單', $overviewMarkup);
-        $this->assertStringNotContainsString('異常網站', $overviewMarkup);
+        $this->assertStringContainsString('異常網站', $overviewMarkup);
         $this->assertStringNotContainsString('健康網站', $overviewMarkup);
         $this->assertSame(1, $response->viewData('counts')['issue']);
     }
 
-    public function test_dashboard_summary_shows_only_the_attention_count_and_one_monitor_link(): void
+    public function test_dashboard_focus_shows_only_three_priority_monitors_and_the_remaining_count(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -224,17 +225,21 @@ class DashboardFocusLayoutTest extends TestCase
 
         $response = $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('class="dashboard-overview-value">4</p>', false)
+            ->assertSee('class="dashboard-focus-count">4</strong>', false)
             ->assertDontSee('新增監測項目')
-            ->assertSee('查看監測清單');
+            ->assertSee('查看監測清單')
+            ->assertSee('另有 1 項需要查看');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
         $detailReportsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
-        $this->assertStringNotContainsString('異常網站 1', $overviewMarkup);
-        $this->assertStringNotContainsString('異常網站 2', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 1', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 2', $overviewMarkup);
+        $this->assertStringContainsString('異常網站 3', $overviewMarkup);
+        $this->assertStringNotContainsString('異常網站 4', $overviewMarkup);
+        $this->assertSame(3, substr_count($overviewMarkup, 'class="dashboard-attention-name"'));
         $this->assertSame(1, substr_count($overviewMarkup, '查看監測清單'));
     }
 }

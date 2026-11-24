@@ -68,8 +68,8 @@ class DashboardScalabilityTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('class="dashboard-overview-value">2</p>', false)
-            ->assertDontSee('dashboard-focus-value');
+            ->assertSee('class="dashboard-focus-count">2</strong>', false)
+            ->assertSee('ZZZ issue monitor');
 
         $this->assertSame(501, $response->viewData('monitorCount'));
         $this->assertSame(501, $response->viewData('fleetAvailability')['monitor_count']);
