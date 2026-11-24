@@ -1,11 +1,16 @@
-<div>
-    <!-- An unexamined life is not worth living. - Socrates -->
-</div>
 @extends('layouts.app')
 
 @section('title', '客戶報表分享')
 
 @section('content')
+    @php
+        $campaignSelectionErrors = collect($errors->getMessages())
+            ->filter(static fn (array $messages, string $key): bool => $key === 'target_ids' || str_starts_with($key, 'target_ids.'))
+            ->flatten();
+        $selectedCampaignIds = old('target_ids', $campaignTargets->modelKeys());
+        $selectedCampaignIds = is_array($selectedCampaignIds) ? array_map('intval', $selectedCampaignIds) : [];
+    @endphp
+
     <div class="breadcrumbs" aria-label="頁面導覽">
         <a href="{{ route('dashboard') }}">總覽</a><span aria-hidden="true">/</span>
         <a href="{{ route('clients.index') }}">客戶</a><span aria-hidden="true">/</span>
@@ -41,24 +46,46 @@
             <h2 id="create-report-share-title" class="panel-title">建立分享連結</h2>
         </div>
         <div class="panel-body">
-            <form action="{{ route('clients.report-shares.store', $client) }}" method="POST" class="client-create-form" aria-labelledby="create-report-share-title">
-                @csrf
-                <div class="field-group">
-                    <label class="field-label" for="report-share-name">連結名稱</label>
-                    <input class="field-input{{ $errors->has('name') ? ' is-invalid' : '' }}" id="report-share-name" name="name" type="text" maxlength="80" value="{{ old('name') }}" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="report-share-name-error" @endif>
-                    @error('name')<p id="report-share-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
-                </div>
-                <div class="field-group">
-                    <label class="field-label" for="report-share-expiry">有效期限</label>
-                    <select class="field-select{{ $errors->has('expires_in_days') ? ' is-invalid' : '' }}" id="report-share-expiry" name="expires_in_days" required @if ($errors->has('expires_in_days')) aria-invalid="true" aria-describedby="report-share-expiry-error" @endif>
-                        <option value="7" @selected(old('expires_in_days', '30') === '7')>7 天</option>
-                        <option value="30" @selected(old('expires_in_days', '30') === '30')>30 天</option>
-                        <option value="90" @selected(old('expires_in_days', '30') === '90')>90 天</option>
-                    </select>
-                    @error('expires_in_days')<p id="report-share-expiry-error" class="field-error" role="alert">{{ $message }}</p>@enderror
-                </div>
-                <button class="button button-primary" type="submit">建立連結</button>
-            </form>
+            @if ($campaignTargets->isEmpty())
+                <p class="empty-copy">先新增至少一項行銷活動，再建立分享連結。</p>
+            @else
+                <form action="{{ route('clients.report-shares.store', $client) }}" method="POST" class="client-create-form" aria-labelledby="create-report-share-title">
+                    @csrf
+                    <div class="field-group">
+                        <label class="field-label" for="report-share-name">連結名稱</label>
+                        <input class="field-input{{ $errors->has('name') ? ' is-invalid' : '' }}" id="report-share-name" name="name" type="text" maxlength="80" value="{{ old('name') }}" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="report-share-name-error" @endif>
+                        @error('name')<p id="report-share-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="report-share-expiry">有效期限</label>
+                        <select class="field-select{{ $errors->has('expires_in_days') ? ' is-invalid' : '' }}" id="report-share-expiry" name="expires_in_days" required @if ($errors->has('expires_in_days')) aria-invalid="true" aria-describedby="report-share-expiry-error" @endif>
+                            <option value="7" @selected(old('expires_in_days', '30') === '7')>7 天</option>
+                            <option value="30" @selected(old('expires_in_days', '30') === '30')>30 天</option>
+                            <option value="90" @selected(old('expires_in_days', '30') === '90')>90 天</option>
+                        </select>
+                        @error('expires_in_days')<p id="report-share-expiry-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <fieldset class="report-share-targets" aria-describedby="report-share-targets-help{{ $campaignSelectionErrors->isNotEmpty() ? ' report-share-targets-error' : '' }}" @if ($campaignSelectionErrors->isNotEmpty()) aria-invalid="true" @endif>
+                        <legend class="field-label">包含活動</legend>
+                        <p id="report-share-targets-help" class="field-help">只會公開勾選活動的數據。</p>
+                        <div class="report-share-target-list">
+                            @foreach ($campaignTargets as $campaignTarget)
+                                <label class="report-share-target-option">
+                                    <input type="checkbox" name="target_ids[]" value="{{ $campaignTarget->id }}" @checked(in_array((int) $campaignTarget->id, $selectedCampaignIds, true))>
+                                    <span>
+                                        <strong>{{ $campaignTarget->tag }}</strong>
+                                        <small>{{ ['facebook' => 'Facebook', 'instagram' => 'Instagram', 'threads' => 'Threads', 'dcard' => 'Dcard'][$campaignTarget->social_platform] ?? $campaignTarget->social_platform }}</small>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                        @if ($campaignSelectionErrors->isNotEmpty())
+                            <p id="report-share-targets-error" class="field-error" role="alert">{{ $campaignSelectionErrors->first() }}</p>
+                        @endif
+                    </fieldset>
+                    <button class="button button-primary" type="submit">建立連結</button>
+                </form>
+            @endif
         </div>
     </section>
 
@@ -78,6 +105,7 @@
                     <thead>
                         <tr>
                             <th scope="col">名稱</th>
+                            <th scope="col">活動範圍</th>
                             <th scope="col">狀態</th>
                             <th scope="col">到期時間</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
@@ -87,9 +115,14 @@
                         @foreach ($shares as $share)
                             @php
                                 $shareStatus = $share->revoked_at !== null ? '已撤銷' : ($share->expires_at->isFuture() ? '有效' : '已到期');
+                                $shareCampaignCount = $share->campaign_target_ids === null
+                                    ? $campaignTargets->count()
+                                    : $campaignTargets->whereIn('id', $share->campaign_target_ids)->count();
+                                $shareCampaignScope = $share->campaign_target_ids === null ? '全部' : '所選';
                             @endphp
                             <tr>
                                 <th scope="row">{{ $share->name }}</th>
+                                <td>{{ $shareCampaignScope }} {{ number_format($shareCampaignCount) }} 項</td>
                                 <td>{{ $shareStatus }}</td>
                                 <td><time datetime="{{ $share->expires_at->toIso8601String() }}">{{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
                                 <td>

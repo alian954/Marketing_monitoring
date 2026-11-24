@@ -31,7 +31,13 @@ class SharedClientReportController extends Controller
         $user = $client->user;
         abort_unless($user instanceof User, 404);
 
-        $targets = $client->socialEngagementTargets()
+        $targetQuery = $client->socialEngagementTargets();
+
+        if (is_array($share->campaign_target_ids)) {
+            $targetQuery->whereIn('id', $share->campaign_target_ids);
+        }
+
+        $targets = $targetQuery
             ->with('client:id,reporting_currency_code')
             ->orderBy('tag')
             ->orderBy('social_platform')

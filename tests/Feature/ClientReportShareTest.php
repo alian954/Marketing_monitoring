@@ -27,11 +27,13 @@ class ClientReportShareTest extends TestCase
         $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
         $user = User::factory()->create();
         $client = Client::factory()->for($user)->create();
+        $target = $this->createTarget($client, 'Share Campaign');
 
         $response = $this->actingAs($user)
             ->post(route('clients.report-shares.store', $client), [
                 'name' => '客戶週報',
                 'expires_in_days' => '7',
+                'target_ids' => [$target->id],
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHas('createdShareUrl');
@@ -44,6 +46,7 @@ class ClientReportShareTest extends TestCase
         $this->assertSame(hash('sha256', $token), $share->token_hash);
         $this->assertNotSame($token, $share->token_hash);
         $this->assertSame('客戶週報', $share->name);
+        $this->assertSame([$target->id], $share->campaign_target_ids);
         $this->assertSame('2026-12-01 12:00:00', $share->expires_at->format('Y-m-d H:i:s'));
 
         $managementResponse = $this->get(route('clients.report-shares.index', $client))
@@ -63,15 +66,92 @@ class ClientReportShareTest extends TestCase
     {
         $user = User::factory()->create();
         $client = Client::factory()->for($user)->create();
+        $target = $this->createTarget($client, 'Share Campaign');
 
         $this->actingAs($user)
             ->from(route('clients.report-shares.index', $client))
             ->post(route('clients.report-shares.store', $client), [
                 'name' => 'Invalid expiration',
                 'expires_in_days' => '365',
+                'target_ids' => [$target->id],
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['expires_in_days' => '請選擇 7、30 或 90 天的有效期限。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_share_creation_form_only_lists_campaigns_for_the_selected_client(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $campaignTarget = $this->createTarget($client, 'Client Campaign');
+
+        $otherOwner = User::factory()->create();
+        $otherClient = Client::factory()->for($otherOwner)->create();
+        $this->actingAs($otherOwner);
+        $this->createTarget($otherClient, 'Private Campaign');
+
+        $this->actingAs($owner)
+            ->get(route('clients.report-shares.index', $client))
+            ->assertOk()
+            ->assertSee('Client Campaign')
+            ->assertSee('value="'.$campaignTarget->id.'"', false)
+            ->assertSee('只會公開勾選活動的數據。')
+            ->assertDontSee('Private Campaign');
+    }
+
+    public function test_public_client_report_only_includes_campaigns_selected_when_share_is_created(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $selectedTarget = $this->createTarget($client, 'Selected Campaign');
+        $hiddenTarget = $this->createTarget($client, 'Hidden Campaign');
+
+        $response = $this->post(route('clients.report-shares.store', $client), [
+            'name' => 'Selected campaign report',
+            'expires_in_days' => '30',
+            'target_ids' => [$selectedTarget->id],
+        ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHas('createdShareUrl');
+
+        $share = $client->reportShares()->firstOrFail();
+        $this->assertSame([$selectedTarget->id], $share->campaign_target_ids);
+
+        $shareUrl = $response->getSession()->get('createdShareUrl');
+        $token = basename((string) parse_url((string) $shareUrl, PHP_URL_PATH));
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('Selected Campaign')
+            ->assertDontSee('Hidden Campaign');
+    }
+
+    public function test_share_creation_rejects_campaigns_from_another_client(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $this->createTarget($client, 'Client Campaign');
+
+        $otherOwner = User::factory()->create();
+        $otherClient = Client::factory()->for($otherOwner)->create();
+        $this->actingAs($otherOwner);
+        $otherTarget = $this->createTarget($otherClient, 'Private Campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Invalid campaign scope',
+                'expires_in_days' => '30',
+                'target_ids' => [$otherTarget->id],
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['target_ids.0' => '所選活動不存在或不屬於此客戶。']);
 
         $this->assertDatabaseCount('client_report_shares', 0);
     }
