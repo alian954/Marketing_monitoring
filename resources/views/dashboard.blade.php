@@ -44,26 +44,10 @@
         </div>
         @if ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
-                <div class="dashboard-focus-overview">
-                    <p class="dashboard-focus-count-line">
-                        <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
-                        <span>項需處理</span>
-                    </p>
-                    <dl class="dashboard-focus-breakdown" aria-label="需處理項目分類">
-                        <div class="dashboard-focus-state dashboard-focus-state--issue">
-                            <dt>異常</dt>
-                            <dd>{{ number_format($counts['issue'] ?? 0) }}</dd>
-                        </div>
-                        <div class="dashboard-focus-state dashboard-focus-state--warning">
-                            <dt>警告</dt>
-                            <dd>{{ number_format($counts['warning'] ?? 0) }}</dd>
-                        </div>
-                        <div class="dashboard-focus-state dashboard-focus-state--stale">
-                            <dt>逾時</dt>
-                            <dd>{{ number_format($counts['stale'] ?? 0) }}</dd>
-                        </div>
-                    </dl>
-                </div>
+                <p class="dashboard-focus-count-line">
+                    <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
+                    <span>項需處理</span>
+                </p>
                 @if ($attentionMonitors->isNotEmpty())
                     <div class="dashboard-attention-list">
                         <h3 class="dashboard-attention-title">優先處理</h3>
@@ -91,18 +75,11 @@
         @endif
     </section>
 
-    <details class="dashboard-disclosure dashboard-detail-report spaced-top" aria-labelledby="dashboard-detail-reports-title">
-        <summary>
-            <span id="dashboard-detail-reports-title">詳細報表</span>
-            @if ($hasSocialEngagementFilters)
-                <span class="dashboard-disclosure-meta">已套用社群篩選</span>
-            @endif
-        </summary>
-        <div class="dashboard-disclosure-content dashboard-detail-report-content">
+    <div class="dashboard-detail-report-content spaced-top">
     <details class="dashboard-disclosure" aria-labelledby="dashboard-monitor-summary">
         <summary>
-            <span id="dashboard-monitor-summary">監測清單與執行狀態</span>
-            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項 · {{ number_format($attentionCount) }} 項需處理 · 排程器 {{ $heartbeatStatus === 'healthy' ? '正常' : '需留意' }}</span>
+            <span id="dashboard-monitor-summary">監測項目</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($totalMonitors) }} 項監測 · {{ number_format($attentionCount) }} 項需處理</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <div class="dashboard-top">
@@ -280,10 +257,10 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary">
+    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary" @if ($hasSocialEngagementFilters) open @endif>
         <summary>
-            <span id="dashboard-marketing-summary">行銷數據</span>
-            <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動 · 互動與投放</span>
+            <span id="dashboard-marketing-summary">行銷成效</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動{{ $hasSocialEngagementFilters ? ' · 已套用篩選' : '' }}</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="social-platform-summary-title">
@@ -1960,8 +1937,8 @@
 
     <details class="dashboard-disclosure" aria-labelledby="dashboard-operations-summary">
         <summary>
-            <span id="dashboard-operations-summary">服務品質與維運</span>
-            <span class="dashboard-disclosure-meta">事件清單 {{ number_format($incidents->count()) }} 筆 · {{ number_format($expiringCertificateCount) }} 張憑證 · {{ number_format($expiringDomainCount) }} 個網域</span>
+            <span id="dashboard-operations-summary">服務狀態</span>
+            <span class="dashboard-disclosure-meta">{{ number_format($incidents->count()) }} 件進行中事件</span>
         </summary>
         <div class="dashboard-disclosure-content">
     <section class="panel spaced-top" aria-labelledby="fleet-availability-title">
@@ -2370,7 +2347,6 @@
     </section>
         </div>
     </details>
-        </div>
-    </details>
+    </div>
 
 @endsection

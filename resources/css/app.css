@@ -877,7 +877,7 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 }
 
 .dashboard-focus {
-    max-width: 820px;
+    max-width: none;
 }
 
 .dashboard-performance-link {
@@ -887,13 +887,6 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 
 .dashboard-focus-body {
     display: grid;
-    gap: 18px;
-}
-
-.dashboard-focus-overview {
-    display: grid;
-    grid-template-columns: minmax(130px, .75fr) minmax(0, 1.25fr);
-    align-items: center;
     gap: 18px;
 }
 
@@ -912,51 +905,6 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     font-weight: 760;
     line-height: 1;
     font-variant-numeric: tabular-nums;
-}
-
-.dashboard-focus-breakdown {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin: 0;
-}
-
-.dashboard-focus-state {
-    display: flex;
-    min-inline-size: 0;
-    min-block-size: 52px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 9px 11px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--surface);
-}
-
-.dashboard-focus-state dt {
-    color: var(--muted);
-    font-size: 12px;
-}
-
-.dashboard-focus-state dd {
-    margin: 0;
-    color: var(--ink);
-    font-size: 18px;
-    font-weight: 740;
-    font-variant-numeric: tabular-nums;
-}
-
-.dashboard-focus-state--issue {
-    border-color: #efcece;
-}
-
-.dashboard-focus-state--warning {
-    border-color: #f0dfbb;
-}
-
-.dashboard-focus-state--stale {
-    border-color: #d8dfea;
 }
 
 .dashboard-attention-list {
@@ -2616,11 +2564,6 @@ a.platform-chip:hover {
     .dashboard-focus-empty {
         align-items: flex-start;
         flex-direction: column;
-    }
-
-    .dashboard-focus-overview {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 12px;
     }
 
     .monitor-availability-grid {

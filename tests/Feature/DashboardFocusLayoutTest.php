@@ -31,12 +31,12 @@ class DashboardFocusLayoutTest extends TestCase
 
         $response = $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('1 項 · 0 項需處理')
-            ->assertSee('1 個活動 · 互動與投放');
+            ->assertSee('1 項監測 · 0 項需處理')
+            ->assertSee('1 個活動');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-focus-title"');
-        $detailsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
+        $detailsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
 
         $this->assertIsInt($overviewStart);
         $this->assertIsInt($detailsStart);
@@ -65,13 +65,10 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertDontSee('追蹤活動')
             ->assertSee('行銷成效')
             ->assertSee(route('clients.performance'), false)
-            ->assertSee('詳細報表')
             ->assertSee('進行中的事件')
             ->assertSee('監測項目')
-            ->assertSee('0 個活動 · 互動與投放')
-            ->assertSee('行銷數據')
-            ->assertSee('監測清單與執行狀態')
-            ->assertSee('服務品質與維運')
+            ->assertSee('0 個活動')
+            ->assertSee('服務狀態')
             ->assertSee('aria-labelledby="dashboard-marketing-summary"', false)
             ->assertSee('aria-labelledby="dashboard-monitor-summary"', false)
             ->assertSee('aria-labelledby="dashboard-operations-summary"', false)
@@ -79,38 +76,38 @@ class DashboardFocusLayoutTest extends TestCase
 
         $responseContent = $response->getContent();
         $summaryPosition = strpos($responseContent, 'id="dashboard-overview"');
-        $detailReportsPosition = strpos($responseContent, 'id="dashboard-detail-reports-title"');
+        $monitorSummaryPosition = strpos($responseContent, 'id="dashboard-monitor-summary"');
         $monitorListPosition = strpos($responseContent, 'id="dashboard-monitors"');
         $marketingReportsPosition = strpos($responseContent, 'id="dashboard-marketing-summary"');
         $operationsReportsPosition = strpos($responseContent, 'id="dashboard-operations-summary"');
 
         $this->assertIsInt($summaryPosition);
-        $this->assertIsInt($detailReportsPosition);
+        $this->assertIsInt($monitorSummaryPosition);
         $this->assertIsInt($monitorListPosition);
         $this->assertIsInt($marketingReportsPosition);
         $this->assertIsInt($operationsReportsPosition);
-        $this->assertLessThan($detailReportsPosition, $summaryPosition);
-        $this->assertLessThan($monitorListPosition, $detailReportsPosition);
+        $this->assertLessThan($monitorSummaryPosition, $summaryPosition);
+        $this->assertLessThan($monitorListPosition, $monitorSummaryPosition);
         $this->assertLessThan($marketingReportsPosition, $monitorListPosition);
         $this->assertLessThan($operationsReportsPosition, $marketingReportsPosition);
-        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(3, preg_match_all('/<details[^>]*class="dashboard-disclosure"/', $responseContent));
     }
 
-    public function test_dashboard_keeps_detailed_reports_collapsed_when_marketing_filters_are_applied(): void
+    public function test_dashboard_opens_filtered_marketing_results_and_keeps_other_sections_collapsed(): void
     {
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard', ['engagement_platform' => 'instagram']))
             ->assertOk()
-            ->assertSee('已套用社群篩選')
+            ->assertSee('已套用篩選')
             ->assertSee('尚無符合條件的貼文可排名');
 
         $responseContent = $response->getContent();
 
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
-        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
     }
 
@@ -188,17 +185,14 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('class="dashboard-focus-count">1</strong>', false)
             ->assertSee('項需處理')
-            ->assertSee('需處理項目分類')
-            ->assertSee('dashboard-focus-state--issue', false)
-            ->assertSee('dashboard-focus-state--warning', false)
-            ->assertSee('dashboard-focus-state--stale', false)
+            ->assertDontSee('dashboard-focus-state--')
             ->assertSee('查看清單')
             ->assertDontSee('新增監測項目')
             ->assertSee('異常網站');
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
-        $detailReportsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
+        $detailReportsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
         $this->assertStringContainsString('查看清單', $overviewMarkup);
@@ -239,7 +233,7 @@ class DashboardFocusLayoutTest extends TestCase
 
         $responseContent = $response->getContent();
         $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
-        $detailReportsStart = strpos($responseContent, 'id="dashboard-detail-reports-title"');
+        $detailReportsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
         $overviewMarkup = substr($responseContent, $overviewStart, $detailReportsStart - $overviewStart);
 
         $this->assertStringContainsString('查看清單', $overviewMarkup);
