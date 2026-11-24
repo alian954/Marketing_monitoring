@@ -26,6 +26,46 @@ class ClientManagementTest extends TestCase
         $this->assertSame(Client::DEFAULT_NAME, $response->viewData('clients')->sole()->name);
     }
 
+    public function test_client_index_searches_and_paginates_the_matching_clients(): void
+    {
+        $user = User::factory()->create();
+
+        foreach (range(1, 30) as $number) {
+            $user->clients()->create(['name' => sprintf('Agency Client %02d', $number)]);
+        }
+
+        $response = $this->actingAs($user)
+            ->get(route('clients.index', ['search' => 'Agency Client', 'page' => 2]))
+            ->assertOk()
+            ->assertSee('Agency Client 30')
+            ->assertDontSee('Agency Client 01')
+            ->assertSee('30 個客戶')
+            ->assertSee('顯示第 26–30 筆，共 30 筆')
+            ->assertSee('name="search"', false)
+            ->assertSee('value="Agency Client"', false);
+
+        $clients = $response->viewData('clients');
+        $this->assertSame(30, $clients->total());
+        $this->assertSame(2, $clients->currentPage());
+        $this->assertCount(5, $clients);
+        $this->assertStringContainsString('search=Agency', (string) $clients->previousPageUrl());
+    }
+
+    public function test_client_index_shows_empty_search_results_and_rejects_long_terms(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('clients.index', ['search' => 'No matching client']))
+            ->assertOk()
+            ->assertSee('找不到符合條件的客戶')
+            ->assertSee('清除');
+
+        $this->get(route('clients.index', ['search' => str_repeat('x', 81)]))
+            ->assertRedirect(route('clients.index'))
+            ->assertSessionHasErrors(['search' => '客戶搜尋不可超過 80 個字元。']);
+    }
+
     public function test_user_can_create_and_rename_unique_clients(): void
     {
         $user = User::factory()->create();

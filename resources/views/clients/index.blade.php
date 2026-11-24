@@ -54,9 +54,35 @@
         <div class="panel-header">
             <div>
                 <h2 id="client-list-title" class="panel-title">客戶清單</h2>
-                <p class="panel-description">{{ number_format($clients->count()) }} 個客戶</p>
+                <p class="panel-description">{{ number_format($clients->total()) }} 個客戶</p>
             </div>
         </div>
+        <div class="panel-body">
+            <search aria-label="搜尋客戶">
+                <form action="{{ route('clients.index') }}" method="GET">
+                    <div class="form-grid">
+                        <div class="field-group">
+                            <label class="field-label" for="client-list-search">客戶名稱</label>
+                            <input class="field-input{{ $errors->has('search') ? ' is-invalid' : '' }}" id="client-list-search" name="search" type="search" value="{{ old('search', $search) }}" maxlength="80" placeholder="搜尋客戶名稱" aria-describedby="client-list-search-help{{ $errors->has('search') ? ' client-list-search-error' : '' }}" @if ($errors->has('search')) aria-invalid="true" @endif>
+                            <p id="client-list-search-help" class="field-help">可輸入部分名稱。</p>
+                            @error('search')<p id="client-list-search-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="button button-secondary" type="submit">搜尋</button>
+                        @if ($search !== '')
+                            <a class="strong-link" href="{{ route('clients.index') }}">清除</a>
+                        @endif
+                    </div>
+                </form>
+            </search>
+        </div>
+        @if ($clients->isEmpty())
+            <div class="empty-state">
+                <h3 class="empty-title">找不到符合條件的客戶</h3>
+                <p class="empty-copy">請確認名稱或清除搜尋條件。</p>
+            </div>
+        @else
         <div class="data-table-wrap">
             <table class="data-table">
                 <caption class="sr-only">客戶名稱、監測項目與活動數量</caption>
@@ -110,6 +136,10 @@
                 </tbody>
             </table>
         </div>
+        @if ($clients->hasPages())
+            <div class="panel-body pagination-wrap">{{ $clients->links('vendor.pagination.monitor') }}</div>
+        @endif
+        @endif
         <p class="field-help panel-body">有監測項目或活動目標的客戶需先移轉資料才能刪除；預設分類不可刪除。</p>
     </section>
 @endsection

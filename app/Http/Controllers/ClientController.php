@@ -8,24 +8,43 @@ use App\Models\WorkspaceMembership;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class ClientController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
 
+        $validator = Validator::make($request->query(), [
+            'search' => ['sometimes', 'nullable', 'string', 'max:80'],
+        ], [
+            'search.string' => '客戶搜尋格式無效。',
+            'search.max' => '客戶搜尋不可超過 80 個字元。',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->route('clients.index')
+                ->withErrors($validator)
+                ->withInput($request->query());
+        }
+
         Client::ensureDefaultFor($user);
-
-        $clients = Client::query()
+        $search = trim((string) ($validator->validated()['search'] ?? ''));
+        $clientQuery = Client::query()
             ->withCount(['monitors', 'socialEngagementTargets'])
-            ->orderBy('name')
-            ->get();
+            ->orderBy('name');
 
-        return view('clients.index', compact('clients'));
+        if ($search !== '') {
+            $clientQuery->where('name', 'like', '%'.$search.'%');
+        }
+
+        $clients = $clientQuery->paginate(25)->withQueryString();
+
+        return view('clients.index', compact('clients', 'search'));
     }
 
     public function store(Request $request): RedirectResponse
