@@ -84,9 +84,12 @@
         @endif
     </section>
 
-    <details class="dashboard-disclosure dashboard-detail-report spaced-top" aria-labelledby="dashboard-detail-reports-title" @if ($hasSocialEngagementFilters) open @endif>
+    <details class="dashboard-disclosure dashboard-detail-report spaced-top" aria-labelledby="dashboard-detail-reports-title">
         <summary>
             <span id="dashboard-detail-reports-title">詳細報表</span>
+            @if ($hasSocialEngagementFilters)
+                <span class="dashboard-disclosure-meta">已套用社群篩選</span>
+            @endif
         </summary>
         <div class="dashboard-disclosure-content dashboard-detail-report-content">
     <details class="dashboard-disclosure" aria-labelledby="dashboard-monitor-summary">
@@ -270,7 +273,7 @@
         </div>
     </details>
 
-    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary" @if ($hasSocialEngagementFilters) open @endif>
+    <details class="dashboard-disclosure" aria-labelledby="dashboard-marketing-summary">
         <summary>
             <span id="dashboard-marketing-summary">行銷數據</span>
             <span class="dashboard-disclosure-meta">{{ number_format($campaignTargetCount) }} 個活動 · 互動與投放</span>

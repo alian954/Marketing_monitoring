@@ -99,17 +99,18 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
     }
 
-    public function test_dashboard_opens_detailed_reports_when_marketing_filters_are_applied(): void
+    public function test_dashboard_keeps_detailed_reports_collapsed_when_marketing_filters_are_applied(): void
     {
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard', ['engagement_platform' => 'instagram']))
             ->assertOk()
+            ->assertSee('已套用社群篩選')
             ->assertSee('尚無符合條件的貼文可排名');
 
         $responseContent = $response->getContent();
 
-        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
-        $this->assertSame(1, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-detail-reports-title"[^>]*\bopen\b[^>]*>/', $responseContent));
+        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
     }
 
