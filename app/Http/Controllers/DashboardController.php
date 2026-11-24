@@ -2103,8 +2103,8 @@ class DashboardController extends Controller
             'google_ads' => 'Google Ads',
         ];
         $configuredSources = [];
-        $staleSourceLabels = [];
-        $staleTargetId = null;
+        $missingSourcesByTarget = [];
+        $staleSourcesByTarget = [];
 
         foreach ($marketingSummaries as $targetId => $marketingSummary) {
             foreach ($sourceLabels as $source => $label) {
@@ -2115,8 +2115,11 @@ class DashboardController extends Controller
                 }
 
                 if ($sourceStatus === 'stale') {
-                    $staleSourceLabels[$source] = $label;
-                    $staleTargetId ??= (int) $targetId;
+                    $staleSourcesByTarget[(int) $targetId][$source] = $label;
+                }
+
+                if ($sourceStatus === 'missing') {
+                    $missingSourcesByTarget[(int) $targetId][$source] = $label;
                 }
             }
         }
@@ -2163,14 +2166,40 @@ class DashboardController extends Controller
             ];
         }
 
-        if ($staleSourceLabels !== []) {
+        if ($staleSourcesByTarget !== []) {
+            $staleTargetId = (int) array_key_first($staleSourcesByTarget);
+
             return [
                 'section_title' => '行銷數據待處理',
                 'title' => '行銷數據更新逾時',
-                'description' => implode('、', array_values($staleSourceLabels)).' 資料超過 24 小時未更新。',
+                'description' => implode('、', array_values($staleSourcesByTarget[$staleTargetId])).' 資料超過 24 小時未更新。',
                 'url' => route('social-engagement-targets.report', $staleTargetId),
                 'link_label' => '查看活動報告',
             ];
+        }
+
+        foreach ($missingSourcesByTarget as $targetId => $missingSources) {
+            $missingConnectedSourceLabels = [];
+
+            foreach ($missingSources as $source => $label) {
+                $connection = $syncConnections[$source]['connection'];
+
+                if ($connection === null || $connection->scheduled_sync_status === 'running') {
+                    continue;
+                }
+
+                $missingConnectedSourceLabels[] = $label;
+            }
+
+            if ($missingConnectedSourceLabels !== []) {
+                return [
+                    'section_title' => '行銷數據待處理',
+                    'title' => '行銷數據尚未取得',
+                    'description' => implode('、', $missingConnectedSourceLabels).' 尚未取得活動數據。',
+                    'url' => route('social-engagement-targets.report', $targetId),
+                    'link_label' => '查看活動報告',
+                ];
+            }
         }
 
         return null;

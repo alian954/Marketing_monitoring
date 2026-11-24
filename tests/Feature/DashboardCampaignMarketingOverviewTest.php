@@ -164,7 +164,11 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->actingAs($user);
         $selectedClient = Client::ensureDefaultFor($user);
         $otherClient = Client::factory()->for($user)->create(['name' => '其他客戶']);
-        $selectedTarget = $this->createTarget(['tag' => '目前客戶活動']);
+        $selectedTarget = $this->createTarget([
+            'tag' => '目前客戶活動',
+            'starts_on' => null,
+            'ends_on' => null,
+        ]);
         $otherTarget = $this->createTarget(['tag' => '其他客戶活動']);
         $otherTarget->forceFill(['client_id' => $otherClient->id])->save();
         $this->createGoogleAnalyticsReport($user, $otherTarget, [
@@ -222,6 +226,46 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             ->assertSee(route('integrations.google-analytics.edit'), false);
 
         $this->assertSame('行銷數據同步未完成', $response->viewData('dashboardSystemAttention')['title']);
+    }
+
+    public function test_dashboard_surfaces_a_connected_campaign_source_without_a_first_reading(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $target = $this->createTarget();
+        GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+
+        $response = $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('行銷數據尚未取得')
+            ->assertSee('GA4 尚未取得活動數據')
+            ->assertSee(route('social-engagement-targets.report', $target), false);
+
+        $this->assertSame('行銷數據尚未取得', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('missing', $response->viewData('socialEngagementTargets')[0]['marketing']['google_analytics']['status']);
+    }
+
+    public function test_dashboard_does_not_report_missing_campaign_data_while_its_sync_is_running(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $this->createTarget();
+        GoogleAdsConnection::factory()->create([
+            'user_id' => $user->id,
+            'scheduled_sync_status' => 'running',
+            'scheduled_sync_started_at' => now()->subMinute(),
+        ]);
+
+        $response = $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('行銷數據尚未取得');
+
+        $this->assertNull($response->viewData('dashboardSystemAttention'));
+        $this->assertSame('missing', $response->viewData('socialEngagementTargets')[0]['marketing']['google_ads']['status']);
     }
 
     public function test_dashboard_shows_ga4_business_goal_pacing_and_portfolio_coverage(): void
