@@ -70,6 +70,7 @@ class FeatureGuideTest extends TestCase
             ->assertSee('可用率與 SLO')
             ->assertSee('CSV 匯入')
             ->assertSee('公開狀態頁與資料匯出')
+            ->assertSee('客戶報表可封存當下的 CSV 數據')
             ->assertSee(route('features.index'))
             ->assertSee('<title>功能說明 · 監測台</title>', false);
     }

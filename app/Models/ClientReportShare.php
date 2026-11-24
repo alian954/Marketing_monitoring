@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['name', 'report_brand_name', 'token_hash', 'campaign_target_ids', 'report_sections', 'report_starts_on', 'report_ends_on', 'compare_previous_period', 'expires_at', 'revoked_at'])]
 #[Hidden(['token_hash'])]
@@ -43,6 +44,11 @@ class ClientReportShare extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function snapshots(): HasMany
+    {
+        return $this->hasMany(ClientReportSnapshot::class)->latest('created_at')->latest('id');
     }
 
     /** @return list<string> */

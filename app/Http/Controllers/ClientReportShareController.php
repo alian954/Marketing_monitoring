@@ -16,7 +16,19 @@ class ClientReportShareController extends Controller
 {
     public function index(Client $client, ClientPortfolioReportingPeriod $reportingPeriod): Response
     {
-        $shares = $client->reportShares()->latest()->get();
+        $shares = $client->reportShares()
+            ->with(['snapshots' => static fn ($query) => $query->select([
+                'id',
+                'client_report_share_id',
+                'report_sections',
+                'report_starts_on',
+                'report_ends_on',
+                'csv_sha256',
+                'created_at',
+                'updated_at',
+            ])])
+            ->latest()
+            ->get();
         $campaignTargets = $client->socialEngagementTargets()
             ->orderBy('tag')
             ->orderBy('social_platform')

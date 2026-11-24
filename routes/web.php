@@ -5,6 +5,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportShareController;
+use App\Http\Controllers\ClientReportSnapshotController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
@@ -50,6 +51,11 @@ Route::get('/shared/client-reports/{token}/export.csv', [SharedClientReportContr
     ->where('token', '[a-f0-9]{64}')
     ->middleware('throttle:10,1')
     ->name('client-report-shares.public.export');
+Route::get('/shared/client-reports/{token}/snapshots/{snapshot}/export.csv', [ClientReportSnapshotController::class, 'downloadPublic'])
+    ->where('token', '[a-f0-9]{64}')
+    ->whereNumber('snapshot')
+    ->middleware('throttle:10,1')
+    ->name('client-report-shares.public.snapshots.export');
 Route::post('/status/{token}/subscriptions', [StatusPageSubscriptionController::class, 'subscribe'])
     ->where('token', '[A-Za-z0-9]{64}')
     ->middleware('throttle:status-page-subscription')
@@ -125,6 +131,17 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
         ->whereNumber('client')
         ->whereNumber('reportShare')
         ->name('clients.report-shares.destroy');
+    Route::post('/clients/{client}/report-shares/{reportShare}/snapshots', [ClientReportSnapshotController::class, 'store'])
+        ->whereNumber('client')
+        ->whereNumber('reportShare')
+        ->scopeBindings()
+        ->name('clients.report-shares.snapshots.store');
+    Route::get('/clients/{client}/report-shares/{reportShare}/snapshots/{snapshot}/export.csv', [ClientReportSnapshotController::class, 'download'])
+        ->whereNumber('client')
+        ->whereNumber('reportShare')
+        ->whereNumber('snapshot')
+        ->scopeBindings()
+        ->name('clients.report-shares.snapshots.export');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');

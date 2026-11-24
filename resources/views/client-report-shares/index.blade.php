@@ -166,6 +166,7 @@
                             <th scope="col">報表期間</th>
                             <th scope="col">報表內容</th>
                             <th scope="col">狀態</th>
+                            <th scope="col">封存快照</th>
                             <th scope="col">到期時間</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -194,6 +195,25 @@
                                 </td>
                                 <td>{{ $shareReportSectionLabels }}</td>
                                 <td>{{ $shareStatus }}</td>
+                                <td>
+                                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                                        <form action="{{ route('clients.report-shares.snapshots.store', [$client, $share]) }}" method="POST" class="inline-form">
+                                            @csrf
+                                            <button class="button button-secondary button-small" type="submit">建立快照</button>
+                                        </form>
+                                    @endunless
+                                    <span class="secondary-text">{{ number_format($share->snapshots->count()) }} 份</span>
+                                    @if ($share->snapshots->isNotEmpty())
+                                        <ul class="report-snapshot-list">
+                                            @foreach ($share->snapshots as $snapshot)
+                                                <li>
+                                                    <a href="{{ route('clients.report-shares.snapshots.export', [$client, $share, $snapshot]) }}">下載</a>
+                                                    <time datetime="{{ $snapshot->created_at->toIso8601String() }}">{{ $snapshot->created_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                </td>
                                 <td><time datetime="{{ $share->expires_at->toIso8601String() }}">{{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
                                 <td>
                                     @if ($shareStatus === '有效')

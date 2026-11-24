@@ -14,6 +14,40 @@ class SharedClientReportCsv
      * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>  $campaignRows
      * @param  list<array<string, mixed>>  $reportingCurrencyGroups
      * @param  list<string>  $reportSections
+     */
+    public function build(
+        Client $client,
+        Collection $campaignRows,
+        array $reportingCurrencyGroups,
+        array $reportSections = ClientReportShare::DEFAULT_REPORT_SECTIONS,
+        ?string $reportPeriodLabel = null,
+        ?string $comparisonPeriodLabel = null,
+    ): string {
+        $stream = fopen('php://temp/maxmemory:5242880', 'w+b');
+        $this->write(
+            $client,
+            $campaignRows,
+            $reportingCurrencyGroups,
+            $stream,
+            $reportSections,
+            $reportPeriodLabel,
+            $comparisonPeriodLabel,
+        );
+        rewind($stream);
+        $content = stream_get_contents($stream);
+        fclose($stream);
+
+        if (! is_string($content)) {
+            throw new \RuntimeException('Unable to read generated client report CSV.');
+        }
+
+        return $content;
+    }
+
+    /**
+     * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>  $campaignRows
+     * @param  list<array<string, mixed>>  $reportingCurrencyGroups
+     * @param  list<string>  $reportSections
      * @param  resource  $stream
      */
     public function write(

@@ -49,6 +49,27 @@
         <a class="button button-secondary" href="{{ route('client-report-shares.public.export', ['token' => $token]) }}">下載 CSV</a>
     </div>
 
+    @if ($share->snapshots->isNotEmpty())
+        <section class="panel public-status-panel spaced-top" aria-labelledby="shared-report-snapshots-title">
+            <div class="panel-body">
+                <h2 id="shared-report-snapshots-title" class="panel-title">封存報表</h2>
+                <ul class="report-snapshot-list">
+                    @foreach ($share->snapshots as $snapshot)
+                        @php
+                            $snapshotPeriodLabel = $snapshot->report_starts_on !== null && $snapshot->report_ends_on !== null
+                                ? $snapshot->report_starts_on->format('Y/n/j').'–'.$snapshot->report_ends_on->format('Y/n/j')
+                                : $snapshot->created_at->timezone('Asia/Taipei')->format('Y/n/j');
+                        @endphp
+                        <li>
+                            <a href="{{ route('client-report-shares.public.snapshots.export', ['token' => $token, 'snapshot' => $snapshot->id]) }}">下載 {{ $snapshotPeriodLabel }}</a>
+                            <time datetime="{{ $snapshot->created_at->toIso8601String() }}">建立於 {{ $snapshot->created_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </section>
+    @endif
+
     @if ($currencySourceMetrics !== [] && $reportingCurrencyGroups !== [])
         <section class="panel public-status-panel" aria-labelledby="shared-report-currency-title">
             <div class="panel-body">
