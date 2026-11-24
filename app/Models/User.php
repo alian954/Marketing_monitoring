@@ -72,7 +72,15 @@ class User extends Authenticatable
 
     public function isReadOnlyWorkspaceMember(): bool
     {
-        return $this->workspaceMembership?->role === WorkspaceMembership::ROLE_READ_ONLY;
+        $membership = $this->workspaceMembership;
+
+        return $membership !== null && $membership->role !== WorkspaceMembership::ROLE_EDITOR;
+    }
+
+    public function canManageWorkspace(): bool
+    {
+        return $this->isWorkspaceOwner()
+            || $this->workspaceMembership?->role === WorkspaceMembership::ROLE_EDITOR;
     }
 
     public function sendPasswordResetNotification(#[\SensitiveParameter] mixed $token): void

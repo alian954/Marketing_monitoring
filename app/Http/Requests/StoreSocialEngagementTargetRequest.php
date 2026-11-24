@@ -38,7 +38,7 @@ class StoreSocialEngagementTargetRequest extends FormRequest
                 'nullable',
                 'integer',
                 'min:1',
-                Rule::exists('clients', 'id')->where('user_id', $this->user()?->getAuthIdentifier()),
+                Rule::exists('clients', 'id')->where('user_id', $this->user()?->workspaceOwnerId()),
             ],
             'target_interactions' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'starts_on' => ['nullable', 'date_format:Y-m-d'],

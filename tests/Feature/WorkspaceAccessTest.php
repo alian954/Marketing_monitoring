@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -23,7 +24,10 @@ class WorkspaceAccessTest extends TestCase
         $this->actingAs($owner)
             ->get(route('team.index'))
             ->assertOk()
-            ->assertSee('工作區成員');
+            ->assertSee('工作區成員')
+            ->assertSee('name="role"', false)
+            ->assertSee('value="read_only"', false)
+            ->assertSee('value="editor"', false);
 
         $this->post(route('team.invitations.store'), ['email' => 'member@example.test'])
             ->assertRedirect(route('team.index'))
@@ -36,6 +40,7 @@ class WorkspaceAccessTest extends TestCase
         $this->assertSame(hash('sha256', $token), $invitation->token_hash);
         $this->assertNotSame($token, $invitation->token_hash);
         $this->assertSame('member@example.test', $invitation->email);
+        $this->assertSame(WorkspaceMembership::ROLE_READ_ONLY, $invitation->role);
         $this->assertSame(
             $invitation->created_at->copy()->addDays(WorkspaceInvitation::EXPIRATION_DAYS)->timestamp,
             $invitation->expires_at->timestamp,
@@ -86,6 +91,122 @@ class WorkspaceAccessTest extends TestCase
         $this->post(route('logout'));
         $this->get(route('team.invitations.show', ['token' => $token]))
             ->assertNotFound();
+    }
+
+    public function test_owner_can_invite_an_editor_who_can_manage_campaigns_but_not_workspace_settings(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $owner = User::factory()->create(['name' => '品牌工作區']);
+        $ownerClient = $owner->clients()->create(['name' => '品牌客戶']);
+        $this->actingAs($owner);
+        Monitor::factory()->create([
+            'name' => '品牌 Facebook 貼文',
+            'url' => 'https://www.facebook.com/posts/EDITOR123',
+            'url_hash' => Monitor::fingerprintUrl('https://www.facebook.com/posts/EDITOR123'),
+            'label' => 'Editor launch',
+            'client_id' => $ownerClient->id,
+        ]);
+
+        $this->post(route('team.invitations.store'), [
+            'email' => 'editor@example.test',
+            'role' => WorkspaceMembership::ROLE_EDITOR,
+        ])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHas('createdInviteUrl');
+
+        $inviteUrl = (string) session('createdInviteUrl');
+        $token = basename((string) parse_url($inviteUrl, PHP_URL_PATH));
+        $invitation = WorkspaceInvitation::query()->where('email', 'editor@example.test')->firstOrFail();
+
+        $this->assertSame(WorkspaceMembership::ROLE_EDITOR, $invitation->role);
+
+        $this->get(route('team.index'))
+            ->assertOk()
+            ->assertSee('editor@example.test')
+            ->assertSee('可編輯');
+
+        $this->post(route('logout'))
+            ->assertRedirect(route('login'));
+        $this->get(route('team.invitations.show', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('可編輯成員')
+            ->assertSee('工作區管理與整合設定仍由擁有者負責');
+        $this->post(route('team.invitations.accept', ['token' => $token]), [
+            'name' => '行銷編輯',
+            'password' => 'a-secure-password-123',
+            'password_confirmation' => 'a-secure-password-123',
+        ])->assertRedirect(route('dashboard'));
+
+        $editor = User::query()->where('email', 'editor@example.test')->firstOrFail();
+        $this->assertSame(WorkspaceMembership::ROLE_EDITOR, $editor->workspaceMembership?->role);
+        $this->assertTrue($editor->canManageWorkspace());
+
+        $this->actingAs($editor)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('可編輯成員')
+            ->assertDontSee(route('integrations.google-analytics.edit'), false)
+            ->assertDontSee(route('team.index'), false);
+
+        $this->post(route('clients.store'), ['name' => '編輯者新增客戶'])
+            ->assertRedirect(route('clients.index'));
+        $this->assertDatabaseHas('clients', [
+            'user_id' => $owner->id,
+            'name' => '編輯者新增客戶',
+        ]);
+
+        $this->post(route('monitors.store'), [
+            'name' => '編輯者建立監測',
+            'url' => 'http://fixture.test/editor-post',
+            'label' => 'Editor launch',
+            'client_id' => $ownerClient->id,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('monitors', [
+            'user_id' => $owner->id,
+            'client_id' => $ownerClient->id,
+            'name' => '編輯者建立監測',
+        ]);
+
+        $this->post(route('social-engagement-targets.store'), [
+            'tag' => 'Editor launch',
+            'social_platform' => 'facebook',
+            'client_id' => $ownerClient->id,
+            'target_interactions' => 100,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('social_engagement_targets', [
+            'user_id' => $owner->id,
+            'client_id' => $ownerClient->id,
+            'tag' => 'Editor launch',
+            'social_platform' => 'facebook',
+        ]);
+
+        $this->get(route('team.index'))->assertForbidden();
+        $this->get(route('integrations.google-analytics.edit'))->assertForbidden();
+        $this->get(route('integrations.google-ads.edit'))->assertForbidden();
+        $this->get(route('integrations.meta-marketing.edit'))->assertForbidden();
+        $this->get(route('status-pages.edit'))->assertForbidden();
+    }
+
+    public function test_owner_cannot_create_an_invitation_with_an_unknown_role(): void
+    {
+        $owner = User::factory()->create();
+
+        $this->actingAs($owner)
+            ->from(route('team.index'))
+            ->followingRedirects()
+            ->post(route('team.invitations.store'), [
+                'email' => 'invalid-role@example.test',
+                'role' => 'administrator',
+            ])
+            ->assertOk()
+            ->assertSee('aria-invalid="true"', false)
+            ->assertSee('invite-role-error', false)
+            ->assertSee('請選擇有效的工作區權限。');
+
+        $this->assertDatabaseMissing('workspace_invitations', [
+            'owner_user_id' => $owner->id,
+            'email' => 'invalid-role@example.test',
+        ]);
     }
 
     public function test_expired_and_revoked_invitation_tokens_cannot_be_used(): void

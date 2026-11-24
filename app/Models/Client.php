@@ -25,8 +25,10 @@ class Client extends Model
         static::addGlobalScope(new AuthenticatedAccountScope);
 
         static::creating(static function (Client $client): void {
-            if (Auth::id() !== null && $client->user_id === null) {
-                $client->forceFill(['user_id' => Auth::id()]);
+            $user = Auth::user();
+
+            if ($user instanceof User && $client->user_id === null) {
+                $client->forceFill(['user_id' => $user->workspaceOwnerId()]);
             }
         });
     }

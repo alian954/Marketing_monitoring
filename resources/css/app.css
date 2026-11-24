@@ -235,6 +235,57 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     gap: 12px;
 }
 
+.workspace-access-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 12px;
+}
+
+.workspace-role-fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.workspace-role-fieldset legend {
+    padding: 0;
+}
+
+.workspace-role-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.workspace-role-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.workspace-role-option input {
+    margin: 3px 0 0;
+    accent-color: var(--blue);
+}
+
+.workspace-role-option strong,
+.workspace-role-option .secondary-text {
+    display: block;
+}
+
+.workspace-role-option .secondary-text {
+    margin-top: 3px;
+    font-size: 12px;
+}
+
 .page-footer {
     width: min(1160px, calc(100% - 48px));
     margin: 0 auto;
@@ -2370,6 +2421,11 @@ a.platform-chip:hover {
     }
 
     .workspace-access-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .workspace-access-fields,
+    .workspace-role-options {
         grid-template-columns: minmax(0, 1fr);
     }
 

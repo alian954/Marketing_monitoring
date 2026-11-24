@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -44,10 +45,15 @@ class WorkspaceAccessController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:254'],
+            'role' => ['sometimes', 'string', Rule::in([
+                WorkspaceMembership::ROLE_READ_ONLY,
+                WorkspaceMembership::ROLE_EDITOR,
+            ])],
         ], [
             'email.required' => '請輸入受邀者的電子郵件。',
             'email.email' => '請輸入有效的電子郵件。',
             'email.max' => '電子郵件不得超過 254 個字元。',
+            'role.in' => '請選擇有效的工作區權限。',
         ]);
         $email = mb_strtolower(trim($validated['email']));
 
@@ -66,6 +72,7 @@ class WorkspaceAccessController extends Controller
         $token = Str::random(64);
         $owner->workspaceInvitations()->create([
             'email' => $email,
+            'role' => $validated['role'] ?? WorkspaceMembership::ROLE_READ_ONLY,
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addDays(WorkspaceInvitation::EXPIRATION_DAYS),
         ]);
@@ -153,7 +160,7 @@ class WorkspaceAccessController extends Controller
             ]);
             $member->workspaceMembership()->create([
                 'owner_user_id' => $lockedInvitation->owner_user_id,
-                'role' => WorkspaceMembership::ROLE_READ_ONLY,
+                'role' => $lockedInvitation->role ?? WorkspaceMembership::ROLE_READ_ONLY,
                 'accepted_at' => now(),
             ]);
             $lockedInvitation->forceFill(['accepted_at' => now()])->save();

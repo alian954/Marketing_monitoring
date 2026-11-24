@@ -55,12 +55,12 @@ class Monitor extends Model
         static::addGlobalScope(new SelectedClientScope);
 
         static::creating(static function (Monitor $monitor): void {
-            if (Auth::id() !== null) {
-                $monitor->forceFill(['user_id' => Auth::id()]);
+            $user = Auth::user();
 
-                $user = Auth::user();
+            if ($user instanceof User) {
+                $monitor->forceFill(['user_id' => $user->workspaceOwnerId()]);
 
-                if ($monitor->client_id === null && $user instanceof User) {
+                if ($monitor->client_id === null) {
                     $monitor->forceFill(['client_id' => Client::ensureDefaultFor($user)->id]);
                 }
             }

@@ -39,7 +39,7 @@ class ClientController extends Controller
                 'required',
                 'string',
                 'max:120',
-                Rule::unique('clients', 'name')->where('user_id', $request->user()->getAuthIdentifier()),
+                Rule::unique('clients', 'name')->where('user_id', $request->user()->workspaceOwnerId()),
             ],
         ], [
             'name.required' => '請輸入客戶名稱。',
@@ -70,7 +70,7 @@ class ClientController extends Controller
                 'string',
                 'max:120',
                 Rule::unique('clients', 'name')
-                    ->where('user_id', $request->user()->getAuthIdentifier())
+                    ->where('user_id', $request->user()->workspaceOwnerId())
                     ->ignore($client->id),
             ],
         ], [

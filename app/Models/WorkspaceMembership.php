@@ -13,6 +13,8 @@ class WorkspaceMembership extends Model
 {
     public const ROLE_READ_ONLY = 'read_only';
 
+    public const ROLE_EDITOR = 'editor';
+
     /** @use HasFactory<WorkspaceMembershipFactory> */
     use HasFactory;
 
@@ -24,6 +26,11 @@ class WorkspaceMembership extends Model
     public function memberUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'member_user_id');
+    }
+
+    public function roleLabel(): string
+    {
+        return $this->role === self::ROLE_EDITOR ? '可編輯' : '唯讀';
     }
 
     /** @return array<string, string> */

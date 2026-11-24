@@ -6,7 +6,7 @@
     <div class="page-heading">
         <div class="heading-copy">
             <h1 class="page-title">工作區成員</h1>
-            <p class="page-description">邀請成員檢視監測與行銷資料。</p>
+            <p class="page-description">邀請成員查看或維護監測活動。</p>
         </div>
     </div>
 
@@ -28,19 +28,43 @@
     <section class="panel spaced-top" aria-labelledby="invite-member-title">
         <div class="panel-header">
             <div>
-                <h2 id="invite-member-title" class="panel-title">邀請唯讀成員</h2>
-                <p class="panel-description">成員可以查看資料，不能修改工作區。</p>
+                <h2 id="invite-member-title" class="panel-title">邀請成員</h2>
+                <p class="panel-description">唯讀適合客戶查看；可編輯適合同事維護監測活動。</p>
             </div>
         </div>
         <div class="panel-body">
-            <form action="{{ route('team.invitations.store') }}" method="POST" class="workspace-access-form">
+            <form action="{{ route('team.invitations.store') }}" method="POST" class="workspace-access-form" aria-labelledby="invite-member-title">
                 @csrf
-                <div class="field-group">
-                    <label class="field-label" for="invite-email">電子郵件</label>
-                    <input class="field-input @error('email') is-invalid @enderror" id="invite-email" name="email" type="email" maxlength="254" value="{{ old('email') }}" autocomplete="email" required @if ($errors->has('email')) aria-invalid="true" aria-describedby="invite-email-error" @endif>
-                    @error('email')
-                        <p id="invite-email-error" class="field-error">{{ $message }}</p>
-                    @enderror
+                <div class="workspace-access-fields">
+                    <div class="field-group">
+                        <label class="field-label" for="invite-email">電子郵件</label>
+                        <input class="field-input @error('email') is-invalid @enderror" id="invite-email" name="email" type="email" maxlength="254" value="{{ old('email') }}" autocomplete="email" required @if ($errors->has('email')) aria-invalid="true" aria-describedby="invite-email-error" @endif>
+                        @error('email')
+                            <p id="invite-email-error" class="field-error">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <fieldset class="workspace-role-fieldset @error('role') is-invalid @enderror" @if ($errors->has('role')) aria-describedby="invite-role-error" @endif>
+                        <legend class="field-label">存取權</legend>
+                        <div class="workspace-role-options">
+                            <label class="workspace-role-option" for="invite-role-read-only">
+                                <input id="invite-role-read-only" name="role" type="radio" value="read_only" @checked(old('role', \App\Models\WorkspaceMembership::ROLE_READ_ONLY) === \App\Models\WorkspaceMembership::ROLE_READ_ONLY) @if ($errors->has('role')) aria-invalid="true" aria-describedby="invite-role-error" @endif>
+                                <span>
+                                    <strong>唯讀</strong>
+                                    <span class="secondary-text">可查看監測與行銷資料</span>
+                                </span>
+                            </label>
+                            <label class="workspace-role-option" for="invite-role-editor">
+                                <input id="invite-role-editor" name="role" type="radio" value="editor" @checked(old('role') === \App\Models\WorkspaceMembership::ROLE_EDITOR) @if ($errors->has('role')) aria-invalid="true" aria-describedby="invite-role-error" @endif>
+                                <span>
+                                    <strong>可編輯</strong>
+                                    <span class="secondary-text">可維護監測項目與活動</span>
+                                </span>
+                            </label>
+                        </div>
+                        @error('role')
+                            <p id="invite-role-error" class="field-error">{{ $message }}</p>
+                        @enderror
+                    </fieldset>
                 </div>
                 <button class="button button-primary" type="submit">建立邀請連結</button>
             </form>
@@ -51,7 +75,7 @@
         <div class="panel-header">
             <div>
                 <h2 id="workspace-members-title" class="panel-title">成員</h2>
-                <p class="panel-description">{{ number_format($memberships->count()) }} 位唯讀成員</p>
+                <p class="panel-description">{{ number_format($memberships->count()) }} 位成員</p>
             </div>
         </div>
         @if ($memberships->isEmpty())
@@ -63,6 +87,7 @@
                     <thead>
                         <tr>
                             <th scope="col">成員</th>
+                            <th scope="col">權限</th>
                             <th scope="col">加入時間</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -74,6 +99,7 @@
                                     {{ $membership->memberUser->name }}
                                     <span class="secondary-text">{{ $membership->memberUser->email }}</span>
                                 </th>
+                                <td>{{ $membership->roleLabel() }}</td>
                                 <td><time datetime="{{ $membership->accepted_at->toIso8601String() }}">{{ $membership->accepted_at->timezone('Asia/Taipei')->format('Y/n/j') }}</time></td>
                                 <td>
                                     <form action="{{ route('team.members.destroy', $membership) }}" method="POST" class="inline-form">
@@ -106,6 +132,7 @@
                     <thead>
                         <tr>
                             <th scope="col">電子郵件</th>
+                            <th scope="col">權限</th>
                             <th scope="col">有效期限</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
                         </tr>
@@ -114,6 +141,7 @@
                         @foreach ($invitations as $invitation)
                             <tr>
                                 <th scope="row">{{ $invitation->email }}</th>
+                                <td>{{ $invitation->roleLabel() }}</td>
                                 <td><time datetime="{{ $invitation->expires_at->toIso8601String() }}">{{ $invitation->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
                                 <td>
                                     <form action="{{ route('team.invitations.destroy', $invitation) }}" method="POST" class="inline-form">

@@ -18,9 +18,15 @@
             </div>
 
             <section class="login-card" aria-labelledby="invitation-heading">
-                <p class="eyebrow">唯讀成員</p>
+                <p class="eyebrow">{{ $invitation->roleLabel() }}成員</p>
                 <h1 id="invitation-heading" class="login-heading">加入 {{ $invitation->owner->name }} 的工作區</h1>
-                <p class="login-description">建立登入帳戶後即可檢視監測與行銷資料。</p>
+                <p class="login-description">
+                    @if ($invitation->role === \App\Models\WorkspaceMembership::ROLE_EDITOR)
+                        建立帳戶後可維護監測項目與活動；工作區管理與整合設定仍由擁有者負責。
+                    @else
+                        建立帳戶後即可檢視監測與行銷資料。
+                    @endif
+                </p>
                 <p class="field-help">受邀電子郵件：{{ $invitation->email }}</p>
 
                 @if ($errors->any())

@@ -204,7 +204,7 @@ class MonitorController extends Controller
     private function monitorListFilterRules(Request $request): array
     {
         $rules = self::MONITOR_LIST_FILTER_RULES;
-        $rules['client_id'][] = Rule::exists('clients', 'id')->where('user_id', $request->user()->getAuthIdentifier());
+        $rules['client_id'][] = Rule::exists('clients', 'id')->where('user_id', $request->user()->workspaceOwnerId());
 
         return $rules;
     }
@@ -2273,7 +2273,7 @@ class MonitorController extends Controller
                 'nullable',
                 'integer',
                 'min:1',
-                Rule::exists('clients', 'id')->where('user_id', $request->user()->getAuthIdentifier()),
+                Rule::exists('clients', 'id')->where('user_id', $request->user()->workspaceOwnerId()),
             ],
             'url' => [$monitor === null ? 'required' : 'nullable', 'string', 'max:2048'],
             'label' => ['nullable', 'string', 'max:1200'],

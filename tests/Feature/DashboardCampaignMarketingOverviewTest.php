@@ -12,6 +12,7 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Models\User;
+use App\Models\WorkspaceMembership;
 use App\Services\CampaignPortfolioMarketingSummary;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1222,6 +1223,56 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->assertSame('missing', $marketing['google_ads']['status']);
         $this->assertNull($marketing['efficiency']['ad_spend_amount']);
         $this->assertNull($marketing['efficiency']['roas']);
+    }
+
+    public function test_read_only_workspace_members_see_owner_marketing_metrics_without_other_workspace_data(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $otherOwner = User::factory()->create();
+
+        $this->actingAs($owner);
+        $ownerTarget = $this->createTarget(['tag' => '工作區行銷活動']);
+        $ownerTarget->forceFill(['user_id' => $owner->id])->save();
+        $this->createGoogleAnalyticsReport($owner, $ownerTarget, [
+            'sessions' => 120,
+            'total_revenue' => '900.0000',
+        ]);
+        $this->createMetaMarketingReport($owner, $ownerTarget, ['spend_amount' => '100.0000']);
+        $this->createGoogleAdsReport($owner, $ownerTarget, ['spend_amount' => '200.0000']);
+
+        $this->actingAs($otherOwner);
+        $otherTarget = $this->createTarget(['tag' => '其他工作區行銷活動']);
+        $otherTarget->forceFill(['user_id' => $otherOwner->id])->save();
+        $this->createGoogleAnalyticsReport($otherOwner, $otherTarget, [
+            'sessions' => 98765,
+            'total_revenue' => '98765.4300',
+        ]);
+
+        WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+        ]);
+
+        $response = $this->actingAs($member)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('工作區行銷活動')
+            ->assertDontSee('其他工作區行銷活動')
+            ->assertSee('120 工作階段')
+            ->assertSee('900.00')
+            ->assertSee('300.00 TWD')
+            ->assertDontSee('98,765.43')
+            ->assertDontSee('98,765 工作階段');
+
+        $marketing = $response->viewData('socialEngagementTargets')[0]['marketing'];
+
+        $this->assertSame('fresh', $marketing['google_analytics']['status']);
+        $this->assertSame(120, $marketing['google_analytics']['sessions']);
+        $this->assertSame('fresh', $marketing['meta_marketing']['status']);
+        $this->assertSame('fresh', $marketing['google_ads']['status']);
+        $this->assertSame('300.0000', $marketing['efficiency']['ad_spend_amount']);
     }
 
     /**

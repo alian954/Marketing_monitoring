@@ -25,11 +25,11 @@
                     @if (auth()->user()?->isWorkspaceOwner())
                         <a class="nav-link" href="{{ route('team.index') }}" @if (request()->routeIs('team.*')) aria-current="page" @endif>工作區成員</a>
                     @endif
-                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
-                    <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
-                    <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
-                    <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
-                    @endunless
+                    @if (auth()->user()?->isWorkspaceOwner())
+                        <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
+                        <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
+                        <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
+                    @endif
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
                 </nav>
@@ -48,6 +48,8 @@
             <x-flash-messages />
             @if (auth()->user()?->isReadOnlyWorkspaceMember())
                 <div class="read-only-banner" role="status">唯讀成員 · 僅能檢視工作區資料</div>
+            @elseif (! auth()->user()?->isWorkspaceOwner())
+                <div class="read-only-banner" role="status">可編輯成員 · 可維護監測項目與活動</div>
             @endif
             @yield('content')
         </main>

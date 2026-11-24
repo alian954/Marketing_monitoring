@@ -23,12 +23,12 @@ class SocialEngagementTarget extends Model
         static::addGlobalScope(new SelectedClientScope);
 
         static::creating(static function (SocialEngagementTarget $target): void {
-            if (Auth::id() !== null) {
-                $target->forceFill(['user_id' => Auth::id()]);
+            $user = Auth::user();
 
-                $user = Auth::user();
+            if ($user instanceof User) {
+                $target->forceFill(['user_id' => $user->workspaceOwnerId()]);
 
-                if ($target->client_id === null && $user instanceof User) {
+                if ($target->client_id === null) {
                     $target->forceFill(['client_id' => Client::ensureDefaultFor($user)->id]);
                 }
             }

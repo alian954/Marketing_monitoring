@@ -50,8 +50,10 @@ class NotificationOutbox extends Model
         static::addGlobalScope(new AuthenticatedAccountScope);
 
         static::creating(static function (NotificationOutbox $outbox): void {
-            if (Auth::id() !== null) {
-                $outbox->forceFill(['user_id' => Auth::id()]);
+            $user = Auth::user();
+
+            if ($user instanceof User) {
+                $outbox->forceFill(['user_id' => $user->workspaceOwnerId()]);
 
                 return;
             }
