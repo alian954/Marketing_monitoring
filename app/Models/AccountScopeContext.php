@@ -9,9 +9,9 @@ class AccountScopeContext
 {
     public static function authenticatedUserId(): ?int
     {
-        $userId = Auth::id();
+        $user = Auth::user();
 
-        if ($userId === null || request()->routeIs(
+        if (! $user instanceof User || request()->routeIs(
             'status-pages.public',
             'client-report-shares.public',
             'client-report-shares.public.export',
@@ -21,7 +21,7 @@ class AccountScopeContext
             return null;
         }
 
-        return (int) $userId;
+        return $user->workspaceOwnerId();
     }
 
     /**

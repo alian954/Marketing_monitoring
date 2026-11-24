@@ -22,22 +22,57 @@ class User extends Authenticatable
 
     public function monitors(): HasMany
     {
-        return $this->hasMany(Monitor::class);
+        return $this->workspaceOwner()->hasMany(Monitor::class);
     }
 
     public function clients(): HasMany
     {
-        return $this->hasMany(Client::class);
+        return $this->workspaceOwner()->hasMany(Client::class);
     }
 
     public function socialEngagementTargets(): HasMany
     {
-        return $this->hasMany(SocialEngagementTarget::class);
+        return $this->workspaceOwner()->hasMany(SocialEngagementTarget::class);
     }
 
     public function statusPage(): HasOne
     {
-        return $this->hasOne(StatusPage::class);
+        return $this->workspaceOwner()->hasOne(StatusPage::class);
+    }
+
+    public function workspaceMembership(): HasOne
+    {
+        return $this->hasOne(WorkspaceMembership::class, 'member_user_id')->whereNull('revoked_at');
+    }
+
+    public function workspaceMemberships(): HasMany
+    {
+        return $this->hasMany(WorkspaceMembership::class, 'owner_user_id');
+    }
+
+    public function workspaceInvitations(): HasMany
+    {
+        return $this->hasMany(WorkspaceInvitation::class, 'owner_user_id');
+    }
+
+    public function workspaceOwner(): self
+    {
+        return $this->workspaceMembership?->owner ?? $this;
+    }
+
+    public function workspaceOwnerId(): int
+    {
+        return (int) ($this->workspaceMembership?->owner_user_id ?? $this->getKey());
+    }
+
+    public function isWorkspaceOwner(): bool
+    {
+        return $this->workspaceMembership === null;
+    }
+
+    public function isReadOnlyWorkspaceMember(): bool
+    {
+        return $this->workspaceMembership?->role === WorkspaceMembership::ROLE_READ_ONLY;
     }
 
     public function sendPasswordResetNotification(#[\SensitiveParameter] mixed $token): void
@@ -51,17 +86,17 @@ class User extends Authenticatable
 
     public function googleAnalyticsConnection(): HasOne
     {
-        return $this->hasOne(GoogleAnalyticsConnection::class);
+        return $this->workspaceOwner()->hasOne(GoogleAnalyticsConnection::class);
     }
 
     public function metaMarketingConnection(): HasOne
     {
-        return $this->hasOne(MetaMarketingConnection::class);
+        return $this->workspaceOwner()->hasOne(MetaMarketingConnection::class);
     }
 
     public function googleAdsConnection(): HasOne
     {
-        return $this->hasOne(GoogleAdsConnection::class);
+        return $this->workspaceOwner()->hasOne(GoogleAdsConnection::class);
     }
 
     /**

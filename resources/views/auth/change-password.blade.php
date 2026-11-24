@@ -20,7 +20,7 @@
         </div>
 
         <div class="panel-body">
-            <form action="{{ route('account.password.update') }}" method="POST" aria-labelledby="change-password-title">
+            <form action="{{ route('account.password.update') }}" method="POST" class="account-password-form" aria-labelledby="change-password-title">
                 @csrf
                 @method('PUT')
                 <div class="form-grid">

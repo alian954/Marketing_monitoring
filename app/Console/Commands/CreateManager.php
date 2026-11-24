@@ -9,13 +9,16 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 
 #[Signature('monitor:create-manager {--reset : Reset the existing manager password}')]
-#[Description('建立唯一的私人監測管理者帳號')]
+#[Description('建立或重設私人工作區管理者帳號')]
 class CreateManager extends Command
 {
     public function handle(): int
     {
-        $manager = User::query()->first();
-        $usersCount = User::query()->count();
+        $managerQuery = User::query()
+            ->whereDoesntHave('workspaceMembership')
+            ->orderBy('id');
+        $manager = $managerQuery->first();
+        $usersCount = $managerQuery->count();
 
         if ($usersCount > 1) {
             $this->error('目前有多個使用者，請先手動整理成唯一管理者帳號。');

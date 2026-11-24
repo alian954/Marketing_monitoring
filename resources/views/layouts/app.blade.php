@@ -7,7 +7,7 @@
     <title>@yield('title', '監測總覽') · 監測台</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
+<body @class(['is-read-only-member' => auth()->user()?->isReadOnlyWorkspaceMember()])>
     <a class="skip-link" href="#main-content">跳至主要內容</a>
     <div class="app-shell">
         <header class="site-header">
@@ -22,9 +22,14 @@
                     <a class="nav-link" href="{{ route('monitors.index') }}" @if (request()->routeIs('monitors.*')) aria-current="page" @endif>監測項目</a>
                     <a class="nav-link" href="{{ route('clients.index') }}" @if (request()->routeIs('clients.*')) aria-current="page" @endif>客戶</a>
                     <a class="nav-link" href="{{ route('notifications.index') }}" @if (request()->routeIs('notifications.*')) aria-current="page" @endif>通知紀錄</a>
+                    @if (auth()->user()?->isWorkspaceOwner())
+                        <a class="nav-link" href="{{ route('team.index') }}" @if (request()->routeIs('team.*')) aria-current="page" @endif>工作區成員</a>
+                    @endif
+                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
                     <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
                     <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
                     <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
+                    @endunless
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
                 </nav>
@@ -41,6 +46,9 @@
 
         <main id="main-content" class="page-shell">
             <x-flash-messages />
+            @if (auth()->user()?->isReadOnlyWorkspaceMember())
+                <div class="read-only-banner" role="status">唯讀成員 · 僅能檢視工作區資料</div>
+            @endif
             @yield('content')
         </main>
 
