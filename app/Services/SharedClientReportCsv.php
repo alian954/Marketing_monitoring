@@ -23,19 +23,26 @@ class SharedClientReportCsv
         mixed $stream,
         array $reportSections = ClientReportShare::DEFAULT_REPORT_SECTIONS,
         ?string $reportPeriodLabel = null,
+        ?string $comparisonPeriodLabel = null,
     ): void {
         fwrite($stream, "\xEF\xBB\xBF");
         $includesRoas = $campaignRows->contains(fn (array $campaignRow): bool => $this->campaignEfficiencyVisible(
             $reportSections,
             $campaignRow['marketing']['efficiency'] ?? [],
         ));
-        $headers = $this->headers($reportSections, $includesRoas);
+        $headers = $this->headers($reportSections, $includesRoas, $comparisonPeriodLabel !== null);
         fputcsv($stream, $headers, ',', '"', '');
 
         foreach ($campaignRows as $campaignRow) {
             fputcsv(
                 $stream,
-                $this->safeFields($this->orderedFields($headers, $this->campaignValues($client, $campaignRow, $reportSections, $reportPeriodLabel))),
+                $this->safeFields($this->orderedFields($headers, $this->campaignValues(
+                    $client,
+                    $campaignRow,
+                    $reportSections,
+                    $reportPeriodLabel,
+                    $comparisonPeriodLabel,
+                ))),
                 ',',
                 '"',
                 '',
@@ -46,7 +53,13 @@ class SharedClientReportCsv
             foreach ($reportingCurrencyGroups as $reportingCurrencyGroup) {
                 fputcsv(
                     $stream,
-                    $this->safeFields($this->orderedFields($headers, $this->currencySummaryValues($client, $reportingCurrencyGroup, $reportSections, $reportPeriodLabel))),
+                    $this->safeFields($this->orderedFields($headers, $this->currencySummaryValues(
+                        $client,
+                        $reportingCurrencyGroup,
+                        $reportSections,
+                        $reportPeriodLabel,
+                        $comparisonPeriodLabel,
+                    ))),
                     ',',
                     '"',
                     '',
@@ -56,7 +69,7 @@ class SharedClientReportCsv
     }
 
     /** @return list<string> */
-    private function headers(array $reportSections, bool $includesRoas): array
+    private function headers(array $reportSections, bool $includesRoas, bool $includesComparison): array
     {
         $headers = [
             '資料列類型',
@@ -108,6 +121,28 @@ class SharedClientReportCsv
             array_push($headers, '缺匯率活動數', '缺逐日資料活動數');
         }
 
+        if ($includesComparison) {
+            $headers[] = '比較期間';
+
+            if (in_array(ClientReportShare::SECTION_GOOGLE_ANALYTICS, $reportSections, true)) {
+                $headers[] = 'GA4 營收變化';
+            }
+
+            if (in_array(ClientReportShare::SECTION_META_MARKETING, $reportSections, true)) {
+                $headers[] = 'Meta Ads 花費變化';
+            }
+
+            if (in_array(ClientReportShare::SECTION_GOOGLE_ADS, $reportSections, true)) {
+                $headers[] = 'Google Ads 花費變化';
+            }
+
+            if (in_array(ClientReportShare::SECTION_GOOGLE_ANALYTICS, $reportSections, true)
+                && (in_array(ClientReportShare::SECTION_META_MARKETING, $reportSections, true)
+                    || in_array(ClientReportShare::SECTION_GOOGLE_ADS, $reportSections, true))) {
+                $headers[] = 'GA4 ROAS 變化';
+            }
+        }
+
         return $headers;
     }
 
@@ -115,8 +150,13 @@ class SharedClientReportCsv
      * @param  array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}  $campaignRow
      * @return list<string|null|int|float>
      */
-    private function campaignValues(Client $client, array $campaignRow, array $reportSections, ?string $reportPeriodLabel): array
-    {
+    private function campaignValues(
+        Client $client,
+        array $campaignRow,
+        array $reportSections,
+        ?string $reportPeriodLabel,
+        ?string $comparisonPeriodLabel,
+    ): array {
         $target = $campaignRow['target'];
         $publicEngagement = $campaignRow['public_engagement'];
         $marketing = $campaignRow['marketing'];
@@ -160,6 +200,11 @@ class SharedClientReportCsv
             'Google Ads 換算活動數' => null,
             '缺匯率活動數' => null,
             '缺逐日資料活動數' => null,
+            '比較期間' => $comparisonPeriodLabel,
+            'GA4 營收變化' => $this->formatMetricChanges($campaignRow['comparison']['money']['ga4_revenue'] ?? []),
+            'Meta Ads 花費變化' => $this->formatMetricChanges($campaignRow['comparison']['money']['meta_spend'] ?? []),
+            'Google Ads 花費變化' => $this->formatMetricChanges($campaignRow['comparison']['money']['google_ads_spend'] ?? []),
+            'GA4 ROAS 變化' => $this->formatRoasChange($campaignRow['comparison']['roas']['ga4_roas|'.($this->ga4RoasCurrency($marketing) ?? '')] ?? null),
         ];
     }
 
@@ -172,13 +217,14 @@ class SharedClientReportCsv
         array $reportingCurrencyGroup,
         array $reportSections,
         ?string $reportPeriodLabel,
+        ?string $comparisonPeriodLabel,
     ): array {
         $coverage = $reportingCurrencyGroup['conversion_coverage'] ?? [];
         $showGoogleAnalytics = in_array(ClientReportShare::SECTION_GOOGLE_ANALYTICS, $reportSections, true);
         $showMetaMarketing = in_array(ClientReportShare::SECTION_META_MARKETING, $reportSections, true);
         $showGoogleAds = in_array(ClientReportShare::SECTION_GOOGLE_ADS, $reportSections, true);
 
-        return [
+        $values = [
             '資料列類型' => '報表幣別彙總',
             '客戶' => $client->name,
             '報表期間' => $reportPeriodLabel,
@@ -195,6 +241,97 @@ class SharedClientReportCsv
             '缺匯率活動數' => $this->coverageTotal($coverage, 'missing_rate_campaigns', $reportSections),
             '缺逐日資料活動數' => $this->coverageTotal($coverage, 'missing_daily_data_campaigns', $reportSections),
         ];
+
+        if ($comparisonPeriodLabel !== null) {
+            $comparison = is_array($reportingCurrencyGroup['comparison'] ?? null)
+                ? $reportingCurrencyGroup['comparison']
+                : [];
+            $currencyCode = is_string($reportingCurrencyGroup['currency_code'] ?? null)
+                ? $reportingCurrencyGroup['currency_code']
+                : '';
+            $values += [
+                '比較期間' => $comparisonPeriodLabel,
+                'GA4 營收變化' => $this->formatMetricChange($comparison, 'ga4_revenue', $currencyCode),
+                'Meta Ads 花費變化' => $this->formatMetricChange($comparison, 'meta_spend', $currencyCode),
+                'Google Ads 花費變化' => $this->formatMetricChange($comparison, 'google_ads_spend', $currencyCode),
+                'GA4 ROAS 變化' => null,
+            ];
+        }
+
+        return $values;
+    }
+
+    /** @param array<string, array<string, array{delta: float|null, percent_change: float|null, status: string}>> $comparison */
+    private function formatMetricChange(array $comparison, string $metric, string $currencyCode): string
+    {
+        $change = $comparison[$metric][$currencyCode] ?? null;
+
+        if (! is_array($change) || $change['status'] === 'insufficient') {
+            return '比較資料不足'.($currencyCode === '' ? '' : '（'.$currencyCode.'）');
+        }
+
+        $delta = is_numeric($change['delta'] ?? null) ? (float) $change['delta'] : 0.0;
+        $formattedDelta = ($delta > 0 ? '+' : '').number_format($delta, 2, '.', '').' '.$currencyCode;
+
+        if ($change['status'] === 'zero_baseline') {
+            return $formattedDelta.'（前期為 0）';
+        }
+
+        $percentChange = is_numeric($change['percent_change'] ?? null) ? (float) $change['percent_change'] : null;
+
+        if ($percentChange === null) {
+            return '比較資料不足'.($currencyCode === '' ? '' : '（'.$currencyCode.'）');
+        }
+
+        return $formattedDelta.'（'.($percentChange > 0 ? '+' : '').number_format($percentChange, 2, '.', '').'%）';
+    }
+
+    /** @param array<string, array{delta: float|null, percent_change: float|null, status: string}> $changes */
+    private function formatMetricChanges(array $changes): ?string
+    {
+        if ($changes === []) {
+            return null;
+        }
+
+        return collect($changes)
+            ->map(fn (array $change, string $currencyCode): string => $this->formatMetricChange(
+                ['metric' => [$currencyCode => $change]],
+                'metric',
+                $currencyCode,
+            ))
+            ->implode('；');
+    }
+
+    /** @param array{source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: string}|null $change */
+    private function formatRoasChange(?array $change): ?string
+    {
+        if ($change === null || $change['status'] === 'insufficient') {
+            return null;
+        }
+
+        $delta = is_numeric($change['delta'] ?? null) ? (float) $change['delta'] : 0.0;
+        $formattedDelta = ($delta > 0 ? '+' : '').number_format($delta, 2, '.', '').'×';
+
+        if ($change['status'] === 'zero_baseline') {
+            return $formattedDelta.'（前期為 0，'.$change['currency_code'].'）';
+        }
+
+        $percentChange = is_numeric($change['percent_change'] ?? null) ? (float) $change['percent_change'] : null;
+
+        if ($percentChange === null) {
+            return null;
+        }
+
+        return $formattedDelta.'（'.($percentChange > 0 ? '+' : '').number_format($percentChange, 2, '.', '').'%，'.$change['currency_code'].'）';
+    }
+
+    /** @param array<string, mixed> $marketing */
+    private function ga4RoasCurrency(array $marketing): ?string
+    {
+        $efficiency = is_array($marketing['efficiency'] ?? null) ? $marketing['efficiency'] : [];
+        $currencyCode = $efficiency['roas_spend_currency'] ?? null;
+
+        return is_string($currencyCode) && trim($currencyCode) !== '' ? strtoupper(trim($currencyCode)) : null;
     }
 
     /**

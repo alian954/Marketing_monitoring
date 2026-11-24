@@ -54,6 +54,7 @@ class ClientReportShareController extends Controller
             'expires_in_days' => ['required', 'integer', Rule::in([7, 30, 90])],
             'from' => ['required', 'string', 'date_format:Y-m-d'],
             'to' => ['required', 'string', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:'.$latestCompleteDate],
+            'compare_previous_period' => ['sometimes', 'boolean'],
             'target_ids' => ['required', 'array', 'min:1'],
             'target_ids.*' => [
                 'required',
@@ -101,6 +102,23 @@ class ClientReportShareController extends Controller
             if ($from !== false && $to !== false && $from->addDays(364)->lessThan($to)) {
                 $validator->errors()->add('from', '報表期間最多 365 天。');
             }
+
+            $comparePreviousPeriod = in_array(
+                $validator->getData()['compare_previous_period'] ?? null,
+                [true, 1, '1'],
+                true,
+            );
+            $reportSections = $validator->getData()['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS;
+            $hasMarketingMetrics = is_array($reportSections)
+                && array_intersect($reportSections, [
+                    ClientReportShare::SECTION_GOOGLE_ANALYTICS,
+                    ClientReportShare::SECTION_META_MARKETING,
+                    ClientReportShare::SECTION_GOOGLE_ADS,
+                ]) !== [];
+
+            if ($comparePreviousPeriod && ! $hasMarketingMetrics) {
+                $validator->errors()->add('compare_previous_period', '前期比較需至少選擇一個 GA4 或廣告數據區塊。');
+            }
         });
 
         if ($validator->fails()) {
@@ -121,6 +139,7 @@ class ClientReportShareController extends Controller
             'report_sections' => array_values($validated['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS),
             'report_starts_on' => $validated['from'],
             'report_ends_on' => $validated['to'],
+            'compare_previous_period' => in_array($validated['compare_previous_period'] ?? false, [true, 1, '1'], true),
             'expires_at' => now()->addDays((int) $validated['expires_in_days']),
         ]);
 

@@ -104,6 +104,24 @@
                             <p id="report-share-sections-error" class="field-error" role="alert">{{ $reportSectionErrors->first() }}</p>
                         @endif
                     </fieldset>
+                    <fieldset class="report-share-targets" aria-describedby="report-share-comparison-help{{ $errors->has('compare_previous_period') ? ' report-share-comparison-error' : '' }}">
+                        <legend class="field-label">成效比較</legend>
+                        <p id="report-share-comparison-help" class="field-help">選用時比較前一個等長期間的 GA4 營收與廣告花費。</p>
+                        <label class="report-share-target-option" for="report-share-compare-previous">
+                            <input
+                                id="report-share-compare-previous"
+                                type="checkbox"
+                                name="compare_previous_period"
+                                value="1"
+                                @checked(old('compare_previous_period'))
+                                @if ($errors->has('compare_previous_period')) aria-invalid="true" @endif
+                            >
+                            <span><strong>顯示前期變化</strong></span>
+                        </label>
+                        @error('compare_previous_period')
+                            <p id="report-share-comparison-error" class="field-error" role="alert">{{ $message }}</p>
+                        @enderror
+                    </fieldset>
                     <fieldset class="report-share-targets" aria-describedby="report-share-targets-help{{ $campaignSelectionErrors->isNotEmpty() ? ' report-share-targets-error' : '' }}" @if ($campaignSelectionErrors->isNotEmpty()) aria-invalid="true" @endif>
                         <legend class="field-label">包含活動</legend>
                         <p id="report-share-targets-help" class="field-help">只會公開勾選活動的數據。</p>
@@ -168,7 +186,12 @@
                             <tr>
                                 <th scope="row">{{ $share->name }}</th>
                                 <td>{{ $shareCampaignScope }} {{ number_format($shareCampaignCount) }} 項</td>
-                                <td>{{ $share->report_starts_on?->format('Y/n/j') ?? '不限' }} – {{ $share->report_ends_on?->format('Y/n/j') ?? '不限' }}</td>
+                                <td>
+                                    {{ $share->report_starts_on?->format('Y/n/j') ?? '不限' }} – {{ $share->report_ends_on?->format('Y/n/j') ?? '不限' }}
+                                    @if ($share->compare_previous_period)
+                                        <span class="secondary-text">含前期比較</span>
+                                    @endif
+                                </td>
                                 <td>{{ $shareReportSectionLabels }}</td>
                                 <td>{{ $shareStatus }}</td>
                                 <td><time datetime="{{ $share->expires_at->toIso8601String() }}">{{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>

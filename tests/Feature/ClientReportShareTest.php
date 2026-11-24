@@ -34,6 +34,7 @@ class ClientReportShareTest extends TestCase
                 'name' => '客戶週報',
                 'report_brand_name' => '  好感行銷  ',
                 'expires_in_days' => '7',
+                'compare_previous_period' => '1',
                 'target_ids' => [$target->id],
                 ...$this->validSharePeriod(),
             ])
@@ -52,6 +53,7 @@ class ClientReportShareTest extends TestCase
         $this->assertSame([$target->id], $share->campaign_target_ids);
         $this->assertSame('2026-11-01', $share->report_starts_on->toDateString());
         $this->assertSame('2026-11-23', $share->report_ends_on->toDateString());
+        $this->assertTrue($share->compare_previous_period);
         $this->assertSame(ClientReportShare::DEFAULT_REPORT_SECTIONS, $share->selectedReportSections());
         $this->assertSame('2026-12-01 12:00:00', $share->expires_at->format('Y-m-d H:i:s'));
 
@@ -71,7 +73,8 @@ class ClientReportShareTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('client-report-shares.public', ['token' => $token]))
             ->assertOk()
-            ->assertSee('好感行銷');
+            ->assertSee('好感行銷')
+            ->assertSee('比較前期 2026/10/9–2026/10/31');
     }
 
     public function test_owner_cannot_create_a_share_with_an_unapproved_expiration_period(): void
@@ -121,7 +124,58 @@ class ClientReportShareTest extends TestCase
             ->assertSee('value="2026-10-25"', false)
             ->assertSee('name="to"', false)
             ->assertSee('value="2026-11-23"', false)
+            ->assertSee('name="compare_previous_period"', false)
+            ->assertSee('顯示前期變化')
             ->assertDontSee('Private Campaign');
+    }
+
+    public function test_previous_period_comparison_requires_a_marketing_data_section(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $target = $this->createTarget($client, 'Public-only campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Public engagement only',
+                'expires_in_days' => '30',
+                'compare_previous_period' => '1',
+                'report_sections' => [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT],
+                'target_ids' => [$target->id],
+                ...$this->validSharePeriod(),
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['compare_previous_period' => '前期比較需至少選擇一個 GA4 或廣告數據區塊。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_comparison_csv_respects_the_share_report_sections(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
+        $target = $this->createTarget($client, 'Scoped comparison campaign', [
+            'starts_on' => '2026-10-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $token = str_repeat('e', 64);
+        $this->createShare(
+            $client,
+            $token,
+            [$target->id],
+            [ClientReportShare::SECTION_GOOGLE_ANALYTICS, ClientReportShare::SECTION_META_MARKETING],
+            ['from' => '2026-11-02', 'to' => '2026-11-03'],
+            true,
+        );
+
+        $content = $this->get(route('client-report-shares.public.export', ['token' => $token]))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('GA4 營收變化', $content);
+        $this->assertStringContainsString('Meta Ads 花費變化', $content);
+        $this->assertStringNotContainsString('Google Ads 花費變化', $content);
     }
 
     public function test_owner_cannot_create_a_report_share_without_reporting_dates(): void
@@ -429,7 +483,7 @@ class ClientReportShareTest extends TestCase
         $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
         $this->actingAs($owner);
         $target = $this->createTarget($client, 'Period campaign', [
-            'starts_on' => '2026-11-01',
+            'starts_on' => '2026-10-01',
             'ends_on' => '2026-11-30',
             'ga4_campaign_name' => 'Period campaign',
         ]);
@@ -445,11 +499,12 @@ class ClientReportShareTest extends TestCase
                 'sessions' => 321,
                 'total_revenue' => '321.0000',
                 'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-10-31', 'sessions' => 10, 'total_revenue' => '10.0000'],
                     ['date' => '2026-11-01', 'sessions' => 11, 'total_revenue' => '11.0000'],
                     ['date' => '2026-11-02', 'sessions' => 22, 'total_revenue' => '22.0000'],
                     ['date' => '2026-11-03', 'sessions' => 33, 'total_revenue' => '33.0000'],
                     ['date' => '2026-11-04', 'sessions' => 44, 'total_revenue' => '44.0000'],
-                ], '2026-11-01', '2026-11-30'),
+                ], '2026-10-31', '2026-11-30'),
             ]);
 
         foreach ([
@@ -483,6 +538,7 @@ class ClientReportShareTest extends TestCase
             [$target->id, $outsideTarget->id],
             null,
             ['from' => '2026-11-02', 'to' => '2026-11-03'],
+            true,
         );
 
         $this->actingAs(User::factory()->create())
@@ -492,20 +548,24 @@ class ClientReportShareTest extends TestCase
             ->assertSee('type="button" data-print-page', false)
             ->assertSee('列印／存成 PDF')
             ->assertSee('2026/11/2–2026/11/3')
+            ->assertSee('比較前期 2026/10/31–2026/11/1')
             ->assertSee('期間內貼文的最新公開互動數')
             ->assertSee('<dd>8</dd>', false)
             ->assertSee('1 / 1 篇取得完整互動數')
             ->assertSee('<dd>55</dd>', false)
             ->assertSee('55.00 TWD')
+            ->assertSee('較前期 +34.00 TWD（+161.90%）')
             ->assertDontSee('<dd>321</dd>', false)
             ->assertDontSee('Outside period campaign');
 
         $csvResponse = $this->get(route('client-report-shares.public.export', ['token' => $token]))
             ->assertOk()
-            ->assertHeader('content-disposition', 'attachment; filename=marketing-report-2026-11-02-to-2026-11-03.csv');
+            ->assertHeader('content-disposition', 'attachment; filename=marketing-report-2026-11-02-to-2026-11-03-comparison-previous.csv');
         $content = $csvResponse->streamedContent();
 
         $this->assertStringContainsString('報表期間', $content);
+        $this->assertStringContainsString('比較期間', $content);
+        $this->assertStringContainsString("'+34.00 TWD（+161.90%）", $content);
         $this->assertStringContainsString('2026-11-02 至 2026-11-03', $content);
         $this->assertStringContainsString('55.0000', $content);
         $this->assertStringNotContainsString('321', $content);
@@ -564,6 +624,7 @@ class ClientReportShareTest extends TestCase
         $this->assertStringContainsString('456.78', $content);
         $this->assertStringContainsString('2026-11-24 20:00:00', $content);
         $this->assertStringContainsString('16', $content);
+        $this->assertStringNotContainsString('比較期間', $content);
         $this->assertStringNotContainsString('Hidden Campaign', $content);
         $this->assertStringNotContainsString($token, $content);
     }
@@ -927,11 +988,13 @@ class ClientReportShareTest extends TestCase
         ?array $campaignTargetIds = null,
         ?array $reportSections = null,
         ?array $reportPeriod = null,
+        bool $comparePreviousPeriod = false,
     ): ClientReportShare {
         $attributes = [
             'name' => 'Test report share',
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addDays(30),
+            'compare_previous_period' => $comparePreviousPeriod,
         ];
 
         if ($campaignTargetIds !== null) {

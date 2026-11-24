@@ -34,8 +34,11 @@
         <p class="public-status-description">行銷活動成效</p>
         @if ($reportPeriod !== null)
             <p class="public-status-updated">報表期間 {{ $reportPeriod['label'] }}</p>
+            @if ($comparisonPeriod !== null)
+                <p class="public-status-updated">比較前期 {{ $comparisonPeriod['label'] }}</p>
+            @endif
             @if (isset($reportSectionMap[\App\Models\ClientReportShare::SECTION_PUBLIC_ENGAGEMENT]))
-                <p class="campaign-report-secondary">期間內貼文的最新公開互動數。</p>
+                <p class="campaign-report-secondary">期間內貼文的最新公開互動數。{{ $comparisonPeriod !== null ? '前期比較只含 GA4 與廣告花費。' : '' }}</p>
             @endif
         @endif
         <p class="public-status-updated">分享連結有效至 {{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</p>
@@ -79,6 +82,18 @@
                                             @endif
                                             @if ($conversionCoverage['missing_rate_campaigns'] > 0 || $conversionCoverage['missing_daily_data_campaigns'] > 0)
                                                 <span class="campaign-report-secondary">缺匯率 {{ number_format($conversionCoverage['missing_rate_campaigns']) }} 個活動／{{ number_format($conversionCoverage['missing_rate_observations']) }} 個日期；缺逐日資料 {{ number_format($conversionCoverage['missing_daily_data_campaigns']) }} 個</span>
+                                            @endif
+                                            @if ($comparisonPeriod !== null)
+                                                @php
+                                                    $metricChange = $reportingCurrencyGroup['comparison'][$metric['amount']][$reportingCurrencyGroup['currency_code']] ?? null;
+                                                @endphp
+                                                @if (is_array($metricChange) && $metricChange['status'] === 'available')
+                                                    <span class="campaign-report-secondary">較前期 {{ ($metricChange['delta'] > 0 ? '+' : '').number_format($metricChange['delta'], 2) }} {{ $reportingCurrencyGroup['currency_code'] }}（{{ ($metricChange['percent_change'] > 0 ? '+' : '').number_format($metricChange['percent_change'], 2) }}%）</span>
+                                                @elseif (is_array($metricChange) && $metricChange['status'] === 'zero_baseline')
+                                                    <span class="campaign-report-secondary">較前期 {{ ($metricChange['delta'] > 0 ? '+' : '').number_format($metricChange['delta'], 2) }} {{ $reportingCurrencyGroup['currency_code'] }}（前期為 0）</span>
+                                                @else
+                                                    <span class="campaign-report-secondary">比較資料不足</span>
+                                                @endif
                                             @endif
                                         </td>
                                     @endforeach
@@ -151,6 +166,18 @@
                             <dt>GA4 營收</dt>
                             <dd>{{ $googleAnalytics['revenue'] === null ? '—' : number_format((float) $googleAnalytics['revenue'], 2).' '.($googleAnalytics['currency_code'] ?? '') }}</dd>
                             <span class="campaign-report-secondary">{{ $googleAnalytics['status_label'] }}</span>
+                            @if ($comparisonPeriod !== null)
+                                @php
+                                    $ga4Change = $campaignRow['comparison']['money']['ga4_revenue'][$googleAnalytics['currency_code'] ?? ''] ?? null;
+                                @endphp
+                                @if (is_array($ga4Change) && $ga4Change['status'] === 'available')
+                                    <span class="campaign-report-secondary">較前期 {{ ($ga4Change['delta'] > 0 ? '+' : '').number_format($ga4Change['delta'], 2) }} {{ $googleAnalytics['currency_code'] }}（{{ ($ga4Change['percent_change'] > 0 ? '+' : '').number_format($ga4Change['percent_change'], 2) }}%）</span>
+                                @elseif (is_array($ga4Change) && $ga4Change['status'] === 'zero_baseline')
+                                    <span class="campaign-report-secondary">較前期 {{ ($ga4Change['delta'] > 0 ? '+' : '').number_format($ga4Change['delta'], 2) }} {{ $googleAnalytics['currency_code'] }}（前期為 0）</span>
+                                @else
+                                    <span class="campaign-report-secondary">比較資料不足</span>
+                                @endif
+                            @endif
                         </div>
                     @endif
                     @if (isset($reportSectionMap[\App\Models\ClientReportShare::SECTION_META_MARKETING]))
@@ -158,6 +185,18 @@
                             <dt>Meta 花費</dt>
                             <dd>{{ $metaMarketing['spend_amount'] === null ? '—' : number_format((float) $metaMarketing['spend_amount'], 2).' '.($metaMarketing['currency_code'] ?? '') }}</dd>
                             <span class="campaign-report-secondary">{{ $metaMarketing['status_label'] }}</span>
+                            @if ($comparisonPeriod !== null)
+                                @php
+                                    $metaChange = $campaignRow['comparison']['money']['meta_spend'][$metaMarketing['currency_code'] ?? ''] ?? null;
+                                @endphp
+                                @if (is_array($metaChange) && $metaChange['status'] === 'available')
+                                    <span class="campaign-report-secondary">較前期 {{ ($metaChange['delta'] > 0 ? '+' : '').number_format($metaChange['delta'], 2) }} {{ $metaMarketing['currency_code'] }}（{{ ($metaChange['percent_change'] > 0 ? '+' : '').number_format($metaChange['percent_change'], 2) }}%）</span>
+                                @elseif (is_array($metaChange) && $metaChange['status'] === 'zero_baseline')
+                                    <span class="campaign-report-secondary">較前期 {{ ($metaChange['delta'] > 0 ? '+' : '').number_format($metaChange['delta'], 2) }} {{ $metaMarketing['currency_code'] }}（前期為 0）</span>
+                                @else
+                                    <span class="campaign-report-secondary">比較資料不足</span>
+                                @endif
+                            @endif
                         </div>
                     @endif
                     @if (isset($reportSectionMap[\App\Models\ClientReportShare::SECTION_GOOGLE_ADS]))
@@ -165,6 +204,18 @@
                             <dt>Google Ads 花費</dt>
                             <dd>{{ $googleAds['spend_amount'] === null ? '—' : number_format((float) $googleAds['spend_amount'], 2).' '.($googleAds['currency_code'] ?? '') }}</dd>
                             <span class="campaign-report-secondary">{{ $googleAds['status_label'] }}</span>
+                            @if ($comparisonPeriod !== null)
+                                @php
+                                    $googleAdsChange = $campaignRow['comparison']['money']['google_ads_spend'][$googleAds['currency_code'] ?? ''] ?? null;
+                                @endphp
+                                @if (is_array($googleAdsChange) && $googleAdsChange['status'] === 'available')
+                                    <span class="campaign-report-secondary">較前期 {{ ($googleAdsChange['delta'] > 0 ? '+' : '').number_format($googleAdsChange['delta'], 2) }} {{ $googleAds['currency_code'] }}（{{ ($googleAdsChange['percent_change'] > 0 ? '+' : '').number_format($googleAdsChange['percent_change'], 2) }}%）</span>
+                                @elseif (is_array($googleAdsChange) && $googleAdsChange['status'] === 'zero_baseline')
+                                    <span class="campaign-report-secondary">較前期 {{ ($googleAdsChange['delta'] > 0 ? '+' : '').number_format($googleAdsChange['delta'], 2) }} {{ $googleAds['currency_code'] }}（前期為 0）</span>
+                                @else
+                                    <span class="campaign-report-secondary">比較資料不足</span>
+                                @endif
+                            @endif
                         </div>
                     @endif
                     @if ($showCampaignEfficiency)
@@ -172,6 +223,19 @@
                         <dt>GA4 ROAS</dt>
                         <dd>{{ $efficiency['roas'] === null ? '—' : number_format($efficiency['roas'], 2).' 倍' }}</dd>
                         <span class="campaign-report-secondary">{{ $efficiency['roas_unavailable_reason'] === null ? '依同幣別營收與花費計算' : '尚無可比較數據' }}</span>
+                        @if ($comparisonPeriod !== null)
+                            @php
+                                $roasCurrencyCode = $efficiency['roas_spend_currency'] ?? '';
+                                $roasChange = $campaignRow['comparison']['roas']['ga4_roas|'.$roasCurrencyCode] ?? null;
+                            @endphp
+                            @if (is_array($roasChange) && $roasChange['status'] === 'available')
+                                <span class="campaign-report-secondary">較前期 {{ ($roasChange['delta'] > 0 ? '+' : '').number_format($roasChange['delta'], 2) }}×（{{ ($roasChange['percent_change'] > 0 ? '+' : '').number_format($roasChange['percent_change'], 2) }}%）</span>
+                            @elseif (is_array($roasChange) && $roasChange['status'] === 'zero_baseline')
+                                <span class="campaign-report-secondary">較前期 {{ ($roasChange['delta'] > 0 ? '+' : '').number_format($roasChange['delta'], 2) }}×（前期為 0）</span>
+                            @else
+                                <span class="campaign-report-secondary">比較資料不足</span>
+                            @endif
+                        @endif
                         </div>
                     @endif
                 </dl>

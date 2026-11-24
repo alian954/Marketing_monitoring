@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'report_brand_name', 'token_hash', 'campaign_target_ids', 'report_sections', 'report_starts_on', 'report_ends_on', 'expires_at', 'revoked_at'])]
+#[Fillable(['name', 'report_brand_name', 'token_hash', 'campaign_target_ids', 'report_sections', 'report_starts_on', 'report_ends_on', 'compare_previous_period', 'expires_at', 'revoked_at'])]
 #[Hidden(['token_hash'])]
 class ClientReportShare extends Model
 {
@@ -65,6 +65,7 @@ class ClientReportShare extends Model
             'report_sections' => 'array',
             'report_starts_on' => 'immutable_date',
             'report_ends_on' => 'immutable_date',
+            'compare_previous_period' => 'boolean',
             'expires_at' => 'immutable_datetime',
             'revoked_at' => 'immutable_datetime',
         ];
