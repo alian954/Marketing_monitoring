@@ -14,12 +14,19 @@ class ClientPortfolioCsv
      *     money_groups: list<array<string, mixed>>,
      *     roas_groups: list<array<string, mixed>>,
      *     uses_reporting_currency: bool,
-     *     coverage: array<string, array{configured_campaigns: int, fresh_campaigns: int, missing_campaigns: int}>
+     *     coverage: array<string, array{configured_campaigns: int, fresh_campaigns: int, missing_campaigns: int}>,
+     *     comparison: array{money: array<string, array<string, array{delta: float|null, percent_change: float|null, status: string}>>, roas: array<string, array{source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: string}>}|null
      * }>  $clientPortfolioRows
      * @param  resource  $stream
+     * @param  array{from: string, to: string}|null  $comparisonPeriod
      */
-    public function write(Collection $clientPortfolioRows, mixed $stream, string $fromOn, string $toOn): void
-    {
+    public function write(
+        Collection $clientPortfolioRows,
+        mixed $stream,
+        string $fromOn,
+        string $toOn,
+        ?array $comparisonPeriod = null,
+    ): void {
         fwrite($stream, "\xEF\xBB\xBF");
         $headers = [
             '客戶',
@@ -33,6 +40,18 @@ class ClientPortfolioCsv
             '資料更新',
             '資料缺漏',
         ];
+
+        if ($comparisonPeriod !== null) {
+            $headers = [
+                ...$headers,
+                '比較期間',
+                'GA4 營收變化',
+                'Meta Ads 花費變化',
+                'Google Ads 花費變化',
+                '平台 ROAS 變化',
+            ];
+        }
+
         fputcsv($stream, $headers, ',', '"', '');
 
         foreach ($clientPortfolioRows as $row) {
@@ -52,6 +71,18 @@ class ClientPortfolioCsv
                 $this->formatConversionGaps($row['money_groups'], $row['coverage']),
             ];
 
+            if ($comparisonPeriod !== null) {
+                $comparison = is_array($row['comparison'] ?? null) ? $row['comparison'] : ['money' => [], 'roas' => []];
+                $fields = [
+                    ...$fields,
+                    $comparisonPeriod['from'].' 至 '.$comparisonPeriod['to'],
+                    $this->formatMoneyChanges($row['money_groups'], 'ga4_campaign_count', $comparison['money']['ga4_revenue'] ?? []),
+                    $this->formatMoneyChanges($row['money_groups'], 'meta_campaign_count', $comparison['money']['meta_spend'] ?? []),
+                    $this->formatMoneyChanges($row['money_groups'], 'google_ads_campaign_count', $comparison['money']['google_ads_spend'] ?? []),
+                    $this->formatRoasChanges($row['roas_groups'], $comparison['roas'] ?? []),
+                ];
+            }
+
             fputcsv(
                 $stream,
                 array_map(
@@ -63,6 +94,76 @@ class ClientPortfolioCsv
                 '',
             );
         }
+    }
+
+    /** @param list<array<string, mixed>> $moneyGroups
+     * @param  array<string, array{delta: float|null, percent_change: float|null, status: string}>  $changes
+     */
+    private function formatMoneyChanges(array $moneyGroups, string $countKey, array $changes): string
+    {
+        $metricGroups = collect($moneyGroups)
+            ->filter(static fn (array $group): bool => ($group[$countKey] ?? 0) > 0);
+
+        if ($metricGroups->isEmpty()) {
+            return '比較資料不足';
+        }
+
+        return $metricGroups
+            ->map(function (array $group) use ($changes): string {
+                $currencyCode = $group['currency_code'];
+                $change = $changes[$currencyCode] ?? null;
+
+                if (! is_array($change) || $change['status'] === 'insufficient') {
+                    return '比較資料不足（'.$currencyCode.'）';
+                }
+
+                $delta = (float) $change['delta'];
+                $formattedDelta = ($delta > 0 ? '+' : '').number_format($delta, 2, '.', '').' '.$currencyCode;
+
+                if ($change['status'] === 'zero_baseline') {
+                    return $formattedDelta.'（前期為 0）';
+                }
+
+                $percentChange = (float) $change['percent_change'];
+
+                return $formattedDelta.'（'.($percentChange > 0 ? '+' : '').number_format($percentChange, 2, '.', '').'%）';
+            })
+            ->implode('；');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $roasGroups
+     * @param  array<string, array{source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: string}>  $changes
+     */
+    private function formatRoasChanges(array $roasGroups, array $changes): string
+    {
+        $availableGroups = collect($roasGroups)->filter(static fn (array $group): bool => $group['roas'] !== null);
+
+        if ($availableGroups->isEmpty()) {
+            return '比較資料不足';
+        }
+
+        return $availableGroups
+            ->map(function (array $group) use ($changes): string {
+                $key = $group['source'].'|'.$group['currency_code'];
+                $change = $changes[$key] ?? null;
+
+                if (! is_array($change) || $change['status'] === 'insufficient') {
+                    return $group['source_label'].' 比較資料不足（'.$group['currency_code'].'）';
+                }
+
+                $delta = (float) $change['delta'];
+                $formattedDelta = ($delta > 0 ? '+' : '').number_format($delta, 2, '.', '').'×';
+
+                if ($change['status'] === 'zero_baseline') {
+                    return $group['source_label'].' '.$formattedDelta.'（前期為 0，'.$group['currency_code'].'）';
+                }
+
+                $percentChange = (float) $change['percent_change'];
+
+                return $group['source_label'].' '.$formattedDelta.'（'.($percentChange > 0 ? '+' : '').number_format($percentChange, 2, '.', '').'%，'.$group['currency_code'].'）';
+            })
+            ->implode('；');
     }
 
     /** @param list<array<string, mixed>> $moneyGroups */

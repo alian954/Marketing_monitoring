@@ -192,6 +192,159 @@ class ClientPortfolioTest extends TestCase
         $this->assertSame('312.00 TWD', $row['Meta Ads 花費']);
         $this->assertSame('780.00 TWD', $row['Google Ads 花費']);
         $this->assertSame('Google Ads 2.00× (USD)；Meta Ads 5.00× (USD)', $row['平台 ROAS']);
+        $this->assertArrayNotHasKey('比較期間', $row);
+    }
+
+    public function test_client_portfolio_compares_equal_length_periods_and_exports_the_same_currency_changes(): void
+    {
+        $this->travelTo('2026-11-06 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create([
+            'name' => 'Northwind comparison',
+            'reporting_currency_code' => 'TWD',
+        ]);
+        $campaign = $this->createCampaign($client, 'Northwind four-day campaign', '2026-11-02', '2026-11-05');
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '120.0000', '10.0000', '40.0000');
+
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-02', 'total_revenue' => '10.0000'],
+                    ['date' => '2026-11-03', 'total_revenue' => '20.0000'],
+                    ['date' => '2026-11-04', 'total_revenue' => '40.0000'],
+                    ['date' => '2026-11-05', 'total_revenue' => '50.0000'],
+                ], '2026-11-02', '2026-11-05'),
+            ]);
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'action_values' => [['action_type' => 'omni_purchase', 'value' => '34.0000']],
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-02', 'spend_amount' => '1.0000', 'action_values' => [['action_type' => 'omni_purchase', 'value' => '2.0000']]],
+                    ['date' => '2026-11-03', 'spend_amount' => '2.0000', 'action_values' => [['action_type' => 'omni_purchase', 'value' => '4.0000']]],
+                    ['date' => '2026-11-04', 'spend_amount' => '3.0000', 'action_values' => [['action_type' => 'omni_purchase', 'value' => '12.0000']]],
+                    ['date' => '2026-11-05', 'spend_amount' => '4.0000', 'action_values' => [['action_type' => 'omni_purchase', 'value' => '16.0000']]],
+                ], '2026-11-02', '2026-11-05'),
+            ]);
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'conversions_value' => '80.0000',
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-02', 'spend_amount' => '5.0000', 'conversions_value' => '10.0000'],
+                    ['date' => '2026-11-03', 'spend_amount' => '5.0000', 'conversions_value' => '10.0000'],
+                    ['date' => '2026-11-04', 'spend_amount' => '15.0000', 'conversions_value' => '30.0000'],
+                    ['date' => '2026-11-05', 'spend_amount' => '15.0000', 'conversions_value' => '30.0000'],
+                ], '2026-11-02', '2026-11-05'),
+            ]);
+        $client->exchangeRates()->createMany([
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-02', 'rate_to_reporting_currency' => '30.00000000'],
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-03', 'rate_to_reporting_currency' => '31.00000000'],
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-04', 'rate_to_reporting_currency' => '32.00000000'],
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-05', 'rate_to_reporting_currency' => '33.00000000'],
+        ]);
+
+        $parameters = [
+            'from' => '2026-11-04',
+            'to' => '2026-11-05',
+            'comparison' => 'previous',
+            'search' => 'Northwind',
+        ];
+        $response = $this->get(route('clients.performance', $parameters))
+            ->assertOk()
+            ->assertSee('2026/11/04–2026/11/05')
+            ->assertSee('比較前期 2026/11/02–2026/11/03')
+            ->assertSee('name="comparison"', false)
+            ->assertSee('value="previous" selected', false)
+            ->assertSee('2,930.00 TWD')
+            ->assertSee('較前期 +2,010.00 TWD（+218.48%）')
+            ->assertSee('較前期 +136.00 TWD（+147.83%）')
+            ->assertSee('較前期 +670.00 TWD（+219.67%）')
+            ->assertSee(str_replace('&', '&amp;', route('clients.performance.export', $parameters)), false);
+
+        $this->assertSame('previous', $response->viewData('comparison'));
+        $this->assertSame([
+            'from' => '2026-11-02',
+            'to' => '2026-11-03',
+        ], $response->viewData('comparisonPeriod'));
+
+        $row = collect($response->viewData('clientPortfolioRows'))->firstWhere('client.name', 'Northwind comparison');
+        $this->assertSame(2010.0, $row['comparison']['money']['ga4_revenue']['TWD']['delta']);
+        $this->assertEqualsWithDelta(218.47826086956522, $row['comparison']['money']['ga4_revenue']['TWD']['percent_change'], 0.00001);
+        $this->assertSame(2.0, $row['comparison']['roas']['meta_marketing|USD']['delta']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', $parameters))
+                ->assertOk()
+                ->assertHeader('content-disposition', 'attachment; filename=client-performance-2026-11-04-to-2026-11-05-comparison-previous.csv')
+                ->streamedContent(),
+        ))->firstWhere('客戶', 'Northwind comparison');
+
+        $this->assertSame('2026-11-02 至 2026-11-03', $csvRow['比較期間']);
+        $this->assertSame("'+2010.00 TWD（+218.48%）", $csvRow['GA4 營收變化']);
+        $this->assertSame("'+136.00 TWD（+147.83%）", $csvRow['Meta Ads 花費變化']);
+        $this->assertSame("'+670.00 TWD（+219.67%）", $csvRow['Google Ads 花費變化']);
+        $this->assertStringContainsString('Meta Ads +2.00×', $csvRow['平台 ROAS 變化']);
+    }
+
+    public function test_client_portfolio_comparison_does_not_treat_a_campaign_before_its_start_as_zero(): void
+    {
+        $this->travelTo('2026-11-06 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create([
+            'name' => 'New campaign client',
+            'reporting_currency_code' => 'TWD',
+        ]);
+        $campaign = $this->createCampaign($client, 'Current-only campaign', '2026-11-04', '2026-11-05');
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '80.0000', '20.0000', '40.0000');
+        $dailyMetrics = $this->dailyMetrics([
+            ['date' => '2026-11-04', 'total_revenue' => '30.0000'],
+            ['date' => '2026-11-05', 'total_revenue' => '50.0000'],
+        ], '2026-11-04', '2026-11-05');
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update(['daily_metrics' => $dailyMetrics]);
+        $client->exchangeRates()->createMany([
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-04', 'rate_to_reporting_currency' => '30.00000000'],
+            ['source_currency_code' => 'USD', 'reporting_currency_code' => 'TWD', 'effective_on' => '2026-11-05', 'rate_to_reporting_currency' => '31.00000000'],
+        ]);
+
+        $parameters = [
+            'from' => '2026-11-04',
+            'to' => '2026-11-05',
+            'comparison' => 'previous',
+        ];
+        $response = $this->get(route('clients.performance', $parameters))
+            ->assertOk()
+            ->assertSee('比較資料不足');
+        $row = collect($response->viewData('clientPortfolioRows'))->firstWhere('client.name', 'New campaign client');
+
+        $this->assertSame('insufficient', $row['comparison']['money']['ga4_revenue']['TWD']['status']);
+        $this->assertNull($row['comparison']['money']['ga4_revenue']['TWD']['delta']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', $parameters))->assertOk()->streamedContent(),
+        ))->firstWhere('客戶', 'New campaign client');
+        $this->assertSame('比較資料不足（TWD）', $csvRow['GA4 營收變化']);
+    }
+
+    public function test_client_portfolio_rejects_unknown_comparison_modes(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->get(route('clients.performance', ['comparison' => 'last-year']))
+            ->assertRedirect(route('clients.performance'))
+            ->assertSessionHasErrors(['comparison' => '比較期間選項無效。']);
     }
 
     public function test_period_with_incomplete_daily_coverage_does_not_show_full_period_totals(): void

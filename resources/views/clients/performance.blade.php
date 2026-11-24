@@ -14,6 +14,9 @@
             'meta_marketing' => 'Meta',
             'google_ads' => 'Google Ads',
         ];
+        $exportParameters = $reportPeriod
+            + ($comparison === 'previous' ? ['comparison' => 'previous'] : [])
+            + ($clientSearch === '' ? [] : ['search' => $clientSearch]);
     @endphp
 
     <div class="breadcrumbs" aria-label="頁面導覽">
@@ -27,7 +30,7 @@
             <p class="page-description">比較客戶在相同日期區間的行銷成效。</p>
         </div>
         <div class="heading-actions">
-            <a class="button button-secondary" href="{{ route('clients.performance.export', $reportPeriod + ($clientSearch === '' ? [] : ['search' => $clientSearch])) }}">匯出 CSV</a>
+            <a class="button button-secondary" href="{{ route('clients.performance.export', $exportParameters) }}">匯出 CSV</a>
             <a class="button button-secondary" href="{{ route('clients.index') }}">客戶管理</a>
         </div>
     </div>
@@ -38,6 +41,9 @@
                 <h2 id="client-performance-table-title" class="panel-title">行銷成效</h2>
                 <p class="panel-description">
                     {{ str_replace('-', '/', $reportPeriod['from']) }}–{{ str_replace('-', '/', $reportPeriod['to']) }}
+                    @if ($comparisonPeriod !== null)
+                        · 比較前期 {{ str_replace('-', '/', $comparisonPeriod['from']) }}–{{ str_replace('-', '/', $comparisonPeriod['to']) }}
+                    @endif
                     · ROAS 採平台歸因，金額依報表幣別或原幣列示。
                 </p>
             </div>
@@ -97,19 +103,36 @@
                                 <p id="client-performance-to-error" class="field-error">{{ $message }}</p>
                             @enderror
                         </div>
+                        <div class="field-group">
+                            <label class="field-label" for="client-performance-comparison">比較期間</label>
+                            <select
+                                class="field-select{{ $errors->has('comparison') ? ' is-invalid' : '' }}"
+                                id="client-performance-comparison"
+                                name="comparison"
+                                aria-describedby="client-performance-comparison-help{{ $errors->has('comparison') ? ' client-performance-comparison-error' : '' }}"
+                                @if ($errors->has('comparison')) aria-invalid="true" @endif
+                            >
+                                <option value="" @selected($comparison === '')>不比較</option>
+                                <option value="previous" @selected($comparison === 'previous')>前一個等長期間</option>
+                            </select>
+                            @error('comparison')
+                                <p id="client-performance-comparison-error" class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
                     <p id="client-performance-period-help" class="field-help">最多 365 天，結束日期最晚為昨天。</p>
+                    <p id="client-performance-comparison-help" class="field-help">僅在前後期都有同幣別有效資料時顯示變化。</p>
                     <div class="form-actions">
-                        <button class="button button-secondary" type="submit">套用期間</button>
+                        <button class="button button-secondary" type="submit">更新報表</button>
                         <a class="strong-link" href="{{ route('clients.performance') }}">清除</a>
                     </div>
                 </form>
             </search>
         </div>
 
-        @if ($errors->has('from') || $errors->has('to') || $errors->has('search'))
+        @if ($errors->has('from') || $errors->has('to') || $errors->has('search') || $errors->has('comparison'))
             <div class="empty-state" role="alert">
-                <h3 class="empty-title">請修正日期區間</h3>
+                <h3 class="empty-title">請修正篩選條件</h3>
             </div>
         @elseif ($clientPortfolioRows->isEmpty())
             <div class="empty-state">
@@ -118,7 +141,7 @@
         @else
             <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="client-performance-table-title">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $reportPeriod['from'] }} 至 {{ $reportPeriod['to'] }} 各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS 和資料更新狀態</caption>
+                    <caption class="sr-only">{{ $reportPeriod['from'] }} 至 {{ $reportPeriod['to'] }} 各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS 和資料更新狀態@if ($comparisonPeriod !== null)，並比較 {{ $comparisonPeriod['from'] }} 至 {{ $comparisonPeriod['to'] }}@endif</caption>
                     <thead>
                         <tr>
                             <th scope="col">客戶</th>
@@ -154,16 +177,51 @@
                                     <td class="numeric">
                                         @forelse ($availableGroups as $group)
                                             <span class="secondary-text">{{ number_format((float) $group[$amountKey], 2) }} {{ $group['currency_code'] }}</span>
+                                            @if ($comparisonPeriod !== null)
+                                                @php
+                                                    $metricChange = $row['comparison']['money'][$amountKey][$group['currency_code']] ?? null;
+                                                @endphp
+                                                @if (is_array($metricChange) && $metricChange['status'] === 'available')
+                                                    <span class="secondary-text">
+                                                        較前期 {{ ($metricChange['delta'] > 0 ? '+' : '').number_format($metricChange['delta'], 2) }} {{ $group['currency_code'] }}（{{ ($metricChange['percent_change'] > 0 ? '+' : '').number_format($metricChange['percent_change'], 2) }}%）
+                                                    </span>
+                                                @elseif (is_array($metricChange) && $metricChange['status'] === 'zero_baseline')
+                                                    <span class="secondary-text">較前期 {{ ($metricChange['delta'] > 0 ? '+' : '').number_format($metricChange['delta'], 2) }} {{ $group['currency_code'] }}（前期為 0）</span>
+                                                @else
+                                                    <span class="secondary-text">比較資料不足</span>
+                                                @endif
+                                            @endif
                                         @empty
                                             <span class="secondary-text">—</span>
+                                            @if ($comparisonPeriod !== null)
+                                                <span class="secondary-text">比較資料不足</span>
+                                            @endif
                                         @endforelse
                                     </td>
                                 @endforeach
                                 <td class="numeric">
                                     @forelse (collect($row['roas_groups'])->filter(static fn (array $group): bool => $group['roas'] !== null) as $roasGroup)
                                         <span class="secondary-text">{{ $roasGroup['source_label'] }} {{ number_format($roasGroup['roas'], 2) }}× ({{ $roasGroup['currency_code'] }})</span>
+                                        @if ($comparisonPeriod !== null)
+                                            @php
+                                                $roasKey = $roasGroup['source'].'|'.$roasGroup['currency_code'];
+                                                $roasChange = $row['comparison']['roas'][$roasKey] ?? null;
+                                            @endphp
+                                            @if (is_array($roasChange) && $roasChange['status'] === 'available')
+                                                <span class="secondary-text">
+                                                    較前期 {{ ($roasChange['delta'] > 0 ? '+' : '').number_format($roasChange['delta'], 2) }}×（{{ ($roasChange['percent_change'] > 0 ? '+' : '').number_format($roasChange['percent_change'], 2) }}%）
+                                                </span>
+                                            @elseif (is_array($roasChange) && $roasChange['status'] === 'zero_baseline')
+                                                <span class="secondary-text">較前期 {{ ($roasChange['delta'] > 0 ? '+' : '').number_format($roasChange['delta'], 2) }}×（前期為 0）</span>
+                                            @else
+                                                <span class="secondary-text">比較資料不足</span>
+                                            @endif
+                                        @endif
                                     @empty
                                         <span class="secondary-text">—</span>
+                                        @if ($comparisonPeriod !== null)
+                                            <span class="secondary-text">比較資料不足</span>
+                                        @endif
                                     @endforelse
                                 </td>
                                 <td>

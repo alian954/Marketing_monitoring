@@ -8,6 +8,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\ClientPortfolioCsv;
+use App\Services\ClientPortfolioMetricComparison;
 use App\Services\ClientPortfolioReportingPeriod;
 use App\Services\DashboardCampaignMarketingSummary;
 use Carbon\CarbonImmutable;
@@ -25,6 +26,7 @@ class ClientPortfolioController extends Controller
         Request $request,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
     ): View|RedirectResponse {
         $reportPeriod = $this->validatedReportingPeriod($request, $reportingPeriod);
@@ -39,16 +41,34 @@ class ClientPortfolioController extends Controller
             return $clientSearch;
         }
 
+        $comparison = $this->validatedComparison($request);
+
+        if ($comparison instanceof RedirectResponse) {
+            return $comparison;
+        }
+
+        $comparisonPeriod = $comparison === 'previous'
+            ? $this->previousReportingPeriod($reportPeriod)
+            : null;
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $metricComparison,
             $reportingPeriod,
             $reportPeriod,
             $clientSearch,
+            $comparisonPeriod,
         );
 
-        return view('clients.performance', compact('clientPortfolioRows', 'reportPeriod', 'clientSearch'));
+        return view('clients.performance', compact(
+            'clientPortfolioRows',
+            'reportPeriod',
+            'clientSearch',
+            'comparison',
+            'comparisonPeriod',
+        ));
     }
 
     public function export(
@@ -56,6 +76,7 @@ class ClientPortfolioController extends Controller
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
         ClientPortfolioCsv $csv,
+        ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
     ): StreamedResponse|RedirectResponse {
         $reportPeriod = $this->validatedReportingPeriod($request, $reportingPeriod);
@@ -70,21 +91,34 @@ class ClientPortfolioController extends Controller
             return $clientSearch;
         }
 
+        $comparison = $this->validatedComparison($request);
+
+        if ($comparison instanceof RedirectResponse) {
+            return $comparison;
+        }
+
+        $comparisonPeriod = $comparison === 'previous'
+            ? $this->previousReportingPeriod($reportPeriod)
+            : null;
+
         $clientPortfolioRows = $this->buildClientPortfolioRows(
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $metricComparison,
             $reportingPeriod,
             $reportPeriod,
             $clientSearch,
+            $comparisonPeriod,
         );
-        $response = response()->streamDownload(function () use ($clientPortfolioRows, $csv, $reportPeriod): void {
+        $response = response()->streamDownload(function () use ($clientPortfolioRows, $comparisonPeriod, $csv, $reportPeriod): void {
             $stream = fopen('php://output', 'wb');
-            $csv->write($clientPortfolioRows, $stream, $reportPeriod['from'], $reportPeriod['to']);
+            $csv->write($clientPortfolioRows, $stream, $reportPeriod['from'], $reportPeriod['to'], $comparisonPeriod);
             fclose($stream);
-        }, 'client-performance-'.$reportPeriod['from'].'-to-'.$reportPeriod['to'].'.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        }, 'client-performance-'.$reportPeriod['from'].'-to-'.$reportPeriod['to']
+            .($comparisonPeriod === null ? '' : '-comparison-previous').'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
         $response->headers->set('Cache-Control', 'private, no-store');
 
         return $response;
@@ -170,14 +204,53 @@ class ClientPortfolioController extends Controller
         return is_string($search) ? trim($search) : '';
     }
 
+    private function validatedComparison(Request $request): string|RedirectResponse
+    {
+        $validator = Validator::make($request->query(), [
+            'comparison' => ['sometimes', 'nullable', 'string', 'in:previous'],
+        ], [
+            'comparison.string' => '比較期間選項無效。',
+            'comparison.in' => '比較期間選項無效。',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->route('clients.performance')
+                ->withErrors($validator)
+                ->withInput($request->query());
+        }
+
+        $comparison = $validator->validated()['comparison'] ?? '';
+
+        return is_string($comparison) ? $comparison : '';
+    }
+
+    /**
+     * @param  array{from: string, to: string}  $reportPeriod
+     * @return array{from: string, to: string}
+     */
+    private function previousReportingPeriod(array $reportPeriod): array
+    {
+        $currentStart = CarbonImmutable::createFromFormat('!Y-m-d', $reportPeriod['from'], 'Asia/Taipei');
+        $currentEnd = CarbonImmutable::createFromFormat('!Y-m-d', $reportPeriod['to'], 'Asia/Taipei');
+        $periodLengthDays = (int) $currentStart->diff($currentEnd)->days + 1;
+        $previousEnd = $currentStart->subDay();
+
+        return [
+            'from' => $previousEnd->subDays($periodLengthDays - 1)->toDateString(),
+            'to' => $previousEnd->toDateString(),
+        ];
+    }
+
     /** @param array{from: string, to: string} $reportPeriod */
     private function buildClientPortfolioRows(
         User $user,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
         array $reportPeriod,
         string $clientSearch,
+        ?array $comparisonPeriod,
     ): Collection {
         Client::ensureDefaultFor($user);
         $clientQuery = Client::query()->orderBy('name');
@@ -208,13 +281,29 @@ class ClientPortfolioController extends Controller
             $reportPeriod['from'],
             $reportPeriod['to'],
         );
+        $comparisonPeriodData = $comparisonPeriod === null
+            ? null
+            : $reportingPeriod->apply(
+                $targets,
+                $marketingSummaries,
+                $comparisonPeriod['from'],
+                $comparisonPeriod['to'],
+            );
         $targets = $periodData['targets'];
         $marketingSummaries = $periodData['marketing_summaries'];
         $targetsByClient = $targets->groupBy('client_id');
+        $comparisonTargetsByClient = $comparisonPeriodData === null
+            ? collect()
+            : $comparisonPeriodData['targets']->groupBy('client_id');
+        $comparisonMarketingSummaries = $comparisonPeriodData['marketing_summaries'] ?? [];
 
         $clientPortfolioRows = $clients->map(function (Client $client) use (
             $campaignPortfolioMarketingSummary,
+            $comparisonMarketingSummaries,
+            $comparisonPeriod,
+            $comparisonTargetsByClient,
             $exchangeRates,
+            $metricComparison,
             $marketingSummaries,
             $targetsByClient,
         ): array {
@@ -232,16 +321,42 @@ class ClientPortfolioController extends Controller
             );
             $usesReportingCurrency = is_string($client->reporting_currency_code)
                 && trim($client->reporting_currency_code) !== '';
+            $moneyGroups = $usesReportingCurrency
+                ? $portfolio['reporting_currency_groups']
+                : $portfolio['currency_groups'];
+            $comparison = null;
+
+            if ($comparisonPeriod !== null) {
+                $comparisonClientTargets = $comparisonTargetsByClient->get($client->getKey(), new EloquentCollection);
+                $comparisonClientMarketingSummaries = $comparisonClientTargets
+                    ->mapWithKeys(static fn (SocialEngagementTarget $target): array => [
+                        $target->getKey() => $comparisonMarketingSummaries[$target->getKey()] ?? [],
+                    ])
+                    ->all();
+                $comparisonPortfolio = $campaignPortfolioMarketingSummary->build(
+                    $comparisonClientTargets,
+                    $comparisonClientMarketingSummaries,
+                    $clientExchangeRates,
+                );
+                $comparisonMoneyGroups = $usesReportingCurrency
+                    ? $comparisonPortfolio['reporting_currency_groups']
+                    : $comparisonPortfolio['currency_groups'];
+                $comparison = $metricComparison->build(
+                    $moneyGroups,
+                    $comparisonMoneyGroups,
+                    $portfolio['native_roas_groups'],
+                    $comparisonPortfolio['native_roas_groups'],
+                );
+            }
 
             return [
                 'client' => $client,
                 'campaign_count' => $clientTargets->count(),
-                'money_groups' => $usesReportingCurrency
-                    ? $portfolio['reporting_currency_groups']
-                    : $portfolio['currency_groups'],
+                'money_groups' => $moneyGroups,
                 'roas_groups' => $portfolio['native_roas_groups'],
                 'uses_reporting_currency' => $usesReportingCurrency,
                 'coverage' => $portfolio['coverage'],
+                'comparison' => $comparison,
             ];
         });
 
