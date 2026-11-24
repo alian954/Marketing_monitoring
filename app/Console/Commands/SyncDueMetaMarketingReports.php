@@ -45,10 +45,6 @@ class SyncDueMetaMarketingReports extends Command
         MetaMarketingConnection::query()
             ->whereNotNull('ad_account_id')
             ->whereNotNull('currency_code')
-            ->where(function (Builder $query) use ($asOf): void {
-                $query->whereNull('token_expires_at')
-                    ->orWhere('token_expires_at', '>', $asOf);
-            })
             ->orderBy('id')
             ->chunkById(50, function (Collection $connections) use (
                 $asOf,
@@ -95,6 +91,23 @@ class SyncDueMetaMarketingReports extends Command
                             ));
 
                             $skippedCount += $targets->count() - $targetsToSync->count();
+
+                            if ($targetsToSync->isEmpty()) {
+                                return;
+                            }
+
+                            if ($connection->token_expires_at !== null
+                                && $connection->token_expires_at->lessThanOrEqualTo($asOf)) {
+                                $failedCount += $targetsToSync->count();
+                                $connectionSyncError ??= 'Meta Ads 授權已過期，請重新連結帳戶。';
+                                Log::warning('Meta Ads scheduled sync skipped a connection with an expired token.', [
+                                    'meta_marketing_connection_id' => $connection->getKey(),
+                                    'target_count' => $targetsToSync->count(),
+                                    'token_expires_at' => $connection->token_expires_at->toIso8601String(),
+                                ]);
+
+                                return;
+                            }
 
                             foreach ($targetsToSync as $target) {
                                 try {

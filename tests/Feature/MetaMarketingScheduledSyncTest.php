@@ -217,16 +217,26 @@ class MetaMarketingScheduledSyncTest extends TestCase
         Http::assertSentCount(12);
     }
 
-    public function test_scheduled_sync_does_not_request_data_for_an_expired_token(): void
+    public function test_scheduled_sync_records_an_error_without_requesting_data_for_an_expired_token(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:40:00', 'Asia/Taipei'));
+        Http::preventStrayRequests();
         $user = User::factory()->create();
-        $this->createConnection($user, now()->subDay());
-        $this->createTarget('Expired campaign', '987654321', '2026-11-01', '2026-11-30');
+        $connection = $this->createConnection($user, now()->subDay());
+        $target = $this->createTarget('Expired campaign', '987654321', '2026-11-01', '2026-11-30');
+        $target->forceFill(['user_id' => $user->id])->save();
 
-        $exitCode = Artisan::call('meta-marketing:sync-due');
+        $this->artisan('meta-marketing:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
 
-        $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('失敗 0 個', Artisan::output());
+        $this->assertDatabaseMissing('social_engagement_target_meta_marketing_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('failed', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertSame('Meta Ads 授權已過期，請重新連結帳戶。', $syncHealth->scheduled_sync_error);
         Http::assertNothingSent();
     }
 
