@@ -20,6 +20,7 @@ class ClientManagementTest extends TestCase
             ->get(route('clients.index'))
             ->assertOk()
             ->assertSee('客戶清單')
+            ->assertSee(route('clients.performance'), false)
             ->assertSee(Client::DEFAULT_NAME);
 
         $this->assertSame(Client::DEFAULT_NAME, $response->viewData('clients')->sole()->name);

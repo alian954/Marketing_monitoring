@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCurrencyController;
+use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
@@ -80,6 +81,7 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
 
 Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/clients/performance', [ClientPortfolioController::class, 'index'])->name('clients.performance');
     Route::middleware(EnsureWorkspaceOwner::class)->prefix('team')->name('team.')->group(function (): void {
         Route::get('/', [WorkspaceAccessController::class, 'index'])->name('index');
         Route::post('/invitations', [WorkspaceAccessController::class, 'storeInvitation'])

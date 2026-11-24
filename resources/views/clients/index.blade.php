@@ -13,6 +13,9 @@
             <h1 class="page-title">客戶</h1>
             <p class="page-description">依客戶整理監測項目與活動。</p>
         </div>
+        <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('clients.performance') }}">客戶成效</a>
+        </div>
     </div>
 
     @if ($errors->getBag('clientManagement')->any())
