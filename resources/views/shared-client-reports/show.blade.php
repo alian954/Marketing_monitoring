@@ -1,6 +1,11 @@
 @extends('layouts.public-status')
 
 @section('title', '行銷成效報表')
+@section('body-class', 'public-client-report-body')
+
+@push('scripts')
+    @vite(['resources/js/app.js'])
+@endpush
 
 @section('content')
     @php
@@ -37,6 +42,7 @@
     </header>
 
     <div class="campaign-report-actions campaign-report-export">
+        <button class="button button-secondary" type="button" data-print-page>列印／存成 PDF</button>
         <a class="button button-secondary" href="{{ route('client-report-shares.public.export', ['token' => $token]) }}">下載 CSV</a>
     </div>
 
