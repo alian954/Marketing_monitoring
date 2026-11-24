@@ -99,7 +99,18 @@
                                     {{ $membership->memberUser->name }}
                                     <span class="secondary-text">{{ $membership->memberUser->email }}</span>
                                 </th>
-                                <td>{{ $membership->roleLabel() }}</td>
+                                <td>
+                                    <form action="{{ route('team.members.role.update', $membership) }}" method="POST" class="inline-form workspace-member-role-form" aria-label="更新 {{ $membership->memberUser->name }} 的存取權">
+                                        @csrf
+                                        @method('PATCH')
+                                        <label class="sr-only" for="member-role-{{ $membership->id }}">{{ $membership->memberUser->name }} 的存取權</label>
+                                        <select class="field-select" id="member-role-{{ $membership->id }}" name="role">
+                                            <option value="{{ \App\Models\WorkspaceMembership::ROLE_READ_ONLY }}" @selected($membership->role === \App\Models\WorkspaceMembership::ROLE_READ_ONLY)>唯讀</option>
+                                            <option value="{{ \App\Models\WorkspaceMembership::ROLE_EDITOR }}" @selected($membership->role === \App\Models\WorkspaceMembership::ROLE_EDITOR)>可編輯</option>
+                                        </select>
+                                        <button class="button button-quiet button-small" type="submit">更新權限</button>
+                                    </form>
+                                </td>
                                 <td><time datetime="{{ $membership->accepted_at->toIso8601String() }}">{{ $membership->accepted_at->timezone('Asia/Taipei')->format('Y/n/j') }}</time></td>
                                 <td>
                                     <form action="{{ route('team.members.destroy', $membership) }}" method="POST" class="inline-form">

@@ -181,6 +181,9 @@ class WorkspaceAccessTest extends TestCase
         ]);
 
         $this->get(route('team.index'))->assertForbidden();
+        $this->patch(route('team.members.role.update', $editor->workspaceMembership), [
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+        ])->assertForbidden();
         $this->get(route('integrations.google-analytics.edit'))->assertForbidden();
         $this->get(route('integrations.google-ads.edit'))->assertForbidden();
         $this->get(route('integrations.meta-marketing.edit'))->assertForbidden();
@@ -207,6 +210,67 @@ class WorkspaceAccessTest extends TestCase
             'owner_user_id' => $owner->id,
             'email' => 'invalid-role@example.test',
         ]);
+    }
+
+    public function test_owner_can_change_an_active_members_role_and_the_new_permission_takes_effect(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $membership = WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('team.index'))
+            ->assertOk()
+            ->assertSee('member-role-'.$membership->id, false)
+            ->assertSee('唯讀');
+
+        $this->patch(route('team.members.role.update', $membership), [
+            'role' => WorkspaceMembership::ROLE_EDITOR,
+        ])->assertRedirect(route('team.index'));
+
+        $this->assertSame(WorkspaceMembership::ROLE_EDITOR, $membership->fresh()->role);
+
+        $this->actingAs($member)
+            ->post(route('clients.store'), ['name' => '升級後可新增客戶'])
+            ->assertRedirect(route('clients.index'));
+        $this->assertDatabaseHas('clients', [
+            'user_id' => $owner->id,
+            'name' => '升級後可新增客戶',
+        ]);
+
+        $this->actingAs($owner)
+            ->patch(route('team.members.role.update', $membership), [
+                'role' => WorkspaceMembership::ROLE_READ_ONLY,
+            ])->assertRedirect(route('team.index'));
+
+        $this->actingAs($member->fresh())
+            ->post(route('clients.store'), ['name' => '降級後不可新增客戶'])
+            ->assertForbidden();
+        $this->assertDatabaseMissing('clients', [
+            'user_id' => $owner->id,
+            'name' => '降級後不可新增客戶',
+        ]);
+    }
+
+    public function test_owner_cannot_update_a_membership_to_an_unknown_role(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $membership = WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+        ]);
+
+        $this->actingAs($owner)
+            ->patch(route('team.members.role.update', $membership), ['role' => 'administrator'])
+            ->assertSessionHasErrors('role');
+
+        $this->assertSame(WorkspaceMembership::ROLE_READ_ONLY, $membership->fresh()->role);
     }
 
     public function test_expired_and_revoked_invitation_tokens_cannot_be_used(): void
@@ -256,6 +320,9 @@ class WorkspaceAccessTest extends TestCase
             ->assertNotFound();
         $this->delete(route('team.members.destroy', $otherMembership))
             ->assertNotFound();
+        $this->patch(route('team.members.role.update', $otherMembership), [
+            'role' => WorkspaceMembership::ROLE_EDITOR,
+        ])->assertNotFound();
         $this->get(route('integrations.google-analytics.edit'))
             ->assertOk();
         $this->post(route('clients.store'), ['name' => '擁有者的新客戶'])

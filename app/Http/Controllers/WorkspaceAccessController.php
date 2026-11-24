@@ -112,6 +112,30 @@ class WorkspaceAccessController extends Controller
         return redirect()->route('team.index')->with('status', '成員存取權已撤銷。');
     }
 
+    public function updateMemberRole(Request $request, int $membership): RedirectResponse
+    {
+        $owner = $request->user();
+        abort_unless($owner instanceof User, 401);
+
+        $validated = $request->validate([
+            'role' => ['required', 'string', Rule::in([
+                WorkspaceMembership::ROLE_READ_ONLY,
+                WorkspaceMembership::ROLE_EDITOR,
+            ])],
+        ], [
+            'role.required' => '請選擇成員權限。',
+            'role.in' => '請選擇有效的工作區權限。',
+        ]);
+
+        $workspaceMembership = $owner->workspaceMemberships()
+            ->whereKey($membership)
+            ->whereNull('revoked_at')
+            ->firstOrFail();
+        $workspaceMembership->update(['role' => $validated['role']]);
+
+        return redirect()->route('team.index')->with('status', '成員權限已更新。');
+    }
+
     public function showInvitation(string $token): View
     {
         return view('workspace-access.accept', [

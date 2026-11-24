@@ -286,6 +286,19 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     font-size: 12px;
 }
 
+.workspace-member-role-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.workspace-member-role-form .field-select {
+    min-height: 36px;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
 .page-footer {
     width: min(1160px, calc(100% - 48px));
     margin: 0 auto;

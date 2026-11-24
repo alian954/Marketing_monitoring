@@ -91,6 +91,9 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
         Route::delete('/members/{membership}', [WorkspaceAccessController::class, 'destroyMember'])
             ->whereNumber('membership')
             ->name('members.destroy');
+        Route::patch('/members/{membership}/role', [WorkspaceAccessController::class, 'updateMemberRole'])
+            ->whereNumber('membership')
+            ->name('members.role.update');
     });
     Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
