@@ -30,8 +30,8 @@ class DashboardFocusLayoutTest extends TestCase
 
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="監測項目 1 項"', false)
-            ->assertSee('aria-label="行銷活動 1 項"', false);
+            ->assertSee('aria-label="待處理 0 項，監測項目 1 項"', false)
+            ->assertSee('1 個活動 · 互動與投放');
     }
 
     public function test_dashboard_shows_key_metrics_and_collapses_detailed_reports_when_no_items_need_attention(): void
@@ -40,19 +40,17 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('<h1 class="page-title">監測總覽</h1>', false)
-            ->assertSee('<section class="stat-grid dashboard-summary-grid spaced-top" aria-label="總覽重點">', false)
-            ->assertSee('aria-label="需要處理 0 項"', false)
-            ->assertSee('aria-label="監測項目 0 項"', false)
-            ->assertSee('aria-label="行銷活動 0 項"', false)
+            ->assertSee('aria-label="待處理 0 項，監測項目 0 項"', false)
+            ->assertSee('尚未新增監測項目')
             ->assertDontSee('dashboard-focus-grid')
-            ->assertDontSee('id="dashboard-attention"', false)
+            ->assertDontSee('dashboard-summary-grid')
             ->assertSee(route('incidents.index'), false)
             ->assertSee(route('monitors.index'), false)
             ->assertSee(route('features.index'), false)
-            ->assertSee('需要處理')
+            ->assertSee('監測狀態')
             ->assertSee('進行中的事件')
             ->assertSee('監測項目')
-            ->assertSee('行銷活動')
+            ->assertSee('0 個活動 · 互動與投放')
             ->assertSee('行銷數據')
             ->assertSee('監測清單與執行狀態')
             ->assertSee('服務品質與維運')
@@ -62,7 +60,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertDontSee('最近可讀取的貼文觀看、讚、留言與分享數');
 
         $responseContent = $response->getContent();
-        $summaryPosition = strpos($responseContent, 'aria-label="總覽重點"');
+        $summaryPosition = strpos($responseContent, 'id="dashboard-attention"');
         $monitorListPosition = strpos($responseContent, 'id="dashboard-monitors"');
         $marketingReportsPosition = strpos($responseContent, 'id="dashboard-marketing-summary"');
         $operationsReportsPosition = strpos($responseContent, 'id="dashboard-operations-summary"');
@@ -77,6 +75,31 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-monitor-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-marketing-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
+    }
+
+    public function test_dashboard_shows_a_compact_clear_state_when_monitors_need_no_attention(): void
+    {
+        $monitor = Monitor::factory()->create([
+            'name' => '正常網站',
+            'url' => 'https://healthy.example.test/',
+            'url_hash' => Monitor::fingerprintUrl('https://healthy.example.test/'),
+        ]);
+        $monitor->forceFill(['last_checked_at' => now()])->save();
+
+        CheckRun::factory()->for($monitor)->create([
+            'config_version' => $monitor->config_version,
+            'normal_status' => 200,
+            'scheduled_at' => now(),
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('aria-label="待處理 0 項，監測項目 1 項"', false)
+            ->assertSee('0 項需要處理')
+            ->assertSee('無待處理')
+            ->assertSee('目前沒有需要處理的項目。')
+            ->assertDontSee('dashboard-summary-grid');
     }
 
     public function test_dashboard_attention_list_shows_problem_monitors_before_the_collapsed_full_list(): void
@@ -110,7 +133,7 @@ class DashboardFocusLayoutTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('異常網站')
-            ->assertSee('aria-label="需要處理 1 項"', false)
+            ->assertSee('aria-label="待處理 1 項，監測項目 2 項"', false)
             ->assertSee('健康網站');
 
         $responseContent = $response->getContent();
@@ -146,7 +169,7 @@ class DashboardFocusLayoutTest extends TestCase
 
         $response = $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="需要處理 4 項"', false)
+            ->assertSee('aria-label="待處理 4 項，監測項目 4 項"', false)
             ->assertSee('另有 1 項');
 
         $responseContent = $response->getContent();

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
@@ -66,6 +67,17 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
     Route::put('/clients/{client}', [ClientController::class, 'update'])->whereNumber('client')->name('clients.update');
     Route::delete('/clients/{client}', [ClientController::class, 'destroy'])->whereNumber('client')->name('clients.destroy');
+    Route::get('/clients/{client}/currencies', [ClientCurrencyController::class, 'index'])->whereNumber('client')->name('clients.currencies.index');
+    Route::patch('/clients/{client}/currencies/reporting', [ClientCurrencyController::class, 'updateReportingCurrency'])->whereNumber('client')->name('clients.currencies.reporting.update');
+    Route::post('/clients/{client}/exchange-rates', [ClientCurrencyController::class, 'storeExchangeRate'])->whereNumber('client')->name('clients.exchange-rates.store');
+    Route::put('/clients/{client}/exchange-rates/{exchangeRate}', [ClientCurrencyController::class, 'updateExchangeRate'])
+        ->whereNumber('client')
+        ->whereNumber('exchangeRate')
+        ->name('clients.exchange-rates.update');
+    Route::delete('/clients/{client}/exchange-rates/{exchangeRate}', [ClientCurrencyController::class, 'destroyExchangeRate'])
+        ->whereNumber('client')
+        ->whereNumber('exchangeRate')
+        ->name('clients.exchange-rates.destroy');
     Route::get('/clients/{client}/report-shares', [ClientReportShareController::class, 'index'])->whereNumber('client')->name('clients.report-shares.index');
     Route::post('/clients/{client}/report-shares', [ClientReportShareController::class, 'store'])->whereNumber('client')->name('clients.report-shares.store');
     Route::delete('/clients/{client}/report-shares/{reportShare}', [ClientReportShareController::class, 'destroy'])

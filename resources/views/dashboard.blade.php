@@ -30,36 +30,38 @@
         </div>
     </div>
 
-    <section class="stat-grid dashboard-summary-grid spaced-top" aria-label="總覽重點">
-        <article class="stat-card" aria-label="需要處理 {{ number_format($attentionCount) }} 項">
-            <div class="stat-topline">
-                <span class="stat-label">需要處理</span>
-                <span class="badge {{ $attentionCount > 0 ? 'badge-issue' : 'badge-healthy' }}">{{ $attentionCount > 0 ? '需查看' : '正常' }}</span>
-            </div>
-            <strong class="stat-value">{{ number_format($attentionCount) }}</strong>
-            <p class="stat-hint">監測異常與警告</p>
-        </article>
-        <article class="stat-card" aria-label="監測項目 {{ number_format($totalMonitors) }} 項">
-            <div class="stat-topline"><span class="stat-label">監測項目</span></div>
-            <strong class="stat-value">{{ number_format($totalMonitors) }}</strong>
-            <p class="stat-hint">網站與公開貼文</p>
-        </article>
-        <article class="stat-card" aria-label="行銷活動 {{ number_format($campaignTargetCount) }} 項">
-            <div class="stat-topline"><span class="stat-label">行銷活動</span></div>
-            <strong class="stat-value">{{ number_format($campaignTargetCount) }}</strong>
-            <p class="stat-hint">社群互動與投放成效</p>
-        </article>
-    </section>
-
-    @if ($attentionCount > 0)
     <section class="panel dashboard-attention-panel spaced-top" id="dashboard-attention" aria-labelledby="dashboard-attention-title">
         <div class="panel-header">
-            <h2 id="dashboard-attention-title" class="panel-title">待處理項目</h2>
-            <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">全部監測項目 <span aria-hidden="true">→</span></a>
+            <div>
+                <h2 id="dashboard-attention-title" class="panel-title">監測狀態</h2>
+                <p class="dashboard-attention-summary" aria-label="待處理 {{ number_format($attentionCount) }} 項，監測項目 {{ number_format($totalMonitors) }} 項">
+                    @if ($totalMonitors === 0)
+                        <strong>尚未新增監測項目</strong>
+                    @else
+                        <strong>{{ number_format($attentionCount) }} 項需要處理</strong>
+                        <span>{{ number_format($totalMonitors) }} 項監測中</span>
+                    @endif
+                </p>
+            </div>
+            <div class="dashboard-attention-actions">
+                @if ($totalMonitors > 0)
+                    <span class="badge {{ $attentionCount > 0 ? 'badge-issue' : 'badge-healthy' }}">{{ $attentionCount > 0 ? '需查看' : '無待處理' }}</span>
+                @endif
+                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看監測項目 <span aria-hidden="true">→</span></a>
+            </div>
         </div>
-        @if ($attentionMonitors->isEmpty())
+        @if ($totalMonitors === 0)
             <div class="dashboard-attention-empty">
-                <span>目前沒有需要處理的項目</span>
+                <span>新增監測項目後，狀態會顯示在這裡。</span>
+                <a class="button button-primary button-small" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+            </div>
+        @elseif ($attentionCount === 0)
+            <div class="dashboard-attention-empty">
+                <span>目前沒有需要處理的項目。</span>
+            </div>
+        @elseif ($attentionMonitors->isEmpty())
+            <div class="dashboard-attention-empty">
+                <span>有項目需要查看，請開啟完整監測清單。</span>
             </div>
         @else
             <ul class="dashboard-attention-list">
@@ -82,7 +84,6 @@
             @endif
         @endif
     </section>
-    @endif
 
     <details class="dashboard-disclosure spaced-top" aria-labelledby="dashboard-monitor-summary">
         <summary>
@@ -902,6 +903,52 @@
                     </tbody>
                 </table>
             </div>
+            @if ($campaignPortfolioMarketingSummary['reporting_currency_groups'] !== [])
+                <section class="spaced-top" aria-labelledby="reporting-currency-overview-title">
+                    <h3 id="reporting-currency-overview-title" class="panel-title">報表幣別彙總</h3>
+                    <p class="campaign-report-secondary">依每日有效匯率換算至各客戶設定的報表幣別；跨幣別資料缺少任一日匯率時，該來源活動不納入金額。</p>
+                    <div class="data-table-wrap" role="region" aria-labelledby="reporting-currency-overview-title" tabindex="0">
+                        <table class="data-table">
+                            <caption class="sr-only">依客戶設定的報表幣別換算 GA4 營收與 Meta、Google Ads 花費</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">報表幣別</th>
+                                    <th scope="col" class="numeric">GA4 營收</th>
+                                    <th scope="col" class="numeric">Meta Ads 花費</th>
+                                    <th scope="col" class="numeric">Google Ads 花費</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($campaignPortfolioMarketingSummary['reporting_currency_groups'] as $reportingCurrencyGroup)
+                                    <tr>
+                                        <th scope="row">{{ $reportingCurrencyGroup['currency_code'] }}</th>
+                                        @foreach ([
+                                            'google_analytics' => ['amount' => 'ga4_revenue', 'count' => 'ga4_campaign_count'],
+                                            'meta_marketing' => ['amount' => 'meta_spend', 'count' => 'meta_campaign_count'],
+                                            'google_ads' => ['amount' => 'google_ads_spend', 'count' => 'google_ads_campaign_count'],
+                                        ] as $source => $metric)
+                                            @php
+                                                $conversionCoverage = $reportingCurrencyGroup['conversion_coverage'][$source] ?? ['converted_campaigns' => 0, 'missing_rate_campaigns' => 0, 'missing_daily_data_campaigns' => 0, 'missing_rate_observations' => 0];
+                                            @endphp
+                                            <td class="numeric">
+                                                @if ($reportingCurrencyGroup[$metric['count']] > 0)
+                                                    {{ number_format($reportingCurrencyGroup[$metric['amount']], 2) }}
+                                                    <span class="secondary-text">{{ number_format($conversionCoverage['converted_campaigns']) }} 個來源活動</span>
+                                                @else
+                                                    —
+                                                @endif
+                                                @if ($conversionCoverage['missing_rate_campaigns'] > 0 || $conversionCoverage['missing_daily_data_campaigns'] > 0)
+                                                    <span class="secondary-text">缺匯率 {{ number_format($conversionCoverage['missing_rate_campaigns']) }} 個活動／{{ number_format($conversionCoverage['missing_rate_observations']) }} 個日期；缺逐日資料 {{ number_format($conversionCoverage['missing_daily_data_campaigns']) }} 個</span>
+                                                @endif
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            @endif
             <section class="spaced-top" aria-labelledby="campaign-native-roas-overview-title">
                 <h3 id="campaign-native-roas-overview-title" class="panel-title">廣告平台歸因 ROAS</h3>
                 <p class="campaign-report-secondary">

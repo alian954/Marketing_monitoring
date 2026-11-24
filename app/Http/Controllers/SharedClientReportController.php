@@ -6,6 +6,7 @@ use App\Models\ClientReportShare;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
+use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\DashboardCampaignMarketingSummary;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
@@ -13,8 +14,11 @@ use Illuminate\Http\Response;
 
 class SharedClientReportController extends Controller
 {
-    public function __invoke(string $token, DashboardCampaignMarketingSummary $marketingSummaryBuilder): Response
-    {
+    public function __invoke(
+        string $token,
+        DashboardCampaignMarketingSummary $marketingSummaryBuilder,
+        CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
+    ): Response {
         abort_unless(preg_match('/^[a-f0-9]{64}$/', $token) === 1, 404);
 
         $share = ClientReportShare::query()
@@ -28,6 +32,7 @@ class SharedClientReportController extends Controller
         abort_unless($user instanceof User, 404);
 
         $targets = $client->socialEngagementTargets()
+            ->with('client:id,reporting_currency_code')
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get();
@@ -42,6 +47,12 @@ class SharedClientReportController extends Controller
             CarbonImmutable::now(),
             $publicEngagementSummaries,
         );
+        $reportingCurrencySummary = $portfolioSummaryBuilder->build(
+            $targets,
+            $marketingSummaries,
+            $client->exchangeRates()->get(),
+        );
+        $reportingCurrencyGroups = $reportingCurrencySummary['reporting_currency_groups'];
         $campaignRows = $targets->map(static fn (SocialEngagementTarget $target): array => [
             'target' => $target,
             'public_engagement' => $publicEngagementSummaries[$target->getKey()],
@@ -49,7 +60,7 @@ class SharedClientReportController extends Controller
         ]);
 
         return response()
-            ->view('shared-client-reports.show', compact('share', 'client', 'campaignRows'))
+            ->view('shared-client-reports.show', compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups'))
             ->header('Cache-Control', 'private, no-store')
             ->header('X-Robots-Tag', 'noindex, nofollow')
             ->header('Referrer-Policy', 'no-referrer');

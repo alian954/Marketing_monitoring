@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Auth;
 
-#[Fillable(['name'])]
+#[Fillable(['name', 'reporting_currency_code'])]
 #[Hidden(['user_id'])]
 class Client extends Model
 {
@@ -49,6 +49,11 @@ class Client extends Model
     public function reportShares(): HasMany
     {
         return $this->hasMany(ClientReportShare::class);
+    }
+
+    public function exchangeRates(): HasMany
+    {
+        return $this->hasMany(ClientExchangeRate::class);
     }
 
     public function isDefault(): bool

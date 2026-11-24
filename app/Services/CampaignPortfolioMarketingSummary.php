@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ClientExchangeRate;
 use App\Models\SocialEngagementTarget;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
@@ -15,6 +16,7 @@ class CampaignPortfolioMarketingSummary
      *     target_count: int,
      *     coverage: array<string, array{configured_campaigns: int, available_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
      *     currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, roas: float|null, roas_campaign_count: int}>,
+     *     reporting_currency_groups: list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, conversion_coverage: array<string, array{converted_campaigns: int, missing_rate_campaigns: int, missing_daily_data_campaigns: int, missing_rate_observations: int}>}>,
      *     native_roas_groups: list<array{source: string, source_label: string, currency_code: string, conversion_value_amount: float, matched_spend_amount: float, roas: float|null, campaign_count: int, comparable_campaign_count: int, fresh_campaign_count: int, stale_campaign_count: int, missing_campaign_count: int, duplicate_mappings_excluded: int}>,
      *     native_roas_coverage: array<string, array{configured_campaigns: int, comparable_campaigns: int, fresh_campaigns: int, stale_campaigns: int, missing_campaigns: int, duplicate_mappings_excluded: int}>,
      *     ga4_business_goal_coverage: array{configured_campaigns: int, available_campaigns: int, unavailable_campaigns: int, ahead_campaigns: int, behind_campaigns: int, on_track_campaigns: int, not_started_campaigns: int, completed_campaigns: int, data_unavailable_campaigns: int},
@@ -27,12 +29,17 @@ class CampaignPortfolioMarketingSummary
      *     campaign_interaction_cost_ranks: array<int, array<string, array{rank: int, source: string, source_label: string, currency_code: string, cost_per_public_interaction: float, status: string}>>
      * }
      */
-    public function build(Collection $targets, array $marketingSummaries): array
-    {
+    public function build(
+        Collection $targets,
+        array $marketingSummaries,
+        ?Collection $exchangeRates = null,
+    ): array {
+        $targets->loadMissing('client:id,reporting_currency_code');
+        $exchangeRateIndex = $this->indexExchangeRates($exchangeRates ?? new Collection);
         $sourceDefinitions = [
-            'google_analytics' => ['value_key' => 'revenue', 'group_key' => 'ga4_revenue', 'count_key' => 'ga4_campaign_count'],
-            'meta_marketing' => ['value_key' => 'spend_amount', 'group_key' => 'meta_spend', 'count_key' => 'meta_campaign_count'],
-            'google_ads' => ['value_key' => 'spend_amount', 'group_key' => 'google_ads_spend', 'count_key' => 'google_ads_campaign_count'],
+            'google_analytics' => ['value_key' => 'revenue', 'daily_value_key' => 'total_revenue', 'group_key' => 'ga4_revenue', 'count_key' => 'ga4_campaign_count'],
+            'meta_marketing' => ['value_key' => 'spend_amount', 'daily_value_key' => 'spend_amount', 'group_key' => 'meta_spend', 'count_key' => 'meta_campaign_count'],
+            'google_ads' => ['value_key' => 'spend_amount', 'daily_value_key' => 'spend_amount', 'group_key' => 'google_ads_spend', 'count_key' => 'google_ads_campaign_count'],
         ];
         $sourceCandidates = array_fill_keys(array_keys($sourceDefinitions), []);
         $interactionCostCandidates = ['meta_marketing' => [], 'google_ads' => [], 'manual' => []];
@@ -144,6 +151,15 @@ class CampaignPortfolioMarketingSummary
                 $summary = is_array($marketing[$source] ?? null) ? $marketing[$source] : [];
                 $sourceValue = $summary[$definition['value_key']] ?? null;
                 $currencyCode = $this->currencyCode($summary['currency_code'] ?? null);
+                $dailyPerformance = is_array($marketing['daily_performance'] ?? null)
+                    ? $marketing['daily_performance']
+                    : [];
+                $dailySource = is_array($dailyPerformance[$source] ?? null)
+                    ? $dailyPerformance[$source]
+                    : [];
+                $dailyRows = is_array($dailySource['rows'] ?? null) && array_is_list($dailySource['rows'])
+                    ? $dailySource['rows']
+                    : [];
 
                 $sourceCandidates[$source][$mappingKey][] = [
                     'target_id' => (int) $target->getKey(),
@@ -153,6 +169,9 @@ class CampaignPortfolioMarketingSummary
                         ? (float) $sourceValue
                         : null,
                     'currency_code' => $currencyCode,
+                    'client_id' => $target->client_id === null ? null : (int) $target->client_id,
+                    'reporting_currency_code' => $this->currencyCode($target->client?->reporting_currency_code),
+                    'daily_rows' => $dailyRows,
                     'period_days' => $this->periodDays($target),
                     'mapping_details' => $this->campaignMappingDetails($source, $this->campaignMappingIdentity($source, $target)),
                 ];
@@ -401,6 +420,12 @@ class CampaignPortfolioMarketingSummary
                 $currencyGroups[$candidate['currency_code']][$definition['count_key']]++;
             }
         }
+
+        $reportingCurrencyGroups = $this->reportingCurrencyGroups(
+            $sourceCandidates,
+            $sourceDefinitions,
+            $exchangeRateIndex,
+        );
 
         foreach ($nativeRoasCandidates as $source => $campaignCandidates) {
             $nativeRoasCoverage[$source] = [
@@ -684,6 +709,7 @@ class CampaignPortfolioMarketingSummary
             'target_count' => $targets->count(),
             'coverage' => $coverage,
             'currency_groups' => array_values($currencyGroups),
+            'reporting_currency_groups' => $reportingCurrencyGroups,
             'native_roas_groups' => array_values($nativeRoasGroups),
             'native_roas_coverage' => $nativeRoasCoverage,
             'ga4_business_goal_coverage' => $ga4BusinessGoalCoverage,
@@ -1176,6 +1202,240 @@ class CampaignPortfolioMarketingSummary
         }
 
         return (int) CarbonImmutable::parse($target->starts_on)->diffInDays(CarbonImmutable::parse($target->ends_on));
+    }
+
+    /**
+     * @param  array<string, array<string, list<array<string, mixed>>>>  $sourceCandidates
+     * @param  array<string, array{value_key: string, daily_value_key: string, group_key: string, count_key: string}>  $sourceDefinitions
+     * @param  array<int, array<string, array<string, list<array{effective_on: string, rate: float}>>>>  $exchangeRateIndex
+     * @return list<array{currency_code: string, ga4_revenue: float, meta_spend: float, google_ads_spend: float, ga4_campaign_count: int, meta_campaign_count: int, google_ads_campaign_count: int, conversion_coverage: array<string, array{converted_campaigns: int, missing_rate_campaigns: int, missing_daily_data_campaigns: int, missing_rate_observations: int}>}>
+     */
+    private function reportingCurrencyGroups(
+        array $sourceCandidates,
+        array $sourceDefinitions,
+        array $exchangeRateIndex,
+    ): array {
+        $groups = [];
+
+        foreach ($sourceDefinitions as $source => $definition) {
+            foreach ($sourceCandidates[$source] as $candidates) {
+                $candidate = $this->preferredCandidate($candidates);
+                $reportingCurrencyCode = $this->currencyCode($candidate['reporting_currency_code'] ?? null);
+
+                if ($candidate['value'] === null
+                    || $candidate['currency_code'] === null
+                    || $reportingCurrencyCode === null) {
+                    continue;
+                }
+
+                $groups[$reportingCurrencyCode] ??= [
+                    'currency_code' => $reportingCurrencyCode,
+                    'ga4_revenue' => 0.0,
+                    'meta_spend' => 0.0,
+                    'google_ads_spend' => 0.0,
+                    'ga4_campaign_count' => 0,
+                    'meta_campaign_count' => 0,
+                    'google_ads_campaign_count' => 0,
+                    'conversion_coverage' => [],
+                ];
+                $groups[$reportingCurrencyCode]['conversion_coverage'][$source] ??= [
+                    'converted_campaigns' => 0,
+                    'missing_rate_campaigns' => 0,
+                    'missing_daily_data_campaigns' => 0,
+                    'missing_rate_observations' => 0,
+                ];
+
+                $conversion = $this->convertCampaignAmount(
+                    $candidate,
+                    $definition['daily_value_key'],
+                    $reportingCurrencyCode,
+                    $exchangeRateIndex,
+                );
+
+                if ($conversion['amount'] === null) {
+                    if ($conversion['reason'] === 'missing_rate') {
+                        $groups[$reportingCurrencyCode]['conversion_coverage'][$source]['missing_rate_campaigns']++;
+                        $groups[$reportingCurrencyCode]['conversion_coverage'][$source]['missing_rate_observations'] += $conversion['missing_rate_observations'];
+                    } else {
+                        $groups[$reportingCurrencyCode]['conversion_coverage'][$source]['missing_daily_data_campaigns']++;
+                    }
+
+                    continue;
+                }
+
+                $groups[$reportingCurrencyCode][$definition['group_key']] += $conversion['amount'];
+                $groups[$reportingCurrencyCode][$definition['count_key']]++;
+                $groups[$reportingCurrencyCode]['conversion_coverage'][$source]['converted_campaigns']++;
+            }
+        }
+
+        ksort($groups);
+
+        foreach ($groups as &$group) {
+            foreach (['ga4_revenue', 'meta_spend', 'google_ads_spend'] as $amountKey) {
+                $group[$amountKey] = round($group[$amountKey], 4);
+            }
+            ksort($group['conversion_coverage']);
+        }
+        unset($group);
+
+        return array_values($groups);
+    }
+
+    /**
+     * @param  array<string, mixed>  $candidate
+     * @param  array<int, array<string, array<string, list<array{effective_on: string, rate: float}>>>>  $exchangeRateIndex
+     * @return array{amount: float|null, reason: 'converted'|'missing_rate'|'missing_daily_data', missing_rate_observations: int}
+     */
+    private function convertCampaignAmount(
+        array $candidate,
+        string $dailyValueKey,
+        string $reportingCurrencyCode,
+        array $exchangeRateIndex,
+    ): array {
+        if ($candidate['currency_code'] === $reportingCurrencyCode) {
+            return [
+                'amount' => $candidate['value'],
+                'reason' => 'converted',
+                'missing_rate_observations' => 0,
+            ];
+        }
+
+        $clientId = $candidate['client_id'] ?? null;
+        $dailyRows = $candidate['daily_rows'] ?? null;
+
+        if (! is_int($clientId) || ! is_array($dailyRows) || $dailyRows === []) {
+            return ['amount' => null, 'reason' => 'missing_daily_data', 'missing_rate_observations' => 0];
+        }
+
+        $convertedAmount = 0.0;
+        $missingRateObservations = 0;
+        $validRowCount = 0;
+
+        foreach ($dailyRows as $dailyRow) {
+            if (! is_array($dailyRow)
+                || ! $this->isValidDate($dailyRow['date'] ?? null)
+                || ! is_numeric($dailyRow[$dailyValueKey] ?? null)
+                || ! is_finite((float) $dailyRow[$dailyValueKey])) {
+                return ['amount' => null, 'reason' => 'missing_daily_data', 'missing_rate_observations' => 0];
+            }
+
+            $validRowCount++;
+            $sourceAmount = (float) $dailyRow[$dailyValueKey];
+
+            if ($sourceAmount === 0.0) {
+                continue;
+            }
+
+            $rate = $this->exchangeRateForDate(
+                $exchangeRateIndex[$clientId][$reportingCurrencyCode][$candidate['currency_code']] ?? [],
+                $dailyRow['date'],
+            );
+
+            if ($rate === null) {
+                $missingRateObservations++;
+
+                continue;
+            }
+
+            $convertedAmount += $sourceAmount * $rate;
+        }
+
+        if ($validRowCount === 0) {
+            return ['amount' => null, 'reason' => 'missing_daily_data', 'missing_rate_observations' => 0];
+        }
+
+        if ($missingRateObservations > 0) {
+            return [
+                'amount' => null,
+                'reason' => 'missing_rate',
+                'missing_rate_observations' => $missingRateObservations,
+            ];
+        }
+
+        return [
+            'amount' => round($convertedAmount, 4),
+            'reason' => 'converted',
+            'missing_rate_observations' => 0,
+        ];
+    }
+
+    /**
+     * @param  list<array{effective_on: string, rate: float}>  $effectiveRates
+     */
+    private function exchangeRateForDate(array $effectiveRates, string $date): ?float
+    {
+        $lowerIndex = 0;
+        $upperIndex = count($effectiveRates) - 1;
+        $matchedRate = null;
+
+        while ($lowerIndex <= $upperIndex) {
+            $middleIndex = intdiv($lowerIndex + $upperIndex, 2);
+
+            if ($effectiveRates[$middleIndex]['effective_on'] <= $date) {
+                $matchedRate = $effectiveRates[$middleIndex]['rate'];
+                $lowerIndex = $middleIndex + 1;
+            } else {
+                $upperIndex = $middleIndex - 1;
+            }
+        }
+
+        return $matchedRate;
+    }
+
+    /**
+     * @return array<int, array<string, array<string, list<array{effective_on: string, rate: float}>>>>
+     */
+    private function indexExchangeRates(Collection $exchangeRates): array
+    {
+        $index = [];
+
+        foreach ($exchangeRates as $exchangeRate) {
+            if (! $exchangeRate instanceof ClientExchangeRate
+                || ! is_numeric($exchangeRate->rate_to_reporting_currency)
+                || ! is_finite((float) $exchangeRate->rate_to_reporting_currency)
+                || (float) $exchangeRate->rate_to_reporting_currency <= 0) {
+                continue;
+            }
+
+            $sourceCurrencyCode = $this->currencyCode($exchangeRate->source_currency_code);
+            $reportingCurrencyCode = $this->currencyCode($exchangeRate->reporting_currency_code);
+
+            if ($sourceCurrencyCode === null || $reportingCurrencyCode === null) {
+                continue;
+            }
+
+            $clientId = (int) $exchangeRate->client_id;
+            $index[$clientId][$reportingCurrencyCode][$sourceCurrencyCode][] = [
+                'effective_on' => $exchangeRate->effective_on->toDateString(),
+                'rate' => (float) $exchangeRate->rate_to_reporting_currency,
+            ];
+        }
+
+        foreach ($index as &$reportingCurrencies) {
+            foreach ($reportingCurrencies as &$sourceCurrencies) {
+                foreach ($sourceCurrencies as &$effectiveRates) {
+                    usort(
+                        $effectiveRates,
+                        static fn (array $first, array $second): int => strcmp($first['effective_on'], $second['effective_on']),
+                    );
+                }
+                unset($effectiveRates);
+            }
+            unset($sourceCurrencies);
+        }
+        unset($reportingCurrencies);
+
+        return $index;
+    }
+
+    private function isValidDate(mixed $date): bool
+    {
+        if (! is_string($date) || preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $date) !== 1) {
+            return false;
+        }
+
+        return checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4));
     }
 
     private function currencyCode(mixed $value): ?string

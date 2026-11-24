@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CheckRun;
 use App\Models\Client;
+use App\Models\ClientExchangeRate;
 use App\Models\ClientSelectionContext;
 use App\Models\DnsChangeEvent;
 use App\Models\DomainRegistrationObservation;
@@ -391,6 +392,7 @@ class DashboardController extends Controller
             ->when($socialEngagementPlatform !== null, static fn (Builder $query): Builder => $query->where('social_platform', $socialEngagementPlatform))
             ->when($socialEngagementSelectedTagValue !== null, static fn (Builder $query): Builder => $query->where('tag', $socialEngagementSelectedTagValue))
             ->when($socialEngagementSelectedTag === 'unlabeled', static fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
+            ->with('client:id,reporting_currency_code')
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get();
@@ -417,9 +419,13 @@ class DashboardController extends Controller
         $socialEngagementMarketingSummaries = $user instanceof User
             ? $dashboardCampaignMarketingSummary->build($socialEngagementTargetModels, $user, $asOf, $publicEngagementSummaries)
             : [];
+        $reportingCurrencyRates = ClientExchangeRate::query()
+            ->whereIn('client_id', $socialEngagementTargetModels->pluck('client_id')->filter()->unique()->all())
+            ->get();
         $campaignPortfolioMarketingSummary = $campaignPortfolioMarketingSummaryBuilder->build(
             $socialEngagementTargetModels,
             $socialEngagementMarketingSummaries,
+            $reportingCurrencyRates,
         );
 
         foreach ($campaignPortfolioMarketingSummary['campaign_ranks'] as $targetId => $campaignRank) {

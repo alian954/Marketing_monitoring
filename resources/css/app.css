@@ -698,26 +698,6 @@ textarea {
     min-height: 92px;
 }
 
-.stat-grid.dashboard-summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin: 16px 0;
-}
-
-.dashboard-summary-grid .stat-card {
-    min-height: 98px;
-    padding: 15px 17px;
-}
-
-.dashboard-summary-grid .stat-value {
-    margin-top: 10px;
-    font-size: 26px;
-}
-
-.dashboard-summary-grid .stat-hint {
-    margin-top: 7px;
-}
-
 .dashboard-disclosure {
     overflow: clip;
     border: 1px solid var(--line);
@@ -781,6 +761,34 @@ textarea {
 
 .dashboard-attention-panel {
     margin-top: 16px;
+}
+
+.dashboard-attention-panel .panel-header {
+    align-items: center;
+}
+
+.dashboard-attention-summary {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.dashboard-attention-summary strong {
+    color: var(--ink);
+    font-size: 19px;
+    font-weight: 760;
+}
+
+.dashboard-attention-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
 .dashboard-attention-list {
@@ -1602,6 +1610,46 @@ a.platform-chip:hover {
     grid-column: 1 / -1;
 }
 
+.client-currency-rate-table {
+    min-width: 760px;
+}
+
+.client-currency-setting-form {
+    display: grid;
+    grid-template-columns: minmax(220px, 380px) auto;
+    align-items: end;
+    gap: 14px;
+}
+
+.client-currency-setting-form .field-group {
+    margin: 0;
+}
+
+.client-currency-rate-form {
+    display: grid;
+    align-items: end;
+    gap: 8px;
+}
+
+.client-currency-rate-form .field-group {
+    min-width: 112px;
+    margin: 0;
+}
+
+.client-currency-rate-form .field-input {
+    min-width: 112px;
+}
+
+.client-currency-rate-create-form {
+    grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+}
+
+.client-currency-rate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
 .dashboard-target-client {
     align-self: center;
     margin: 0;
@@ -2251,30 +2299,19 @@ a.platform-chip:hover {
         min-width: 200px;
     }
 
+    .client-currency-setting-form,
+    .client-currency-rate-create-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .client-currency-setting-form .button,
+    .client-currency-rate-create-form .button {
+        width: 100%;
+    }
+
     .stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 9px;
-    }
-
-    .stat-grid.dashboard-summary-grid {
-        gap: 8px;
-    }
-
-    .dashboard-summary-grid .stat-card {
-        min-height: 92px;
-        padding: 13px 11px;
-    }
-
-    .dashboard-summary-grid .stat-label {
-        font-size: 11px;
-    }
-
-    .dashboard-summary-grid .stat-value {
-        font-size: 23px;
-    }
-
-    .dashboard-summary-grid .stat-hint {
-        font-size: 10px;
     }
 
     .dashboard-attention-item {
@@ -2285,7 +2322,17 @@ a.platform-chip:hover {
     }
 
     .dashboard-attention-empty {
+        align-items: flex-start;
+        flex-direction: column;
         padding: 4px 15px 15px;
+    }
+
+    .dashboard-attention-actions {
+        justify-content: flex-start;
+    }
+
+    .dashboard-attention-summary strong {
+        font-size: 17px;
     }
 
     .dashboard-attention-more {
