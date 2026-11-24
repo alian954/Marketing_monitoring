@@ -45,6 +45,7 @@ class SharedClientReportController extends Controller
                 $reportData['campaignRows'],
                 $reportData['reportingCurrencyGroups'],
                 $stream,
+                $reportData['reportSections'],
             );
             fclose($stream);
         }, 'marketing-report-'.now()->format('Y-m-d').'.csv', [
@@ -93,6 +94,7 @@ class SharedClientReportController extends Controller
             ->orderBy('tag')
             ->orderBy('social_platform')
             ->get();
+        $reportSections = $share->selectedReportSections();
         $monitors = $client->monitors()
             ->whereNotNull('social_platform')
             ->with(['latestPublicEngagementCheckRun'])
@@ -116,7 +118,7 @@ class SharedClientReportController extends Controller
             'marketing' => $marketingSummaries[$target->getKey()],
         ]);
 
-        return compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups');
+        return compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups', 'reportSections');
     }
 
     /**

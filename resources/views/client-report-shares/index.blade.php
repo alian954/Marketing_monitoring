@@ -7,8 +7,13 @@
         $campaignSelectionErrors = collect($errors->getMessages())
             ->filter(static fn (array $messages, string $key): bool => $key === 'target_ids' || str_starts_with($key, 'target_ids.'))
             ->flatten();
+        $reportSectionErrors = collect($errors->getMessages())
+            ->filter(static fn (array $messages, string $key): bool => $key === 'report_sections' || str_starts_with($key, 'report_sections.'))
+            ->flatten();
         $selectedCampaignIds = old('target_ids', $campaignTargets->modelKeys());
         $selectedCampaignIds = is_array($selectedCampaignIds) ? array_map('intval', $selectedCampaignIds) : [];
+        $selectedReportSections = old('report_sections', \App\Models\ClientReportShare::DEFAULT_REPORT_SECTIONS);
+        $selectedReportSections = is_array($selectedReportSections) ? $selectedReportSections : [];
     @endphp
 
     <div class="breadcrumbs" aria-label="頁面導覽">
@@ -65,6 +70,23 @@
                         </select>
                         @error('expires_in_days')<p id="report-share-expiry-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
+                    <fieldset class="report-share-targets" aria-describedby="report-share-sections-help{{ $reportSectionErrors->isNotEmpty() ? ' report-share-sections-error' : '' }}" @if ($reportSectionErrors->isNotEmpty()) aria-invalid="true" @endif>
+                        <legend class="field-label">報表內容</legend>
+                        <p id="report-share-sections-help" class="field-help">選擇要公開的數據區塊；網頁與 CSV 會套用相同設定。</p>
+                        <div class="report-share-target-list">
+                            @foreach (\App\Models\ClientReportShare::REPORT_SECTION_LABELS as $section => $label)
+                                <label class="report-share-target-option">
+                                    <input type="checkbox" name="report_sections[]" value="{{ $section }}" @checked(in_array($section, $selectedReportSections, true)) @if ($reportSectionErrors->isNotEmpty()) aria-invalid="true" aria-describedby="report-share-sections-error" @endif>
+                                    <span>
+                                        <strong>{{ $label }}</strong>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                        @if ($reportSectionErrors->isNotEmpty())
+                            <p id="report-share-sections-error" class="field-error" role="alert">{{ $reportSectionErrors->first() }}</p>
+                        @endif
+                    </fieldset>
                     <fieldset class="report-share-targets" aria-describedby="report-share-targets-help{{ $campaignSelectionErrors->isNotEmpty() ? ' report-share-targets-error' : '' }}" @if ($campaignSelectionErrors->isNotEmpty()) aria-invalid="true" @endif>
                         <legend class="field-label">包含活動</legend>
                         <p id="report-share-targets-help" class="field-help">只會公開勾選活動的數據。</p>
@@ -101,11 +123,12 @@
         @else
             <div class="data-table-wrap">
                 <table class="data-table">
-                    <caption class="sr-only">報表分享連結名稱、狀態與到期時間</caption>
+                            <caption class="sr-only">報表分享連結名稱、資料範圍、狀態與到期時間</caption>
                     <thead>
                         <tr>
                             <th scope="col">名稱</th>
                             <th scope="col">活動範圍</th>
+                            <th scope="col">報表內容</th>
                             <th scope="col">狀態</th>
                             <th scope="col">到期時間</th>
                             <th scope="col"><span class="sr-only">操作</span></th>
@@ -119,10 +142,15 @@
                                     ? $campaignTargets->count()
                                     : $campaignTargets->whereIn('id', $share->campaign_target_ids)->count();
                                 $shareCampaignScope = $share->campaign_target_ids === null ? '全部' : '所選';
+                                $shareReportSectionLabels = collect($share->selectedReportSections())
+                                    ->map(static fn (string $section): ?string => \App\Models\ClientReportShare::REPORT_SECTION_LABELS[$section] ?? null)
+                                    ->filter()
+                                    ->implode('、');
                             @endphp
                             <tr>
                                 <th scope="row">{{ $share->name }}</th>
                                 <td>{{ $shareCampaignScope }} {{ number_format($shareCampaignCount) }} 項</td>
+                                <td>{{ $shareReportSectionLabels }}</td>
                                 <td>{{ $shareStatus }}</td>
                                 <td><time datetime="{{ $share->expires_at->toIso8601String() }}">{{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>
                                 <td>

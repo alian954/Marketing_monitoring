@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\ClientReportShare;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -42,6 +43,8 @@ class ClientReportShareController extends Controller
                 'distinct',
                 Rule::exists('social_engagement_targets', 'id')->where('client_id', $client->getKey()),
             ],
+            'report_sections' => ['sometimes', 'required', 'array', 'list', 'min:1'],
+            'report_sections.*' => ['required', 'string', 'distinct', Rule::in(array_keys(ClientReportShare::REPORT_SECTION_LABELS))],
         ], [
             'name.required' => '請輸入分享連結名稱。',
             'name.max' => '分享連結名稱不可超過 80 個字元。',
@@ -52,6 +55,12 @@ class ClientReportShareController extends Controller
             'target_ids.*.integer' => '活動選取格式不正確。',
             'target_ids.*.distinct' => '同一活動不可重複選取。',
             'target_ids.*.exists' => '所選活動不存在或不屬於此客戶。',
+            'report_sections.required' => '請至少選擇一個報表區塊。',
+            'report_sections.array' => '報表區塊選取格式不正確。',
+            'report_sections.list' => '報表區塊選取格式不正確。',
+            'report_sections.min' => '請至少選擇一個報表區塊。',
+            'report_sections.*.in' => '所選報表區塊無效。',
+            'report_sections.*.distinct' => '同一報表區塊不可重複選取。',
         ]);
 
         $token = bin2hex(random_bytes(32));
@@ -59,6 +68,7 @@ class ClientReportShareController extends Controller
             'name' => $validated['name'],
             'token_hash' => hash('sha256', $token),
             'campaign_target_ids' => array_map('intval', $validated['target_ids']),
+            'report_sections' => array_values($validated['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS),
             'expires_at' => now()->addDays((int) $validated['expires_in_days']),
         ]);
 

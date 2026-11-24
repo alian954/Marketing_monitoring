@@ -47,6 +47,7 @@ class ClientReportShareTest extends TestCase
         $this->assertNotSame($token, $share->token_hash);
         $this->assertSame('客戶週報', $share->name);
         $this->assertSame([$target->id], $share->campaign_target_ids);
+        $this->assertSame(ClientReportShare::DEFAULT_REPORT_SECTIONS, $share->selectedReportSections());
         $this->assertSame('2026-12-01 12:00:00', $share->expires_at->format('Y-m-d H:i:s'));
 
         $managementResponse = $this->get(route('clients.report-shares.index', $client))
@@ -98,8 +99,184 @@ class ClientReportShareTest extends TestCase
             ->assertOk()
             ->assertSee('Client Campaign')
             ->assertSee('value="'.$campaignTarget->id.'"', false)
+            ->assertSee('公開互動')
+            ->assertSee('GA4 分析')
+            ->assertSee('Meta Ads')
+            ->assertSee('Google Ads')
             ->assertSee('只會公開勾選活動的數據。')
             ->assertDontSee('Private Campaign');
+    }
+
+    public function test_owner_can_limit_the_data_sections_in_a_shared_report(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Public only campaign');
+
+        $response = $this->post(route('clients.report-shares.store', $client), [
+            'name' => '公開互動週報',
+            'expires_in_days' => '30',
+            'target_ids' => [$target->id],
+            'report_sections' => [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT],
+        ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHas('createdShareUrl');
+
+        $share = $client->reportShares()->firstOrFail();
+        $this->assertSame([ClientReportShare::SECTION_PUBLIC_ENGAGEMENT], $share->selectedReportSections());
+
+        $token = basename((string) parse_url((string) $response->getSession()->get('createdShareUrl'), PHP_URL_PATH));
+        $this->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('公開互動');
+    }
+
+    public function test_owner_cannot_create_a_report_share_with_invalid_or_empty_sections(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $target = $this->createTarget($client, 'Valid campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Invalid sections',
+                'expires_in_days' => '30',
+                'target_ids' => [$target->id],
+                'report_sections' => ['private_connection_data'],
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['report_sections.0' => '所選報表區塊無效。']);
+
+        $this->post(route('clients.report-shares.store', $client), [
+            'name' => 'Empty sections',
+            'expires_in_days' => '30',
+            'target_ids' => [$target->id],
+            'report_sections' => [],
+        ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['report_sections' => '請至少選擇一個報表區塊。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_public_page_and_csv_do_not_expose_unselected_marketing_sections(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Public only campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
+        $this->createPublicEngagementPost($client, $target);
+        $this->createGoogleAnalyticsReport($owner, $target);
+        $token = str_repeat('2', 64);
+        $this->createShare($client, $token, [$target->id], [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT]);
+
+        $this->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('公開互動')
+            ->assertDontSee('GA4 工作階段')
+            ->assertDontSee('GA4 營收')
+            ->assertDontSee('報表幣別彙總')
+            ->assertDontSee('456.78 TWD');
+
+        $csvResponse = $this->get(route('client-report-shares.public.export', ['token' => $token]))->assertOk();
+        $content = $csvResponse->streamedContent();
+        $this->assertStringNotContainsString('GA4 工作階段', $content);
+        $this->assertStringNotContainsString('Meta Ads 花費', $content);
+        $this->assertStringNotContainsString('Google Ads 花費', $content);
+        $this->assertStringNotContainsString('報表幣別', $content);
+        $this->assertStringNotContainsString('321', $content);
+        $this->assertStringNotContainsString('456.78', $content);
+        $this->assertStringNotContainsString('報表幣別彙總', $content);
+    }
+
+    public function test_report_hides_roas_when_its_selected_spend_source_is_not_shared(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Mixed source campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => '777777777',
+            'google_ads_campaign_id' => '888888888',
+        ]);
+        $this->createGoogleAnalyticsReport($owner, $target);
+
+        $metaConnection = MetaMarketingConnection::query()->create([
+            'user_id' => $owner->id,
+            'access_token' => 'meta-test-token',
+            'ad_account_id' => '123456789',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetMetaMarketingReport::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'ad_account_id' => '123456789',
+            'campaign_id' => '777777777',
+            'campaign_name' => 'Mixed source campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '123.4500',
+            'impressions' => 1000,
+            'reach' => 800,
+            'clicks' => 40,
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $googleAdsConnection = GoogleAdsConnection::query()->create([
+            'user_id' => $owner->id,
+            'refresh_token' => 'google-ads-test-token',
+            'customer_id' => '1234567890',
+            'currency_code' => 'TWD',
+        ]);
+        SocialEngagementTargetGoogleAdsReport::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'social_engagement_target_id' => $target->id,
+            'customer_id' => '1234567890',
+            'campaign_id' => '888888888',
+            'campaign_name' => 'Mixed source campaign',
+            'starts_on' => $target->starts_on,
+            'ends_on' => $target->ends_on,
+            'spend_amount' => '987.6500',
+            'impressions' => 2000,
+            'clicks' => 80,
+            'conversions' => '4.0000',
+            'conversions_value' => '500.0000',
+            'currency_code' => 'TWD',
+            'synced_at' => now(),
+        ]);
+
+        $token = str_repeat('3', 64);
+        $this->createShare($client, $token, [$target->id], [
+            ClientReportShare::SECTION_GOOGLE_ANALYTICS,
+            ClientReportShare::SECTION_META_MARKETING,
+        ]);
+
+        $this->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('GA4 工作階段')
+            ->assertSee('Meta 花費')
+            ->assertSee('123.45 TWD')
+            ->assertDontSee('Google Ads 花費')
+            ->assertDontSee('987.65 TWD')
+            ->assertDontSee('GA4 ROAS');
+
+        $content = $this->get(route('client-report-shares.public.export', ['token' => $token]))
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('GA4 工作階段', $content);
+        $this->assertStringContainsString('Meta Ads 花費', $content);
+        $this->assertStringNotContainsString('Google Ads 花費', $content);
+        $this->assertStringNotContainsString('987.65', $content);
+        $this->assertStringNotContainsString('GA4 ROAS', $content);
     }
 
     public function test_public_client_report_only_includes_campaigns_selected_when_share_is_created(): void
@@ -509,8 +686,12 @@ class ClientReportShareTest extends TestCase
     }
 
     /** @param  list<int>|null  $campaignTargetIds */
-    private function createShare(Client $client, string $token, ?array $campaignTargetIds = null): ClientReportShare
-    {
+    private function createShare(
+        Client $client,
+        string $token,
+        ?array $campaignTargetIds = null,
+        ?array $reportSections = null,
+    ): ClientReportShare {
         $attributes = [
             'name' => 'Test report share',
             'token_hash' => hash('sha256', $token),
@@ -519,6 +700,9 @@ class ClientReportShareTest extends TestCase
 
         if ($campaignTargetIds !== null) {
             $attributes['campaign_target_ids'] = $campaignTargetIds;
+        }
+        if ($reportSections !== null) {
+            $attributes['report_sections'] = $reportSections;
         }
 
         return $client->reportShares()->create($attributes);
