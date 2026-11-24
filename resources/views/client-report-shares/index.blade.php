@@ -109,6 +109,9 @@
             @else
                 <form action="{{ route('clients.report-shares.store', $client) }}" method="POST" class="client-create-form" aria-labelledby="create-report-share-title">
                     @csrf
+                    @if ($selectedTemplate !== null)
+                        <input type="hidden" name="template_id" value="{{ $selectedTemplate->id }}">
+                    @endif
                     <div class="field-group">
                         <label class="field-label" for="report-share-name">連結名稱</label>
                         <input class="field-input{{ $errors->has('name') ? ' is-invalid' : '' }}" id="report-share-name" name="name" type="text" maxlength="80" value="{{ old('name', $selectedTemplate?->name ?? '') }}" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="report-share-name-error" @endif>
@@ -199,12 +202,13 @@
                     @unless (auth()->user()?->isReadOnlyWorkspaceMember())
                         <div class="field-group">
                             <label class="field-label" for="report-template-name">樣板名稱</label>
-                            <input class="field-input{{ $errors->has('template_name') ? ' is-invalid' : '' }}" id="report-template-name" name="template_name" type="text" maxlength="80" value="{{ old('template_name') }}" aria-describedby="report-template-name-help{{ $errors->has('template_name') ? ' report-template-name-error' : '' }}" @if ($errors->has('template_name')) aria-invalid="true" @endif>
+                            <input class="field-input{{ $errors->has('template_name') || $errors->has('template_id') ? ' is-invalid' : '' }}" id="report-template-name" name="template_name" type="text" maxlength="80" value="{{ old('template_name', $selectedTemplate?->name ?? '') }}" aria-describedby="report-template-name-help{{ $errors->has('template_name') ? ' report-template-name-error' : '' }}{{ $errors->has('template_id') ? ' report-template-id-error' : '' }}" @if ($errors->has('template_name') || $errors->has('template_id')) aria-invalid="true" @endif>
                             <p id="report-template-name-help" class="field-help">儲存活動、品牌與報表區塊；日期和有效期限每次另選。</p>
                             @error('template_name')<p id="report-template-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                            @error('template_id')<p id="report-template-id-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="form-actions">
-                            <button class="button button-secondary" type="submit" formaction="{{ route('clients.report-shares.templates.store', $client) }}" formnovalidate>儲存樣板</button>
+                            <button class="button button-secondary" type="submit" formaction="{{ route('clients.report-shares.templates.store', $client) }}" formnovalidate>{{ $selectedTemplate === null ? '儲存樣板' : '更新樣板' }}</button>
                             <button class="button button-primary" type="submit">建立連結</button>
                         </div>
                     @endunless

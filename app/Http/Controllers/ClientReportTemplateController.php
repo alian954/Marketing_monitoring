@@ -29,6 +29,12 @@ class ClientReportTemplateController extends Controller
         $validator = Validator::make($request->all(), [
             'template_name' => ['required', 'string', 'max:80'],
             'report_brand_name' => ['nullable', 'string', 'max:80'],
+            'template_id' => [
+                'sometimes',
+                'required',
+                'integer',
+                Rule::exists('client_report_templates', 'id')->where('client_id', $client->getKey()),
+            ],
             'compare_previous_period' => ['sometimes', 'boolean'],
             'target_ids' => ['required', 'array', 'min:1'],
             'target_ids.*' => [
@@ -45,6 +51,9 @@ class ClientReportTemplateController extends Controller
             'template_name.max' => '樣板名稱不可超過 80 個字元。',
             'report_brand_name.string' => '報表品牌名稱格式無效。',
             'report_brand_name.max' => '報表品牌名稱不可超過 80 個字元。',
+            'template_id.required' => '樣板識別格式無效。',
+            'template_id.integer' => '樣板識別格式無效。',
+            'template_id.exists' => '樣板不存在或不屬於此客戶。',
             'compare_previous_period.boolean' => '前期比較選項格式無效。',
             'target_ids.required' => '請至少選擇一項要分享的活動。',
             'target_ids.array' => '活動選取格式不正確。',
@@ -90,17 +99,27 @@ class ClientReportTemplateController extends Controller
         }
 
         $validated = $validator->validated();
-        $template = $client->reportTemplates()->create([
+        $templateAttributes = [
             'name' => $validated['template_name'],
             'report_brand_name' => $validated['report_brand_name'] ?? null,
             'campaign_target_ids' => array_map('intval', $validated['target_ids']),
             'report_sections' => array_values($validated['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS),
             'compare_previous_period' => in_array($validated['compare_previous_period'] ?? false, [true, 1, '1'], true),
-        ]);
+        ];
+        $templateId = $validated['template_id'] ?? null;
+
+        if ($templateId === null) {
+            $template = $client->reportTemplates()->create($templateAttributes);
+            $status = '報表樣板已儲存；建立分享時請選擇日期與有效期限。';
+        } else {
+            $template = $client->reportTemplates()->findOrFail((int) $templateId);
+            $template->fill($templateAttributes)->save();
+            $status = '報表樣板已更新；建立分享時請選擇日期與有效期限。';
+        }
 
         return redirect()
             ->route('clients.report-shares.index', ['client' => $client, 'template_id' => $template->getKey()])
-            ->with('status', '報表樣板已儲存；建立分享時請選擇日期與有效期限。');
+            ->with('status', $status);
     }
 
     public function destroy(Client $client, ClientReportTemplate $reportTemplate): RedirectResponse

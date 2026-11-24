@@ -81,7 +81,74 @@ class ClientReportTemplateTest extends TestCase
             ->assertSee('name="report_sections[]" value="google_analytics" checked', false)
             ->assertSee('name="report_sections[]" value="estimated_profitability" checked', false)
             ->assertSee('name="compare_previous_period"', false)
-            ->assertSee('value="1" checked', false);
+            ->assertSee('value="1" checked', false)
+            ->assertSee('更新樣板');
+    }
+
+    public function test_owner_can_update_a_template_from_the_report_form(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $oldTarget = $this->createTarget($client, '舊活動');
+        $newTarget = $this->createTarget($client, '新活動');
+        $template = $client->reportTemplates()->create([
+            'name' => '舊週報',
+            'report_brand_name' => '舊品牌',
+            'campaign_target_ids' => [$oldTarget->id],
+            'report_sections' => [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT],
+        ]);
+
+        $response = $this->actingAs($owner)
+            ->post(route('clients.report-shares.templates.store', $client), [
+                'template_id' => $template->id,
+                'template_name' => '  新週報  ',
+                'report_brand_name' => '  新品牌  ',
+                'target_ids' => [$newTarget->id],
+                'report_sections' => [ClientReportShare::SECTION_GOOGLE_ADS],
+                'compare_previous_period' => '1',
+            ]);
+
+        $response->assertRedirect(route('clients.report-shares.index', [
+            'client' => $client,
+            'template_id' => $template->id,
+        ]));
+        $response->assertSessionHas('status', '報表樣板已更新；建立分享時請選擇日期與有效期限。');
+
+        $template->refresh();
+        $this->assertSame('新週報', $template->name);
+        $this->assertSame('新品牌', $template->report_brand_name);
+        $this->assertSame([$newTarget->id], $template->campaign_target_ids);
+        $this->assertSame([ClientReportShare::SECTION_GOOGLE_ADS], $template->selectedReportSections());
+        $this->assertTrue($template->compare_previous_period);
+        $this->assertDatabaseCount('client_report_templates', 1);
+    }
+
+    public function test_template_cannot_be_updated_from_another_client(): void
+    {
+        $owner = User::factory()->create();
+        $firstClient = Client::factory()->for($owner)->create();
+        $secondClient = Client::factory()->for($owner)->create();
+        $firstTarget = $this->createTarget($firstClient, '第一客戶活動');
+        $secondTarget = $this->createTarget($secondClient, '第二客戶活動');
+        $template = $secondClient->reportTemplates()->create([
+            'name' => '第二客戶樣板',
+            'campaign_target_ids' => [$secondTarget->id],
+            'report_sections' => [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT],
+        ]);
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $firstClient))
+            ->post(route('clients.report-shares.templates.store', $firstClient), [
+                'template_id' => $template->id,
+                'template_name' => '跨客戶修改',
+                'target_ids' => [$firstTarget->id],
+                'report_sections' => [ClientReportShare::SECTION_GOOGLE_ADS],
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $firstClient))
+            ->assertSessionHasErrors(['template_id' => '樣板不存在或不屬於此客戶。']);
+
+        $this->assertSame('第二客戶樣板', $template->fresh()->name);
+        $this->assertDatabaseCount('client_report_templates', 1);
     }
 
     public function test_template_can_only_be_applied_to_its_own_client(): void
@@ -256,6 +323,7 @@ class ClientReportTemplateTest extends TestCase
             ->assertOk()
             ->assertSee('套用')
             ->assertDontSee('儲存樣板')
+            ->assertDontSee('更新樣板')
             ->assertDontSee('建立連結')
             ->assertDontSee('刪除唯讀不可刪除樣板');
 
