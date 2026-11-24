@@ -33,6 +33,7 @@
 
             @if ($connection)
                 <p class="connection-status" role="status">Google Ads 帳戶已連結。</p>
+                <x-scheduled-sync-health :connection="$connection" />
                 <form action="{{ route('integrations.google-ads.customer.update') }}" method="POST" class="check-history-filter">
                     @csrf
                     @method('PUT')

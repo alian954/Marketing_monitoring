@@ -8,6 +8,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\MetaMarketingApiException;
 use App\Services\MetaMarketingCampaignReportSync;
+use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -21,8 +22,10 @@ use Illuminate\Support\Facades\Log;
 #[Description('同步目前進行中與近期結束活動的 Meta Ads 成效')]
 class SyncDueMetaMarketingReports extends Command
 {
-    public function handle(MetaMarketingCampaignReportSync $campaignReportSync): int
-    {
+    public function handle(
+        MetaMarketingCampaignReportSync $campaignReportSync,
+        ScheduledSyncHealthRecorder $syncHealthRecorder,
+    ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
         $this->clearExpiredAdInsights($asOf);
         $this->clearExpiredPlacementInsights($asOf);
@@ -50,6 +53,7 @@ class SyncDueMetaMarketingReports extends Command
             ->chunkById(50, function (Collection $connections) use (
                 $asOf,
                 $campaignReportSync,
+                $syncHealthRecorder,
                 &$syncedCount,
                 &$skippedCount,
                 &$failedCount,
@@ -58,9 +62,20 @@ class SyncDueMetaMarketingReports extends Command
                     $targetsForConnection = $this->dueTargets($asOf);
                     AccountScopeContext::constrainUser($targetsForConnection, (int) $connection->user_id);
 
+                    if (! $targetsForConnection->exists()) {
+                        continue;
+                    }
+
+                    $syncStartedAt = $syncHealthRecorder->start($connection);
+                    $syncedCountBeforeConnection = $syncedCount;
+                    $skippedCountBeforeConnection = $skippedCount;
+                    $failedCountBeforeConnection = $failedCount;
+                    $connectionSyncError = null;
+
                     $targetsForConnection->orderBy('id')
                         ->chunkById(100, function (Collection $targets) use (
                             $connection,
+                            &$connectionSyncError,
                             $asOf,
                             $campaignReportSync,
                             &$syncedCount,
@@ -92,9 +107,19 @@ class SyncDueMetaMarketingReports extends Command
                                         'social_engagement_target_id' => $target->getKey(),
                                         'error' => $exception->getMessage(),
                                     ]);
+                                    $connectionSyncError ??= $exception->getMessage();
                                 }
                             }
                         });
+
+                    $syncHealthRecorder->finish(
+                        $connection,
+                        $syncStartedAt,
+                        $syncedCount - $syncedCountBeforeConnection,
+                        $skippedCount - $skippedCountBeforeConnection,
+                        $failedCount - $failedCountBeforeConnection,
+                        $connectionSyncError,
+                    );
                 }
             });
 

@@ -34,6 +34,12 @@ class GoogleAdsIntegrationTest extends TestCase
             'customer_id' => '1234567890',
             'customer_name' => 'Demo Ads',
             'currency_code' => 'TWD',
+            'scheduled_sync_status' => 'succeeded',
+            'scheduled_sync_started_at' => now()->subHour(),
+            'scheduled_sync_finished_at' => now()->subMinutes(50),
+            'scheduled_sync_synced_count' => 4,
+            'scheduled_sync_skipped_count' => 2,
+            'scheduled_sync_failed_count' => 0,
         ]);
 
         $this->actingAs($user)
@@ -47,6 +53,9 @@ class GoogleAdsIntegrationTest extends TestCase
             ->assertSee('本應用只發送報表與客戶資料讀取查詢')
             ->assertSee('讀取正式客戶資料需先取得 production access')
             ->assertSee('現行流程不需 developer token')
+            ->assertSee('排程同步')
+            ->assertSee('同步正常')
+            ->assertSee('更新 4 個活動 · 略過 2 個 · 失敗 0 個')
             ->assertDontSee('private-refresh-token');
     }
 

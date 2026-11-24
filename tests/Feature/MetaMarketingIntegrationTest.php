@@ -35,6 +35,13 @@ class MetaMarketingIntegrationTest extends TestCase
             'ad_account_name' => 'Demo Ads',
             'currency_code' => 'TWD',
             'token_expires_at' => now()->addDays(30),
+            'scheduled_sync_status' => 'failed',
+            'scheduled_sync_started_at' => now()->subHour(),
+            'scheduled_sync_finished_at' => now()->subMinutes(50),
+            'scheduled_sync_synced_count' => 0,
+            'scheduled_sync_skipped_count' => 0,
+            'scheduled_sync_failed_count' => 1,
+            'scheduled_sync_error' => 'Permission denied.',
         ]);
 
         $this->actingAs($user)
@@ -44,6 +51,10 @@ class MetaMarketingIntegrationTest extends TestCase
             ->assertSee('Demo Ads')
             ->assertSee('123456789')
             ->assertSee('ads_read')
+            ->assertSee('排程同步')
+            ->assertSee('同步失敗')
+            ->assertSee('更新 0 個活動 · 略過 0 個 · 失敗 1 個')
+            ->assertSee('Permission denied.')
             ->assertDontSee('private-authorized-token');
     }
 

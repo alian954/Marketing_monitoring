@@ -8,7 +8,21 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['user_id', 'refresh_token', 'customer_id', 'login_customer_id', 'customer_name', 'currency_code'])]
+#[Fillable([
+    'user_id',
+    'refresh_token',
+    'customer_id',
+    'login_customer_id',
+    'customer_name',
+    'currency_code',
+    'scheduled_sync_status',
+    'scheduled_sync_started_at',
+    'scheduled_sync_finished_at',
+    'scheduled_sync_synced_count',
+    'scheduled_sync_skipped_count',
+    'scheduled_sync_failed_count',
+    'scheduled_sync_error',
+])]
 #[Hidden(['refresh_token'])]
 class GoogleAdsConnection extends Model
 {
@@ -19,6 +33,11 @@ class GoogleAdsConnection extends Model
     {
         return [
             'refresh_token' => 'encrypted',
+            'scheduled_sync_started_at' => 'immutable_datetime',
+            'scheduled_sync_finished_at' => 'immutable_datetime',
+            'scheduled_sync_synced_count' => 'integer',
+            'scheduled_sync_skipped_count' => 'integer',
+            'scheduled_sync_failed_count' => 'integer',
         ];
     }
 }

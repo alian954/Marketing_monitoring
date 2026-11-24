@@ -9,6 +9,7 @@ use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Services\GoogleAdsApiException;
 use App\Services\GoogleAdsCampaignReportSync;
 use App\Services\GoogleAdsDataApi;
+use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -25,6 +26,7 @@ class SyncDueGoogleAdsReports extends Command
     public function handle(
         GoogleAdsDataApi $dataApi,
         GoogleAdsCampaignReportSync $campaignReportSync,
+        ScheduledSyncHealthRecorder $syncHealthRecorder,
     ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
         $this->clearExpiredSearchTermReports($asOf);
@@ -53,6 +55,7 @@ class SyncDueGoogleAdsReports extends Command
                 $asOf,
                 $dataApi,
                 $campaignReportSync,
+                $syncHealthRecorder,
                 &$syncedCount,
                 &$skippedCount,
                 &$failedCount,
@@ -64,9 +67,20 @@ class SyncDueGoogleAdsReports extends Command
                     $targetsForConnection = $this->dueTargets($asOf);
                     AccountScopeContext::constrainUser($targetsForConnection, (int) $connection->user_id);
 
+                    if (! $targetsForConnection->exists()) {
+                        continue;
+                    }
+
+                    $syncStartedAt = $syncHealthRecorder->start($connection);
+                    $syncedCountBeforeConnection = $syncedCount;
+                    $skippedCountBeforeConnection = $skippedCount;
+                    $failedCountBeforeConnection = $failedCount;
+                    $connectionSyncError = null;
+
                     $targetsForConnection->orderBy('id')
                         ->chunkById(100, function (Collection $targets) use (
                             $connection,
+                            &$connectionSyncError,
                             &$accessToken,
                             &$tokenRefreshFailed,
                             $dataApi,
@@ -110,6 +124,7 @@ class SyncDueGoogleAdsReports extends Command
                                         'google_ads_connection_id' => $connection->getKey(),
                                         'error' => $exception->getMessage(),
                                     ]);
+                                    $connectionSyncError ??= $exception->getMessage();
 
                                     return;
                                 }
@@ -126,9 +141,19 @@ class SyncDueGoogleAdsReports extends Command
                                         'social_engagement_target_id' => $target->getKey(),
                                         'error' => $exception->getMessage(),
                                     ]);
+                                    $connectionSyncError ??= $exception->getMessage();
                                 }
                             }
                         });
+
+                    $syncHealthRecorder->finish(
+                        $connection,
+                        $syncStartedAt,
+                        $syncedCount - $syncedCountBeforeConnection,
+                        $skippedCount - $skippedCountBeforeConnection,
+                        $failedCount - $failedCountBeforeConnection,
+                        $connectionSyncError,
+                    );
                 }
             });
 

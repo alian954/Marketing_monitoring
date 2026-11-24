@@ -2806,6 +2806,41 @@ a.platform-chip:hover {
     font-weight: 650;
 }
 
+.integration-sync-health {
+    display: grid;
+    gap: 6px;
+    margin: 14px 0;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--surface-hover);
+}
+
+.integration-sync-health__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.integration-sync-health h3 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.integration-sync-health p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.integration-sync-health .integration-sync-health__error {
+    color: var(--red);
+}
+
 .integration-disconnect-form {
     margin-top: 18px;
 }

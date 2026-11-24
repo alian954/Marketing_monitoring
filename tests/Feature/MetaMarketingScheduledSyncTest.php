@@ -83,6 +83,13 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_meta_marketing_reports', [
             'social_engagement_target_id' => $foreignTarget->id,
         ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(2, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotNull($syncHealth->scheduled_sync_started_at);
+        $this->assertNotNull($syncHealth->scheduled_sync_finished_at);
         $this->assertDatabaseCount('social_engagement_target_meta_marketing_reports', 2);
         $this->assertDatabaseCount('social_engagement_target_paid_ad_snapshots', 2);
         $snapshot = SocialEngagementTargetPaidAdSnapshot::query()
@@ -142,6 +149,11 @@ class MetaMarketingScheduledSyncTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('略過 1 個近期讀值', Artisan::output());
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(0, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
         Http::assertNothingSent();
     }
 
@@ -227,7 +239,7 @@ class MetaMarketingScheduledSyncTest extends TestCase
             ], 403),
         ]);
         $user = User::factory()->create();
-        $this->createConnection($user);
+        $connection = $this->createConnection($user);
         $target = $this->createTarget('Failed Meta campaign', '987654321', '2026-11-01', '2026-11-30');
 
         $this->artisan('meta-marketing:sync-due')
@@ -240,6 +252,11 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_paid_ad_snapshots', [
             'social_engagement_target_id' => $target->id,
         ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('failed', $syncHealth->scheduled_sync_status);
+        $this->assertSame(0, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotEmpty($syncHealth->scheduled_sync_error);
     }
 
     private function createConnection(User $user, mixed $tokenExpiresAt = null): MetaMarketingConnection

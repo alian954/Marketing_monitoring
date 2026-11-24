@@ -33,6 +33,7 @@
 
             @if ($connection)
                 <p class="connection-status" role="status">帳戶已連結。</p>
+                <x-scheduled-sync-health :connection="$connection" />
                 <form action="{{ route('integrations.google-analytics.property.update') }}" method="POST" class="check-history-filter">
                     @csrf
                     @method('PUT')

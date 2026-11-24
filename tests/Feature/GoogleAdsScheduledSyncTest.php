@@ -92,6 +92,13 @@ class GoogleAdsScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $foreignTarget->id,
         ]);
         $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 2);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(2, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotNull($syncHealth->scheduled_sync_started_at);
+        $this->assertNotNull($syncHealth->scheduled_sync_finished_at);
         Http::assertSentCount(9);
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), 'googleAds:searchStream')
@@ -145,6 +152,11 @@ class GoogleAdsScheduledSyncTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 1);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(0, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
         Http::assertNothingSent();
     }
 
@@ -218,7 +230,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
             ], 403),
         ]);
         $user = User::factory()->create();
-        $this->createConnection($user);
+        $connection = $this->createConnection($user);
         $target = $this->createTarget('Failed campaign', '987654321', '2026-11-01', '2026-11-30');
 
         $this->artisan('google-ads:sync-due')
@@ -231,6 +243,11 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertDatabaseMissing('social_engagement_target_paid_ad_snapshots', [
             'social_engagement_target_id' => $target->id,
         ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('failed', $syncHealth->scheduled_sync_status);
+        $this->assertSame(0, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotEmpty($syncHealth->scheduled_sync_error);
     }
 
     private function createConnection(User $user): GoogleAdsConnection

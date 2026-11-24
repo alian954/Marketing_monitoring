@@ -92,6 +92,13 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'social_engagement_target_id' => $foreignTarget->id,
         ]);
         $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 2);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(2, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotNull($syncHealth->scheduled_sync_started_at);
+        $this->assertNotNull($syncHealth->scheduled_sync_finished_at);
         Http::assertSentCount(15);
         Http::assertSent(fn (ClientRequest $request): bool => str_ends_with($request->url(), ':runReport')
             && in_array($request->data()['dimensionFilter']['filter']['stringFilter']['value'], [
@@ -134,6 +141,11 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 1);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(0, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_skipped_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
         Http::assertNothingSent();
     }
 
@@ -249,7 +261,7 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
                 ->push($this->emptyReportPayload()),
         ]);
 
-        $this->createConnection();
+        $connection = $this->createConnection();
         $failedTarget = $this->createTarget(['tag' => 'Failed campaign']);
         $successfulTarget = $this->createTarget(['tag' => 'Successful campaign']);
 
@@ -263,6 +275,11 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
             'social_engagement_target_id' => $successfulTarget->id,
         ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('partial', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNotEmpty($syncHealth->scheduled_sync_error);
         Http::assertSentCount(9);
     }
 

@@ -187,6 +187,13 @@ class GoogleAnalyticsIntegrationTest extends TestCase
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'refresh-token',
+            'scheduled_sync_status' => 'partial',
+            'scheduled_sync_started_at' => now()->subHour(),
+            'scheduled_sync_finished_at' => now()->subMinutes(50),
+            'scheduled_sync_synced_count' => 3,
+            'scheduled_sync_skipped_count' => 1,
+            'scheduled_sync_failed_count' => 1,
+            'scheduled_sync_error' => '<script>alert(1)</script>',
         ]);
         $this->actingAs($user)
             ->from(route('integrations.google-analytics.edit'))
@@ -204,7 +211,31 @@ class GoogleAnalyticsIntegrationTest extends TestCase
             ->get(route('integrations.google-analytics.edit'))
             ->assertOk()
             ->assertSee('GA4 資源 ID')
-            ->assertSee('123456789');
+            ->assertSee('123456789')
+            ->assertSee('排程同步')
+            ->assertSee('部分失敗')
+            ->assertSee('更新 3 個活動 · 略過 1 個 · 失敗 1 個')
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(1)</script>', false);
+    }
+
+    public function test_integration_page_shows_the_start_time_for_a_running_sync(): void
+    {
+        $user = User::factory()->create();
+        GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'refresh-token',
+            'scheduled_sync_status' => 'running',
+            'scheduled_sync_started_at' => now()->subMinutes(5),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('integrations.google-analytics.edit'))
+            ->assertOk()
+            ->assertSee('排程同步')
+            ->assertSee('同步中')
+            ->assertSee('開始時間')
+            ->assertDontSee('最近執行');
     }
 
     public function test_disconnect_deletes_the_users_connection_and_private_report_snapshots(): void

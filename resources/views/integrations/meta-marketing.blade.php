@@ -38,6 +38,7 @@
                         授權期限：{{ $connection->token_expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}
                     @endif
                 </p>
+                <x-scheduled-sync-health :connection="$connection" />
 
                 <form action="{{ route('integrations.meta-marketing.ad-account.update') }}" method="POST" class="check-history-filter">
                     @csrf
