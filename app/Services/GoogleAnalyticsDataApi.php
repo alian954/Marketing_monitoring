@@ -1264,11 +1264,16 @@ class GoogleAnalyticsDataApi
     private function successfulPayload(Response $response, string $serviceName): array
     {
         if (! $response->successful()) {
-            $message = match ($response->status()) {
-                400, 401, 403 => 'Google 授權或 GA4 資源讀取權限有問題，請重新連結並確認已授予資料讀取權限。',
-                429 => 'Google Analytics API 配額已用盡，請稍後再同步。',
-                default => $serviceName.' 暫時無法讀取，請稍後再試。',
-            };
+            $isRevokedOAuthGrant = $serviceName === 'Google OAuth'
+                && $response->status() === 400
+                && $response->json('error') === 'invalid_grant';
+            $message = $isRevokedOAuthGrant
+                ? 'Google 授權憑證已失效或已撤銷，請重新連結帳戶。'
+                : match ($response->status()) {
+                    400, 401, 403 => 'Google 授權或 GA4 資源讀取權限有問題，請重新連結並確認已授予資料讀取權限。',
+                    429 => 'Google Analytics API 配額已用盡，請稍後再同步。',
+                    default => $serviceName.' 暫時無法讀取，請稍後再試。',
+                };
 
             throw new GoogleAnalyticsApiException($message);
         }

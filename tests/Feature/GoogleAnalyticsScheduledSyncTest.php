@@ -283,6 +283,38 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         Http::assertSentCount(9);
     }
 
+    public function test_daily_command_records_an_actionable_error_when_ga4_refresh_token_is_revoked(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response([
+                'error' => 'invalid_grant',
+                'error_description' => 'Token has been expired or revoked.',
+            ], 400),
+        ]);
+        $connection = $this->createConnection();
+        $target = $this->createTarget(['tag' => 'Revoked token campaign']);
+        $target->forceFill(['user_id' => $connection->user_id])->save();
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('failed', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertSame('Google 授權憑證已失效或已撤銷，請重新連結帳戶。', $syncHealth->scheduled_sync_error);
+        Http::assertSentCount(1);
+    }
+
     /** @param array<string, mixed> $attributes */
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {

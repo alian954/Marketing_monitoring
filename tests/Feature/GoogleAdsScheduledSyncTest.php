@@ -250,6 +250,35 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertNotEmpty($syncHealth->scheduled_sync_error);
     }
 
+    public function test_daily_command_records_an_actionable_error_when_google_ads_refresh_token_is_revoked(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response([
+                'error' => 'invalid_grant',
+                'error_description' => 'Token has been expired or revoked.',
+            ], 400),
+        ]);
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget('Revoked token campaign', '987654326', '2026-11-01', '2026-11-30');
+        $target->forceFill(['user_id' => $user->id])->save();
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+        $syncHealth = $connection->fresh();
+        $this->assertSame('failed', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
+        $this->assertSame('Google 授權憑證已失效或已撤銷，請重新連結帳戶。', $syncHealth->scheduled_sync_error);
+        Http::assertSentCount(1);
+    }
+
     private function createConnection(User $user): GoogleAdsConnection
     {
         return GoogleAdsConnection::query()->create([

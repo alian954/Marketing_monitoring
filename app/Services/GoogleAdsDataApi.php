@@ -2166,12 +2166,17 @@ class GoogleAdsDataApi
     private function successfulPayload(Response $response, string $serviceName): array
     {
         if (! $response->successful()) {
-            $message = match ($response->status()) {
-                401 => 'Google Ads 授權已失效，請重新連結帳戶。',
-                403 => 'Google Ads 專案或帳戶沒有 API 讀取權限；請確認 Google Cloud 專案已啟用 Google Ads API 並取得適用存取層級。',
-                429 => 'Google Ads API 配額已用盡，請稍後再同步。',
-                default => $serviceName.' 暫時無法讀取，請確認客戶 ID、管理員 ID 與 API 設定。',
-            };
+            $isRevokedOAuthGrant = $serviceName === 'Google OAuth'
+                && $response->status() === 400
+                && $response->json('error') === 'invalid_grant';
+            $message = $isRevokedOAuthGrant
+                ? 'Google 授權憑證已失效或已撤銷，請重新連結帳戶。'
+                : match ($response->status()) {
+                    401 => 'Google Ads 授權已失效，請重新連結帳戶。',
+                    403 => 'Google Ads 專案或帳戶沒有 API 讀取權限；請確認 Google Cloud 專案已啟用 Google Ads API 並取得適用存取層級。',
+                    429 => 'Google Ads API 配額已用盡，請稍後再同步。',
+                    default => $serviceName.' 暫時無法讀取，請確認客戶 ID、管理員 ID 與 API 設定。',
+                };
 
             throw new GoogleAdsApiException($message);
         }
