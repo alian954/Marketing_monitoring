@@ -34,17 +34,39 @@
             @if ($connection)
                 <p class="connection-status" role="status">帳戶已連結。</p>
                 <x-scheduled-sync-health :connection="$connection" />
-                <form action="{{ route('integrations.google-analytics.property.update') }}" method="POST" class="check-history-filter">
-                    @csrf
-                    @method('PUT')
-                    <div class="field-group">
-                        <label class="field-label" for="google-analytics-property-id">GA4 資源 ID</label>
-                        <input class="field-input{{ $errors->has('property_id') ? ' is-invalid' : '' }}" id="google-analytics-property-id" name="property_id" type="text" inputmode="numeric" pattern="[0-9]{1,20}" maxlength="20" value="{{ old('property_id', $connection->property_id) }}" required aria-describedby="google-analytics-property-help{{ $errors->has('property_id') ? ' google-analytics-property-error' : '' }}" @if ($errors->has('property_id')) aria-invalid="true" @endif>
-                        <p id="google-analytics-property-help" class="field-help">可在 GA4 管理設定的「資源詳細資料」找到，輸入純數字 ID。</p>
-                        @error('property_id')<p id="google-analytics-property-error" class="field-error" role="alert">{{ $message }}</p>@enderror
-                    </div>
-                    <button class="button button-secondary" type="submit">儲存資源</button>
-                </form>
+                <div class="client-ga4-properties">
+                    @foreach ($clients as $client)
+                        @php
+                            $property = $clientProperties->get($client->getKey());
+                            $isSubmittedClient = (string) old('client_id') === (string) $client->getKey();
+                            $hasPropertyError = $isSubmittedClient && $errors->has('property_id');
+                            $formTitleId = 'google-analytics-client-title-'.$client->getKey();
+                            $fieldId = 'google-analytics-property-id-'.$client->getKey();
+                            $helpId = 'google-analytics-property-help-'.$client->getKey();
+                            $errorId = 'google-analytics-property-error-'.$client->getKey();
+                        @endphp
+                        <form action="{{ route('integrations.google-analytics.property.update', $client) }}" method="POST" class="check-history-filter" aria-labelledby="{{ $formTitleId }}">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="client_id" value="{{ $client->getKey() }}">
+                            <div class="field-group">
+                                <h3 id="{{ $formTitleId }}" class="panel-title">{{ $client->name }}</h3>
+                                <label class="field-label" for="{{ $fieldId }}">GA4 資源 ID</label>
+                                <p id="{{ $helpId }}" class="field-help">可在 GA4 管理設定的「資源詳細資料」找到，輸入純數字 ID。</p>
+                                <input class="field-input{{ $hasPropertyError ? ' is-invalid' : '' }}" id="{{ $fieldId }}" name="property_id" type="text" inputmode="numeric" pattern="[0-9]{1,20}" maxlength="20" value="{{ $isSubmittedClient ? old('property_id', $property?->property_id) : $property?->property_id }}" required aria-describedby="{{ $helpId }}{{ $hasPropertyError ? ' '.$errorId : '' }}" @if ($hasPropertyError) aria-invalid="true" @endif>
+                                @if ($property)
+                                    <p class="connection-status">已設定</p>
+                                @else
+                                    <p class="field-help">尚未設定客戶資源。</p>
+                                @endif
+                                @if ($hasPropertyError)
+                                    <p id="{{ $errorId }}" class="field-error" role="alert">{{ $errors->first('property_id') }}</p>
+                                @endif
+                            </div>
+                            <button class="button button-secondary" type="submit">儲存 {{ $client->name }} 資源</button>
+                        </form>
+                    @endforeach
+                </div>
 
                 <form action="{{ route('integrations.google-analytics.disconnect') }}" method="POST" class="integration-disconnect-form">
                     @csrf

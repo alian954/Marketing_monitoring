@@ -6,6 +6,7 @@ use App\Jobs\SendNotificationOutbox;
 use App\Models\CheckRun;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Models\Organization;
 use App\Models\SchedulerHeartbeat;
 use App\Services\IncidentManager;
 use App\Services\RunScheduler;
@@ -33,7 +34,8 @@ class ScheduleDueMonitors extends Command
             $dueMonitorsQuery = Monitor::query()
                 ->where('enabled', true)
                 ->whereNotNull('next_check_at')
-                ->where('next_check_at', '<=', now());
+                ->where('next_check_at', '<=', now())
+                ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(now('Asia/Taipei')->toDateString()));
 
             if ($dcardCheckInFlight) {
                 $dueMonitorsQuery->where(static function (Builder $query): void {

@@ -12,6 +12,11 @@ class PaidMediaCampaignTrendReport
 {
     private const HISTORY_LIMIT = 30;
 
+    public function __construct(
+        private MetaMarketingClientAccountResolver $metaMarketingClientAccountResolver,
+        private GoogleAdsClientAccountResolver $googleAdsClientAccountResolver,
+    ) {}
+
     /**
      * @return list<array{
      *     synced_at: CarbonImmutable,
@@ -59,12 +64,18 @@ class PaidMediaCampaignTrendReport
             return [];
         }
 
+        $clientAccount = $this->metaMarketingClientAccountResolver->forTarget($connection, $target);
+
+        if ($clientAccount === null) {
+            return [];
+        }
+
         return $this->recentChanges(
             $target,
             SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING,
             'meta_marketing_connection_id',
             (int) $connection->getKey(),
-            (string) $connection->ad_account_id,
+            $clientAccount->ad_account_id,
             $target->meta_campaign_id,
         );
     }
@@ -116,12 +127,18 @@ class PaidMediaCampaignTrendReport
             return [];
         }
 
+        $clientAccount = $this->googleAdsClientAccountResolver->forTarget($connection, $target);
+
+        if ($clientAccount === null) {
+            return [];
+        }
+
         return $this->recentChanges(
             $target,
             SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS,
             'google_ads_connection_id',
             (int) $connection->getKey(),
-            (string) $connection->customer_id,
+            $clientAccount->customer_id,
             $target->google_ads_campaign_id,
         );
     }

@@ -95,6 +95,35 @@ class DashboardTlsExpiryTest extends TestCase
             ->assertSee('Healthy certificate');
     }
 
+    public function test_dashboard_does_not_report_tls_expiry_for_social_post_urls(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 04:00:00', 'UTC'));
+        $socialMonitor = Monitor::factory()->create([
+            'name' => 'Social post certificate',
+            'url' => 'https://www.facebook.com/share/p/12345/',
+            'url_hash' => Monitor::fingerprintUrl('https://www.facebook.com/share/p/12345/'),
+        ]);
+        $this->createObservation($socialMonitor, now(), now()->addDays(5));
+
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('沒有即將到期的憑證')
+            ->assertSee('Social post certificate');
+
+        $this->assertSame(0, $response->viewData('expiringCertificateCount'));
+        $this->assertTrue($response->viewData('expiringCertificates')->isEmpty());
+
+        $responseContent = $response->getContent();
+        $certificateSectionStart = strpos($responseContent, 'id="tls-expiry-title"');
+        $domainSectionStart = strpos($responseContent, 'id="domain-expiry-title"');
+        $certificateSection = substr($responseContent, $certificateSectionStart, $domainSectionStart - $certificateSectionStart);
+
+        $this->assertIsInt($certificateSectionStart);
+        $this->assertIsInt($domainSectionStart);
+        $this->assertStringNotContainsString('Social post certificate', $certificateSection);
+    }
+
     private function createObservation(
         Monitor $monitor,
         Carbon $observedOn,

@@ -216,9 +216,7 @@ class GoogleAnalyticsDataApi
             ? $dimensionFilters[0]
             : ['andGroup' => ['expressions' => $dimensionFilters]];
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $endsOn],
@@ -407,9 +405,7 @@ class GoogleAnalyticsDataApi
             return $this->emptyNewVsReturningReport('unavailable', null, null);
         }
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $windowEndOn],
@@ -533,9 +529,7 @@ class GoogleAnalyticsDataApi
             return $this->emptyAdContentReport('unavailable', null, null);
         }
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $windowEndOn],
@@ -676,9 +670,7 @@ class GoogleAnalyticsDataApi
             return $this->emptyItemReport('unavailable', null, null);
         }
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $windowEndOn],
@@ -806,9 +798,7 @@ class GoogleAnalyticsDataApi
         string $endsOn,
         array $dimensionFilter,
     ): array {
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $endsOn],
@@ -934,9 +924,7 @@ class GoogleAnalyticsDataApi
         string $endsOn,
         array $dimensionFilter,
     ): array {
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $endsOn],
@@ -1072,9 +1060,7 @@ class GoogleAnalyticsDataApi
         string $endsOn,
         array $dimensionFilter,
     ): array {
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(15)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 15)
             ->post('https://analyticsdata.googleapis.com/v1beta/properties/'.$propertyId.':runReport', [
                 'dateRanges' => [
                     ['startDate' => $startsOn, 'endDate' => $endsOn],

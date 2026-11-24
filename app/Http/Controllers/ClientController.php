@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\Organization;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
 use Illuminate\Http\RedirectResponse;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ClientController extends Controller
@@ -72,7 +74,23 @@ class ClientController extends Controller
             'name.unique' => '此帳戶已有相同名稱的客戶。',
         ]);
 
-        $request->user()->clients()->create(['name' => $validated['name']]);
+        DB::transaction(function () use ($request, $validated): void {
+            $organization = Organization::query()
+                ->where('owner_user_id', $request->user()->workspaceOwnerId())
+                ->lockForUpdate()
+                ->first();
+
+            if ($organization !== null && ! $organization->hasAvailableClient()) {
+                $exception = ValidationException::withMessages([
+                    'name' => '此組織已達客戶數上限，請聯絡平台管理員調整方案。',
+                ]);
+                $exception->errorBag = 'createClient';
+
+                throw $exception;
+            }
+
+            $request->user()->clients()->create(['name' => $validated['name']]);
+        });
 
         return redirect()->route('clients.index')->with('status', '客戶已新增。');
     }

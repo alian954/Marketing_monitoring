@@ -27,6 +27,7 @@ class SocialEngagementCampaignPostDetailTest extends TestCase
             'tag' => 'Spring launch',
             'social_platform' => 'instagram',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
 
         for ($index = 0; $index < 27; $index++) {
             $utmContent = match ($index) {
@@ -182,6 +183,13 @@ class SocialEngagementCampaignPostDetailTest extends TestCase
             'config_version' => $configVersion,
         ]);
 
+        if ($target->user_id !== null && $target->client_id !== null) {
+            $monitor->forceFill([
+                'user_id' => $target->user_id,
+                'client_id' => $target->client_id,
+            ])->save();
+        }
+
         CheckRun::factory()->for($monitor)->create([
             'config_version' => $runConfigVersion ?? $monitor->config_version,
             'status' => 'completed',
@@ -211,6 +219,7 @@ class SocialEngagementCampaignPostDetailTest extends TestCase
     ): SocialEngagementTargetGoogleAnalyticsReport {
         return SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'manual_utm',

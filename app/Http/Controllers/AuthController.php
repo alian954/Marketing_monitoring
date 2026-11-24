@@ -65,9 +65,14 @@ class AuthController extends Controller
             'email.max' => '電子郵件地址不得超過 254 個字元。',
         ]);
 
-        Password::sendResetLink([
-            'email' => mb_strtolower(trim($validated['email'])),
-        ]);
+        $email = mb_strtolower(trim($validated['email']));
+        $user = User::query()->whereRaw('lower(email) = ?', [$email])->first();
+
+        if ($user instanceof User && ! $user->hasActiveOrganization()) {
+            return back()->with('status', '如果這個電子郵件對應監測台帳戶，我們會寄送重設密碼連結。請查看收件匣與垃圾郵件。');
+        }
+
+        Password::sendResetLink(['email' => $email]);
 
         return back()->with('status', '如果這個電子郵件對應監測台帳戶，我們會寄送重設密碼連結。請查看收件匣與垃圾郵件。');
     }
@@ -99,6 +104,12 @@ class AuthController extends Controller
         $status = Password::reset(
             $validated,
             function (User $user, string $password): void {
+                if (! $user->hasActiveOrganization()) {
+                    throw ValidationException::withMessages([
+                        'email' => '所屬組織的訂閱已到期或已停用，無法重設帳戶密碼。',
+                    ]);
+                }
+
                 $user->forceFill([
                     'password' => Hash::make($password),
                     'remember_token' => Str::random(60),
@@ -140,9 +151,25 @@ class AuthController extends Controller
         }
 
         RateLimiter::clear($key);
+        $authenticatedUser = Auth::user();
+
+        if (! $authenticatedUser instanceof User || ! $authenticatedUser->hasActiveOrganization()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => '所屬組織的訂閱已到期或已停用，登入功能已暫停。',
+            ]);
+        }
+
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        $destination = $authenticatedUser->isPlatformAdmin()
+            ? route('platform.index')
+            : route('dashboard');
+
+        return redirect()->intended($destination);
     }
 
     public function destroy(Request $request): RedirectResponse

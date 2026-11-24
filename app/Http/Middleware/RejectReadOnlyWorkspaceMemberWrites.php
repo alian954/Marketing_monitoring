@@ -19,6 +19,7 @@ class RejectReadOnlyWorkspaceMemberWrites
         $user = $request->user();
 
         if ($user instanceof User
+            && ! $request->routeIs('platform.*')
             && ! $request->isMethodSafe()
             && ! $request->routeIs(
                 'logout',

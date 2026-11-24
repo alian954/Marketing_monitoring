@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\CheckRobotsTxt;
 use App\Models\Monitor;
+use App\Models\Organization;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -21,6 +22,7 @@ class DispatchDailyRobotsChecks extends Command
         Monitor::query()
             ->where('enabled', true)
             ->whereNull('social_platform')
+            ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(now('Asia/Taipei')->toDateString()))
             ->whereDoesntHave('robotsObservations', static fn (Builder $query) => $query->whereDate('observed_on', today()))
             ->orderBy('id')
             ->chunkById(100, function (Collection $monitors) use (&$queued): void {

@@ -1451,6 +1451,14 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             'ad_account_id' => '123456789',
             'currency_code' => 'USD',
         ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill(['user_id' => $user->workspaceOwnerId(), 'client_id' => $client->getKey()])->save();
+        $metaConnection->clientAccounts()->create([
+            'client_id' => $client->getKey(),
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Test Meta account',
+            'currency_code' => 'USD',
+        ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,
             'social_engagement_target_id' => $target->id,
@@ -1501,6 +1509,14 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
             'user_id' => $user->id,
             'access_token' => 'meta-token',
             'ad_account_id' => '123456789',
+            'currency_code' => 'TWD',
+        ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill(['user_id' => $user->workspaceOwnerId(), 'client_id' => $client->getKey()])->save();
+        $metaConnection->clientAccounts()->create([
+            'client_id' => $client->getKey(),
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Test Meta account',
             'currency_code' => 'TWD',
         ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
@@ -1605,24 +1621,32 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create(array_merge([
+        $target = SocialEngagementTarget::factory()->create(array_merge([
             'tag' => 'Winter campaign',
             'social_platform' => 'facebook',
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
             'google_ads_campaign_id' => '987654321',
         ], $attributes));
+
+        $this->bindGoogleAdsTargetFixture($target);
+
+        return $target;
     }
 
     private function createConnection(User $user, array $attributes = []): GoogleAdsConnection
     {
-        return GoogleAdsConnection::query()->create(array_merge([
+        $connection = GoogleAdsConnection::query()->create(array_merge([
             'user_id' => $user->id,
             'refresh_token' => 'authorized-refresh-token',
             'customer_id' => '1234567890',
             'customer_name' => 'Example Ads',
             'currency_code' => 'TWD',
         ], $attributes));
+
+        $this->trackGoogleAdsFixtureConnection($connection);
+
+        return $connection;
     }
 
     private function createReport(

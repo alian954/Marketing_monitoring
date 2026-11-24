@@ -8,6 +8,7 @@ use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -17,6 +18,7 @@ class SocialEngagementCampaignPostCsvTest extends TestCase
 
     public function test_campaign_post_export_streams_every_in_period_post_with_ga4_attribution_and_duplicate_protection(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-25 04:00:00', 'UTC'));
         $user = User::factory()->create();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
@@ -33,6 +35,7 @@ class SocialEngagementCampaignPostCsvTest extends TestCase
             'ga4_source_name' => 'instagram',
             'ga4_medium_name' => 'social',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
 
         for ($index = 0; $index < 251; $index++) {
             $utmContent = match ($index) {
@@ -50,6 +53,7 @@ class SocialEngagementCampaignPostCsvTest extends TestCase
 
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => 'spring-launch',
             'attribution_mode' => 'manual_utm',
@@ -134,6 +138,13 @@ class SocialEngagementCampaignPostCsvTest extends TestCase
             'label' => $target->tag,
             'utm_content' => $utmContent,
         ]);
+
+        if ($target->user_id !== null && $target->client_id !== null) {
+            $monitor->forceFill([
+                'user_id' => $target->user_id,
+                'client_id' => $target->client_id,
+            ])->save();
+        }
 
         CheckRun::factory()->for($monitor)->create([
             'config_version' => $monitor->config_version,

@@ -7,8 +7,10 @@
         $totalMonitors = $monitorCount;
         $attentionCount = ($counts['issue'] ?? 0) + ($counts['warning'] ?? 0) + ($counts['stale'] ?? 0);
         $campaignTargetCount = count($socialEngagementTargets);
-        $dashboardAttentionUrl = $dashboardSystemAttention['url'] ?? route('features.index').'#monitoring-runtime';
-        $dashboardAttentionLinkLabel = $dashboardSystemAttention['link_label'] ?? '查看處理方式';
+        $canViewDashboardOperationsAttention = auth()->user()?->isPlatformAdmin() ?? false;
+        $hasDashboardOperationsAttention = $canViewDashboardOperationsAttention
+            && $dashboardSystemAttention !== null
+            && ($dashboardSystemAttention['section_title'] ?? null) !== '行銷數據待處理';
         $hasSocialEngagementFilters = $socialEngagementSelectedPlatform !== 'all'
             || $socialEngagementSelectedTag !== 'all'
             || $socialEngagementChangePeriodDays !== 7;
@@ -38,21 +40,16 @@
 
     <section class="panel dashboard-focus spaced-top" aria-labelledby="dashboard-focus-title" id="dashboard-overview">
         <div class="panel-header">
-            <h2 id="dashboard-focus-title" class="panel-title">{{ $dashboardSystemAttention['section_title'] ?? ($dashboardSystemAttention !== null ? '系統待處理' : '待處理') }}</h2>
-            @if ($dashboardSystemAttention !== null)
-                <a class="strong-link" href="{{ $dashboardAttentionUrl }}">{{ $dashboardAttentionLinkLabel }} <span aria-hidden="true">→</span></a>
-            @elseif ($attentionCount > 0)
+            <h2 id="dashboard-focus-title" class="panel-title">待處理</h2>
+            @if ($attentionCount > 0)
                 <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
+            @elseif ($dashboardMarketingDataAttention !== null)
+                <a class="strong-link" href="{{ $dashboardMarketingDataAttention['url'] }}">{{ $dashboardMarketingDataAttention['link_label'] }} <span aria-hidden="true">→</span></a>
+            @elseif ($hasDashboardOperationsAttention)
+                <a class="strong-link" href="#dashboard-runtime-details">查看狀態 <span aria-hidden="true">→</span></a>
             @endif
         </div>
-        @if ($dashboardSystemAttention !== null)
-            <div class="panel-body dashboard-focus-body">
-                <div class="alert alert-warning dashboard-system-attention">
-                    <p class="alert-title">{{ $dashboardSystemAttention['title'] }}</p>
-                    {{ $dashboardSystemAttention['description'] }}
-                </div>
-            </div>
-        @elseif ($attentionCount > 0)
+        @if ($attentionCount > 0)
             <div class="panel-body dashboard-focus-body">
                 <p class="dashboard-focus-count-line">
                     <strong class="dashboard-focus-count">{{ number_format($attentionCount) }}</strong>
@@ -70,6 +67,29 @@
                         </ul>
                     </div>
                 @endif
+                @if ($dashboardMarketingDataAttention !== null)
+                    <div class="alert alert-warning dashboard-system-attention">
+                        <p class="alert-title">{{ $dashboardMarketingDataAttention['title'] }}</p>
+                        {{ $dashboardMarketingDataAttention['description'] }}
+                    </div>
+                @endif
+                @if ($hasDashboardOperationsAttention)
+                    <p class="secondary-text">監測資料更新可能延遲。<a href="#dashboard-runtime-details">查看服務狀態</a></p>
+                @endif
+            </div>
+        @elseif ($dashboardMarketingDataAttention !== null)
+            <div class="panel-body dashboard-focus-body">
+                <div class="alert alert-warning dashboard-system-attention">
+                    <p class="alert-title">{{ $dashboardMarketingDataAttention['title'] }}</p>
+                    {{ $dashboardMarketingDataAttention['description'] }}
+                </div>
+            </div>
+        @elseif ($hasDashboardOperationsAttention)
+            <div class="panel-body dashboard-focus-body">
+                <div class="alert alert-warning dashboard-system-attention">
+                    <p class="alert-title">監測資料更新可能延遲</p>
+                    部分監測結果尚未更新，請查看系統檢查資訊。
+                </div>
             </div>
         @elseif ($totalMonitors === 0)
             <div class="empty-state dashboard-focus-empty">
@@ -178,6 +198,23 @@
             @endif
         </section>
 
+        @if ($canViewDashboardOperationsAttention)
+        <details class="dashboard-subdisclosure dashboard-runtime-disclosure" aria-labelledby="dashboard-runtime-summary" id="dashboard-runtime-details">
+            <summary>
+                <span id="dashboard-runtime-summary">系統檢查資訊</span>
+                @if ($hasDashboardOperationsAttention)
+                    <span class="dashboard-disclosure-meta">需要留意</span>
+                @else
+                    <span class="dashboard-disclosure-meta">執行狀態</span>
+                @endif
+            </summary>
+            <div class="dashboard-disclosure-content">
+            @if ($hasDashboardOperationsAttention)
+                <div class="alert alert-warning dashboard-system-attention">
+                    <p class="alert-title">{{ $dashboardSystemAttention['title'] }}</p>
+                    {{ $dashboardSystemAttention['description'] }}
+                </div>
+            @endif
         <section class="panel heartbeat-panel" aria-labelledby="runtime-title">
             <div class="heartbeat-item">
                 <div class="heartbeat-heading">
@@ -267,6 +304,9 @@
                 </div>
             @endif
         </section>
+            </div>
+        </details>
+        @endif
     </div>
         </div>
     </details>

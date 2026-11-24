@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -680,7 +683,7 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
         $this->createDailyReports($staleUser, $staleTarget, [
             'meta_rows' => $this->fatigueMetaRows(1500, 1000, 120),
         ]);
-        SocialEngagementTargetMetaMarketingReport::query()
+        SocialEngagementTargetMetaMarketingReport::withoutGlobalScopes()
             ->where('social_engagement_target_id', $staleTarget->id)
             ->firstOrFail()
             ->update(['synced_at' => now()->subDay()]);
@@ -782,6 +785,13 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
      */
     private function createDailyReports(User $user, SocialEngagementTarget $target, array $options): void
     {
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
         $startOn = $target->starts_on->toDateString();
         $endOn = $target->ends_on->toDateString();
         $requestedDates = [
@@ -793,9 +803,14 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
             'property_id' => '123456789',
             'refresh_token' => 'ga-refresh-token',
         ]);
+        GoogleAnalyticsClientProperty::withoutGlobalScopes()->updateOrCreate([
+            'google_analytics_connection_id' => $analyticsConnection->id,
+            'client_id' => $target->client_id,
+        ], ['property_id' => $analyticsConnection->property_id]);
         $attributionMode = $target->googleAnalyticsAttributionMode();
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $analyticsConnection->id,
+            'property_id' => $analyticsConnection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => $attributionMode,
@@ -821,8 +836,17 @@ class SocialEngagementDailyMarketingEfficiencyTest extends TestCase
 
         $metaConnection = MetaMarketingConnection::factory()->create([
             'user_id' => $user->id,
-            'ad_account_id' => 'act_12345',
+            'ad_account_id' => '12345',
+            'ad_account_name' => 'Daily efficiency Meta account',
             'currency_code' => $options['meta_currency'] ?? 'TWD',
+        ]);
+        MetaMarketingClientAccount::withoutGlobalScopes()->updateOrCreate([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $target->client_id,
+        ], [
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
         ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,

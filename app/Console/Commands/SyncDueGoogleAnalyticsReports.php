@@ -4,10 +4,12 @@ namespace App\Console\Commands;
 
 use App\Models\AccountScopeContext;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsCampaignReportSync;
+use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsDataApi;
 use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
@@ -26,6 +28,7 @@ class SyncDueGoogleAnalyticsReports extends Command
     public function handle(
         GoogleAnalyticsDataApi $dataApi,
         GoogleAnalyticsCampaignReportSync $campaignReportSync,
+        GoogleAnalyticsClientPropertyResolver $propertyResolver,
         ScheduledSyncHealthRecorder $syncHealthRecorder,
     ): int {
         $asOf = CarbonImmutable::now();
@@ -46,13 +49,12 @@ class SyncDueGoogleAnalyticsReports extends Command
         $failedCount = 0;
 
         GoogleAnalyticsConnection::query()
-            ->whereNotNull('property_id')
-            ->where('property_id', '<>', '')
             ->orderBy('id')
             ->chunkById(50, function (Collection $connections) use (
                 $asOf,
                 $dataApi,
                 $campaignReportSync,
+                $propertyResolver,
                 $syncHealthRecorder,
                 &$syncedCount,
                 &$skippedCount,
@@ -84,21 +86,32 @@ class SyncDueGoogleAnalyticsReports extends Command
                             $dataApi,
                             $asOf,
                             $campaignReportSync,
+                            $propertyResolver,
                             &$syncedCount,
                             &$skippedCount,
                             &$failedCount,
                         ): void {
+                            $propertiesByTarget = $targets->mapWithKeys(function (SocialEngagementTarget $target) use ($connection, $propertyResolver): array {
+                                $property = $propertyResolver->forTarget($connection, $target);
+
+                                return $property === null ? [] : [$target->getKey() => $property];
+                            });
                             $reports = SocialEngagementTargetGoogleAnalyticsReport::query()
                                 ->where('google_analytics_connection_id', $connection->getKey())
                                 ->whereIn('social_engagement_target_id', $targets->modelKeys())
                                 ->get()
                                 ->keyBy('social_engagement_target_id');
-                            $targetsToSync = $targets->reject(fn (SocialEngagementTarget $target): bool => $campaignReportSync->isSnapshotFresh(
-                                $reports->get($target->getKey()),
-                                $target,
-                                $asOf,
-                            )
-                            );
+                            $targetsToSync = $targets->reject(function (SocialEngagementTarget $target) use ($propertiesByTarget, $reports, $campaignReportSync, $asOf): bool {
+                                $property = $propertiesByTarget->get($target->getKey());
+
+                                return $property === null || $campaignReportSync->isSnapshotFresh(
+                                    $reports->get($target->getKey()),
+                                    $target,
+                                    $asOf,
+                                    $property->property_id,
+                                    ! $property->exists,
+                                );
+                            });
 
                             $skippedCount += $targets->count() - $targetsToSync->count();
 
@@ -130,7 +143,12 @@ class SyncDueGoogleAnalyticsReports extends Command
 
                             foreach ($targetsToSync as $target) {
                                 try {
-                                    $campaignReportSync->sync($connection, $target, $accessToken);
+                                    $campaignReportSync->sync(
+                                        $connection,
+                                        $target,
+                                        $accessToken,
+                                        $propertiesByTarget->get($target->getKey())->property_id,
+                                    );
                                     $syncedCount++;
                                 } catch (GoogleAnalyticsApiException|ConnectionException $exception) {
                                     $failedCount++;
@@ -167,7 +185,10 @@ class SyncDueGoogleAnalyticsReports extends Command
             ->whereNotNull('starts_on')
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
-            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString())
+            ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(
+                $asOf->setTimezone('Asia/Taipei')->toDateString(),
+            ));
     }
 
     private function clearExpiredLandingPageReports(CarbonImmutable $asOf): void

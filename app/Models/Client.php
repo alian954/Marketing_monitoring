@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['name', 'reporting_currency_code'])]
@@ -62,6 +63,26 @@ class Client extends Model
     public function exchangeRates(): HasMany
     {
         return $this->hasMany(ClientExchangeRate::class);
+    }
+
+    public function googleSearchConsoleSite(): HasOne
+    {
+        return $this->hasOne(GoogleSearchConsoleClientSite::class);
+    }
+
+    public function googleAnalyticsProperty(): HasOne
+    {
+        return $this->hasOne(GoogleAnalyticsClientProperty::class);
+    }
+
+    public function metaMarketingAccount(): HasOne
+    {
+        return $this->hasOne(MetaMarketingClientAccount::class);
+    }
+
+    public function googleAdsAccount(): HasOne
+    {
+        return $this->hasOne(GoogleAdsClientAccount::class);
     }
 
     public function isDefault(): bool

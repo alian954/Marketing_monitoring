@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Client;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
@@ -26,7 +27,7 @@ class WorkspaceAccessTest extends TestCase
         $this->actingAs($owner)
             ->get(route('team.index'))
             ->assertOk()
-            ->assertSee('工作區成員')
+            ->assertSee('組織成員')
             ->assertSee('name="role"', false)
             ->assertSee('value="read_only"', false)
             ->assertSee('value="editor"', false);
@@ -71,7 +72,7 @@ class WorkspaceAccessTest extends TestCase
 
         $this->get(route('team.invitations.show', ['token' => $token]))
             ->assertOk()
-            ->assertSee('加入 工作區擁有者 的工作區')
+            ->assertSee('加入 工作區擁有者 的組織')
             ->assertSee('new.member@example.test');
 
         $this->post(route('team.invitations.accept', ['token' => $token]), [
@@ -132,7 +133,7 @@ class WorkspaceAccessTest extends TestCase
         $this->get(route('team.invitations.show', ['token' => $token]))
             ->assertOk()
             ->assertSee('可編輯成員')
-            ->assertSee('工作區管理與整合設定仍由擁有者負責');
+            ->assertSee('組織管理與整合設定仍由擁有者負責');
         $this->post(route('team.invitations.accept', ['token' => $token]), [
             'name' => '行銷編輯',
             'password' => 'a-secure-password-123',
@@ -206,7 +207,7 @@ class WorkspaceAccessTest extends TestCase
             ->assertOk()
             ->assertSee('aria-invalid="true"', false)
             ->assertSee('invite-role-error', false)
-            ->assertSee('請選擇有效的工作區權限。');
+            ->assertSee('請選擇有效的組織權限。');
 
         $this->assertDatabaseMissing('workspace_invitations', [
             'owner_user_id' => $owner->id,
@@ -794,6 +795,7 @@ class WorkspaceAccessTest extends TestCase
     public function test_manager_password_reset_ignores_read_only_workspace_members(): void
     {
         $owner = User::factory()->create();
+        $owner->forceFill(['is_platform_admin' => true])->save();
         $member = User::factory()->create();
         WorkspaceMembership::factory()->create([
             'owner_user_id' => $owner->id,
@@ -808,5 +810,101 @@ class WorkspaceAccessTest extends TestCase
 
         $this->assertTrue(Hash::check('new-manager-password-123', $owner->fresh()->password));
         $this->assertTrue(Hash::check('password', $member->fresh()->password));
+    }
+
+    public function test_workspace_seat_limit_counts_accounts_and_pending_invitations_and_releases_revoked_seats(): void
+    {
+        $owner = User::factory()->create();
+        $organization = Organization::factory()->for($owner, 'owner')->create(['seat_limit' => 3]);
+        $member = User::factory()->create();
+        WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'accepted_at' => now(),
+        ]);
+        $owner->workspaceInvitations()->create([
+            'email' => 'expired-seat@example.test',
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_ALL,
+            'token_hash' => hash('sha256', Str::random(64)),
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('team.index'))
+            ->assertOk()
+            ->assertSee('席次 2 / 3，含待接受邀請。');
+
+        $this->post(route('team.invitations.store'), ['email' => 'pending-seat@example.test'])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHas('createdInviteUrl');
+
+        $pendingInvitation = WorkspaceInvitation::query()
+            ->where('owner_user_id', $owner->id)
+            ->where('email', 'pending-seat@example.test')
+            ->whereNull('revoked_at')
+            ->firstOrFail();
+        $this->assertSame(3, $organization->fresh()->occupiedSeats());
+
+        $this->get(route('team.index'))
+            ->assertOk()
+            ->assertSee('席次 3 / 3，含待接受邀請。');
+
+        $this->post(route('team.invitations.store'), ['email' => 'another-seat@example.test'])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHasErrors('email');
+        $this->assertDatabaseMissing('workspace_invitations', [
+            'owner_user_id' => $owner->id,
+            'email' => 'another-seat@example.test',
+        ]);
+
+        $this->post(route('team.invitations.store'), ['email' => 'pending-seat@example.test'])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHas('createdInviteUrl');
+        $this->assertNotNull($pendingInvitation->fresh()->revoked_at);
+        $this->assertSame(3, $organization->fresh()->occupiedSeats());
+
+        $currentInvitation = WorkspaceInvitation::query()
+            ->where('owner_user_id', $owner->id)
+            ->where('email', 'pending-seat@example.test')
+            ->whereNull('revoked_at')
+            ->firstOrFail();
+        $this->delete(route('team.invitations.destroy', $currentInvitation))
+            ->assertRedirect(route('team.index'));
+        $this->assertSame(2, $organization->fresh()->occupiedSeats());
+
+        $this->delete(route('team.members.destroy', $member->workspaceMembership))
+            ->assertRedirect(route('team.index'));
+        $this->assertSame(1, $organization->fresh()->occupiedSeats());
+    }
+
+    public function test_accepting_a_reserved_invitation_converts_it_into_a_member_seat(): void
+    {
+        $owner = User::factory()->create();
+        $organization = Organization::factory()->for($owner, 'owner')->create(['seat_limit' => 2]);
+
+        $this->actingAs($owner)
+            ->post(route('team.invitations.store'), ['email' => 'seat-member@example.test'])
+            ->assertRedirect(route('team.index'));
+
+        $token = basename((string) parse_url((string) session('createdInviteUrl'), PHP_URL_PATH));
+        $invitation = WorkspaceInvitation::query()->where('email', 'seat-member@example.test')->firstOrFail();
+        $this->assertSame(2, $organization->fresh()->occupiedSeats());
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->post(route('team.invitations.accept', ['token' => $token]), [
+            'name' => 'Seat Member',
+            'password' => 'a-secure-password-123',
+            'password_confirmation' => 'a-secure-password-123',
+        ])->assertRedirect(route('dashboard'));
+
+        $this->assertNotNull($invitation->fresh()->accepted_at);
+        $this->assertSame(2, $organization->fresh()->occupiedSeats());
+
+        $this->actingAs($owner)
+            ->from(route('team.index'))
+            ->post(route('team.invitations.store'), ['email' => 'over-limit-member@example.test'])
+            ->assertRedirect(route('team.index'))
+            ->assertSessionHasErrors('email');
     }
 }

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Monitor;
+use App\Models\Organization;
+use App\Models\User;
 use App\Services\AcceptedStatusCodeList;
 use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\NotificationEmailRecipientParser;
@@ -17,6 +19,7 @@ use App\Services\UrlMasker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -682,6 +685,8 @@ class MonitorImportController extends Controller
 
     public function commit(Request $request): RedirectResponse
     {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
         $validated = $request->validate(['preview_token' => ['required', 'string', 'size:40']]);
         $encryptedRows = session('monitor_import_preview');
         $storedToken = session('monitor_import_token');
@@ -698,65 +703,88 @@ class MonitorImportController extends Controller
             return redirect()->route('monitors.import')->withErrors(['file' => '預覽已失效，請重新上傳 CSV 檔案。']);
         }
 
-        $added = 0;
-        $skipped = 0;
+        [$added, $skipped, $quotaSkipped] = DB::transaction(function () use ($rows, $user): array {
+            $organization = Organization::query()
+                ->where('owner_user_id', $user->workspaceOwnerId())
+                ->lockForUpdate()
+                ->first();
+            $currentMonitorCount = $organization?->monitorUsageCount() ?? 0;
+            $added = 0;
+            $skipped = 0;
+            $quotaSkipped = 0;
 
-        foreach ($rows as $row) {
-            if (! ($row['eligible'] ?? false) || ! isset($row['url'], $row['url_hash'])) {
-                $skipped++;
+            foreach ($rows as $row) {
+                if (! ($row['eligible'] ?? false) || ! isset($row['url'], $row['url_hash'])) {
+                    $skipped++;
 
-                continue;
+                    continue;
+                }
+
+                if (Monitor::query()->where('url_hash', $row['url_hash'])->exists()) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                if ($organization?->monitor_limit !== null && $currentMonitorCount >= $organization->monitor_limit) {
+                    $quotaSkipped++;
+
+                    continue;
+                }
+
+                $monitor = Monitor::query()->firstOrCreate(['url_hash' => $row['url_hash']], [
+                    'name' => $row['name'],
+                    'url' => $row['url'],
+                    'label' => $row['label'] !== '' ? $row['label'] : null,
+                    'enabled' => $row['enabled'] ?? true,
+                    'public_status' => $row['public_status'] ?? false,
+                    'config_version' => 1,
+                    'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
+                    'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
+                    'request_headers' => $row['request_headers'] ?? [],
+                    'notification_email' => $row['notification_email'] ?? null,
+                    'notification_escalation_email' => $row['notification_escalation_email'] ?? null,
+                    'notification_escalation_delay_minutes' => $row['notification_escalation_delay_minutes'] ?? null,
+                    'notification_escalation_stage_2_email' => $row['notification_escalation_stage_2_email'] ?? null,
+                    'notification_escalation_stage_2_delay_minutes' => $row['notification_escalation_stage_2_delay_minutes'] ?? null,
+                    'notification_slack_webhook' => $row['notification_slack_webhook'] ?? null,
+                    'notification_discord_webhook' => $row['notification_discord_webhook'] ?? null,
+                    'notification_teams_webhook' => $row['notification_teams_webhook'] ?? null,
+                    'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
+                    'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
+                    'alert_on_visible_text_change' => $row['alert_on_visible_text_change'] ?? false,
+                    'alert_on_response_metadata_change' => $row['alert_on_response_metadata_change'] ?? false,
+                    'expected_response_header' => $row['expected_response_header'] ?? null,
+                    'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
+                    'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
+                    'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
+                    'slo_target_basis_points' => $row['slo_target_basis_points'] ?? Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS,
+                    'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
+                    'min_response_body_bytes' => $row['min_response_body_bytes'] ?? null,
+                    'max_response_body_bytes' => $row['max_response_body_bytes'] ?? null,
+                    'next_check_at' => ($row['enabled'] ?? true) ? now() : null,
+                ]);
+
+                if ($monitor->wasRecentlyCreated) {
+                    $added++;
+                    $currentMonitorCount++;
+                } else {
+                    $skipped++;
+                }
             }
 
-            if (Monitor::query()->where('url_hash', $row['url_hash'])->exists()) {
-                $skipped++;
-
-                continue;
-            }
-
-            $monitor = Monitor::query()->firstOrCreate(['url_hash' => $row['url_hash']], [
-                'name' => $row['name'],
-                'url' => $row['url'],
-                'label' => $row['label'] !== '' ? $row['label'] : null,
-                'enabled' => $row['enabled'] ?? true,
-                'public_status' => $row['public_status'] ?? false,
-                'config_version' => 1,
-                'allowed_redirect_hosts' => $row['allowed_redirect_hosts'] ?? [],
-                'accepted_status_codes' => $row['accepted_status_codes'] ?? [],
-                'request_headers' => $row['request_headers'] ?? [],
-                'notification_email' => $row['notification_email'] ?? null,
-                'notification_escalation_email' => $row['notification_escalation_email'] ?? null,
-                'notification_escalation_delay_minutes' => $row['notification_escalation_delay_minutes'] ?? null,
-                'notification_escalation_stage_2_email' => $row['notification_escalation_stage_2_email'] ?? null,
-                'notification_escalation_stage_2_delay_minutes' => $row['notification_escalation_stage_2_delay_minutes'] ?? null,
-                'notification_slack_webhook' => $row['notification_slack_webhook'] ?? null,
-                'notification_discord_webhook' => $row['notification_discord_webhook'] ?? null,
-                'notification_teams_webhook' => $row['notification_teams_webhook'] ?? null,
-                'expected_text' => ($row['expected_text'] ?? '') !== '' ? $row['expected_text'] : null,
-                'expected_text_mode' => $row['expected_text_mode'] ?? 'present',
-                'alert_on_visible_text_change' => $row['alert_on_visible_text_change'] ?? false,
-                'alert_on_response_metadata_change' => $row['alert_on_response_metadata_change'] ?? false,
-                'expected_response_header' => $row['expected_response_header'] ?? null,
-                'timeout_seconds' => $row['timeout_seconds'] ?? (int) config('monitoring.request_timeout_seconds'),
-                'confirmation_delay_seconds' => $row['confirmation_delay_seconds'] ?? (int) config('monitoring.confirmation_delay_seconds'),
-                'interval_seconds' => $row['interval_seconds'] ?? (int) config('monitoring.interval_seconds'),
-                'slo_target_basis_points' => $row['slo_target_basis_points'] ?? Monitor::DEFAULT_SLO_TARGET_BASIS_POINTS,
-                'response_time_threshold_ms' => $row['response_time_threshold_ms'] ?? null,
-                'min_response_body_bytes' => $row['min_response_body_bytes'] ?? null,
-                'max_response_body_bytes' => $row['max_response_body_bytes'] ?? null,
-                'next_check_at' => ($row['enabled'] ?? true) ? now() : null,
-            ]);
-
-            if ($monitor->wasRecentlyCreated) {
-                $added++;
-            } else {
-                $skipped++;
-            }
-        }
+            return [$added, $skipped, $quotaSkipped];
+        });
 
         session()->forget(['monitor_import_preview', 'monitor_import_token']);
 
-        return redirect()->route('monitors.index')->with('status', '已匯入 '.$added.' 個監測項目；略過 '.$skipped.' 筆無效或重複資料。');
+        $status = '已匯入 '.$added.' 個監測項目；略過 '.$skipped.' 筆無效或重複資料。';
+
+        if ($quotaSkipped > 0) {
+            $status .= '因達監測項目上限，另略過 '.$quotaSkipped.' 筆。';
+        }
+
+        return redirect()->route('monitors.index')->with('status', $status);
     }
 
     private function validateUrl(string $url): string

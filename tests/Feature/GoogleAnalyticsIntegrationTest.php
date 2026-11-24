@@ -184,6 +184,7 @@ class GoogleAnalyticsIntegrationTest extends TestCase
     public function test_property_id_must_be_numeric_and_is_saved_for_the_connected_user(): void
     {
         $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => 'GA4 客戶']);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'refresh-token',
@@ -197,26 +198,52 @@ class GoogleAnalyticsIntegrationTest extends TestCase
         ]);
         $this->actingAs($user)
             ->from(route('integrations.google-analytics.edit'))
-            ->put(route('integrations.google-analytics.property.update'), ['property_id' => 'properties/123'])
+            ->put(route('integrations.google-analytics.property.update', $client), ['property_id' => 'properties/123', 'client_id' => $client->id])
             ->assertRedirect(route('integrations.google-analytics.edit'))
             ->assertSessionHasErrors(['property_id']);
 
         $this->actingAs($user)
-            ->put(route('integrations.google-analytics.property.update'), ['property_id' => '123456789'])
-            ->assertRedirect(route('integrations.google-analytics.edit'))
+            ->put(route('integrations.google-analytics.property.update', $client), ['property_id' => '123456789', 'client_id' => $client->id])
+            ->assertRedirect(route('integrations.google-analytics.edit', ['client_id' => $client->id]))
             ->assertSessionHas('status');
 
-        $this->assertSame('123456789', $connection->fresh()->property_id);
+        $this->assertNull($connection->fresh()->property_id);
+        $this->assertDatabaseHas('google_analytics_client_properties', [
+            'google_analytics_connection_id' => $connection->id,
+            'client_id' => $client->id,
+            'property_id' => '123456789',
+        ]);
         $this->actingAs($user)
             ->get(route('integrations.google-analytics.edit'))
             ->assertOk()
             ->assertSee('GA4 資源 ID')
+            ->assertSee('GA4 客戶')
             ->assertSee('123456789')
             ->assertSee('排程同步')
             ->assertSee('部分失敗')
             ->assertSee('更新 3 個活動 · 略過 1 個 · 失敗 1 個')
             ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
             ->assertDontSee('<script>alert(1)</script>', false);
+    }
+
+    public function test_property_settings_cannot_write_a_different_workspaces_client(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $client = $otherUser->clients()->create(['name' => '別的客戶']);
+        GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'refresh_token' => 'refresh-token',
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('integrations.google-analytics.property.update', $client), [
+                'client_id' => $client->id,
+                'property_id' => '123456789',
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('google_analytics_client_properties', 0);
     }
 
     public function test_integration_page_shows_the_start_time_for_a_running_sync(): void

@@ -28,6 +28,7 @@ class DailyTlsCheckTest extends TestCase
 
         $eligibleMonitor = $this->createMonitor('https://eligible.example/landing');
         $this->createMonitor('http://plain.example/landing');
+        $socialMonitor = $this->createMonitor('https://www.facebook.com/share/p/12345/');
         $this->createMonitor('https://paused.example/landing', false);
         $observedMonitor = $this->createMonitor('https://observed.example/landing');
         TlsObservation::factory()->for($observedMonitor)->create(['observed_on' => today()]);
@@ -38,6 +39,19 @@ class DailyTlsCheckTest extends TestCase
 
         Queue::assertPushed(CheckTlsCertificate::class, 1);
         Queue::assertPushed(CheckTlsCertificate::class, fn (CheckTlsCertificate $job): bool => $job->monitorId === $eligibleMonitor->id);
+        Queue::assertNotPushed(CheckTlsCertificate::class, fn (CheckTlsCertificate $job): bool => $job->monitorId === $socialMonitor->id);
+    }
+
+    public function test_job_skips_social_post_urls_even_when_dispatched_directly(): void
+    {
+        $monitor = $this->createMonitor('https://www.instagram.com/reel/12345/');
+        $probe = $this->mock(TlsCertificateProbe::class);
+        $probe->shouldNotReceive('inspect');
+
+        (new CheckTlsCertificate($monitor->id))->handle($probe, app(IncidentManager::class));
+
+        $this->assertDatabaseMissing('tls_observations', ['monitor_id' => $monitor->id]);
+        $this->assertDatabaseMissing('check_runs', ['monitor_id' => $monitor->id, 'source' => 'tls_daily']);
     }
 
     public function test_job_saves_daily_expiry_and_uses_existing_tls_alert_rules_once(): void

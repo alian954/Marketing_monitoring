@@ -28,10 +28,12 @@ class SocialEngagementTarget extends Model
 
             if ($user instanceof User) {
                 $target->forceFill(['user_id' => $user->workspaceOwnerId()]);
+            } elseif (is_numeric($target->user_id)) {
+                $user = User::query()->find((int) $target->user_id);
+            }
 
-                if ($target->client_id === null) {
-                    $target->forceFill(['client_id' => Client::ensureDefaultFor($user)->id]);
-                }
+            if ($user instanceof User && $target->client_id === null) {
+                $target->forceFill(['client_id' => Client::ensureDefaultFor($user)->id]);
             }
         });
     }

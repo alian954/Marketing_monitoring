@@ -141,7 +141,7 @@
         @else
             <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="client-performance-table-title">
                 <table class="data-table">
-                    <caption class="sr-only">{{ $reportPeriod['from'] }} 至 {{ $reportPeriod['to'] }} 各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS 和資料更新狀態@if ($comparisonPeriod !== null)，並比較 {{ $comparisonPeriod['from'] }} 至 {{ $comparisonPeriod['to'] }}@endif</caption>
+                    <caption class="sr-only">{{ $reportPeriod['from'] }} 至 {{ $reportPeriod['to'] }} 各客戶活動數量、GA4 營收、廣告花費、平台歸因 ROAS、原幣估算媒體貢獻和資料更新狀態@if ($comparisonPeriod !== null)，並比較 {{ $comparisonPeriod['from'] }} 至 {{ $comparisonPeriod['to'] }}@endif</caption>
                     <thead>
                         <tr>
                             <th scope="col">客戶</th>
@@ -150,6 +150,7 @@
                                 <th scope="col" class="numeric">{{ $definition['label'] }}</th>
                             @endforeach
                             <th scope="col" class="numeric">平台 ROAS</th>
+                            <th scope="col" class="numeric">媒體貢獻估算（原幣）</th>
                             <th scope="col">資料更新</th>
                         </tr>
                     </thead>
@@ -223,6 +224,46 @@
                                             <span class="secondary-text">比較資料不足</span>
                                         @endif
                                     @endforelse
+                                </td>
+                                <td class="numeric">
+                                    @forelse ($row['estimated_profitability_groups'] as $group)
+                                        <span class="secondary-text">{{ number_format($group['media_contribution_amount'], 2) }} {{ $group['currency_code'] }}</span>
+                                        <span class="secondary-text">{{ number_format($group['campaign_count']) }} 筆可計算</span>
+                                        @if ($comparisonPeriod !== null)
+                                            @php
+                                                $contributionChange = $row['comparison']['money']['estimated_media_contribution'][$group['currency_code']] ?? null;
+                                            @endphp
+                                            @if (is_array($contributionChange) && $contributionChange['status'] === 'available')
+                                                <span class="secondary-text">
+                                                    較前期 {{ ($contributionChange['delta'] > 0 ? '+' : '').number_format($contributionChange['delta'], 2) }} {{ $group['currency_code'] }}（{{ ($contributionChange['percent_change'] > 0 ? '+' : '').number_format($contributionChange['percent_change'], 2) }}%）
+                                                </span>
+                                            @elseif (is_array($contributionChange) && $contributionChange['status'] === 'zero_baseline')
+                                                <span class="secondary-text">較前期 {{ ($contributionChange['delta'] > 0 ? '+' : '').number_format($contributionChange['delta'], 2) }} {{ $group['currency_code'] }}（前期為 0）</span>
+                                            @else
+                                                <span class="secondary-text">比較資料不足</span>
+                                            @endif
+                                        @endif
+                                    @empty
+                                        <span class="secondary-text">—</span>
+                                        @if ($comparisonPeriod !== null)
+                                            <span class="secondary-text">比較資料不足</span>
+                                        @endif
+                                    @endforelse
+                                    @php
+                                        $profitabilityCoverage = $row['estimated_profitability_coverage'];
+                                    @endphp
+                                    @if ($profitabilityCoverage['eligible_campaigns'] > 0)
+                                        <span class="secondary-text">可計算 {{ number_format($profitabilityCoverage['available_campaigns']) }}/{{ number_format($profitabilityCoverage['eligible_campaigns']) }}</span>
+                                    @endif
+                                    @if ($profitabilityCoverage['unavailable_campaigns'] > 0)
+                                        <span class="secondary-text">資料不足 {{ number_format($profitabilityCoverage['unavailable_campaigns']) }}</span>
+                                    @endif
+                                    @if ($profitabilityCoverage['unconfigured_campaigns'] > 0)
+                                        <span class="secondary-text">未設毛利率 {{ number_format($profitabilityCoverage['unconfigured_campaigns']) }}</span>
+                                    @endif
+                                    @if ($profitabilityCoverage['duplicate_mappings_excluded'] > 0)
+                                        <span class="secondary-text">重複映射排除 {{ number_format($profitabilityCoverage['duplicate_mappings_excluded']) }}</span>
+                                    @endif
                                 </td>
                                 <td>
                                     @php

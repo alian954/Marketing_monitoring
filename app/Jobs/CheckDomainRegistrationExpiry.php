@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\CheckRun;
 use App\Models\DomainRegistrationObservation;
 use App\Models\Monitor;
+use App\Models\Organization;
 use App\Services\IncidentManager;
 use App\Services\MonitorHostConcurrencyLock;
 use App\Services\Probe\DomainExpiryProbe;
@@ -49,7 +50,12 @@ class CheckDomainRegistrationExpiry implements ShouldBeUnique, ShouldQueue
     {
         $monitor = Monitor::query()->find($this->monitorId);
 
-        if ($monitor === null || ! $monitor->enabled || $monitor->socialPlatform() !== null) {
+        if ($monitor === null
+            || ! $monitor->enabled
+            || $monitor->socialPlatform() !== null
+            || ! Organization::isAccessibleForOwner(
+                $monitor->user_id === null ? null : (int) $monitor->user_id,
+            )) {
             return;
         }
 
@@ -67,7 +73,13 @@ class CheckDomainRegistrationExpiry implements ShouldBeUnique, ShouldQueue
         DB::transaction(function () use ($monitor, $configVersion, $observedOn, $startedAt, $finishedAt, $result, $incidents): void {
             $lockedMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
 
-            if ($lockedMonitor === null || ! $lockedMonitor->enabled || $lockedMonitor->config_version !== $configVersion || $lockedMonitor->socialPlatform() !== null) {
+            if ($lockedMonitor === null
+                || ! $lockedMonitor->enabled
+                || ! Organization::isAccessibleForOwner(
+                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
+                )
+                || $lockedMonitor->config_version !== $configVersion
+                || $lockedMonitor->socialPlatform() !== null) {
                 return;
             }
 

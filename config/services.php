@@ -41,6 +41,12 @@ return [
         'redirect_uri' => env('GOOGLE_ANALYTICS_REDIRECT_URI'),
     ],
 
+    'google_search_console' => [
+        'client_id' => env('GOOGLE_SEARCH_CONSOLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_SEARCH_CONSOLE_REDIRECT_URI'),
+    ],
+
     'meta_marketing' => [
         'client_id' => env('META_MARKETING_CLIENT_ID'),
         'client_secret' => env('META_MARKETING_CLIENT_SECRET'),

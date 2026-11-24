@@ -12,27 +12,31 @@ use Illuminate\Support\Facades\DB;
 
 class MetaMarketingCampaignReportSync
 {
-    public function __construct(private MetaMarketingDataApi $dataApi) {}
+    public function __construct(
+        private MetaMarketingDataApi $dataApi,
+        private MetaMarketingClientAccountResolver $clientAccountResolver,
+    ) {}
 
     public function sync(
         MetaMarketingConnection $connection,
         SocialEngagementTarget $target,
     ): SocialEngagementTargetMetaMarketingReport {
-        if ($connection->ad_account_id === null
-            || $connection->currency_code === null
+        $clientAccount = $this->clientAccountResolver->forTarget($connection, $target);
+
+        if ($clientAccount === null
             || $target->meta_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null) {
-            throw new MetaMarketingApiException('請先設定 Meta 廣告帳戶、活動 ID 與活動日期。');
+            throw new MetaMarketingApiException('請先為此客戶設定 Meta 廣告帳戶、活動 ID 與活動日期。');
         }
 
         $metrics = $this->dataApi->campaignInsights(
             (string) $connection->access_token,
-            $connection->ad_account_id,
+            $clientAccount->ad_account_id,
             $target->meta_campaign_id,
             $target->starts_on->toDateString(),
             $target->ends_on->toDateString(),
-            $connection->currency_code,
+            $clientAccount->currency_code,
         );
         $startsOn = $target->starts_on->toDateString();
         $endsOn = $target->ends_on->toDateString();
@@ -40,7 +44,7 @@ class MetaMarketingCampaignReportSync
             'status' => 'complete',
             'window_start_on' => $startsOn,
             'window_end_on' => $endsOn,
-            'currency_code' => $connection->currency_code,
+            'currency_code' => $clientAccount->currency_code,
             'truncated' => false,
             'rows' => [],
         ];
@@ -48,7 +52,7 @@ class MetaMarketingCampaignReportSync
             'status' => 'complete',
             'window_start_on' => $startsOn,
             'window_end_on' => $endsOn,
-            'currency_code' => $connection->currency_code,
+            'currency_code' => $clientAccount->currency_code,
             'truncated' => false,
             'rows' => [],
         ];
@@ -56,7 +60,7 @@ class MetaMarketingCampaignReportSync
             'status' => 'complete',
             'window_start_on' => $startsOn,
             'window_end_on' => $endsOn,
-            'currency_code' => $connection->currency_code,
+            'currency_code' => $clientAccount->currency_code,
             'truncated' => false,
             'rows' => [],
         ];
@@ -64,7 +68,7 @@ class MetaMarketingCampaignReportSync
             'status' => 'complete',
             'window_start_on' => $startsOn,
             'window_end_on' => $endsOn,
-            'currency_code' => $connection->currency_code,
+            'currency_code' => $clientAccount->currency_code,
             'truncated' => false,
             'rows' => [],
         ];
@@ -72,11 +76,11 @@ class MetaMarketingCampaignReportSync
         try {
             $adMetrics = $this->dataApi->campaignAdInsights(
                 (string) $connection->access_token,
-                $connection->ad_account_id,
+                $clientAccount->ad_account_id,
                 $target->meta_campaign_id,
                 $startsOn,
                 $endsOn,
-                $connection->currency_code,
+                $clientAccount->currency_code,
             );
             $adInsights['rows'] = $adMetrics['rows'];
             $adInsights['truncated'] = $adMetrics['truncated'];
@@ -88,11 +92,11 @@ class MetaMarketingCampaignReportSync
         try {
             $placementMetrics = $this->dataApi->campaignPlacementInsights(
                 (string) $connection->access_token,
-                $connection->ad_account_id,
+                $clientAccount->ad_account_id,
                 $target->meta_campaign_id,
                 $startsOn,
                 $endsOn,
-                $connection->currency_code,
+                $clientAccount->currency_code,
             );
             $placementInsights['rows'] = $placementMetrics['rows'];
             $placementInsights['truncated'] = $placementMetrics['truncated'];
@@ -104,11 +108,11 @@ class MetaMarketingCampaignReportSync
         try {
             $demographicMetrics = $this->dataApi->campaignDemographicInsights(
                 (string) $connection->access_token,
-                $connection->ad_account_id,
+                $clientAccount->ad_account_id,
                 $target->meta_campaign_id,
                 $startsOn,
                 $endsOn,
-                $connection->currency_code,
+                $clientAccount->currency_code,
             );
             $demographicInsights['rows'] = $demographicMetrics['rows'];
             $demographicInsights['truncated'] = $demographicMetrics['truncated'];
@@ -120,11 +124,11 @@ class MetaMarketingCampaignReportSync
         try {
             $adSetMetrics = $this->dataApi->campaignAdSetInsights(
                 (string) $connection->access_token,
-                $connection->ad_account_id,
+                $clientAccount->ad_account_id,
                 $target->meta_campaign_id,
                 $startsOn,
                 $endsOn,
-                $connection->currency_code,
+                $clientAccount->currency_code,
             );
             $adSetInsights['rows'] = $adSetMetrics['rows'];
             $adSetInsights['truncated'] = $adSetMetrics['truncated'];
@@ -153,14 +157,14 @@ class MetaMarketingCampaignReportSync
         );
         $syncedAt = CarbonImmutable::now();
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $adInsights, $placementInsights, $demographicInsights, $adSetInsights): SocialEngagementTargetMetaMarketingReport {
+        return DB::transaction(function () use ($connection, $clientAccount, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $adInsights, $placementInsights, $demographicInsights, $adSetInsights): SocialEngagementTargetMetaMarketingReport {
             $report = SocialEngagementTargetMetaMarketingReport::query()->updateOrCreate(
                 [
                     'meta_marketing_connection_id' => $connection->getKey(),
                     'social_engagement_target_id' => $target->getKey(),
                 ],
                 [
-                    'ad_account_id' => $connection->ad_account_id,
+                    'ad_account_id' => $clientAccount->ad_account_id,
                     'campaign_id' => $target->meta_campaign_id,
                     'starts_on' => $startsOn,
                     'ends_on' => $endsOn,
@@ -184,12 +188,12 @@ class MetaMarketingCampaignReportSync
                     'social_engagement_target_id' => $target->getKey(),
                     'starts_on' => $target->starts_on->toDateString(),
                     'ends_on' => $target->ends_on->toDateString(),
-                    'account_id' => $connection->ad_account_id,
+                    'account_id' => $clientAccount->ad_account_id,
                     'synced_at' => $syncedAt,
                 ],
                 [
                     'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_META_MARKETING,
-                    'account_id' => $connection->ad_account_id,
+                    'account_id' => $clientAccount->ad_account_id,
                     'campaign_id' => $metrics['campaign_id'],
                     'campaign_name' => $metrics['campaign_name'],
                     'spend_amount' => $metrics['spend_amount'],
@@ -214,8 +218,11 @@ class MetaMarketingCampaignReportSync
         SocialEngagementTarget $target,
         CarbonImmutable $asOf,
     ): bool {
+        $clientAccount = $this->clientAccountResolver->forTarget($connection, $target);
+
         return $snapshot !== null
-            && $snapshot->ad_account_id === $connection->ad_account_id
+            && $clientAccount !== null
+            && $snapshot->ad_account_id === $clientAccount->ad_account_id
             && $snapshot->campaign_id === $target->meta_campaign_id
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()

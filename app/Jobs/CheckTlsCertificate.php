@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\CheckRun;
 use App\Models\Monitor;
+use App\Models\Organization;
 use App\Models\TlsObservation;
 use App\Services\IncidentManager;
 use App\Services\MonitorHostConcurrencyLock;
@@ -49,7 +50,13 @@ class CheckTlsCertificate implements ShouldBeUnique, ShouldQueue
     {
         $monitor = Monitor::query()->find($this->monitorId);
 
-        if ($monitor === null || ! $monitor->enabled || parse_url($monitor->url, PHP_URL_SCHEME) !== 'https') {
+        if ($monitor === null
+            || ! $monitor->enabled
+            || $monitor->socialPlatform() !== null
+            || parse_url($monitor->url, PHP_URL_SCHEME) !== 'https'
+            || ! Organization::isAccessibleForOwner(
+                $monitor->user_id === null ? null : (int) $monitor->user_id,
+            )) {
             return;
         }
 
@@ -67,7 +74,13 @@ class CheckTlsCertificate implements ShouldBeUnique, ShouldQueue
         DB::transaction(function () use ($monitor, $configVersion, $observedOn, $startedAt, $finishedAt, $result, $incidents): void {
             $lockedMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
 
-            if ($lockedMonitor === null || ! $lockedMonitor->enabled || $lockedMonitor->config_version !== $configVersion) {
+            if ($lockedMonitor === null
+                || ! $lockedMonitor->enabled
+                || $lockedMonitor->socialPlatform() !== null
+                || ! Organization::isAccessibleForOwner(
+                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
+                )
+                || $lockedMonitor->config_version !== $configVersion) {
                 return;
             }
 

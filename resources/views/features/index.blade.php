@@ -16,6 +16,7 @@
             <div>
                 <h2 id="social-monitoring-title" class="panel-title">監測範圍</h2>
                 <p class="panel-description">貼文監測讀取頁面公開互動數；活動報告可連結 GA4 API 查看導流、渠道、登陸頁、重要事件與營收，也可連結 Meta Marketing API 讀取已授權廣告帳戶的花費、曝光、觸及、點擊、行動數量與轉換價值，以及 Google Ads API 讀取客戶帳戶的花費、曝光、點擊、轉換總計、轉換價值與轉換動作；未連結時可手動記錄投放花費。只有廣告花費與 GA4 營收幣別相同時才計算 ROAS；此數值未扣除商品成本。</p>
+                <p class="panel-description">Google Search Console 可查看自然搜尋的點擊、曝光、點閱率與平均排名；每個客戶可指定自己的網站，報表與匯出依客戶分開。支援搜尋查詢、熱門頁面、國家／地區或裝置，以及網頁、圖片、影片、新聞與 Discover 類型；可比較前一個相同天數區間並匯出 CSV。使用獨立 OAuth 唯讀權限；日期採太平洋時間，通常延遲 2–3 天，最多讀取最近 16 個月。Google 可能省略低量或隱私敏感的搜尋查詢，明細不一定涵蓋全部流量。<a href="{{ route('integrations.google-search-console.edit') }}">前往 Search Console</a></p>
                 <p class="panel-description">支援網站、Facebook、Instagram、Threads 與 Dcard 公開網址；Dcard 先讀公開 HTML，互動數不完整且未遇限制時才以 Playwright Chromium 渲染。無需平台 API 金鑰或帳號授權；不保存完整頁面或截圖，遇到驗證時不會自動處理，預設延後 6 小時再檢查。取得監測同意後，可向 Dcard 提供背景工作出口 IP 申請放行。</p>
                 <p class="panel-description">若平台只回傳登入頁或動態載入外殼，系統無法確認貼文內容。HTTP 檢查正常只代表收到回應，不代表貼文一定成功發布或仍對所有人可見。</p>
                 <p class="panel-description">若原始回應含明確的觀看、讚、留言或分享數，會記錄每次檢查並呈現保存範圍內的趨勢與前次變化；前次為 0 時不計比例，缺值會標示無法比較。</p>

@@ -897,9 +897,13 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 
 .dashboard-top {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     margin-bottom: 16px;
+}
+
+.dashboard-runtime-disclosure {
+    box-shadow: none;
 }
 
 .dashboard-focus {
@@ -1168,6 +1172,110 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     text-transform: none;
     vertical-align: middle;
     white-space: normal;
+}
+
+.platform-create-form .form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.platform-organization-table {
+    min-width: 1700px;
+}
+
+.platform-quota-editor {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(118px, 1fr));
+    gap: 8px;
+    min-width: 288px;
+}
+
+.platform-quota-field {
+    gap: 4px;
+    margin: 0;
+}
+
+.platform-plan-name-field {
+    grid-column: 1 / -1;
+}
+
+.platform-quota-field .field-label,
+.platform-quota-field .field-help,
+.platform-quota-field .field-error {
+    font-size: 11px;
+}
+
+.platform-quota-field .field-input {
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 13px;
+}
+
+.platform-organization-name {
+    min-width: 170px;
+}
+
+.platform-subscription-date {
+    min-width: 145px;
+}
+
+.platform-org-enabled {
+    min-width: 82px;
+    margin-top: 6px;
+}
+
+.platform-org-status {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.platform-org-status-active {
+    color: #17654f;
+    background: #e6f5ef;
+}
+
+.platform-org-status-inactive {
+    color: #8f354b;
+    background: #fbecef;
+}
+
+.platform-org-actions {
+    display: inline-flex;
+    margin: 2px;
+}
+
+.platform-context-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.platform-context-banner form {
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .platform-create-form .form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .platform-create-form .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .platform-context-banner {
+        align-items: flex-start;
+        flex-direction: column;
+    }
 }
 
 .data-table .status-page-monitor-group th {

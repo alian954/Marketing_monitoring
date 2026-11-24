@@ -8,6 +8,7 @@ use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
 use App\Services\ClientPortfolioCsv;
+use App\Services\ClientPortfolioEstimatedProfitabilitySummary;
 use App\Services\ClientPortfolioMetricComparison;
 use App\Services\ClientPortfolioReportingPeriod;
 use App\Services\DashboardCampaignMarketingSummary;
@@ -26,6 +27,7 @@ class ClientPortfolioController extends Controller
         Request $request,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioEstimatedProfitabilitySummary $estimatedProfitabilitySummary,
         ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
     ): View|RedirectResponse {
@@ -55,6 +57,7 @@ class ClientPortfolioController extends Controller
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $estimatedProfitabilitySummary,
             $metricComparison,
             $reportingPeriod,
             $reportPeriod,
@@ -76,6 +79,7 @@ class ClientPortfolioController extends Controller
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
         ClientPortfolioCsv $csv,
+        ClientPortfolioEstimatedProfitabilitySummary $estimatedProfitabilitySummary,
         ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
     ): StreamedResponse|RedirectResponse {
@@ -105,6 +109,7 @@ class ClientPortfolioController extends Controller
             $this->authenticatedUser($request),
             $dashboardCampaignMarketingSummary,
             $campaignPortfolioMarketingSummary,
+            $estimatedProfitabilitySummary,
             $metricComparison,
             $reportingPeriod,
             $reportPeriod,
@@ -246,6 +251,7 @@ class ClientPortfolioController extends Controller
         User $user,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         CampaignPortfolioMarketingSummary $campaignPortfolioMarketingSummary,
+        ClientPortfolioEstimatedProfitabilitySummary $estimatedProfitabilitySummary,
         ClientPortfolioMetricComparison $metricComparison,
         ClientPortfolioReportingPeriod $reportingPeriod,
         array $reportPeriod,
@@ -303,8 +309,10 @@ class ClientPortfolioController extends Controller
             $comparisonPeriod,
             $comparisonTargetsByClient,
             $exchangeRates,
+            $estimatedProfitabilitySummary,
             $metricComparison,
             $marketingSummaries,
+            $reportPeriod,
             $targetsByClient,
         ): array {
             $clientTargets = $targetsByClient->get($client->getKey(), new EloquentCollection);
@@ -318,6 +326,12 @@ class ClientPortfolioController extends Controller
                 $clientTargets,
                 $clientMarketingSummaries,
                 $clientExchangeRates,
+            );
+            $estimatedProfitability = $estimatedProfitabilitySummary->build(
+                $clientTargets,
+                $clientMarketingSummaries,
+                $portfolio['mapping_audit_rows'],
+                $reportPeriod,
             );
             $usesReportingCurrency = is_string($client->reporting_currency_code)
                 && trim($client->reporting_currency_code) !== '';
@@ -338,6 +352,12 @@ class ClientPortfolioController extends Controller
                     $comparisonClientMarketingSummaries,
                     $clientExchangeRates,
                 );
+                $comparisonEstimatedProfitability = $estimatedProfitabilitySummary->build(
+                    $comparisonClientTargets,
+                    $comparisonClientMarketingSummaries,
+                    $comparisonPortfolio['mapping_audit_rows'],
+                    $comparisonPeriod,
+                );
                 $comparisonMoneyGroups = $usesReportingCurrency
                     ? $comparisonPortfolio['reporting_currency_groups']
                     : $comparisonPortfolio['currency_groups'];
@@ -346,6 +366,8 @@ class ClientPortfolioController extends Controller
                     $comparisonMoneyGroups,
                     $portfolio['native_roas_groups'],
                     $comparisonPortfolio['native_roas_groups'],
+                    $estimatedProfitability['groups'],
+                    $comparisonEstimatedProfitability['groups'],
                 );
             }
 
@@ -354,6 +376,8 @@ class ClientPortfolioController extends Controller
                 'campaign_count' => $clientTargets->count(),
                 'money_groups' => $moneyGroups,
                 'roas_groups' => $portfolio['native_roas_groups'],
+                'estimated_profitability_groups' => $estimatedProfitability['groups'],
+                'estimated_profitability_coverage' => $estimatedProfitability['coverage'],
                 'uses_reporting_currency' => $usesReportingCurrency,
                 'coverage' => $portfolio['coverage'],
                 'comparison' => $comparison,

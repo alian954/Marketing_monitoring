@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetPaidAdSnapshot;
@@ -27,6 +30,46 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertNotNull($event);
         $this->assertSame('50 6 * * *', $event->expression);
         $this->assertSame('Asia/Taipei', $event->timezone);
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertSame(120, $event->expiresAt);
+    }
+
+    public function test_daily_command_skips_disabled_and_expired_organization_targets(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:50:00', 'Asia/Taipei'));
+        Http::preventStrayRequests();
+
+        foreach ([
+            ['is_enabled' => false, 'subscription_ends_on' => null],
+            ['is_enabled' => true, 'subscription_ends_on' => '2026-11-21'],
+        ] as $organizationAttributes) {
+            $user = User::factory()->create();
+            Organization::factory()->for($user, 'owner')->create($organizationAttributes);
+            $client = Client::ensureDefaultFor($user);
+            $connection = $this->createConnection($user);
+            $connection->clientAccounts()->create([
+                'client_id' => $client->getKey(),
+                'customer_id' => '1234567890',
+                'customer_name' => 'Example Ads',
+                'currency_code' => 'TWD',
+            ]);
+            SocialEngagementTarget::factory()->create([
+                'user_id' => $user->getKey(),
+                'client_id' => $client->getKey(),
+                'tag' => 'Blocked campaign',
+                'social_platform' => 'facebook',
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'google_ads_campaign_id' => '987654321',
+            ]);
+        }
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutput('目前沒有需要更新 Google Ads 的活動。')
+            ->assertExitCode(0);
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 0);
     }
 
     public function test_daily_command_syncs_only_campaigns_in_the_connection_workspace(): void
@@ -59,7 +102,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $foreignTarget->forceFill(['user_id' => User::factory()->create()->id])->save();
 
         $this->artisan('google-ads:sync-due')
-            ->expectsOutputToContain('完成 2 個活動，略過 0 個近期讀值，失敗 0 個。')
+            ->expectsOutputToContain('完成 2 個活動，略過未設定帳戶 0 個，略過近期讀值 0 個，失敗 0 個。')
             ->assertExitCode(0);
 
         $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
@@ -116,6 +159,136 @@ class GoogleAdsScheduledSyncTest extends TestCase
         });
     }
 
+    public function test_daily_command_syncs_each_client_with_its_bound_customer_and_skips_unconfigured_clients(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:50:00', 'Asia/Taipei'));
+        $campaignsByCustomer = [
+            '1111111111' => ['campaign_id' => '987654321', 'campaign_name' => 'North campaign', 'spend' => '111000000'],
+            '2222222222' => ['campaign_id' => '987654322', 'campaign_name' => 'South campaign', 'spend' => '222000000'],
+        ];
+        Http::preventStrayRequests();
+        Http::fake(function (ClientRequest $request) use ($campaignsByCustomer) {
+            if ($request->url() === 'https://oauth2.googleapis.com/token') {
+                return Http::response(['access_token' => 'temporary-access-token']);
+            }
+
+            if (preg_match('#/customers/(\d{10})/googleAds:searchStream$#', $request->url(), $matches) !== 1) {
+                return Http::response([], 404);
+            }
+
+            $customerId = $matches[1];
+            $campaign = $campaignsByCustomer[$customerId] ?? null;
+            $query = $request->data()['query'] ?? '';
+
+            if ($campaign !== null && str_starts_with($query, 'SELECT campaign.id, campaign.name, customer.id')) {
+                return Http::response([[
+                    'results' => [[
+                        'customer' => ['id' => $customerId, 'currencyCode' => 'TWD'],
+                        'campaign' => [
+                            'id' => $campaign['campaign_id'],
+                            'name' => $campaign['campaign_name'],
+                        ],
+                        'metrics' => [
+                            'costMicros' => $campaign['spend'],
+                            'impressions' => '1000',
+                            'clicks' => '40',
+                            'conversions' => '2',
+                            'conversionsValue' => '200',
+                        ],
+                    ]],
+                ]]);
+            }
+
+            return Http::response([]);
+        });
+
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $northClient = $user->clients()->create(['name' => 'North client']);
+        $southClient = $user->clients()->create(['name' => 'South client']);
+        $unconfiguredClient = $user->clients()->create(['name' => '待設定客戶']);
+
+        foreach ([
+            [$northClient, '1111111111', 'North Ads'],
+            [$southClient, '2222222222', 'South Ads'],
+        ] as [$client, $customerId, $customerName]) {
+            GoogleAdsClientAccount::query()->create([
+                'google_ads_connection_id' => $connection->getKey(),
+                'client_id' => $client->getKey(),
+                'customer_id' => $customerId,
+                'customer_name' => $customerName,
+                'currency_code' => 'TWD',
+            ]);
+        }
+
+        $targetsByClient = [];
+        foreach ([
+            [$northClient, 'North campaign', '987654321'],
+            [$southClient, 'South campaign', '987654322'],
+            [$unconfiguredClient, 'Unconfigured campaign', '987654323'],
+        ] as [$client, $campaignName, $campaignId]) {
+            $target = SocialEngagementTarget::factory()->create([
+                'client_id' => $client->getKey(),
+                'tag' => $campaignName,
+                'social_platform' => 'facebook',
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'google_ads_campaign_id' => $campaignId,
+            ]);
+            $target->forceFill(['user_id' => $user->getKey()])->save();
+            $targetsByClient[$campaignName] = $target;
+        }
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('完成 2 個活動，略過未設定帳戶 1 個，略過近期讀值 0 個，失敗 0 個。')
+            ->assertExitCode(0);
+
+        foreach ([
+            ['North campaign', '1111111111', '111.0000'],
+            ['South campaign', '2222222222', '222.0000'],
+        ] as [$campaignName, $customerId, $spendAmount]) {
+            $target = $targetsByClient[$campaignName];
+            $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
+                'google_ads_connection_id' => $connection->getKey(),
+                'social_engagement_target_id' => $target->getKey(),
+                'customer_id' => $customerId,
+                'campaign_name' => $campaignName,
+                'spend_amount' => $spendAmount,
+            ]);
+            $this->assertDatabaseHas('social_engagement_target_paid_ad_snapshots', [
+                'source' => 'google_ads',
+                'google_ads_connection_id' => $connection->getKey(),
+                'social_engagement_target_id' => $target->getKey(),
+                'account_id' => $customerId,
+                'spend_amount' => $spendAmount,
+            ]);
+        }
+
+        $this->assertDatabaseMissing('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $targetsByClient['Unconfigured campaign']->getKey(),
+        ]);
+        $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 2);
+        $this->assertSame('succeeded', $connection->fresh()->scheduled_sync_status);
+        $this->assertSame(2, $connection->fresh()->scheduled_sync_synced_count);
+        $this->assertSame(1, $connection->fresh()->scheduled_sync_skipped_count);
+        $this->assertSame(0, $connection->fresh()->scheduled_sync_failed_count);
+
+        foreach ([
+            ['1111111111', '987654321'],
+            ['2222222222', '987654322'],
+        ] as [$customerId, $campaignId]) {
+            Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/customers/'.$customerId.'/googleAds:searchStream')
+                && str_starts_with($request->data()['query'] ?? '', 'SELECT campaign.id, campaign.name, customer.id')
+                && str_contains($request->data()['query'], 'campaign.id = '.$campaignId));
+        }
+
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/customers/1111111111/')
+            && str_contains($request->data()['query'] ?? '', 'campaign.id = 987654322'));
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/customers/2222222222/')
+            && str_contains($request->data()['query'] ?? '', 'campaign.id = 987654321'));
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/customers/1234567890/'));
+    }
+
     public function test_daily_command_skips_a_matching_snapshot_synced_within_twenty_four_hours(): void
     {
         $this->travelTo('2026-11-22 06:50:00');
@@ -148,7 +321,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
         ]);
 
         $this->artisan('google-ads:sync-due')
-            ->expectsOutputToContain('完成 0 個活動，略過 1 個近期讀值，失敗 0 個。')
+            ->expectsOutputToContain('完成 0 個活動，略過未設定帳戶 0 個，略過近期讀值 1 個，失敗 0 個。')
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('social_engagement_target_google_ads_reports', 1);
@@ -213,7 +386,7 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->createTarget('Unconfigured campaign', '987654321', '2026-11-01', '2026-11-30');
 
         $this->artisan('google-ads:sync-due')
-            ->expectsOutputToContain('完成 0 個活動，略過 0 個近期讀值，失敗 0 個。')
+            ->expectsOutputToContain('完成 0 個活動，略過未設定帳戶 1 個，略過近期讀值 0 個，失敗 0 個。')
             ->assertExitCode(0);
 
         Http::assertNothingSent();
@@ -281,24 +454,32 @@ class GoogleAdsScheduledSyncTest extends TestCase
 
     private function createConnection(User $user): GoogleAdsConnection
     {
-        return GoogleAdsConnection::query()->create([
+        $connection = GoogleAdsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'authorized-refresh-token',
             'customer_id' => '1234567890',
             'customer_name' => 'Example Ads',
             'currency_code' => 'TWD',
         ]);
+
+        $this->trackGoogleAdsFixtureConnection($connection);
+
+        return $connection;
     }
 
     private function createTarget(string $tag, string $campaignId, string $startsOn, string $endsOn): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create([
+        $target = SocialEngagementTarget::factory()->create([
             'tag' => $tag,
             'social_platform' => 'facebook',
             'starts_on' => $startsOn,
             'ends_on' => $endsOn,
             'google_ads_campaign_id' => $campaignId,
         ]);
+
+        $this->bindGoogleAdsTargetFixture($target);
+
+        return $target;
     }
 
     /** @return array{0: array{results: list<array<string, mixed>>}} */

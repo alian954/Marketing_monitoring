@@ -21,7 +21,7 @@
         <div class="panel-body">
             @if ($oauthConfigured)
                 <p class="field-help">Meta OAuth 重新導向 URI：<code>{{ $redirectUri }}</code></p>
-                <form action="{{ route('integrations.meta-marketing.connect') }}" method="POST">
+                <form action="{{ route('integrations.meta-marketing.connect') }}" method="POST" aria-labelledby="meta-marketing-connection-title">
                     @csrf
                     <button class="button button-primary" type="submit">{{ $connection ? '重新連結 Meta 帳戶' : '連結 Meta 帳戶' }}</button>
                 </form>
@@ -40,23 +40,38 @@
                 </p>
                 <x-scheduled-sync-health :connection="$connection" />
 
-                <form action="{{ route('integrations.meta-marketing.ad-account.update') }}" method="POST" class="check-history-filter">
-                    @csrf
-                    @method('PUT')
-                    <div class="field-group">
-                        <label class="field-label" for="meta-marketing-ad-account-id">廣告帳戶 ID</label>
-                        <input class="field-input{{ $errors->getBag('metaMarketing')->has('ad_account_id') ? ' is-invalid' : '' }}" id="meta-marketing-ad-account-id" name="ad_account_id" type="text" inputmode="numeric" pattern="(act_)?[0-9]{5,32}" maxlength="36" value="{{ old('ad_account_id', $connection->ad_account_id) }}" required aria-describedby="meta-marketing-ad-account-help{{ $errors->getBag('metaMarketing')->has('ad_account_id') ? ' meta-marketing-ad-account-error' : '' }}" @if ($errors->getBag('metaMarketing')->has('ad_account_id')) aria-invalid="true" @endif>
-                        <p id="meta-marketing-ad-account-help" class="field-help">可從 Meta Ads Manager 的帳戶設定複製 ID，也可輸入含 <code>act_</code> 前綴的格式。</p>
-                        @error('ad_account_id', 'metaMarketing')<p id="meta-marketing-ad-account-error" class="field-error" role="alert">{{ $message }}</p>@enderror
-                    </div>
-                    <button class="button button-secondary" type="submit">驗證並儲存帳戶</button>
-                </form>
+                @foreach ($clients as $client)
+                    @php
+                        $clientAccount = $clientAccounts->get($client->getKey());
+                        $accountFieldId = 'meta-marketing-ad-account-'.$client->getKey();
+                        $hasAccountError = $errors->getBag('metaMarketing')->has('ad_account_id');
+                    @endphp
+                    <section class="panel spaced-top" aria-labelledby="{{ $accountFieldId }}-title">
+                        <div class="panel-body">
+                            <h3 id="{{ $accountFieldId }}-title" class="panel-title">{{ $client->name }}</h3>
+                            @if ($clientAccount)
+                                <p class="connection-status" role="status">{{ $clientAccount->ad_account_name }}（{{ $clientAccount->ad_account_id }} · {{ $clientAccount->currency_code }}）</p>
+                            @else
+                                <p class="field-help">尚未設定此客戶的 Meta 廣告帳戶。</p>
+                            @endif
+                            <form action="{{ route('integrations.meta-marketing.clients.ad-account.update', $client) }}" method="POST" class="check-history-filter" aria-labelledby="{{ $accountFieldId }}-title">
+                                @csrf
+                                @method('PUT')
+                                <div class="field-group">
+                                    <label class="field-label" for="{{ $accountFieldId }}">廣告帳戶 ID</label>
+                                    <input class="field-input{{ $hasAccountError ? ' is-invalid' : '' }}" id="{{ $accountFieldId }}" name="ad_account_id[{{ $client->getKey() }}]" type="text" inputmode="numeric" pattern="(act_)?[0-9]{5,32}" maxlength="36" value="{{ old('ad_account_id.'.$client->getKey(), $clientAccount?->ad_account_id) }}" required aria-describedby="{{ $accountFieldId }}-help{{ $hasAccountError ? ' '.$accountFieldId.'-error' : '' }}" @if ($hasAccountError) aria-invalid="true" @endif>
+                                    <p id="{{ $accountFieldId }}-help" class="field-help">可從 Meta Ads Manager 複製 ID，也可輸入含 <code>act_</code> 前綴的格式。</p>
+                                    @if ($hasAccountError)
+                                        <p id="{{ $accountFieldId }}-error" class="field-error" role="alert">{{ $errors->getBag('metaMarketing')->first('ad_account_id') }}</p>
+                                    @endif
+                                </div>
+                                <button class="button button-secondary" type="submit">驗證並儲存此客戶帳戶</button>
+                            </form>
+                        </div>
+                    </section>
+                @endforeach
 
-                @if ($connection->ad_account_id)
-                    <p class="connection-status" role="status">目前帳戶：{{ $connection->ad_account_name }}（{{ $connection->ad_account_id }} · {{ $connection->currency_code }}）</p>
-                @endif
-
-                <form action="{{ route('integrations.meta-marketing.disconnect') }}" method="POST" class="integration-disconnect-form">
+                <form action="{{ route('integrations.meta-marketing.disconnect') }}" method="POST" class="integration-disconnect-form" aria-labelledby="meta-marketing-connection-title">
                     @csrf
                     @method('DELETE')
                     <button class="button button-secondary" type="submit">中斷連結</button>

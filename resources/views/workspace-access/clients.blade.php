@@ -4,7 +4,7 @@
 
 @section('content')
     <div class="breadcrumbs" aria-label="頁面導覽">
-        <a href="{{ route('team.index') }}">工作區成員</a><span aria-hidden="true">/</span>
+        <a href="{{ route('team.index') }}">組織成員</a><span aria-hidden="true">/</span>
         <span aria-current="page">客戶範圍</span>
     </div>
 
@@ -30,7 +30,7 @@
                     <div class="workspace-role-options">
                         <label class="workspace-role-option" for="member-client-scope-all">
                             <input id="member-client-scope-all" name="client_scope" type="radio" value="all" required @checked(old('client_scope', $membership->client_scope) === \App\Models\WorkspaceMembership::CLIENT_SCOPE_ALL) @if ($errors->has('client_scope')) aria-invalid="true" aria-describedby="member-client-scope-errors" @endif>
-                            <span><strong>全部客戶</strong><span class="secondary-text">依工作區權限查看或維護</span></span>
+                            <span><strong>全部客戶</strong><span class="secondary-text">依組織權限查看或維護</span></span>
                         </label>
                         <label class="workspace-role-option" for="member-client-scope-selected">
                             <input id="member-client-scope-selected" name="client_scope" type="radio" value="selected" @checked(old('client_scope', $membership->client_scope) === \App\Models\WorkspaceMembership::CLIENT_SCOPE_SELECTED) @if ($errors->has('client_scope') || $errors->has('client_ids')) aria-invalid="true" aria-describedby="member-client-scope-errors" @endif>
@@ -43,7 +43,7 @@
                         $oldMemberClientIds = is_array($oldMemberClientIds) ? array_map('intval', $oldMemberClientIds) : [];
                     @endphp
                     @if ($clients->isEmpty())
-                        <p class="field-help">工作區目前沒有客戶。</p>
+                        <p class="field-help">組織目前沒有客戶。</p>
                     @else
                         <fieldset class="workspace-client-options">
                             <legend class="sr-only">指定可存取的客戶</legend>

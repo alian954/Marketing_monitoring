@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
@@ -135,7 +136,7 @@ class MetaMarketingAdReportTest extends TestCase
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
 
         $report = app(MetaMarketingCampaignReportSync::class)->sync($connection, $target);
 
@@ -170,7 +171,7 @@ class MetaMarketingAdReportTest extends TestCase
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
 
         $report = app(MetaMarketingCampaignReportSync::class)->sync($connection, $target);
 
@@ -310,7 +311,7 @@ class MetaMarketingAdReportTest extends TestCase
     {
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $adName = '=HYPERLINK("https://example.test","bad")';
         $report = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
@@ -399,7 +400,7 @@ class MetaMarketingAdReportTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget(['ends_on' => '2026-10-01']);
+        $target = $this->createTargetFor($user, ['ends_on' => '2026-10-01']);
         $report = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
@@ -455,6 +456,16 @@ class MetaMarketingAdReportTest extends TestCase
             'ends_on' => '2026-11-30',
             'meta_campaign_id' => '987654321',
             ...$attributes,
+        ]);
+    }
+
+    private function createTargetFor(User $user, array $attributes = []): SocialEngagementTarget
+    {
+        $client = Client::ensureDefaultFor($user);
+
+        return $this->createTarget($attributes + [
+            'user_id' => $user->id,
+            'client_id' => $client->id,
         ]);
     }
 

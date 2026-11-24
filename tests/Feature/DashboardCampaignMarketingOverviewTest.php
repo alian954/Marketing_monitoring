@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\CheckRun;
 use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
@@ -146,7 +148,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $response = $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('行銷數據待處理')
+            ->assertSee('待處理')
             ->assertSee('行銷數據更新逾時')
             ->assertSee('GA4、Google Ads 資料超過 24 小時未更新')
             ->assertSee(route('social-engagement-targets.report', $target), false);
@@ -214,6 +216,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->createTarget();
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
+            'property_id' => '123456789',
             'refresh_token' => 'refresh-token',
             'scheduled_sync_status' => 'partial',
             'scheduled_sync_failed_count' => 1,
@@ -794,6 +797,10 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
     public function test_campaign_mapping_audit_uses_each_users_own_ga4_report_freshness(): void
     {
         $this->travelTo('2026-11-22 12:00:00');
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+
+        $this->actingAs($firstUser);
         $firstTarget = $this->createTarget([
             'tag' => 'User scoped first',
             'google_ads_campaign_id' => null,
@@ -802,6 +809,16 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'ga4_source_name' => 'newsletter',
             'ga4_medium_name' => 'email',
         ]);
+        $firstStaleTarget = $this->createTarget([
+            'tag' => 'User scoped first stale',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => 'user-scoped-meta',
+            'ga4_campaign_name' => 'user-scoped-campaign',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+
+        $this->actingAs($secondUser);
         $secondTarget = $this->createTarget([
             'tag' => 'User scoped second',
             'google_ads_campaign_id' => null,
@@ -810,15 +827,22 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
             'ga4_source_name' => 'newsletter',
             'ga4_medium_name' => 'email',
         ]);
-        $firstUser = User::factory()->create();
-        $secondUser = User::factory()->create();
+        $secondStaleTarget = $this->createTarget([
+            'tag' => 'User scoped second stale',
+            'google_ads_campaign_id' => null,
+            'meta_campaign_id' => 'user-scoped-meta',
+            'ga4_campaign_name' => 'user-scoped-campaign',
+            'ga4_source_name' => 'newsletter',
+            'ga4_medium_name' => 'email',
+        ]);
+
         $firstUserConnection = $this->createGoogleAnalyticsConnection($firstUser);
         $secondUserConnection = $this->createGoogleAnalyticsConnection($secondUser);
 
         $this->createGoalGoogleAnalyticsReport($firstUserConnection, $firstTarget, ['total_revenue' => '120.0000', 'synced_at' => now()]);
-        $this->createGoalGoogleAnalyticsReport($firstUserConnection, $secondTarget, ['total_revenue' => '900.0000', 'synced_at' => now()->subDays(2)]);
-        $this->createGoalGoogleAnalyticsReport($secondUserConnection, $firstTarget, ['total_revenue' => '800.0000', 'synced_at' => now()->subDays(2)]);
+        $this->createGoalGoogleAnalyticsReport($firstUserConnection, $firstStaleTarget, ['total_revenue' => '900.0000', 'synced_at' => now()->subDays(2)]);
         $this->createGoalGoogleAnalyticsReport($secondUserConnection, $secondTarget, ['total_revenue' => '300.0000', 'synced_at' => now()]);
+        $this->createGoalGoogleAnalyticsReport($secondUserConnection, $secondStaleTarget, ['total_revenue' => '800.0000', 'synced_at' => now()->subDays(2)]);
 
         $firstUserPortfolio = $this->actingAs($firstUser)
             ->get(route('dashboard'))
@@ -1316,6 +1340,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
     public function test_dashboard_marks_unconfigured_ad_platforms_before_connection_status(): void
     {
         $user = User::factory()->create();
+        $this->actingAs($user);
         $target = $this->createTarget([
             'meta_campaign_id' => null,
             'google_ads_campaign_id' => null,
@@ -1333,7 +1358,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
 
         $this->assertSame('not_configured', $marketing['meta_marketing']['status']);
         $this->assertSame('not_configured', $marketing['google_ads']['status']);
-        $this->assertSame('not_configured', $marketing['google_analytics']['status']);
+        $this->assertSame('not_connected', $marketing['google_analytics']['status']);
     }
 
     public function test_dashboard_never_displays_marketing_reports_from_another_users_connections(): void
@@ -1341,6 +1366,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         $this->travelTo('2026-11-22 12:00:00');
         $reportOwner = User::factory()->create();
         $viewer = User::factory()->create();
+        $this->actingAs($viewer);
         $target = $this->createTarget();
         $this->createGoogleAnalyticsReport($reportOwner, $target, ['sessions' => 98765, 'total_revenue' => '98765.4300']);
         $this->createMetaMarketingReport($reportOwner, $target, ['spend_amount' => '98765.4300']);
@@ -1519,9 +1545,11 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
     private function createGoogleAnalyticsReport(User $user, SocialEngagementTarget $target, array $overrides = []): void
     {
         $connection = $this->createGoogleAnalyticsConnection($user);
+        $clientProperty = $this->bindGoogleAnalyticsClientProperty($connection, $target);
 
         SocialEngagementTargetGoogleAnalyticsReport::query()->create($overrides + [
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $clientProperty?->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'google_ads_auto_tagging',
@@ -1545,8 +1573,11 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         SocialEngagementTarget $target,
         array $overrides = [],
     ): void {
+        $clientProperty = $this->bindGoogleAnalyticsClientProperty($connection, $target);
+
         SocialEngagementTargetGoogleAnalyticsReport::query()->create(array_replace([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $clientProperty?->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => $target->googleAnalyticsAttributionMode(),
@@ -1564,11 +1595,35 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         ], $overrides));
     }
 
+    private function bindGoogleAnalyticsClientProperty(
+        GoogleAnalyticsConnection $connection,
+        SocialEngagementTarget $target,
+    ): ?GoogleAnalyticsClientProperty {
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $connection->user_id,
+                'client_id' => Client::ensureDefaultFor(User::query()->findOrFail($connection->user_id))->id,
+            ])->save();
+        }
+
+        if ((int) $target->user_id !== (int) $connection->user_id || $target->client_id === null) {
+            return null;
+        }
+
+        return GoogleAnalyticsClientProperty::withoutGlobalScopes()->firstOrCreate([
+            'google_analytics_connection_id' => $connection->id,
+            'client_id' => $target->client_id,
+        ], [
+            'property_id' => $connection->property_id,
+        ]);
+    }
+
     private function createMetaConnection(User $user): MetaMarketingConnection
     {
         return MetaMarketingConnection::factory()->create([
             'user_id' => $user->id,
-            'ad_account_id' => 'act_12345',
+            'ad_account_id' => '12345',
+            'ad_account_name' => 'Test Meta account',
             'currency_code' => 'TWD',
         ]);
     }
@@ -1576,6 +1631,24 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
     private function createMetaMarketingReport(User $user, SocialEngagementTarget $target, array $overrides = []): void
     {
         $connection = $this->createMetaConnection($user);
+
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
+        if ((int) $target->user_id === (int) $user->id && $target->client_id !== null) {
+            MetaMarketingClientAccount::withoutGlobalScopes()->updateOrCreate([
+                'meta_marketing_connection_id' => $connection->id,
+                'client_id' => $target->client_id,
+            ], [
+                'ad_account_id' => $connection->ad_account_id,
+                'ad_account_name' => $connection->ad_account_name,
+                'currency_code' => $connection->currency_code,
+            ]);
+        }
 
         SocialEngagementTargetMetaMarketingReport::query()->create($overrides + [
             'meta_marketing_connection_id' => $connection->id,
@@ -1608,6 +1681,7 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
     private function createGoogleAdsReport(User $user, SocialEngagementTarget $target, array $overrides = []): void
     {
         $connection = $this->createGoogleAdsConnection($user);
+        $this->mapGoogleAdsConnectionToTargetClient($connection, $target);
 
         SocialEngagementTargetGoogleAdsReport::query()->create($overrides + [
             'google_ads_connection_id' => $connection->id,
@@ -1633,6 +1707,8 @@ class DashboardCampaignMarketingOverviewTest extends TestCase
         SocialEngagementTarget $target,
         array $overrides = [],
     ): SocialEngagementTargetGoogleAdsReport {
+        $this->mapGoogleAdsConnectionToTargetClient($connection, $target);
+
         return SocialEngagementTargetGoogleAdsReport::query()->create(array_replace([
             'google_ads_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -48,11 +50,9 @@ class GoogleAdsIntegrationTest extends TestCase
             ->assertSee('Google Ads')
             ->assertSee('Demo Ads')
             ->assertSee('1234567890')
-            ->assertSee('adwords')
-            ->assertSee('此範圍本身涵蓋檢視與變更權限')
-            ->assertSee('本應用只發送報表與客戶資料讀取查詢')
-            ->assertSee('讀取正式客戶資料需先取得 production access')
-            ->assertSee('現行流程不需 developer token')
+            ->assertSee('每個客戶需設定自己的 10 位 Google Ads 客戶 ID')
+            ->assertSee('本應用只讀取廣告報表與客戶資料')
+            ->assertSee('正式客戶資料需先取得 Google Ads API production access')
             ->assertSee('排程同步')
             ->assertSee('同步正常')
             ->assertSee('更新 4 個活動 · 略過 2 個 · 失敗 0 個')
@@ -223,19 +223,24 @@ class GoogleAdsIntegrationTest extends TestCase
             'user_id' => $user->id,
             'refresh_token' => 'authorized-refresh-token',
         ]);
+        $client = Client::ensureDefaultFor($user);
 
         $this->actingAs($user)
-            ->put(route('integrations.google-ads.customer.update'), [
+            ->put(route('integrations.google-ads.clients.customer.update', $client), [
                 'customer_id' => ' 123-456-7890 ',
                 'login_customer_id' => '098-765-4321',
             ])
             ->assertRedirect(route('integrations.google-ads.edit'))
-            ->assertSessionHas('status', 'Google Ads 客戶帳戶已驗證並儲存。');
+            ->assertSessionHas('status', $client->name.'的 Google Ads 客戶帳戶已驗證並儲存。');
 
-        $this->assertSame('1234567890', $connection->fresh()->customer_id);
-        $this->assertSame('0987654321', $connection->fresh()->login_customer_id);
-        $this->assertSame('Demo Ads', $connection->fresh()->customer_name);
-        $this->assertSame('TWD', $connection->fresh()->currency_code);
+        $account = GoogleAdsClientAccount::query()->sole();
+        $this->assertSame((int) $connection->getKey(), (int) $account->google_ads_connection_id);
+        $this->assertSame((int) $client->getKey(), (int) $account->client_id);
+        $this->assertSame('1234567890', $account->customer_id);
+        $this->assertSame('0987654321', $account->login_customer_id);
+        $this->assertSame('Demo Ads', $account->customer_name);
+        $this->assertSame('TWD', $account->currency_code);
+        $this->assertNull($connection->fresh()->customer_id);
         Http::assertSent(function (ClientRequest $request): bool {
             return str_ends_with($request->url(), '/customers/1234567890/googleAds:search')
                 && $request->hasHeader('Authorization', 'Bearer temporary-access-token')
@@ -251,10 +256,11 @@ class GoogleAdsIntegrationTest extends TestCase
             'user_id' => $user->id,
             'refresh_token' => 'authorized-refresh-token',
         ]);
+        $client = Client::ensureDefaultFor($user);
 
         $this->actingAs($user)
             ->from(route('integrations.google-ads.edit'))
-            ->put(route('integrations.google-ads.customer.update'), [
+            ->put(route('integrations.google-ads.clients.customer.update', $client), [
                 'customer_id' => 'invalid-customer',
             ])
             ->assertRedirect(route('integrations.google-ads.edit'))

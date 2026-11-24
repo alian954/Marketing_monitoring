@@ -96,6 +96,7 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-operations-summary"[^>]*\bopen\b[^>]*>/', $responseContent));
         $this->assertSame(1, preg_match_all('/<details[^>]*class="dashboard-disclosure dashboard-detail-disclosure"/', $responseContent));
         $this->assertSame(3, preg_match_all('/<details[^>]*class="dashboard-subdisclosure"/', $responseContent));
+        $this->assertSame(0, preg_match('/<details[^>]*aria-labelledby="dashboard-runtime-summary"/', $responseContent));
     }
 
     public function test_dashboard_opens_filtered_marketing_results_and_keeps_other_sections_collapsed(): void

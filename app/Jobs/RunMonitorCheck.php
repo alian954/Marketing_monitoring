@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\CheckRun;
 use App\Models\Monitor;
+use App\Models\Organization;
 use App\Services\DnsChangeRecorder;
 use App\Services\IncidentManager;
 use App\Services\MonitorHostConcurrencyLock;
@@ -76,6 +77,14 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        if (! Organization::isAccessibleForOwner(
+            $monitor->user_id === null ? null : (int) $monitor->user_id,
+        )) {
+            $run->forceFill(['status' => 'paused', 'finished_at' => now()])->save();
+
+            return;
+        }
+
         if ($monitor->config_version !== $run->config_version) {
             $run->forceFill(['status' => 'stale_config', 'finished_at' => now()])->save();
 
@@ -140,6 +149,15 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
             }
 
             $currentMonitor = Monitor::query()->lockForUpdate()->find($monitor->id);
+
+            if ($currentMonitor !== null && ! Organization::isAccessibleForOwner(
+                $currentMonitor->user_id === null ? null : (int) $currentMonitor->user_id,
+            )) {
+                $lockedRun->forceFill(['status' => 'paused', 'finished_at' => now()])->save();
+
+                return;
+            }
+
             $currentVersionMatches = $currentMonitor !== null && $currentMonitor->config_version === $lockedRun->config_version;
             $resolvedIps = $normal->resolvedPublicIps;
 

@@ -32,6 +32,7 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
             'ends_on' => '2026-11-30',
             'ga4_campaign_name' => 'summer-launch',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
         $api = \Mockery::mock(GoogleAnalyticsDataApi::class);
         $api->shouldReceive('campaignReport')
             ->once()
@@ -92,7 +93,7 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
             ]);
         $this->app->instance(GoogleAnalyticsDataApi::class, $api);
 
-        $report = app(GoogleAnalyticsCampaignReportSync::class)->sync($connection, $target, 'access-token');
+        $report = app(GoogleAnalyticsCampaignReportSync::class)->sync($connection, $target, 'access-token', '123456789');
 
         $this->assertSame([
             'status' => 'complete',
@@ -125,6 +126,7 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
             'ga4_campaign_name' => 'summer-launch',
         ]);
         $legacyReport = new SocialEngagementTargetGoogleAnalyticsReport([
+            'property_id' => null,
             'attribution_mode' => 'manual_utm',
             'campaign_name' => 'summer-launch',
             'starts_on' => '2026-11-01',
@@ -137,6 +139,7 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
             'synced_at' => CarbonImmutable::now(),
         ]);
         $completedEmptyReport = new SocialEngagementTargetGoogleAnalyticsReport([
+            'property_id' => '123456789',
             'attribution_mode' => 'manual_utm',
             'campaign_name' => 'summer-launch',
             'starts_on' => '2026-11-01',
@@ -158,7 +161,7 @@ class CampaignDailyMarketingMetricsSyncTest extends TestCase
 
         $sync = app(GoogleAnalyticsCampaignReportSync::class);
 
-        $this->assertFalse($sync->isSnapshotFresh($legacyReport, $target, CarbonImmutable::now()));
-        $this->assertTrue($sync->isSnapshotFresh($completedEmptyReport, $target, CarbonImmutable::now()));
+        $this->assertFalse($sync->isSnapshotFresh($legacyReport, $target, CarbonImmutable::now(), '123456789'));
+        $this->assertTrue($sync->isSnapshotFresh($completedEmptyReport, $target, CarbonImmutable::now(), '123456789'));
     }
 }

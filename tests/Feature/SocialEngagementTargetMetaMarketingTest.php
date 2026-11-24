@@ -35,7 +35,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
     {
         $viewer = User::factory()->create();
         $otherUser = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($viewer);
         $this->createConnection($viewer);
         $otherConnection = $this->createConnection($otherUser);
         SocialEngagementTargetMetaMarketingReport::query()->create([
@@ -112,7 +112,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
                 ->push(['data' => []]),
         ]);
         $user = User::factory()->create();
-        $target = $this->createTarget([
+        $target = $this->createTargetFor($user, [
             'ad_spend_amount' => '999.0000',
             'ad_spend_currency' => 'TWD',
         ]);
@@ -491,6 +491,47 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    #[DataProvider('metaRateLimitErrors')]
+    public function test_meta_rate_limit_errors_are_reported_without_retrying(int $status, array $error): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::response(['error' => $error], $status),
+        ]);
+
+        try {
+            app(MetaMarketingDataApi::class)->campaignDailyInsights(
+                'access-token',
+                '123456789',
+                '987654321',
+                '2026-11-01',
+                '2026-11-30',
+                'TWD',
+            );
+            $this->fail('Meta rate-limit responses should be reported to the user.');
+        } catch (MetaMarketingApiException $exception) {
+            $this->assertSame('Meta API 配額已用盡，請稍後再同步。', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    /** @return iterable<string, array{int, array<string, mixed>}> */
+    public static function metaRateLimitErrors(): iterable
+    {
+        yield 'HTTP 429' => [429, ['message' => 'Too many requests']];
+
+        foreach ([4, 17, 32, 341, 613] as $errorCode) {
+            yield 'Graph API code '.$errorCode => [400, ['code' => $errorCode, 'message' => 'Rate limit reached']];
+        }
+
+        yield 'Ads Insights business use case throttle' => [400, [
+            'code' => 80000,
+            'error_subcode' => 2446079,
+            'message' => 'Rate limit reached',
+        ]];
+    }
+
     public function test_meta_daily_insights_fails_instead_of_returning_a_partial_result_after_the_page_limit(): void
     {
         Http::preventStrayRequests();
@@ -537,7 +578,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::response(['data' => []]),
         ]);
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $this->createConnection($user);
 
         $this->actingAs($user)
@@ -575,7 +616,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             ]),
         ]);
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $connection = $this->createConnection($user);
         $previousReport = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
@@ -607,7 +648,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
     public function test_meta_sync_reports_missing_connection_campaign_and_date_settings(): void
     {
         $user = User::factory()->create();
-        $target = $this->createTarget(['meta_campaign_id' => null]);
+        $target = $this->createTargetFor($user, ['meta_campaign_id' => null]);
 
         $this->actingAs($user)
             ->post(route('social-engagement-targets.meta-marketing.sync', $target))
@@ -625,7 +666,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
     public function test_meta_sync_requires_a_current_access_token(): void
     {
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $connection = $this->createConnection($user);
         $connection->token_expires_at = now()->subMinute();
         $connection->save();
@@ -647,7 +688,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             ], 429),
         ]);
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $connection = $this->createConnection($user);
         $snapshot = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
@@ -692,7 +733,7 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             ]),
         ]);
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $this->createConnection($user);
 
         $this->actingAs($user)
@@ -778,6 +819,16 @@ class SocialEngagementTargetMetaMarketingTest extends TestCase
             'ends_on' => '2026-11-30',
             'meta_campaign_id' => '987654321',
         ], $attributes));
+    }
+
+    private function createTargetFor(User $user, array $attributes = []): SocialEngagementTarget
+    {
+        $client = Client::ensureDefaultFor($user);
+
+        return $this->createTarget($attributes + [
+            'user_id' => $user->id,
+            'client_id' => $client->id,
+        ]);
     }
 
     private function createConnection(User $user): MetaMarketingConnection

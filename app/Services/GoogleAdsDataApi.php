@@ -2101,9 +2101,7 @@ class GoogleAdsDataApi
         string $query,
         ?string $loginCustomerId,
     ): array {
-        $request = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(20);
+        $request = ReadOnlyApiRequest::forBearerToken($accessToken, 20);
 
         if ($loginCustomerId !== null) {
             $request->withHeaders(['login-customer-id' => $loginCustomerId]);

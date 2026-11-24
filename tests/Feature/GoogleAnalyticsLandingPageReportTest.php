@@ -363,13 +363,10 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
             'starts_on' => '2026-09-01',
             'ends_on' => '2026-09-30',
         ]);
-        $connection = GoogleAnalyticsConnection::query()->create([
-            'user_id' => $user->getKey(),
-            'property_id' => '123456789',
-            'refresh_token' => 'refresh-token',
-        ]);
+        $connection = $this->createConnection($user);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->getKey(),
+            'property_id' => '123456789',
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => 'spring_launch_2026',
             'attribution_mode' => 'manual_utm',
@@ -491,11 +488,7 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
             'ga4_source_name' => 'facebook_ads',
             'ga4_medium_name' => 'paid_social',
         ]);
-        GoogleAnalyticsConnection::query()->create([
-            'user_id' => $user->getKey(),
-            'property_id' => '123456789',
-            'refresh_token' => 'refresh-token',
-        ]);
+        $this->createConnection($user);
 
         $this->actingAs($user)
             ->post(route('social-engagement-targets.google-analytics.sync', $target))
@@ -508,10 +501,27 @@ class GoogleAnalyticsLandingPageReportTest extends TestCase
     /** @param array<string, mixed> $attributes */
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create($attributes + [
+        $target = SocialEngagementTarget::factory()->create($attributes + [
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+
+        $this->bindGoogleAnalyticsTargetFixture($target);
+
+        return $target;
+    }
+
+    private function createConnection(User $user): GoogleAnalyticsConnection
+    {
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->getKey(),
+            'property_id' => '123456789',
+            'refresh_token' => 'refresh-token',
+        ]);
+
+        $this->trackGoogleAnalyticsFixtureConnection($connection);
+
+        return $connection;
     }
 
     /** @return array<string, mixed> */

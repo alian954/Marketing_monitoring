@@ -326,23 +326,31 @@ class GoogleAdsDeviceReportTest extends TestCase
 
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create([
+        $target = SocialEngagementTarget::factory()->create([
             'tag' => 'Winter launch',
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
             'google_ads_campaign_id' => '987654321',
             ...$attributes,
         ]);
+
+        $this->bindGoogleAdsTargetFixture($target);
+
+        return $target;
     }
 
     private function createConnection(User $user): GoogleAdsConnection
     {
-        return GoogleAdsConnection::query()->create([
+        $connection = GoogleAdsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'refresh-token',
             'customer_id' => '1234567890',
             'customer_name' => 'Example Ads',
             'currency_code' => 'TWD',
         ]);
+
+        $this->trackGoogleAdsFixtureConnection($connection);
+
+        return $connection;
     }
 }

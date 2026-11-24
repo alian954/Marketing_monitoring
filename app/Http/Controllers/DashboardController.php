@@ -184,7 +184,9 @@ class DashboardController extends Controller
                     $certificateObservation = $monitor->latestTlsObservation;
                     $certificateExpiresAt = $certificateObservation?->expires_at;
 
-                    if ($certificateExpiresAt !== null && $certificateExpiresAt->lessThanOrEqualTo($asOf->addDays(30))) {
+                    if ($monitor->social_platform === null
+                        && $certificateExpiresAt !== null
+                        && $certificateExpiresAt->lessThanOrEqualTo($asOf->addDays(30))) {
                         $expiringCertificateCount++;
                         $expiringCertificates[] = $this->expirySummary($monitor, $certificateObservation, $asOf);
                         $this->sortExpirySummaries($expiringCertificates);
@@ -644,6 +646,7 @@ class DashboardController extends Controller
             'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
             'failedQueueJobCount' => $failedQueueJobCount,
             'dashboardSystemAttention' => $dashboardSystemAttention,
+            'dashboardMarketingDataAttention' => $dashboardMarketingDataAttention,
             'counts' => $counts,
             'platformCounts' => $platformCounts,
             'socialEngagementMonitors' => $socialEngagementMonitors,

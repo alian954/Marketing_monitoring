@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -37,6 +39,17 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'ends_on' => '2026-11-30',
             'meta_campaign_id' => '987654321',
             'google_ads_campaign_id' => '987654322',
+        ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill([
+            'user_id' => $user->workspaceOwnerId(),
+            'client_id' => $client->getKey(),
+        ])->save();
+        $googleAdsConnection->clientAccounts()->create([
+            'client_id' => $client->getKey(),
+            'customer_id' => '1234567890',
+            'customer_name' => 'Example Ads',
+            'currency_code' => 'TWD',
         ]);
 
         $this->createMetaSnapshot($target, $metaConnection, '2026-11-20 06:00:00', [
@@ -496,6 +509,17 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
             'ends_on' => '2026-11-30',
             'google_ads_campaign_id' => '987654321',
         ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill([
+            'user_id' => $user->workspaceOwnerId(),
+            'client_id' => $client->getKey(),
+        ])->save();
+        $connection->clientAccounts()->create([
+            'client_id' => $client->getKey(),
+            'customer_id' => $connection->customer_id,
+            'customer_name' => 'Example Ads',
+            'currency_code' => 'TWD',
+        ]);
         $this->createGoogleAdsSnapshot($target, $connection, '2026-11-20 06:00:00', [
             'spend_amount' => '100.0000',
             'conversions' => '2.0000',
@@ -571,6 +595,25 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         string $syncedAt,
         array $attributes = [],
     ): SocialEngagementTargetPaidAdSnapshot {
+        if ($target->user_id === null) {
+            $user = User::query()->findOrFail($connection->user_id);
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
+        if ((int) $target->user_id === (int) $connection->user_id && $target->client_id !== null) {
+            MetaMarketingClientAccount::withoutGlobalScopes()->firstOrCreate([
+                'meta_marketing_connection_id' => $connection->id,
+                'client_id' => $target->client_id,
+            ], [
+                'ad_account_id' => $connection->ad_account_id,
+                'ad_account_name' => $connection->ad_account_name,
+                'currency_code' => $connection->currency_code,
+            ]);
+        }
+
         return SocialEngagementTargetPaidAdSnapshot::factory()
             ->for($target, 'target')
             ->forMetaMarketing($connection)
@@ -625,6 +668,25 @@ class SocialEngagementPaidMediaTrendTest extends TestCase
         MetaMarketingConnection $metaConnection,
         GoogleAdsConnection $googleAdsConnection,
     ): void {
+        if ($target->user_id === null) {
+            $user = User::query()->findOrFail($metaConnection->user_id);
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
+        if ((int) $target->user_id === (int) $metaConnection->user_id && $target->client_id !== null) {
+            MetaMarketingClientAccount::withoutGlobalScopes()->firstOrCreate([
+                'meta_marketing_connection_id' => $metaConnection->id,
+                'client_id' => $target->client_id,
+            ], [
+                'ad_account_id' => $metaConnection->ad_account_id,
+                'ad_account_name' => $metaConnection->ad_account_name,
+                'currency_code' => $metaConnection->currency_code,
+            ]);
+        }
+
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,
             'social_engagement_target_id' => $target->id,

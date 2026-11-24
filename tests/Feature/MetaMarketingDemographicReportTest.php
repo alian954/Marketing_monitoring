@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
@@ -16,6 +17,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class MetaMarketingDemographicReportTest extends TestCase
@@ -195,7 +197,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
 
         $report = app(MetaMarketingCampaignReportSync::class)->sync($connection, $target);
 
@@ -221,7 +223,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         ]);
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $unavailableReport = app(MetaMarketingCampaignReportSync::class)->sync($connection, $target);
 
         $this->assertSame('250.7500', $unavailableReport->spend_amount);
@@ -247,22 +249,26 @@ class MetaMarketingDemographicReportTest extends TestCase
         });
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
 
         $report = app(MetaMarketingCampaignReportSync::class)->sync($connection, $target);
 
         $this->assertSame('complete', $report->ad_insights['status']);
         $this->assertSame('complete', $report->placement_insights['status']);
         $this->assertSame('unavailable', $report->demographic_insights['status']);
-        $this->assertSame(1, $demographicRequestCount);
+        $this->assertSame(3, $demographicRequestCount);
         Http::assertSentCount(5);
+        Sleep::assertSequence([
+            Sleep::for(250)->milliseconds(),
+            Sleep::for(750)->milliseconds(),
+        ]);
     }
 
     public function test_demographic_report_view_and_csv_are_scoped_to_the_current_users_snapshot(): void
     {
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $report = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
@@ -330,7 +336,7 @@ class MetaMarketingDemographicReportTest extends TestCase
         $this->travelTo('2026-11-23 12:00:00');
         $user = User::factory()->create();
         $connection = $this->createConnection($user);
-        $target = $this->createTarget(['ends_on' => '2026-10-01']);
+        $target = $this->createTargetFor($user, ['ends_on' => '2026-10-01']);
         $report = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->id,
             'social_engagement_target_id' => $target->id,
@@ -418,6 +424,16 @@ class MetaMarketingDemographicReportTest extends TestCase
             'ends_on' => '2026-11-30',
             'meta_campaign_id' => '987654321',
             ...$attributes,
+        ]);
+    }
+
+    private function createTargetFor(User $user, array $attributes = []): SocialEngagementTarget
+    {
+        $client = Client::ensureDefaultFor($user);
+
+        return $this->createTarget($attributes + [
+            'user_id' => $user->id,
+            'client_id' => $client->id,
         ]);
     }
 

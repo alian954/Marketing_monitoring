@@ -28,11 +28,6 @@ class SocialEngagementTargetMetaMarketingController extends Controller
                 ->withErrors(['meta_marketing' => 'Meta 授權已到期，請重新連結帳戶。']);
         }
 
-        if ($connection->ad_account_id === null || $connection->currency_code === null) {
-            return $this->reportRedirect($socialEngagementTarget)
-                ->withErrors(['meta_marketing' => '請先在 Meta Ads 整合設定廣告帳戶。']);
-        }
-
         if ($socialEngagementTarget->meta_campaign_id === null) {
             return $this->reportRedirect($socialEngagementTarget)
                 ->withErrors(['meta_marketing' => '請先在活動互動目標設定 Meta 活動 ID。']);

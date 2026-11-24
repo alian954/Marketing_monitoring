@@ -6,10 +6,13 @@ use App\Http\Requests\StoreSocialEngagementTargetRequest;
 use App\Http\Requests\UpdateSocialEngagementTargetAdSpendRequest;
 use App\Http\Requests\UpdateSocialEngagementTargetBudgetRequest;
 use App\Models\Client;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SocialEngagementTargetController extends Controller
 {
@@ -20,39 +23,57 @@ class SocialEngagementTargetController extends Controller
         abort_unless($user instanceof User, 401);
         $clientId = (int) ($data['client_id'] ?? Client::ensureDefaultFor($user)->getKey());
 
-        SocialEngagementTarget::query()->updateOrCreate(
-            [
-                'client_id' => $clientId,
-                'tag' => $data['tag'],
-                'social_platform' => $data['social_platform'],
-            ],
-            [
-                'target_interactions' => (int) $data['target_interactions'],
-                'starts_on' => $data['starts_on'] ?? null,
-                'ends_on' => $data['ends_on'] ?? null,
-                'ga4_campaign_name' => filled($data['ga4_campaign_name'] ?? null) ? trim($data['ga4_campaign_name']) : null,
-                'ga4_source_name' => filled($data['ga4_source_name'] ?? null) ? trim($data['ga4_source_name']) : null,
-                'ga4_medium_name' => filled($data['ga4_medium_name'] ?? null) ? trim($data['ga4_medium_name']) : null,
-                'ga4_goal_metric' => $data['ga4_goal_metric'] ?? null,
-                'ga4_goal_event_name' => ($data['ga4_goal_metric'] ?? null) === 'key_events'
-                    && filled($data['ga4_goal_event_name'] ?? null)
-                    ? trim($data['ga4_goal_event_name'])
-                    : null,
-                'ga4_goal_value' => ($data['ga4_goal_metric'] ?? null) !== null
-                    ? $data['ga4_goal_value']
-                    : null,
-                'ga4_goal_currency' => ($data['ga4_goal_metric'] ?? null) === 'total_revenue'
-                    ? $data['ga4_goal_currency']
-                    : null,
-                'paid_media_goal_source' => $data['paid_media_goal_source'] ?? null,
-                'paid_media_goal_roas' => ($data['paid_media_goal_source'] ?? null) !== null
-                    ? $data['paid_media_goal_roas']
-                    : null,
-                'gross_margin_percent' => $data['gross_margin_percent'] ?? null,
-                'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
-                'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
-            ],
-        );
+        $attributes = [
+            'client_id' => $clientId,
+            'tag' => $data['tag'],
+            'social_platform' => $data['social_platform'],
+        ];
+        $values = [
+            'target_interactions' => (int) $data['target_interactions'],
+            'starts_on' => $data['starts_on'] ?? null,
+            'ends_on' => $data['ends_on'] ?? null,
+            'ga4_campaign_name' => filled($data['ga4_campaign_name'] ?? null) ? trim($data['ga4_campaign_name']) : null,
+            'ga4_source_name' => filled($data['ga4_source_name'] ?? null) ? trim($data['ga4_source_name']) : null,
+            'ga4_medium_name' => filled($data['ga4_medium_name'] ?? null) ? trim($data['ga4_medium_name']) : null,
+            'ga4_goal_metric' => $data['ga4_goal_metric'] ?? null,
+            'ga4_goal_event_name' => ($data['ga4_goal_metric'] ?? null) === 'key_events'
+                && filled($data['ga4_goal_event_name'] ?? null)
+                ? trim($data['ga4_goal_event_name'])
+                : null,
+            'ga4_goal_value' => ($data['ga4_goal_metric'] ?? null) !== null
+                ? $data['ga4_goal_value']
+                : null,
+            'ga4_goal_currency' => ($data['ga4_goal_metric'] ?? null) === 'total_revenue'
+                ? $data['ga4_goal_currency']
+                : null,
+            'paid_media_goal_source' => $data['paid_media_goal_source'] ?? null,
+            'paid_media_goal_roas' => ($data['paid_media_goal_source'] ?? null) !== null
+                ? $data['paid_media_goal_roas']
+                : null,
+            'gross_margin_percent' => $data['gross_margin_percent'] ?? null,
+            'meta_campaign_id' => filled($data['meta_campaign_id'] ?? null) ? trim($data['meta_campaign_id']) : null,
+            'google_ads_campaign_id' => filled($data['google_ads_campaign_id'] ?? null) ? trim($data['google_ads_campaign_id']) : null,
+        ];
+        DB::transaction(function () use ($user, $attributes, $values): void {
+            $organization = Organization::query()
+                ->where('owner_user_id', $user->workspaceOwnerId())
+                ->lockForUpdate()
+                ->first();
+            $targets = SocialEngagementTarget::withoutGlobalScopes()
+                ->where('user_id', $user->workspaceOwnerId());
+            $existingTarget = (clone $targets)->where($attributes)->exists();
+
+            if (! $existingTarget && $organization !== null && ! $organization->hasAvailableCampaign()) {
+                $exception = ValidationException::withMessages([
+                    'tag' => '此組織已達活動數上限，請聯絡平台管理員調整方案。',
+                ]);
+                $exception->errorBag = 'socialEngagementTarget';
+
+                throw $exception;
+            }
+
+            $targets->updateOrCreate($attributes, $values);
+        });
 
         return redirect()->route('dashboard', [
             'client_id' => $clientId,

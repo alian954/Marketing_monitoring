@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Client;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateGoogleAdsCustomerRequest extends FormRequest
+class UpdateGoogleAdsClientAccountRequest extends FormRequest
 {
     /** @var string */
     protected $errorBag = 'googleAds';
@@ -15,21 +17,31 @@ class UpdateGoogleAdsCustomerRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        $user = $this->user();
+        $client = $this->route('client');
+
+        if (! $user instanceof User
+            || ! $client instanceof Client
+            || ! $user->canManageWorkspace()
+            || (int) $client->user_id !== $user->workspaceOwnerId()) {
+            return false;
+        }
+
+        $accessibleClientIds = $user->workspaceClientIds();
+
+        return $accessibleClientIds === null || in_array((int) $client->getKey(), $accessibleClientIds, true);
     }
 
     protected function prepareForValidation(): void
     {
-        $customerId = $this->input('customer_id');
-        $loginCustomerId = $this->input('login_customer_id');
         $normalized = [];
 
-        if (is_string($customerId)) {
-            $normalized['customer_id'] = preg_replace('/[\s-]+/', '', trim($customerId));
-        }
+        foreach (['customer_id', 'login_customer_id'] as $field) {
+            $value = $this->input($field);
 
-        if (is_string($loginCustomerId)) {
-            $normalized['login_customer_id'] = preg_replace('/[\s-]+/', '', trim($loginCustomerId));
+            if (is_string($value)) {
+                $normalized[$field] = preg_replace('/[\s-]+/', '', trim($value));
+            }
         }
 
         $this->merge($normalized);
@@ -43,7 +55,11 @@ class UpdateGoogleAdsCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'customer_id' => ['required', 'string', 'regex:/^\d{10}$/'],
+            'customer_id' => [
+                'required',
+                'string',
+                'regex:/^\d{10}$/',
+            ],
             'login_customer_id' => ['nullable', 'string', 'regex:/^\d{10}$/'],
         ];
     }

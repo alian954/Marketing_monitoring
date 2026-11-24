@@ -23,12 +23,16 @@
                     <a class="nav-link" href="{{ route('clients.index') }}" @if (request()->routeIs('clients.*')) aria-current="page" @endif>客戶</a>
                     <a class="nav-link" href="{{ route('notifications.index') }}" @if (request()->routeIs('notifications.*')) aria-current="page" @endif>通知紀錄</a>
                     @if (auth()->user()?->isWorkspaceOwner())
-                        <a class="nav-link" href="{{ route('team.index') }}" @if (request()->routeIs('team.*')) aria-current="page" @endif>工作區成員</a>
+                        <a class="nav-link" href="{{ route('team.index') }}" @if (request()->routeIs('team.*')) aria-current="page" @endif>組織成員</a>
                     @endif
                     @if (auth()->user()?->isWorkspaceOwner())
                         <a class="nav-link" href="{{ route('integrations.google-analytics.edit') }}" @if (request()->routeIs('integrations.google-analytics.*')) aria-current="page" @endif>GA4 整合</a>
+                        <a class="nav-link" href="{{ route('integrations.google-search-console.edit') }}" @if (request()->routeIs('integrations.google-search-console.*')) aria-current="page" @endif>Search Console</a>
                         <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
                         <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
+                    @endif
+                    @if (auth()->user()?->isPlatformAdmin())
+                        <a class="nav-link" href="{{ route('platform.index') }}" @if (request()->routeIs('platform.*')) aria-current="page" @endif>總管理平台</a>
                     @endif
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
@@ -46,15 +50,25 @@
 
         <main id="main-content" class="page-shell">
             <x-flash-messages />
-            @if (auth()->user()?->isReadOnlyWorkspaceMember())
-                <div class="read-only-banner" role="status">唯讀成員 · 僅能檢視工作區資料</div>
+            @if (auth()->user()?->isPlatformAdmin() && $platformSelectedOrganization !== null)
+                <div class="read-only-banner platform-context-banner" role="status">
+                    <span>平台管理員 · 正在檢視組織：{{ $platformSelectedOrganization->name }}（{{ $platformSelectedOrganization->statusLabel() }}）</span>
+                    <form action="{{ route('platform.organizations.leave') }}" method="POST">
+                        @csrf
+                        <button class="button button-quiet button-small" type="submit">返回總管理平台</button>
+                    </form>
+                </div>
+            @elseif (auth()->user()?->isPlatformAdmin())
+                <div class="read-only-banner" role="status">平台管理員 · 全組織管理功能</div>
+            @elseif (auth()->user()?->isReadOnlyWorkspaceMember())
+                <div class="read-only-banner" role="status">唯讀成員 · 僅能檢視授權的組織資料</div>
             @elseif (! auth()->user()?->isWorkspaceOwner())
                 <div class="read-only-banner" role="status">可編輯成員 · 可維護監測項目與活動</div>
             @endif
             @yield('content')
         </main>
 
-        <footer class="page-footer">私人網站監測工作區</footer>
+        <footer class="page-footer">多組織網站監測平台</footer>
     </div>
 </body>
 </html>

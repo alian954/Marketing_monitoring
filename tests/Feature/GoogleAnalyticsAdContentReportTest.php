@@ -118,6 +118,7 @@ class GoogleAnalyticsAdContentReportTest extends TestCase
         $connection = $this->createConnection($user);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->getKey(),
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => 'spring_launch_2026',
             'attribution_mode' => 'manual_utm',
@@ -152,6 +153,7 @@ class GoogleAnalyticsAdContentReportTest extends TestCase
         $connection = $this->createConnection($user);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->getKey(),
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'google_ads_auto_tagging',
@@ -279,20 +281,28 @@ class GoogleAnalyticsAdContentReportTest extends TestCase
     /** @param array<string, mixed> $attributes */
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create($attributes + [
+        $target = SocialEngagementTarget::factory()->create($attributes + [
             'tag' => 'GA4 ad content campaign',
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+
+        $this->bindGoogleAnalyticsTargetFixture($target);
+
+        return $target;
     }
 
     private function createConnection(User $user): GoogleAnalyticsConnection
     {
-        return GoogleAnalyticsConnection::query()->create([
+        $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->getKey(),
             'property_id' => '123456789',
             'refresh_token' => 'refresh-token',
         ]);
+
+        $this->trackGoogleAnalyticsFixtureConnection($connection);
+
+        return $connection;
     }
 
     /** @return array<string, mixed> */

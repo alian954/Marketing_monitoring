@@ -28,6 +28,7 @@ class MetaMarketingIntegrationTest extends TestCase
             'services.meta_marketing.client_secret' => 'meta-client-secret',
         ]);
         $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => '唯一客戶']);
         MetaMarketingConnection::query()->create([
             'user_id' => $user->id,
             'access_token' => 'private-authorized-token',
@@ -161,19 +162,27 @@ class MetaMarketingIntegrationTest extends TestCase
             ]),
         ]);
         $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => '客戶 A']);
         $connection = MetaMarketingConnection::query()->create([
             'user_id' => $user->id,
             'access_token' => 'authorized-token',
         ]);
 
         $this->actingAs($user)
-            ->put(route('integrations.meta-marketing.ad-account.update'), ['ad_account_id' => ' act_123456789 '])
+            ->put(route('integrations.meta-marketing.clients.ad-account.update', $client), [
+                'ad_account_id' => [$client->id => ' act_123456789 '],
+            ])
             ->assertRedirect(route('integrations.meta-marketing.edit'))
-            ->assertSessionHas('status', 'Meta 廣告帳戶已設定。');
+            ->assertSessionHas('status', '已為「客戶 A」設定 Meta 廣告帳戶。');
 
-        $this->assertSame('123456789', $connection->fresh()->ad_account_id);
-        $this->assertSame('Demo Ads', $connection->fresh()->ad_account_name);
-        $this->assertSame('TWD', $connection->fresh()->currency_code);
+        $this->assertDatabaseHas('meta_marketing_client_accounts', [
+            'meta_marketing_connection_id' => $connection->id,
+            'client_id' => $client->id,
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Demo Ads',
+            'currency_code' => 'TWD',
+        ]);
+        $this->assertNull($connection->fresh()->ad_account_id);
         Http::assertSent(fn (ClientRequest $request): bool => str_starts_with($request->url(), 'https://graph.facebook.com/v27.0/act_123456789')
             && $request->hasHeader('Authorization', 'Bearer authorized-token'));
     }
@@ -181,6 +190,7 @@ class MetaMarketingIntegrationTest extends TestCase
     public function test_invalid_ad_account_id_is_rejected_with_a_user_message(): void
     {
         $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => '客戶 A']);
         MetaMarketingConnection::query()->create([
             'user_id' => $user->id,
             'access_token' => 'authorized-token',
@@ -188,9 +198,32 @@ class MetaMarketingIntegrationTest extends TestCase
 
         $this->actingAs($user)
             ->from(route('integrations.meta-marketing.edit'))
-            ->put(route('integrations.meta-marketing.ad-account.update'), ['ad_account_id' => 'act_invalid'])
+            ->put(route('integrations.meta-marketing.clients.ad-account.update', $client), [
+                'ad_account_id' => [$client->id => 'act_invalid'],
+            ])
             ->assertRedirect(route('integrations.meta-marketing.edit'))
             ->assertSessionHasErrorsIn('metaMarketing', ['ad_account_id']);
+    }
+
+    public function test_a_client_cannot_set_another_users_meta_account(): void
+    {
+        $owner = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $client = $otherUser->clients()->create(['name' => '他人客戶']);
+        MetaMarketingConnection::query()->create([
+            'user_id' => $owner->id,
+            'access_token' => 'authorized-token',
+        ]);
+        Http::preventStrayRequests();
+
+        $this->actingAs($owner)
+            ->put(route('integrations.meta-marketing.clients.ad-account.update', $client), [
+                'ad_account_id' => [$client->id => '123456789'],
+            ])
+            ->assertNotFound();
+
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('meta_marketing_client_accounts', ['client_id' => $client->id]);
     }
 
     public function test_disconnect_revokes_meta_access_and_removes_the_connection(): void

@@ -22,6 +22,10 @@
                 <h1 id="login-heading" class="login-heading">歡迎回來</h1>
                 <p class="login-description">登入以查看網站監測狀態與事件紀錄。</p>
 
+                @if (session('status'))
+                    <div class="alert alert-warning" role="status">{{ session('status') }}</div>
+                @endif
+
                 @if ($errors->any())
                     <div class="alert alert-error" role="alert" aria-labelledby="login-error-title">
                         <p id="login-error-title" class="alert-title">登入失敗</p>

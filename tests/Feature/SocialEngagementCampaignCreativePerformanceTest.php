@@ -27,6 +27,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             'tag' => 'Spring launch',
             'social_platform' => 'instagram',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
 
         for ($index = 0; $index < 27; $index++) {
             $utmContent = match ($index) {
@@ -111,6 +112,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             'starts_on' => '2026-11-16',
             'ends_on' => '2026-11-16',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
 
         $this->createPost($target, 1, 'same-campaign-creative', '2026-11-15T16:00:00Z');
         $this->createPost($target, 2, 'same-campaign-creative', '2026-11-16T15:59:59Z');
@@ -302,6 +304,7 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
     ): SocialEngagementTargetGoogleAnalyticsReport {
         return SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'manual_utm',
@@ -347,6 +350,13 @@ class SocialEngagementCampaignCreativePerformanceTest extends TestCase
             'utm_content' => $utmContent,
             'config_version' => $configVersion,
         ]);
+
+        if ($target->user_id !== null && $target->client_id !== null) {
+            $monitor->forceFill([
+                'user_id' => $target->user_id,
+                'client_id' => $target->client_id,
+            ])->save();
+        }
 
         CheckRun::factory()->for($monitor)->create([
             'config_version' => $runConfigVersion ?? $monitor->config_version,

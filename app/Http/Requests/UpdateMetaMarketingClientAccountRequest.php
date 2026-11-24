@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Client;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateMetaMarketingConnectionRequest extends FormRequest
+class UpdateMetaMarketingClientAccountRequest extends FormRequest
 {
     /** @var string */
     protected $errorBag = 'metaMarketing';
@@ -15,12 +17,29 @@ class UpdateMetaMarketingConnectionRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+        $client = $this->route('client');
+
+        if (! $user instanceof User
+            || ! $client instanceof Client
+            || ! $user->canManageWorkspace()
+            || (int) $client->user_id !== $user->workspaceOwnerId()) {
+            return false;
+        }
+
+        $accessibleClientIds = $user->workspaceClientIds();
+
+        return $accessibleClientIds === null || in_array((int) $client->getKey(), $accessibleClientIds, true);
     }
 
-    protected function prepareForValidation(): void
+    public function validationData(): array
     {
-        $accountId = $this->input('ad_account_id');
+        $data = $this->all();
+        $client = $this->route('client');
+        $accountIds = $data['ad_account_id'] ?? null;
+        $accountId = $client instanceof Client && is_array($accountIds)
+            ? ($accountIds[$client->getKey()] ?? null)
+            : null;
 
         if (is_string($accountId)) {
             $accountId = trim($accountId);
@@ -29,8 +48,11 @@ class UpdateMetaMarketingConnectionRequest extends FormRequest
                 $accountId = substr($accountId, 4);
             }
 
-            $this->merge(['ad_account_id' => $accountId]);
         }
+
+        $data['ad_account_id'] = $accountId;
+
+        return $data;
     }
 
     /**

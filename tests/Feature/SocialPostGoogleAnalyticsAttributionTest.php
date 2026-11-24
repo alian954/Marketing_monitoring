@@ -131,6 +131,7 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
             'ga4_source_name' => 'instagram',
             'ga4_medium_name' => 'social',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
         $post = $this->socialPost($target, 'ig-reel-01');
         CheckRun::factory()->for($post)->create([
             'config_version' => $post->config_version,
@@ -145,6 +146,7 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
         ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => 'spring-launch',
             'attribution_mode' => 'manual_utm',
@@ -225,7 +227,7 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
     {
         $url = 'https://www.instagram.com/reel/'.fake()->unique()->slug().'/';
 
-        return Monitor::factory()->create([
+        $monitor = Monitor::factory()->create([
             'name' => $name ?? 'Campaign post',
             'url' => $url,
             'url_hash' => Monitor::fingerprintUrl($url),
@@ -233,6 +235,15 @@ class SocialPostGoogleAnalyticsAttributionTest extends TestCase
             'expected_text' => 'Campaign announcement',
             'utm_content' => $utmContent,
         ]);
+
+        if ($target->user_id !== null && $target->client_id !== null) {
+            $monitor->forceFill([
+                'user_id' => $target->user_id,
+                'client_id' => $target->client_id,
+            ])->save();
+        }
+
+        return $monitor;
     }
 
     /** @return array{status: string, currency_code: string, rows: list<array<string, mixed>>} */

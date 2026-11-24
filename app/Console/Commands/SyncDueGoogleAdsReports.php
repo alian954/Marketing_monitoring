@@ -4,10 +4,12 @@ namespace App\Console\Commands;
 
 use App\Models\AccountScopeContext;
 use App\Models\GoogleAdsConnection;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Services\GoogleAdsApiException;
 use App\Services\GoogleAdsCampaignReportSync;
+use App\Services\GoogleAdsClientAccountResolver;
 use App\Services\GoogleAdsDataApi;
 use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
@@ -26,6 +28,7 @@ class SyncDueGoogleAdsReports extends Command
     public function handle(
         GoogleAdsDataApi $dataApi,
         GoogleAdsCampaignReportSync $campaignReportSync,
+        GoogleAdsClientAccountResolver $clientAccountResolver,
         ScheduledSyncHealthRecorder $syncHealthRecorder,
     ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
@@ -44,20 +47,21 @@ class SyncDueGoogleAdsReports extends Command
 
         $syncedCount = 0;
         $skippedCount = 0;
+        $unconfiguredCount = 0;
         $failedCount = 0;
 
         GoogleAdsConnection::query()
-            ->whereNotNull('customer_id')
-            ->whereNotNull('currency_code')
             ->whereNotNull('refresh_token')
             ->orderBy('id')
             ->chunkById(50, function (Collection $connections) use (
                 $asOf,
                 $dataApi,
                 $campaignReportSync,
+                $clientAccountResolver,
                 $syncHealthRecorder,
                 &$syncedCount,
                 &$skippedCount,
+                &$unconfiguredCount,
                 &$failedCount,
             ): void {
                 foreach ($connections as $connection) {
@@ -74,6 +78,7 @@ class SyncDueGoogleAdsReports extends Command
                     $syncStartedAt = $syncHealthRecorder->start($connection);
                     $syncedCountBeforeConnection = $syncedCount;
                     $skippedCountBeforeConnection = $skippedCount;
+                    $unconfiguredCountBeforeConnection = $unconfiguredCount;
                     $failedCountBeforeConnection = $failedCount;
                     $connectionSyncError = null;
 
@@ -84,25 +89,36 @@ class SyncDueGoogleAdsReports extends Command
                             &$accessToken,
                             &$tokenRefreshFailed,
                             $dataApi,
+                            $clientAccountResolver,
                             $asOf,
                             $campaignReportSync,
                             &$syncedCount,
                             &$skippedCount,
+                            &$unconfiguredCount,
                             &$failedCount,
                         ): void {
+                            $configuredTargets = $targets->filter(
+                                fn (SocialEngagementTarget $target): bool => $clientAccountResolver->forTarget($connection, $target) !== null,
+                            );
+                            $unconfiguredCount += $targets->count() - $configuredTargets->count();
+
+                            if ($configuredTargets->isEmpty()) {
+                                return;
+                            }
+
                             $reports = SocialEngagementTargetGoogleAdsReport::query()
                                 ->where('google_ads_connection_id', $connection->getKey())
-                                ->whereIn('social_engagement_target_id', $targets->modelKeys())
+                                ->whereIn('social_engagement_target_id', $configuredTargets->modelKeys())
                                 ->get()
                                 ->keyBy('social_engagement_target_id');
-                            $targetsToSync = $targets->reject(fn (SocialEngagementTarget $target): bool => $campaignReportSync->isSnapshotFresh(
+                            $targetsToSync = $configuredTargets->reject(fn (SocialEngagementTarget $target): bool => $campaignReportSync->isSnapshotFresh(
                                 $reports->get($target->getKey()),
                                 $connection,
                                 $target,
                                 $asOf,
                             ));
 
-                            $skippedCount += $targets->count() - $targetsToSync->count();
+                            $skippedCount += $configuredTargets->count() - $targetsToSync->count();
 
                             if ($targetsToSync->isEmpty()) {
                                 return;
@@ -150,14 +166,15 @@ class SyncDueGoogleAdsReports extends Command
                         $connection,
                         $syncStartedAt,
                         $syncedCount - $syncedCountBeforeConnection,
-                        $skippedCount - $skippedCountBeforeConnection,
+                        $skippedCount - $skippedCountBeforeConnection
+                            + $unconfiguredCount - $unconfiguredCountBeforeConnection,
                         $failedCount - $failedCountBeforeConnection,
                         $connectionSyncError,
                     );
                 }
             });
 
-        $this->info('Google Ads 自動同步：完成 '.$syncedCount.' 個活動，略過 '.$skippedCount.' 個近期讀值，失敗 '.$failedCount.' 個。');
+        $this->info('Google Ads 自動同步：完成 '.$syncedCount.' 個活動，略過未設定帳戶 '.$unconfiguredCount.' 個，略過近期讀值 '.$skippedCount.' 個，失敗 '.$failedCount.' 個。');
 
         return $failedCount === 0 ? self::SUCCESS : self::FAILURE;
     }
@@ -171,7 +188,10 @@ class SyncDueGoogleAdsReports extends Command
             ->whereNotNull('starts_on')
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
-            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString())
+            ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(
+                $asOf->setTimezone('Asia/Taipei')->toDateString(),
+            ));
     }
 
     private function clearExpiredSearchTermReports(CarbonImmutable $asOf): void

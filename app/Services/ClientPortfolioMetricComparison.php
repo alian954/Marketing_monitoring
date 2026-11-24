@@ -11,6 +11,7 @@ class ClientPortfolioMetricComparison
         'ga4_revenue' => ['amount_key' => 'ga4_revenue', 'count_key' => 'ga4_campaign_count'],
         'meta_spend' => ['amount_key' => 'meta_spend', 'count_key' => 'meta_campaign_count'],
         'google_ads_spend' => ['amount_key' => 'google_ads_spend', 'count_key' => 'google_ads_campaign_count'],
+        'estimated_media_contribution' => ['amount_key' => 'media_contribution_amount', 'count_key' => 'campaign_count'],
     ];
 
     /**
@@ -18,6 +19,8 @@ class ClientPortfolioMetricComparison
      * @param  list<array<string, mixed>>  $previousMoneyGroups
      * @param  list<array<string, mixed>>  $currentRoasGroups
      * @param  list<array<string, mixed>>  $previousRoasGroups
+     * @param  list<array<string, mixed>>  $currentEstimatedProfitabilityGroups
+     * @param  list<array<string, mixed>>  $previousEstimatedProfitabilityGroups
      * @return array{
      *     money: array<string, array<string, array{delta: float|null, percent_change: float|null, status: 'available'|'zero_baseline'|'insufficient'}>>,
      *     roas: array<string, array{source: string, source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: 'available'|'zero_baseline'|'insufficient'}>
@@ -28,12 +31,16 @@ class ClientPortfolioMetricComparison
         array $previousMoneyGroups,
         array $currentRoasGroups,
         array $previousRoasGroups,
+        array $currentEstimatedProfitabilityGroups = [],
+        array $previousEstimatedProfitabilityGroups = [],
     ): array {
         $moneyChanges = [];
 
         foreach (self::MONEY_METRICS as $metric => $definition) {
-            $currentValues = $this->indexMoneyGroups($currentMoneyGroups, $definition['amount_key'], $definition['count_key']);
-            $previousValues = $this->indexMoneyGroups($previousMoneyGroups, $definition['amount_key'], $definition['count_key']);
+            $currentGroups = $metric === 'estimated_media_contribution' ? $currentEstimatedProfitabilityGroups : $currentMoneyGroups;
+            $previousGroups = $metric === 'estimated_media_contribution' ? $previousEstimatedProfitabilityGroups : $previousMoneyGroups;
+            $currentValues = $this->indexMoneyGroups($currentGroups, $definition['amount_key'], $definition['count_key']);
+            $previousValues = $this->indexMoneyGroups($previousGroups, $definition['amount_key'], $definition['count_key']);
             $currencies = array_unique([...array_keys($currentValues), ...array_keys($previousValues)]);
             $moneyChanges[$metric] = [];
 

@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -496,14 +499,9 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
 
         $response = $this->actingAs($viewer)
             ->get(route('social-engagement-targets.report', $target))
-            ->assertOk()
-            ->assertSee('尚未取得逐日資料。')
-            ->assertDontSee('987654321');
+            ->assertNotFound();
 
-        $dailyReport = $response->viewData('dailyMarketingPerformance');
-        $this->assertFalse($dailyReport['google_analytics']['snapshot_available']);
-        $this->assertFalse($dailyReport['meta_marketing']['snapshot_available']);
-        $this->assertFalse($dailyReport['google_ads']['snapshot_available']);
+        $this->assertStringNotContainsString('987654321', $response->getContent());
     }
 
     /**
@@ -527,6 +525,13 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
      */
     private function createDailyReports(User $user, SocialEngagementTarget $target, array $options = []): void
     {
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
         $startDate = $target->starts_on->toDateString();
         $endDate = $target->ends_on->toDateString();
         $requestedDates = [
@@ -539,8 +544,14 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
             'property_id' => '123456789',
             'refresh_token' => 'ga-refresh-token',
         ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $analyticsConnection->id,
+            'client_id' => $target->client_id,
+            'property_id' => $analyticsConnection->property_id,
+        ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $analyticsConnection->id,
+            'property_id' => $analyticsConnection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'google_ads_auto_tagging',
@@ -564,8 +575,16 @@ class SocialEngagementDailyMarketingMetricsTest extends TestCase
 
         $metaConnection = MetaMarketingConnection::factory()->create([
             'user_id' => $user->id,
-            'ad_account_id' => 'act_12345',
+            'ad_account_id' => '12345',
+            'ad_account_name' => 'Daily Meta account',
             'currency_code' => 'TWD',
+        ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $target->client_id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
         ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,

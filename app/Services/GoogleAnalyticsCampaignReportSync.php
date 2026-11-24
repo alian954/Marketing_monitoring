@@ -17,6 +17,7 @@ class GoogleAnalyticsCampaignReportSync
         GoogleAnalyticsConnection $connection,
         SocialEngagementTarget $target,
         string $accessToken,
+        string $propertyId,
     ): SocialEngagementTargetGoogleAnalyticsReport {
         $campaignName = $target->googleAnalyticsCampaignName();
         $attributionMode = $target->googleAnalyticsAttributionMode();
@@ -26,7 +27,7 @@ class GoogleAnalyticsCampaignReportSync
         $mediumName = $usesGoogleAdsAutoTagging ? null : $target->googleAnalyticsMediumName();
         $metrics = $this->dataApi->campaignReport(
             $accessToken,
-            (string) $connection->property_id,
+            $propertyId,
             $campaignName,
             $target->starts_on->toDateString(),
             $target->ends_on->toDateString(),
@@ -83,6 +84,7 @@ class GoogleAnalyticsCampaignReportSync
         $syncedAt = CarbonImmutable::now();
         $snapshotDate = $syncedAt->timezone('Asia/Taipei')->toDateString();
         $reportAttributes = [
+            'property_id' => $propertyId,
             'campaign_name' => $campaignName,
             'attribution_mode' => $attributionMode,
             'campaign_id' => $googleAdsCampaignId,
@@ -146,11 +148,16 @@ class GoogleAnalyticsCampaignReportSync
         ?SocialEngagementTargetGoogleAnalyticsReport $snapshot,
         SocialEngagementTarget $target,
         CarbonImmutable $asOf,
+        ?string $propertyId = null,
+        bool $allowLegacyPropertyIdentity = false,
     ): bool {
         $attributionMode = $target->googleAnalyticsAttributionMode();
         $usesGoogleAdsAutoTagging = $attributionMode === 'google_ads_auto_tagging';
 
         return $snapshot !== null
+            && $propertyId !== null
+            && ($snapshot->property_id === $propertyId
+                || ($allowLegacyPropertyIdentity && $snapshot->property_id === null))
             && $snapshot->attribution_mode === $attributionMode
             && $snapshot->campaign_id === ($usesGoogleAdsAutoTagging ? trim((string) $target->google_ads_campaign_id) : null)
             && ($usesGoogleAdsAutoTagging || $snapshot->campaign_name === $target->googleAnalyticsCampaignName())

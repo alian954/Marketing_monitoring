@@ -20,8 +20,10 @@ class StatusPage extends Model
         static::addGlobalScope(new AuthenticatedAccountScope);
 
         static::creating(static function (StatusPage $statusPage): void {
-            if (Auth::id() !== null) {
-                $statusPage->forceFill(['user_id' => Auth::id()]);
+            $user = Auth::user();
+
+            if ($user instanceof User) {
+                $statusPage->forceFill(['user_id' => $user->workspaceOwnerId()]);
             }
         });
     }

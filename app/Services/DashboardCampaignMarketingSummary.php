@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -19,6 +22,9 @@ class DashboardCampaignMarketingSummary
         private CampaignMarketingEfficiencyReport $marketingEfficiencyReport,
         private SocialEngagementCampaignBusinessGoalReport $businessGoalReport,
         private CampaignDailyMarketingPerformanceReport $dailyPerformanceReport,
+        private GoogleAnalyticsClientPropertyResolver $googleAnalyticsClientPropertyResolver,
+        private MetaMarketingClientAccountResolver $metaMarketingClientAccountResolver,
+        private GoogleAdsClientAccountResolver $googleAdsClientAccountResolver,
     ) {}
 
     /**
@@ -48,6 +54,39 @@ class DashboardCampaignMarketingSummary
         $googleAnalyticsConnection = $user->googleAnalyticsConnection;
         $metaMarketingConnection = $user->metaMarketingConnection;
         $googleAdsConnection = $user->googleAdsConnection;
+        $googleAnalyticsPropertiesByClient = collect();
+        $metaMarketingAccountsByClient = collect();
+        $googleAdsAccountsByClient = collect();
+
+        if ($googleAnalyticsConnection !== null) {
+            foreach ($targets->unique('client_id') as $target) {
+                $property = $this->googleAnalyticsClientPropertyResolver->forTarget($googleAnalyticsConnection, $target);
+
+                if ($property !== null) {
+                    $googleAnalyticsPropertiesByClient->put($target->client_id, $property);
+                }
+            }
+        }
+
+        if ($metaMarketingConnection !== null) {
+            foreach ($targets->unique('client_id') as $target) {
+                $account = $this->metaMarketingClientAccountResolver->forTarget($metaMarketingConnection, $target);
+
+                if ($account !== null) {
+                    $metaMarketingAccountsByClient->put($target->client_id, $account);
+                }
+            }
+        }
+
+        if ($googleAdsConnection !== null) {
+            foreach ($targets->unique('client_id') as $target) {
+                $account = $this->googleAdsClientAccountResolver->forTarget($googleAdsConnection, $target);
+
+                if ($account !== null) {
+                    $googleAdsAccountsByClient->put($target->client_id, $account);
+                }
+            }
+        }
 
         $googleAnalyticsReports = $googleAnalyticsConnection === null
             ? collect()
@@ -74,6 +113,9 @@ class DashboardCampaignMarketingSummary
         $summaries = [];
 
         foreach ($targets as $target) {
+            $googleAnalyticsProperty = $googleAnalyticsPropertiesByClient->get($target->client_id);
+            $metaMarketingClientAccount = $metaMarketingAccountsByClient->get($target->client_id);
+            $googleAdsClientAccount = $googleAdsAccountsByClient->get($target->client_id);
             $publicEngagementSummary = $publicEngagementSummaries[$target->getKey()] ?? [];
             $publicInteractionTotal = is_int($publicEngagementSummary['interaction_total'] ?? null)
                 ? $publicEngagementSummary['interaction_total']
@@ -87,22 +129,24 @@ class DashboardCampaignMarketingSummary
             $googleAnalyticsReport = $this->googleAnalyticsReportMatchesTarget(
                 $googleAnalyticsReports->get($target->getKey()),
                 $target,
+                $googleAnalyticsProperty,
             );
             $metaMarketingReport = $this->metaMarketingReportMatchesTarget(
                 $metaMarketingReports->get($target->getKey()),
                 $target,
-                $metaMarketingConnection,
+                $metaMarketingClientAccount,
             );
             $googleAdsReport = $this->googleAdsReportMatchesTarget(
                 $googleAdsReports->get($target->getKey()),
                 $target,
-                $googleAdsConnection,
+                $googleAdsClientAccount,
             );
             $googleAnalyticsSummary = $this->googleAnalyticsSummary(
                 $googleAnalyticsReport,
                 $googleAnalyticsConnection,
                 $target,
                 $freshnessCutoff,
+                $googleAnalyticsProperty?->property_id,
             );
             $dailyPerformance = $this->dailyPerformanceReport->build(
                 $googleAnalyticsReport,
@@ -117,12 +161,15 @@ class DashboardCampaignMarketingSummary
                     $metaMarketingConnection,
                     $target->meta_campaign_id !== null && $target->starts_on !== null && $target->ends_on !== null,
                     $freshnessCutoff,
+                    $metaMarketingClientAccount !== null,
                 ),
                 'google_ads' => $this->paidMediaSummary(
                     $googleAdsReport,
                     $googleAdsConnection,
                     $target->google_ads_campaign_id !== null && $target->starts_on !== null && $target->ends_on !== null,
                     $freshnessCutoff,
+                    $googleAdsClientAccount !== null,
+                    'not_configured_google_ads_source',
                 ),
                 'public_engagement' => [
                     'interaction_total' => $publicInteractionTotal,
@@ -182,8 +229,12 @@ class DashboardCampaignMarketingSummary
     private function googleAnalyticsReportMatchesTarget(
         ?SocialEngagementTargetGoogleAnalyticsReport $report,
         SocialEngagementTarget $target,
+        ?GoogleAnalyticsClientProperty $clientProperty,
     ): ?SocialEngagementTargetGoogleAnalyticsReport {
         if ($report === null
+            || $clientProperty === null
+            || ($report->property_id !== $clientProperty->property_id
+                && ! (! $clientProperty->exists && $report->property_id === null))
             || $target->starts_on === null
             || $target->ends_on === null
             || $report->attribution_mode !== $target->googleAnalyticsAttributionMode()
@@ -211,15 +262,14 @@ class DashboardCampaignMarketingSummary
     private function metaMarketingReportMatchesTarget(
         ?SocialEngagementTargetMetaMarketingReport $report,
         SocialEngagementTarget $target,
-        ?MetaMarketingConnection $connection,
+        ?MetaMarketingClientAccount $clientAccount,
     ): ?SocialEngagementTargetMetaMarketingReport {
         if ($report === null
-            || $connection === null
-            || $connection->ad_account_id === null
+            || $clientAccount === null
             || $target->meta_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null
-            || $report->ad_account_id !== $connection->ad_account_id
+            || $report->ad_account_id !== $clientAccount->ad_account_id
             || $report->campaign_id !== $target->meta_campaign_id
             || ! $report->starts_on?->isSameDay($target->starts_on)
             || ! $report->ends_on?->isSameDay($target->ends_on)) {
@@ -232,15 +282,14 @@ class DashboardCampaignMarketingSummary
     private function googleAdsReportMatchesTarget(
         ?SocialEngagementTargetGoogleAdsReport $report,
         SocialEngagementTarget $target,
-        ?GoogleAdsConnection $connection,
+        ?GoogleAdsClientAccount $clientAccount,
     ): ?SocialEngagementTargetGoogleAdsReport {
         if ($report === null
-            || $connection === null
-            || $connection->customer_id === null
+            || $clientAccount === null
             || $target->google_ads_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null
-            || $report->customer_id !== $connection->customer_id
+            || $report->customer_id !== $clientAccount->customer_id
             || $report->campaign_id !== $target->google_ads_campaign_id
             || ! $report->starts_on?->isSameDay($target->starts_on)
             || ! $report->ends_on?->isSameDay($target->ends_on)) {
@@ -256,13 +305,18 @@ class DashboardCampaignMarketingSummary
         ?GoogleAnalyticsConnection $connection,
         SocialEngagementTarget $target,
         CarbonImmutable $freshnessCutoff,
+        ?string $propertyId,
     ): array {
-        $status = $this->reportStatus(
-            $report?->synced_at,
-            $connection !== null,
-            $target->starts_on !== null && $target->ends_on !== null,
-            $freshnessCutoff,
-        );
+        $status = match (true) {
+            $connection === null => 'not_connected',
+            $propertyId === null => 'not_configured_source',
+            default => $this->reportStatus(
+                $report?->synced_at,
+                true,
+                $target->starts_on !== null && $target->ends_on !== null,
+                $freshnessCutoff,
+            ),
+        };
 
         return [
             'status' => $status,
@@ -280,14 +334,20 @@ class DashboardCampaignMarketingSummary
         MetaMarketingConnection|GoogleAdsConnection|null $connection,
         bool $hasCampaign,
         CarbonImmutable $freshnessCutoff,
+        bool $sourceConfigured = true,
+        string $unconfiguredStatus = 'not_configured_meta_source',
     ): array {
+        $status = match (true) {
+            ! $hasCampaign => 'not_configured',
+            $connection === null => 'not_connected',
+            ! $sourceConfigured => $unconfiguredStatus,
+            $report?->synced_at === null => 'missing',
+            $report->synced_at->lessThanOrEqualTo($freshnessCutoff) => 'stale',
+            default => 'fresh',
+        };
+
         return [
-            'status' => $status = $this->reportStatus(
-                $report?->synced_at,
-                $connection !== null,
-                $hasCampaign,
-                $freshnessCutoff,
-            ),
+            'status' => $status,
             'status_label' => $this->statusLabel($status),
             'spend_amount' => $report?->spend_amount,
             'currency_code' => $report?->currency_code,
@@ -321,6 +381,9 @@ class DashboardCampaignMarketingSummary
         return match ($status) {
             'not_connected' => '未連結',
             'not_configured' => '未設定活動',
+            'not_configured_source' => '未設定 GA4 資源',
+            'not_configured_meta_source' => '未設定 Meta 廣告帳戶',
+            'not_configured_google_ads_source' => '未設定 Google Ads 客戶帳戶',
             'missing' => '尚無資料',
             'stale' => '資料過期',
             default => '已更新',

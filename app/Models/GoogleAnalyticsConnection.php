@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'user_id',
@@ -19,6 +20,11 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class GoogleAnalyticsConnection extends Model
 {
+    public function clientProperties(): HasMany
+    {
+        return $this->hasMany(GoogleAnalyticsClientProperty::class);
+    }
+
     protected function casts(): array
     {
         return [

@@ -534,8 +534,11 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         SocialEngagementTarget $target,
         array $attributes,
     ): SocialEngagementTargetGoogleAnalyticsReport {
+        $this->mapGoogleAnalyticsConnectionToTargetClient($connection, $target);
+
         return SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => 'spring-launch',
             'attribution_mode' => 'manual_utm',

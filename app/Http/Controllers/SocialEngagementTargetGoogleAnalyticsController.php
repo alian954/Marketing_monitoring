@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SocialEngagementTarget;
 use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsCampaignReportSync;
+use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -17,6 +18,7 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
         SocialEngagementTarget $socialEngagementTarget,
         GoogleAnalyticsDataApi $dataApi,
         GoogleAnalyticsCampaignReportSync $campaignReportSync,
+        GoogleAnalyticsClientPropertyResolver $propertyResolver,
     ): RedirectResponse {
         $connection = $request->user()->googleAnalyticsConnection;
 
@@ -25,9 +27,11 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
                 ->withErrors(['google_analytics' => '請先連結 Google Analytics 帳戶。']);
         }
 
-        if (! is_string($connection->property_id) || $connection->property_id === '') {
+        $clientProperty = $propertyResolver->forTarget($connection, $socialEngagementTarget);
+
+        if ($clientProperty === null) {
             return $this->reportRedirect($socialEngagementTarget)
-                ->withErrors(['google_analytics' => '請先在 GA4 整合設定中填入資源 ID。']);
+                ->withErrors(['google_analytics' => '請先在 GA4 整合設定中為此客戶填入資源 ID。']);
         }
 
         if ($socialEngagementTarget->starts_on === null || $socialEngagementTarget->ends_on === null) {
@@ -37,7 +41,7 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
 
         try {
             $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
-            $campaignReportSync->sync($connection, $socialEngagementTarget, $accessToken);
+            $campaignReportSync->sync($connection, $socialEngagementTarget, $accessToken, $clientProperty->property_id);
         } catch (GoogleAnalyticsApiException $exception) {
             return $this->reportRedirect($socialEngagementTarget)
                 ->withErrors(['google_analytics' => $exception->getMessage()]);

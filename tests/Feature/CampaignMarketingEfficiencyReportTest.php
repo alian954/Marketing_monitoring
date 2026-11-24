@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -390,7 +393,24 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
         $connection = MetaMarketingConnection::factory()->create([
             'user_id' => $user->getKey(),
             'ad_account_id' => '123456789',
+            'ad_account_name' => 'Efficiency Meta account',
             'currency_code' => 'TWD',
+        ]);
+
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
+        MetaMarketingClientAccount::withoutGlobalScopes()->updateOrCreate([
+            'meta_marketing_connection_id' => $connection->getKey(),
+            'client_id' => $target->client_id,
+        ], [
+            'ad_account_id' => $connection->ad_account_id,
+            'ad_account_name' => $connection->ad_account_name,
+            'currency_code' => $connection->currency_code,
         ]);
 
         return SocialEngagementTargetMetaMarketingReport::query()->create([
@@ -441,10 +461,22 @@ class CampaignMarketingEfficiencyReportTest extends TestCase
             'property_id' => '123456789',
             'refresh_token' => 'test-refresh-token',
         ]);
+        if ($target->user_id === null) {
+            $target->forceFill([
+                'user_id' => $user->id,
+                'client_id' => Client::ensureDefaultFor($user)->id,
+            ])->save();
+        }
+
+        GoogleAnalyticsClientProperty::withoutGlobalScopes()->updateOrCreate([
+            'google_analytics_connection_id' => $connection->getKey(),
+            'client_id' => $target->client_id,
+        ], ['property_id' => $connection->property_id]);
         $usesGoogleAdsAutoTagging = $target->googleAnalyticsAttributionMode() === 'google_ads_auto_tagging';
 
         return SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->getKey(),
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => $target->googleAnalyticsAttributionMode(),

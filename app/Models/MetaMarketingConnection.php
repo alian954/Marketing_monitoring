@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'user_id',
@@ -28,6 +29,11 @@ class MetaMarketingConnection extends Model
 {
     /** @use HasFactory<MetaMarketingConnectionFactory> */
     use HasFactory;
+
+    public function clientAccounts(): HasMany
+    {
+        return $this->hasMany(MetaMarketingClientAccount::class);
+    }
 
     protected function casts(): array
     {

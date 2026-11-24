@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Monitor;
+use App\Models\Organization;
 use App\Models\RobotsObservation;
 use App\Services\MonitorHostConcurrencyLock;
 use App\Services\Probe\RobotsTxtProbe;
@@ -47,7 +48,12 @@ class CheckRobotsTxt implements ShouldBeUnique, ShouldQueue
     {
         $monitor = Monitor::query()->find($this->monitorId);
 
-        if ($monitor === null || ! $monitor->enabled || $monitor->socialPlatform() !== null) {
+        if ($monitor === null
+            || ! $monitor->enabled
+            || $monitor->socialPlatform() !== null
+            || ! Organization::isAccessibleForOwner(
+                $monitor->user_id === null ? null : (int) $monitor->user_id,
+            )) {
             return;
         }
 
@@ -71,6 +77,9 @@ class CheckRobotsTxt implements ShouldBeUnique, ShouldQueue
             if (
                 $lockedMonitor === null
                 || ! $lockedMonitor->enabled
+                || ! Organization::isAccessibleForOwner(
+                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
+                )
                 || $lockedMonitor->config_version !== $configVersion
                 || $lockedMonitor->socialPlatform() !== null
             ) {

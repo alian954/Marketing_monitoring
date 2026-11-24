@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -97,6 +99,241 @@ class ClientPortfolioTest extends TestCase
             ->get(route('clients.performance', ['search' => $search]))
             ->assertRedirect(route('clients.performance'))
             ->assertSessionHasErrors(['search' => '客戶搜尋不可超過 80 個字元。']);
+    }
+
+    public function test_client_portfolio_reports_period_estimated_media_contribution_in_native_currency(): void
+    {
+        $this->travelTo('2026-11-04 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create([
+            'name' => 'Northwind profitability',
+            'reporting_currency_code' => 'TWD',
+        ]);
+        $campaign = $this->createCampaign($client, 'Two day launch', '2026-11-01', '2026-11-02');
+        $campaign->update(['gross_margin_percent' => '40.0000']);
+        $this->createCampaign($client, 'Unconfigured margin', '2026-11-02', '2026-11-02');
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '30.0000', '12.0000', '18.0000');
+
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'total_revenue' => '10.0000'],
+                    ['date' => '2026-11-02', 'total_revenue' => '20.0000'],
+                ], '2026-11-01', '2026-11-02'),
+            ]);
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'spend_amount' => '5.0000'],
+                    ['date' => '2026-11-02', 'spend_amount' => '2.0000'],
+                ], '2026-11-01', '2026-11-02'),
+            ]);
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'spend_amount' => '7.0000', 'conversions_value' => '40.0000'],
+                    ['date' => '2026-11-02', 'spend_amount' => '3.0000', 'conversions_value' => '40.0000'],
+                ], '2026-11-01', '2026-11-02'),
+            ]);
+
+        $period = ['from' => '2026-11-02', 'to' => '2026-11-02'];
+        $response = $this->get(route('clients.performance', $period))
+            ->assertOk()
+            ->assertSee('媒體貢獻估算')
+            ->assertSee('3.00 USD')
+            ->assertSee('可計算 1/1')
+            ->assertSee('未設毛利率 1');
+
+        $portfolioRow = collect($response->viewData('clientPortfolioRows'))
+            ->firstWhere('client.name', 'Northwind profitability');
+
+        $this->assertSame([
+            [
+                'currency_code' => 'USD',
+                'media_contribution_amount' => 3.0,
+                'campaign_count' => 1,
+            ],
+        ], $portfolioRow['estimated_profitability_groups']);
+        $this->assertTrue($portfolioRow['uses_reporting_currency']);
+        $this->assertSame(1, $portfolioRow['estimated_profitability_coverage']['available_campaigns']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', $period))
+                ->assertOk()
+                ->streamedContent(),
+        ))->firstWhere('客戶', 'Northwind profitability');
+
+        $this->assertSame('3.00 USD（1 筆）', $csvRow['估算媒體貢獻（原幣）']);
+        $this->assertSame('可計算 1/1；未設毛利率 1', $csvRow['估算資料覆蓋']);
+    }
+
+    public function test_client_portfolio_does_not_estimate_contribution_when_selected_period_daily_data_is_incomplete(): void
+    {
+        $this->travelTo('2026-11-04 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create(['name' => 'Coverage gap profitability']);
+        $campaign = $this->createCampaign($client, 'Incomplete daily data', '2026-11-01', '2026-11-02');
+        $campaign->update(['gross_margin_percent' => '40.0000']);
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '100.0000', '20.0000', '30.0000');
+
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'total_revenue' => '100.0000'],
+                ], '2026-11-01', '2026-11-02', 'partial', '2026-11-01', '2026-11-01'),
+            ]);
+
+        $period = ['from' => '2026-11-02', 'to' => '2026-11-02'];
+        $response = $this->get(route('clients.performance', $period))
+            ->assertOk()
+            ->assertSee('資料不足 1');
+        $portfolioRow = collect($response->viewData('clientPortfolioRows'))
+            ->firstWhere('client.name', 'Coverage gap profitability');
+
+        $this->assertSame([], $portfolioRow['estimated_profitability_groups']);
+        $this->assertSame(1, $portfolioRow['estimated_profitability_coverage']['unavailable_campaigns']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', $period))
+                ->assertOk()
+                ->streamedContent(),
+        ))->firstWhere('客戶', 'Coverage gap profitability');
+
+        $this->assertSame('', $csvRow['估算媒體貢獻（原幣）']);
+        $this->assertSame('可計算 0/1；資料不足 1', $csvRow['估算資料覆蓋']);
+    }
+
+    public function test_client_portfolio_compares_estimated_media_contribution_with_the_previous_period(): void
+    {
+        $this->travelTo('2026-11-07 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create(['name' => 'Profitability comparison']);
+        $campaign = $this->createCampaign($client, 'Comparison launch', '2026-11-01', '2026-11-05');
+        $campaign->update(['gross_margin_percent' => '40.0000']);
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($campaign, $connections, '80.0000', '13.0000', '13.0000');
+
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'total_revenue' => '0.0000'],
+                    ['date' => '2026-11-02', 'total_revenue' => '10.0000'],
+                    ['date' => '2026-11-03', 'total_revenue' => '20.0000'],
+                    ['date' => '2026-11-04', 'total_revenue' => '20.0000'],
+                    ['date' => '2026-11-05', 'total_revenue' => '30.0000'],
+                ], '2026-11-01', '2026-11-05'),
+            ]);
+        SocialEngagementTargetMetaMarketingReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'spend_amount' => '0.0000'],
+                    ['date' => '2026-11-02', 'spend_amount' => '1.0000'],
+                    ['date' => '2026-11-03', 'spend_amount' => '2.0000'],
+                    ['date' => '2026-11-04', 'spend_amount' => '2.5000'],
+                    ['date' => '2026-11-05', 'spend_amount' => '2.5000'],
+                ], '2026-11-01', '2026-11-05'),
+            ]);
+        SocialEngagementTargetGoogleAdsReport::query()
+            ->where('social_engagement_target_id', $campaign->getKey())
+            ->firstOrFail()
+            ->update([
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'spend_amount' => '0.0000', 'conversions_value' => '0.0000'],
+                    ['date' => '2026-11-02', 'spend_amount' => '1.0000', 'conversions_value' => '10.0000'],
+                    ['date' => '2026-11-03', 'spend_amount' => '2.0000', 'conversions_value' => '20.0000'],
+                    ['date' => '2026-11-04', 'spend_amount' => '2.5000', 'conversions_value' => '20.0000'],
+                    ['date' => '2026-11-05', 'spend_amount' => '2.5000', 'conversions_value' => '30.0000'],
+                ], '2026-11-01', '2026-11-05'),
+            ]);
+
+        $period = [
+            'from' => '2026-11-04',
+            'to' => '2026-11-05',
+            'comparison' => 'previous',
+        ];
+        $response = $this->get(route('clients.performance', $period))
+            ->assertOk()
+            ->assertSee('較前期 +4.00 USD（+66.67%）');
+        $portfolioRow = collect($response->viewData('clientPortfolioRows'))
+            ->firstWhere('client.name', 'Profitability comparison');
+
+        $contributionChange = $portfolioRow['comparison']['money']['estimated_media_contribution']['USD'];
+
+        $this->assertSame(4.0, $contributionChange['delta']);
+        $this->assertEqualsWithDelta(66.66666666666666, $contributionChange['percent_change'], 0.00001);
+        $this->assertSame('available', $contributionChange['status']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', $period))
+                ->assertOk()
+                ->streamedContent(),
+        ))->firstWhere('客戶', 'Profitability comparison');
+
+        $this->assertSame("'+4.00 USD（+66.67%）", $csvRow['估算媒體貢獻變化']);
+    }
+
+    public function test_client_portfolio_excludes_duplicate_campaign_mappings_from_estimated_contribution(): void
+    {
+        $this->travelTo('2026-11-04 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $client = $user->clients()->create(['name' => 'Duplicate mapping profitability']);
+        $firstCampaign = $this->createCampaign($client, 'Shared media campaign A');
+        $secondCampaign = $this->createCampaign($client, 'Shared media campaign B');
+        $secondCampaign->update([
+            'meta_campaign_id' => $firstCampaign->meta_campaign_id,
+            'gross_margin_percent' => '40.0000',
+        ]);
+        $firstCampaign->update(['gross_margin_percent' => '40.0000']);
+        $connections = $this->createConnections($user);
+        $this->createCampaignReports($firstCampaign, $connections, '100.0000', '20.0000', '30.0000');
+        $this->createCampaignReports($secondCampaign, $connections, '100.0000', '20.0000', '30.0000');
+
+        $response = $this->get(route('clients.performance', [
+            'from' => '2026-11-01',
+            'to' => '2026-11-01',
+        ]))
+            ->assertOk()
+            ->assertSee('重複映射排除 2');
+        $portfolioRow = collect($response->viewData('clientPortfolioRows'))
+            ->firstWhere('client.name', 'Duplicate mapping profitability');
+
+        $this->assertSame([], $portfolioRow['estimated_profitability_groups']);
+        $this->assertSame(2, $portfolioRow['estimated_profitability_coverage']['duplicate_mappings_excluded']);
+        $this->assertSame(0, $portfolioRow['estimated_profitability_coverage']['eligible_campaigns']);
+
+        $csvRow = collect($this->csvRows(
+            $this->get(route('clients.performance.export', [
+                'from' => '2026-11-01',
+                'to' => '2026-11-01',
+            ]))
+                ->assertOk()
+                ->streamedContent(),
+        ))->firstWhere('客戶', 'Duplicate mapping profitability');
+
+        $this->assertSame('', $csvRow['估算媒體貢獻（原幣）']);
+        $this->assertSame('重複映射排除 2', $csvRow['估算資料覆蓋']);
     }
 
     public function test_portfolio_and_csv_use_the_same_period_and_daily_exchange_rates(): void
@@ -539,6 +776,79 @@ class ClientPortfolioTest extends TestCase
         $this->assertSame(1200.0, $contosoMetrics['google_ads_spend']);
     }
 
+    public function test_client_portfolio_page_and_csv_exclude_ga4_data_from_another_property(): void
+    {
+        $this->travelTo('2026-11-03 12:00:00');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $northwind = $user->clients()->create(['name' => 'Northwind']);
+        $contoso = $user->clients()->create(['name' => 'Contoso']);
+        $northwindCampaign = $this->createCampaign($northwind, 'Northwind GA4 campaign');
+        $contosoCampaign = $this->createCampaign($contoso, 'Contoso GA4 campaign');
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->getKey(),
+            'property_id' => '999999999',
+            'refresh_token' => 'encrypted-refresh-token',
+        ]);
+
+        foreach ([
+            [$northwind, $northwindCampaign, '111111111', '111111111', '111.0000'],
+            [$contoso, $contosoCampaign, '222222222', '111111111', '9999.0000'],
+        ] as [$client, $campaign, $propertyId, $reportPropertyId, $revenue]) {
+            GoogleAnalyticsClientProperty::query()->create([
+                'google_analytics_connection_id' => $connection->getKey(),
+                'client_id' => $client->getKey(),
+                'property_id' => $propertyId,
+            ]);
+            SocialEngagementTargetGoogleAnalyticsReport::query()->create([
+                'google_analytics_connection_id' => $connection->getKey(),
+                'property_id' => $reportPropertyId,
+                'social_engagement_target_id' => $campaign->getKey(),
+                'campaign_name' => $campaign->googleAnalyticsCampaignName(),
+                'attribution_mode' => 'google_ads_auto_tagging',
+                'campaign_id' => $campaign->google_ads_campaign_id,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-01',
+                'sessions' => 20,
+                'engaged_sessions' => 15,
+                'key_events' => '2.0000',
+                'total_revenue' => $revenue,
+                'currency_code' => 'USD',
+                'daily_metrics' => $this->dailyMetrics([[
+                    'date' => '2026-11-01',
+                    'total_revenue' => $revenue,
+                ]]),
+                'synced_at' => now(),
+            ]);
+        }
+
+        $response = $this->get(route('clients.performance', [
+            'from' => '2026-11-01',
+            'to' => '2026-11-01',
+        ]))
+            ->assertOk()
+            ->assertSee('Northwind')
+            ->assertSee('Contoso')
+            ->assertSee('111.00 USD')
+            ->assertDontSee('9,999.00 USD');
+
+        $portfolioRows = collect($response->viewData('clientPortfolioRows'))->keyBy(
+            static fn (array $row): string => $row['client']->name,
+        );
+        $this->assertSame(1, $portfolioRows->get('Northwind')['coverage']['google_analytics']['fresh_campaigns']);
+        $this->assertSame(0, $portfolioRows->get('Contoso')['coverage']['google_analytics']['fresh_campaigns']);
+        $this->assertSame(1, $portfolioRows->get('Contoso')['coverage']['google_analytics']['missing_campaigns']);
+
+        $csvContent = $this->get(route('clients.performance.export', [
+            'from' => '2026-11-01',
+            'to' => '2026-11-01',
+        ]))->assertOk()->streamedContent();
+        $csvRows = collect($this->csvRows($csvContent))->keyBy('客戶');
+        $this->assertSame('111.00 USD', $csvRows->get('Northwind')['GA4 營收']);
+        $this->assertSame('', $csvRows->get('Contoso')['GA4 營收']);
+        $this->assertStringNotContainsString('9999.00 USD', $csvContent);
+    }
+
     public function test_client_without_a_reporting_currency_keeps_source_currency_groups_separate(): void
     {
         $this->travelTo('2026-11-03 12:00:00');
@@ -639,8 +949,15 @@ class ClientPortfolioTest extends TestCase
         $connections = $this->createConnections($user);
         $this->createCampaignReports($campaign, $connections, '25.0000', '5.0000', '10.0000');
         $dailyMissingCampaign = $this->createCampaign($client, 'Daily data missing');
+        GoogleAnalyticsClientProperty::query()->firstOrCreate([
+            'google_analytics_connection_id' => $connections['google_analytics']->getKey(),
+            'client_id' => $client->getKey(),
+        ], [
+            'property_id' => $connections['google_analytics']->property_id,
+        ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connections['google_analytics']->getKey(),
+            'property_id' => $connections['google_analytics']->property_id,
             'social_engagement_target_id' => $dailyMissingCampaign->getKey(),
             'campaign_name' => $dailyMissingCampaign->googleAnalyticsCampaignName(),
             'attribution_mode' => 'google_ads_auto_tagging',
@@ -824,7 +1141,7 @@ class ClientPortfolioTest extends TestCase
         string $startsOn = '2026-11-01',
         string $endsOn = '2026-11-01',
     ): SocialEngagementTarget {
-        return SocialEngagementTarget::factory()->create([
+        $campaign = SocialEngagementTarget::factory()->create([
             'client_id' => $client->getKey(),
             'tag' => $tag,
             'social_platform' => 'instagram',
@@ -834,6 +1151,10 @@ class ClientPortfolioTest extends TestCase
             'google_ads_campaign_id' => 'ads-'.$tag,
             'meta_campaign_id' => 'meta-'.$tag,
         ]);
+
+        $campaign->forceFill(['user_id' => $client->user_id])->save();
+
+        return $campaign;
     }
 
     /** @return array{google_analytics: GoogleAnalyticsConnection, meta_marketing: MetaMarketingConnection, google_ads: GoogleAdsConnection} */
@@ -847,7 +1168,8 @@ class ClientPortfolioTest extends TestCase
             ]),
             'meta_marketing' => MetaMarketingConnection::factory()->create([
                 'user_id' => $user->getKey(),
-                'ad_account_id' => 'act_12345',
+                'ad_account_id' => '12345',
+                'ad_account_name' => 'Portfolio Meta account',
                 'currency_code' => 'USD',
             ]),
             'google_ads' => GoogleAdsConnection::factory()->create([
@@ -871,8 +1193,16 @@ class ClientPortfolioTest extends TestCase
         $startsOn = $campaign->starts_on?->toDateString() ?? '2026-11-01';
         $endsOn = $campaign->ends_on?->toDateString() ?? $startsOn;
 
+        GoogleAnalyticsClientProperty::query()->firstOrCreate([
+            'google_analytics_connection_id' => $connections['google_analytics']->getKey(),
+            'client_id' => $campaign->client_id,
+        ], [
+            'property_id' => $connections['google_analytics']->property_id,
+        ]);
+
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connections['google_analytics']->getKey(),
+            'property_id' => $connections['google_analytics']->property_id,
             'social_engagement_target_id' => $campaign->getKey(),
             'campaign_name' => $campaign->googleAnalyticsCampaignName(),
             'attribution_mode' => 'google_ads_auto_tagging',
@@ -890,6 +1220,17 @@ class ClientPortfolioTest extends TestCase
             ]], $startsOn, $endsOn),
             'synced_at' => now(),
         ]);
+
+        MetaMarketingClientAccount::withoutGlobalScopes()->updateOrCreate([
+            'meta_marketing_connection_id' => $connections['meta_marketing']->getKey(),
+            'client_id' => $campaign->client_id,
+        ], [
+            'ad_account_id' => $connections['meta_marketing']->ad_account_id,
+            'ad_account_name' => $connections['meta_marketing']->ad_account_name,
+            'currency_code' => $connections['meta_marketing']->currency_code,
+        ]);
+
+        $this->mapGoogleAdsConnectionToTargetClient($connections['google_ads'], $campaign);
 
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connections['meta_marketing']->getKey(),

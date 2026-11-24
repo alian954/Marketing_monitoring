@@ -17,6 +17,7 @@ class SocialEngagementCampaignAttributionCoverageTest extends TestCase
 
     public function test_campaign_coverage_counts_period_posts_and_duplicate_utm_values_across_chunks(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-25 04:00:00', 'UTC'));
         $campaignDate = now()->toDateString();
         $target = SocialEngagementTarget::factory()->create([
             'tag' => 'Summer launch',

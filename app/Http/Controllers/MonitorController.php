@@ -9,6 +9,7 @@ use App\Models\DnsChangeEvent;
 use App\Models\Incident;
 use App\Models\IncidentEvent;
 use App\Models\Monitor;
+use App\Models\Organization;
 use App\Models\StatusPage;
 use App\Models\User;
 use App\Services\AcceptedStatusCodeList;
@@ -399,16 +400,7 @@ class MonitorController extends Controller
         $this->validateSocialPostExpectation($normalizedUrl, $validated);
         $fingerprint = Monitor::fingerprintUrl($normalizedUrl);
 
-        $existingMonitor = Monitor::query()->where('url_hash', $fingerprint)->first();
-
-        if ($existingMonitor !== null) {
-            return back()
-                ->withErrors(['url' => '此網址已在監測中。'])
-                ->with('duplicateMonitorId', $existingMonitor->getKey())
-                ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
-        }
-
-        $monitor = Monitor::query()->create([
+        $monitorAttributes = [
             'name' => $validated['name'],
             'url' => $normalizedUrl,
             'url_hash' => $fingerprint,
@@ -441,7 +433,34 @@ class MonitorController extends Controller
             'interval_seconds' => $validated['interval_seconds'],
             'slo_target_basis_points' => $validated['slo_target_basis_points'],
             'next_check_at' => now(),
-        ]);
+        ];
+        $monitor = DB::transaction(function () use ($request, $fingerprint, $monitorAttributes): ?Monitor {
+            $organization = Organization::query()
+                ->where('owner_user_id', $request->user()->workspaceOwnerId())
+                ->lockForUpdate()
+                ->first();
+
+            if (Monitor::query()->where('url_hash', $fingerprint)->exists()) {
+                return null;
+            }
+
+            if ($organization !== null && ! $organization->hasAvailableMonitor()) {
+                throw ValidationException::withMessages([
+                    'name' => '此組織已達監測項目上限，請聯絡平台管理員調整方案。',
+                ]);
+            }
+
+            return Monitor::query()->create($monitorAttributes);
+        });
+
+        if ($monitor === null) {
+            $existingMonitor = Monitor::query()->where('url_hash', $fingerprint)->firstOrFail();
+
+            return back()
+                ->withErrors(['url' => '此網址已在監測中。'])
+                ->with('duplicateMonitorId', $existingMonitor->getKey())
+                ->withInput($request->except(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']));
+        }
 
         return redirect()->route('monitors.show', $monitor)->with('status', '已新增監測項目，排程器下次執行時會進行檢查。');
     }

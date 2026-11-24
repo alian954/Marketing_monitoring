@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <title>加入工作區 · 監測台</title>
+    <title>加入組織 · 監測台</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
@@ -19,10 +19,10 @@
 
             <section class="login-card" aria-labelledby="invitation-heading">
                 <p class="eyebrow">{{ $invitation->roleLabel() }}成員</p>
-                <h1 id="invitation-heading" class="login-heading">加入 {{ $invitation->owner->name }} 的工作區</h1>
+                <h1 id="invitation-heading" class="login-heading">加入 {{ $invitation->owner->name }} 的組織</h1>
                 <p class="login-description">
                     @if ($invitation->role === \App\Models\WorkspaceMembership::ROLE_EDITOR)
-                        建立帳戶後可維護監測項目與活動；工作區管理與整合設定仍由擁有者負責。
+                        建立帳戶後可維護授權的監測項目與活動；組織管理與整合設定仍由擁有者負責。
                     @else
                         建立帳戶後即可檢視監測與行銷資料。
                     @endif
@@ -62,7 +62,7 @@
                             <input class="field-input" id="password_confirmation" name="password_confirmation" type="password" minlength="12" maxlength="200" autocomplete="new-password" required>
                         </div>
                     </div>
-                    <button class="button button-primary login-submit" type="submit">加入工作區</button>
+                    <button class="button button-primary login-submit" type="submit">加入組織</button>
                 </form>
             </section>
         </div>

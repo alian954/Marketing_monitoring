@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'google_analytics_connection_id',
+    'property_id',
     'social_engagement_target_id',
     'snapshot_date',
     'campaign_name',

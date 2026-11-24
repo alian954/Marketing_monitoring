@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateGoogleAnalyticsPropertyRequest;
+use App\Models\Client;
 use App\Models\GoogleAnalyticsConnection;
 use App\Services\GoogleAnalyticsApiException;
+use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -14,10 +16,24 @@ use Illuminate\View\View;
 
 class GoogleAnalyticsIntegrationController extends Controller
 {
-    public function show(Request $request): View
+    public function show(Request $request, GoogleAnalyticsClientPropertyResolver $propertyResolver): View
     {
+        $user = $request->user();
+        Client::ensureDefaultFor($user);
+        $clients = $user->clients()->orderBy('name')->get();
+        $connection = $user->googleAnalyticsConnection;
+        $clientProperties = $connection === null
+            ? collect()
+            : $clients->mapWithKeys(function (Client $client) use ($connection, $propertyResolver): array {
+                $property = $propertyResolver->forClient($connection, $client);
+
+                return $property === null ? [] : [$client->getKey() => $property];
+            });
+
         return view('integrations.google-analytics', [
-            'connection' => $request->user()->googleAnalyticsConnection,
+            'connection' => $connection,
+            'clients' => $clients,
+            'clientProperties' => $clientProperties,
             'oauthConfigured' => filled(config('services.google_analytics.client_id'))
                 && filled(config('services.google_analytics.client_secret')),
             'redirectUri' => $this->redirectUri(),
@@ -83,7 +99,7 @@ class GoogleAnalyticsIntegrationController extends Controller
         }
 
         $connection = GoogleAnalyticsConnection::query()->firstOrNew([
-            'user_id' => (int) $request->user()->getAuthIdentifier(),
+            'user_id' => $request->user()->workspaceOwnerId(),
         ]);
         $refreshToken = $tokens['refresh_token'] ?? $connection->refresh_token;
 
@@ -99,20 +115,24 @@ class GoogleAnalyticsIntegrationController extends Controller
             ->with('status', 'Google Analytics 已連結。');
     }
 
-    public function updateProperty(UpdateGoogleAnalyticsPropertyRequest $request): RedirectResponse
+    public function updateProperty(UpdateGoogleAnalyticsPropertyRequest $request, Client $client): RedirectResponse
     {
-        $connection = $request->user()->googleAnalyticsConnection;
+        $user = $request->user();
+        $client = $user->clients()->findOrFail($client->getKey());
+        $connection = $user->googleAnalyticsConnection;
 
         if ($connection === null) {
             return redirect()->route('integrations.google-analytics.edit')
                 ->withErrors(['google_analytics' => '請先連結 Google Analytics 帳戶。']);
         }
 
-        $connection->property_id = $request->validated('property_id');
-        $connection->save();
+        $connection->clientProperties()->updateOrCreate(
+            ['client_id' => $client->getKey()],
+            ['property_id' => $request->validated('property_id')],
+        );
 
-        return redirect()->route('integrations.google-analytics.edit')
-            ->with('status', 'GA4 資源 ID 已儲存。');
+        return redirect()->route('integrations.google-analytics.edit', ['client_id' => $client->getKey()])
+            ->with('status', $client->name.'的 GA4 資源 ID 已儲存。');
     }
 
     public function disconnect(Request $request, GoogleAnalyticsDataApi $dataApi): RedirectResponse

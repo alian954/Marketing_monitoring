@@ -12,40 +12,44 @@ use Illuminate\Support\Facades\DB;
 
 class GoogleAdsCampaignReportSync
 {
-    public function __construct(private GoogleAdsDataApi $dataApi) {}
+    public function __construct(
+        private GoogleAdsDataApi $dataApi,
+        private GoogleAdsClientAccountResolver $clientAccountResolver,
+    ) {}
 
     public function sync(
         GoogleAdsConnection $connection,
         SocialEngagementTarget $target,
         string $accessToken,
     ): SocialEngagementTargetGoogleAdsReport {
-        if ($connection->customer_id === null
-            || $connection->currency_code === null
+        $clientAccount = $this->clientAccountResolver->forTarget($connection, $target);
+
+        if ($clientAccount === null
             || $target->google_ads_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null) {
-            throw new GoogleAdsApiException('請先設定 Google Ads 客戶、活動 ID 與活動日期。');
+            throw new GoogleAdsApiException('請先設定此客戶的 Google Ads 帳戶、活動 ID 與活動日期。');
         }
 
         $metrics = $this->dataApi->campaignInsights(
             $accessToken,
-            $connection->customer_id,
+            $clientAccount->customer_id,
             $target->google_ads_campaign_id,
             $target->starts_on->toDateString(),
             $target->ends_on->toDateString(),
-            $connection->currency_code,
-            $connection->login_customer_id,
+            $clientAccount->currency_code,
+            $clientAccount->login_customer_id,
         );
         try {
             $searchTermsData = $this->dataApi->campaignSearchTermInsights(
                 $accessToken,
-                $connection->customer_id,
+                $clientAccount->customer_id,
                 $target->google_ads_campaign_id,
                 $target->starts_on->toDateString(),
                 $target->ends_on->toDateString(),
                 $metrics['currency_code'],
                 $metrics['campaign_channel_type'],
-                $connection->login_customer_id,
+                $clientAccount->login_customer_id,
             );
         } catch (GoogleAdsApiException|ConnectionException) {
             $searchTermsData = [
@@ -69,13 +73,13 @@ class GoogleAdsCampaignReportSync
         try {
             $keywordPerformance = $this->dataApi->campaignKeywordInsights(
                 $accessToken,
-                $connection->customer_id,
+                $clientAccount->customer_id,
                 $target->google_ads_campaign_id,
                 $target->starts_on->toDateString(),
                 $target->ends_on->toDateString(),
                 $metrics['currency_code'],
                 $metrics['campaign_channel_type'],
-                $connection->login_customer_id,
+                $clientAccount->login_customer_id,
             );
         } catch (GoogleAdsApiException|ConnectionException $exception) {
             $keywordPerformance['message'] = $exception->getMessage();
@@ -96,13 +100,13 @@ class GoogleAdsCampaignReportSync
             try {
                 $deliveryUnitPerformance = $this->dataApi->campaignDeliveryUnitInsights(
                     $accessToken,
-                    $connection->customer_id,
+                    $clientAccount->customer_id,
                     $target->google_ads_campaign_id,
                     $target->starts_on->toDateString(),
                     $target->ends_on->toDateString(),
                     $metrics['currency_code'],
                     $metrics['campaign_channel_type'],
-                    $connection->login_customer_id,
+                    $clientAccount->login_customer_id,
                 );
             } catch (GoogleAdsApiException|ConnectionException $exception) {
                 $deliveryUnitPerformance['message'] = $exception->getMessage();
@@ -120,12 +124,12 @@ class GoogleAdsCampaignReportSync
         try {
             $devicePerformance = $this->dataApi->campaignDeviceInsights(
                 $accessToken,
-                $connection->customer_id,
+                $clientAccount->customer_id,
                 $target->google_ads_campaign_id,
                 $target->starts_on->toDateString(),
                 $target->ends_on->toDateString(),
                 $metrics['currency_code'],
-                $connection->login_customer_id,
+                $clientAccount->login_customer_id,
             );
         } catch (GoogleAdsApiException|ConnectionException $exception) {
             $devicePerformance['message'] = $exception->getMessage();
@@ -142,13 +146,13 @@ class GoogleAdsCampaignReportSync
         try {
             $auctionInsights = $this->dataApi->campaignAuctionInsights(
                 $accessToken,
-                $connection->customer_id,
+                $clientAccount->customer_id,
                 $target->google_ads_campaign_id,
                 $target->starts_on->toDateString(),
                 $target->ends_on->toDateString(),
                 $metrics['currency_code'],
                 $metrics['campaign_channel_type'],
-                $connection->login_customer_id,
+                $clientAccount->login_customer_id,
             );
         } catch (GoogleAdsApiException|ConnectionException $exception) {
             $auctionInsights['message'] = $exception->getMessage();
@@ -170,12 +174,12 @@ class GoogleAdsCampaignReportSync
             try {
                 $responsiveSearchAdAssetPerformance = $this->dataApi->campaignResponsiveSearchAdAssetInsights(
                     $accessToken,
-                    $connection->customer_id,
+                    $clientAccount->customer_id,
                     $target->google_ads_campaign_id,
                     $target->starts_on->toDateString(),
                     $target->ends_on->toDateString(),
                     $metrics['currency_code'],
-                    $connection->login_customer_id,
+                    $clientAccount->login_customer_id,
                 );
             } catch (GoogleAdsApiException|ConnectionException $exception) {
                 $responsiveSearchAdAssetPerformance['message'] = $exception->getMessage();
@@ -198,12 +202,12 @@ class GoogleAdsCampaignReportSync
             try {
                 $performanceMaxAssetPerformance = $this->dataApi->campaignPerformanceMaxAssetInsights(
                     $accessToken,
-                    $connection->customer_id,
+                    $clientAccount->customer_id,
                     $target->google_ads_campaign_id,
                     $target->starts_on->toDateString(),
                     $target->ends_on->toDateString(),
                     $metrics['currency_code'],
-                    $connection->login_customer_id,
+                    $clientAccount->login_customer_id,
                 );
             } catch (GoogleAdsApiException|ConnectionException $exception) {
                 $performanceMaxAssetPerformance['message'] = $exception->getMessage();
@@ -254,14 +258,14 @@ class GoogleAdsCampaignReportSync
             ? $syncedAt->addDays(30)
             : null;
 
-        return DB::transaction(function () use ($connection, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt, $auctionInsights, $auctionInsightsExpiresAt, $responsiveSearchAdAssetPerformance, $responsiveSearchAdAssetPerformanceExpiresAt, $performanceMaxAssetPerformance, $performanceMaxAssetPerformanceExpiresAt): SocialEngagementTargetGoogleAdsReport {
+        return DB::transaction(function () use ($connection, $clientAccount, $target, $metrics, $syncedAt, $startsOn, $endsOn, $dailyMetrics, $searchTermsData, $searchTermsExpiresAt, $keywordPerformance, $keywordPerformanceExpiresAt, $deliveryUnitPerformance, $deliveryUnitPerformanceExpiresAt, $devicePerformance, $devicePerformanceExpiresAt, $auctionInsights, $auctionInsightsExpiresAt, $responsiveSearchAdAssetPerformance, $responsiveSearchAdAssetPerformanceExpiresAt, $performanceMaxAssetPerformance, $performanceMaxAssetPerformanceExpiresAt): SocialEngagementTargetGoogleAdsReport {
             $report = SocialEngagementTargetGoogleAdsReport::query()->updateOrCreate(
                 [
                     'google_ads_connection_id' => $connection->getKey(),
                     'social_engagement_target_id' => $target->getKey(),
                 ],
                 [
-                    'customer_id' => $connection->customer_id,
+                    'customer_id' => $clientAccount->customer_id,
                     'campaign_id' => $target->google_ads_campaign_id,
                     'starts_on' => $startsOn,
                     'ends_on' => $endsOn,
@@ -291,12 +295,12 @@ class GoogleAdsCampaignReportSync
                     'social_engagement_target_id' => $target->getKey(),
                     'starts_on' => $target->starts_on->toDateString(),
                     'ends_on' => $target->ends_on->toDateString(),
-                    'account_id' => $connection->customer_id,
+                    'account_id' => $clientAccount->customer_id,
                     'synced_at' => $syncedAt,
                 ],
                 [
                     'source' => SocialEngagementTargetPaidAdSnapshot::SOURCE_GOOGLE_ADS,
-                    'account_id' => $connection->customer_id,
+                    'account_id' => $clientAccount->customer_id,
                     'campaign_id' => $metrics['campaign_id'],
                     'campaign_name' => $metrics['campaign_name'],
                     'spend_amount' => $metrics['spend_amount'],
@@ -320,8 +324,11 @@ class GoogleAdsCampaignReportSync
         SocialEngagementTarget $target,
         CarbonImmutable $asOf,
     ): bool {
+        $clientAccount = $this->clientAccountResolver->forTarget($connection, $target);
+
         return $snapshot !== null
-            && $snapshot->customer_id === $connection->customer_id
+            && $clientAccount !== null
+            && $snapshot->customer_id === $clientAccount->customer_id
             && $snapshot->campaign_id === $target->google_ads_campaign_id
             && $snapshot->starts_on?->toDateString() === $target->starts_on?->toDateString()
             && $snapshot->ends_on?->toDateString() === $target->ends_on?->toDateString()

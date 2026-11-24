@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\UpdateGoogleAdsCustomerRequest;
+use App\Http\Requests\UpdateGoogleAdsClientAccountRequest;
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
 use App\Services\GoogleAdsApiException;
+use App\Services\GoogleAdsClientAccountResolver;
 use App\Services\GoogleAdsDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -14,10 +16,24 @@ use Illuminate\View\View;
 
 class GoogleAdsIntegrationController extends Controller
 {
-    public function show(Request $request): View
+    public function show(Request $request, GoogleAdsClientAccountResolver $accountResolver): View
     {
+        $user = $request->user();
+        Client::ensureDefaultFor($user);
+        $clients = $user->clients()->orderBy('name')->get();
+        $connection = $user->googleAdsConnection;
+        $clientAccounts = $connection === null
+            ? collect()
+            : $clients->mapWithKeys(function (Client $client) use ($connection, $accountResolver): array {
+                $account = $accountResolver->forClient($connection, $client);
+
+                return $account === null ? [] : [$client->getKey() => $account];
+            });
+
         return view('integrations.google-ads', [
-            'connection' => $request->user()->googleAdsConnection,
+            'connection' => $connection,
+            'clients' => $clients,
+            'clientAccounts' => $clientAccounts,
             'oauthConfigured' => filled(config('services.google_ads.client_id'))
                 && filled(config('services.google_ads.client_secret')),
             'redirectUri' => $this->redirectUri(),
@@ -83,7 +99,7 @@ class GoogleAdsIntegrationController extends Controller
         }
 
         $connection = GoogleAdsConnection::query()->firstOrNew([
-            'user_id' => (int) $request->user()->getAuthIdentifier(),
+            'user_id' => $request->user()->workspaceOwnerId(),
         ]);
         $refreshToken = $tokens['refresh_token'] ?? $connection->refresh_token;
 
@@ -99,11 +115,14 @@ class GoogleAdsIntegrationController extends Controller
             ->with('status', 'Google Ads 帳戶已連結。請設定要同步的客戶帳戶。');
     }
 
-    public function updateCustomer(
-        UpdateGoogleAdsCustomerRequest $request,
+    public function updateClientCustomer(
+        UpdateGoogleAdsClientAccountRequest $request,
+        Client $client,
         GoogleAdsDataApi $dataApi,
     ): RedirectResponse {
-        $connection = $request->user()->googleAdsConnection;
+        $user = $request->user();
+        $client = $user->clients()->findOrFail($client->getKey());
+        $connection = $user->googleAdsConnection;
 
         if ($connection === null || ! is_string($connection->refresh_token) || $connection->refresh_token === '') {
             return redirect()->route('integrations.google-ads.edit')
@@ -125,14 +144,18 @@ class GoogleAdsIntegrationController extends Controller
                 ->withErrors(['google_ads' => '目前無法連線至 Google Ads，請稍後再試。']);
         }
 
-        $connection->customer_id = $customer['customer_id'];
-        $connection->customer_name = $customer['customer_name'];
-        $connection->currency_code = $customer['currency_code'];
-        $connection->login_customer_id = $request->validated('login_customer_id');
-        $connection->save();
+        $connection->clientAccounts()->updateOrCreate(
+            ['client_id' => $client->getKey()],
+            [
+                'customer_id' => $customer['customer_id'],
+                'login_customer_id' => $request->validated('login_customer_id'),
+                'customer_name' => $customer['customer_name'],
+                'currency_code' => $customer['currency_code'],
+            ],
+        );
 
         return redirect()->route('integrations.google-ads.edit')
-            ->with('status', 'Google Ads 客戶帳戶已驗證並儲存。');
+            ->with('status', $client->name.'的 Google Ads 客戶帳戶已驗證並儲存。');
     }
 
     public function disconnect(Request $request, GoogleAdsDataApi $dataApi): RedirectResponse

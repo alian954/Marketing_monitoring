@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\Organization;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
@@ -21,29 +22,32 @@ class WorkspaceAccessController extends Controller
 {
     public function index(Request $request): View
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
+        $organization = $owner->workspaceOrganization();
+        $memberships = $owner->workspaceMemberships()
+            ->whereNull('revoked_at')
+            ->with(['memberUser:id,name,email', 'clients:id,name'])
+            ->orderByDesc('accepted_at')
+            ->get();
+        $invitations = $owner->workspaceInvitations()
+            ->whereNull('accepted_at')
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->orderBy('expires_at')
+            ->get();
 
         return view('workspace-access.index', [
             'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
-            'memberships' => $owner->workspaceMemberships()
-                ->whereNull('revoked_at')
-                ->with(['memberUser:id,name,email', 'clients:id,name'])
-                ->orderByDesc('accepted_at')
-                ->get(),
-            'invitations' => $owner->workspaceInvitations()
-                ->whereNull('accepted_at')
-                ->whereNull('revoked_at')
-                ->where('expires_at', '>', now())
-                ->orderBy('expires_at')
-                ->get(),
+            'memberships' => $memberships,
+            'invitations' => $invitations,
+            'seatLimit' => $organization?->seat_limit,
+            'occupiedSeatCount' => 1 + $memberships->count() + $invitations->count(),
         ]);
     }
 
     public function storeInvitation(Request $request): RedirectResponse
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
 
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:254'],
@@ -55,7 +59,7 @@ class WorkspaceAccessController extends Controller
             'email.required' => '請輸入受邀者的電子郵件。',
             'email.email' => '請輸入有效的電子郵件。',
             'email.max' => '電子郵件不得超過 254 個字元。',
-            'role.in' => '請選擇有效的工作區權限。',
+            'role.in' => '請選擇有效的組織權限。',
         ] + $this->clientScopeValidationMessages());
         $email = mb_strtolower(trim($validated['email']));
         $clientScope = $validated['client_scope'] ?? WorkspaceMembership::CLIENT_SCOPE_ALL;
@@ -69,21 +73,34 @@ class WorkspaceAccessController extends Controller
             ]);
         }
 
-        $owner->workspaceInvitations()
-            ->whereRaw('lower(email) = ?', [$email])
-            ->whereNull('accepted_at')
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
-
         $token = Str::random(64);
-        $owner->workspaceInvitations()->create([
-            'email' => $email,
-            'role' => $validated['role'] ?? WorkspaceMembership::ROLE_READ_ONLY,
-            'client_scope' => $clientScope,
-            'client_ids' => $clientIds,
-            'token_hash' => hash('sha256', $token),
-            'expires_at' => now()->addDays(WorkspaceInvitation::EXPIRATION_DAYS),
-        ]);
+        DB::transaction(function () use ($owner, $email, $validated, $clientScope, $clientIds, $token): void {
+            $organization = Organization::query()
+                ->where('owner_user_id', $owner->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if ($organization !== null && ! $organization->hasAvailableSeatForInvitation($email)) {
+                throw ValidationException::withMessages([
+                    'email' => '組織席次已滿，請聯絡平台管理員調整席次後再邀請。',
+                ]);
+            }
+
+            $owner->workspaceInvitations()
+                ->whereRaw('lower(email) = ?', [$email])
+                ->whereNull('accepted_at')
+                ->whereNull('revoked_at')
+                ->update(['revoked_at' => now()]);
+
+            $owner->workspaceInvitations()->create([
+                'email' => $email,
+                'role' => $validated['role'] ?? WorkspaceMembership::ROLE_READ_ONLY,
+                'client_scope' => $clientScope,
+                'client_ids' => $clientIds,
+                'token_hash' => hash('sha256', $token),
+                'expires_at' => now()->addDays(WorkspaceInvitation::EXPIRATION_DAYS),
+            ]);
+        });
 
         return redirect()->route('team.index')->with(
             'createdInviteUrl',
@@ -93,37 +110,50 @@ class WorkspaceAccessController extends Controller
 
     public function destroyInvitation(Request $request, int $invitation): RedirectResponse
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
 
-        $workspaceInvitation = $owner->workspaceInvitations()
-            ->whereKey($invitation)
-            ->whereNull('accepted_at')
-            ->whereNull('revoked_at')
-            ->firstOrFail();
-        $workspaceInvitation->forceFill(['revoked_at' => now()])->save();
+        DB::transaction(function () use ($owner, $invitation): void {
+            Organization::query()
+                ->where('owner_user_id', $owner->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            $workspaceInvitation = $owner->workspaceInvitations()
+                ->whereKey($invitation)
+                ->whereNull('accepted_at')
+                ->whereNull('revoked_at')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $workspaceInvitation->forceFill(['revoked_at' => now()])->save();
+        });
 
         return redirect()->route('team.index')->with('status', '邀請連結已撤銷。');
     }
 
     public function destroyMember(Request $request, int $membership): RedirectResponse
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
 
-        $workspaceMembership = $owner->workspaceMemberships()
-            ->whereKey($membership)
-            ->whereNull('revoked_at')
-            ->firstOrFail();
-        $workspaceMembership->forceFill(['revoked_at' => now()])->save();
+        DB::transaction(function () use ($owner, $membership): void {
+            Organization::query()
+                ->where('owner_user_id', $owner->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            $workspaceMembership = $owner->workspaceMemberships()
+                ->whereKey($membership)
+                ->whereNull('revoked_at')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $workspaceMembership->forceFill(['revoked_at' => now()])->save();
+        });
 
         return redirect()->route('team.index')->with('status', '成員存取權已撤銷。');
     }
 
     public function updateMemberRole(Request $request, int $membership): RedirectResponse
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
 
         $validated = $request->validate([
             'role' => ['required', 'string', Rule::in([
@@ -132,7 +162,7 @@ class WorkspaceAccessController extends Controller
             ])],
         ], [
             'role.required' => '請選擇成員權限。',
-            'role.in' => '請選擇有效的工作區權限。',
+            'role.in' => '請選擇有效的組織權限。',
         ]);
 
         $workspaceMembership = $owner->workspaceMemberships()
@@ -146,8 +176,7 @@ class WorkspaceAccessController extends Controller
 
     public function editMemberClients(Request $request, int $membership): View
     {
-        $owner = $request->user();
-        abort_unless($owner instanceof User, 401);
+        $owner = $this->workspaceOwnerFor($request);
 
         $workspaceMembership = $owner->workspaceMemberships()
             ->whereKey($membership)
@@ -222,6 +251,10 @@ class WorkspaceAccessController extends Controller
         $invitation = $this->findAvailableInvitation($token);
 
         $member = DB::transaction(function () use ($invitation, $validated): User {
+            $organization = Organization::query()
+                ->where('owner_user_id', $invitation->owner_user_id)
+                ->lockForUpdate()
+                ->first();
             $lockedInvitation = WorkspaceInvitation::query()
                 ->whereKey($invitation->getKey())
                 ->lockForUpdate()
@@ -232,6 +265,10 @@ class WorkspaceAccessController extends Controller
                 || $lockedInvitation->revoked_at !== null
                 || $lockedInvitation->expires_at->isPast()
             ) {
+                throw (new ModelNotFoundException)->setModel(WorkspaceInvitation::class, [$invitation->getKey()]);
+            }
+
+            if ($organization !== null && ! $organization->isAccessible()) {
                 throw (new ModelNotFoundException)->setModel(WorkspaceInvitation::class, [$invitation->getKey()]);
             }
 
@@ -280,18 +317,34 @@ class WorkspaceAccessController extends Controller
         Auth::login($member);
         $request->session()->regenerate();
 
-        return redirect()->route('dashboard')->with('status', '已加入工作區。');
+        return redirect()->route('dashboard')->with('status', '已加入組織。');
     }
 
     private function findAvailableInvitation(string $token): WorkspaceInvitation
     {
-        return WorkspaceInvitation::query()
+        $invitation = WorkspaceInvitation::query()
             ->where('token_hash', hash('sha256', $token))
             ->whereNull('accepted_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
             ->with('owner:id,name')
             ->firstOrFail();
+
+        $organization = Organization::query()
+            ->where('owner_user_id', $invitation->owner_user_id)
+            ->first();
+
+        abort_unless($organization === null || $organization->isAccessible(), 404);
+
+        return $invitation;
+    }
+
+    private function workspaceOwnerFor(Request $request): User
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        return $user->workspaceOwner();
     }
 
     /** @return array<string, array<int, mixed>> */
@@ -324,7 +377,7 @@ class WorkspaceAccessController extends Controller
             'client_ids.array' => '客戶選擇格式無效。',
             'client_ids.list' => '客戶選擇格式無效。',
             'client_ids.min' => '指定客戶時，至少需要選擇一個客戶。',
-            'client_ids.exists' => '選取的客戶不存在或不屬於此工作區。',
+            'client_ids.exists' => '選取的客戶不存在或不屬於此組織。',
             'client_ids.*.integer' => '客戶選擇格式無效。',
             'client_ids.*.distinct' => '不可重複選擇同一個客戶。',
         ];

@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -107,6 +110,11 @@ class ClientReportingCurrencySummaryTest extends TestCase
             'property_id' => '123456789',
             'refresh_token' => 'encrypted-refresh-token',
         ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $connection->getKey(),
+            'client_id' => $client->getKey(),
+            'property_id' => $connection->property_id,
+        ]);
         $this->createGoogleAnalyticsReport($connection, $dailyCampaign, [
             'daily_metrics' => $this->dailyMetrics([
                 ['date' => '2026-11-01', 'total_revenue' => '10.0000'],
@@ -173,6 +181,26 @@ class ClientReportingCurrencySummaryTest extends TestCase
             'customer_id' => '1234567890',
             'currency_code' => 'USD',
         ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $googleAnalyticsConnection->getKey(),
+            'client_id' => $target->client_id,
+            'property_id' => $googleAnalyticsConnection->property_id,
+        ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->getKey(),
+            'client_id' => $target->client_id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
+        ]);
+        GoogleAdsClientAccount::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->getKey(),
+            'client_id' => $target->client_id,
+            'customer_id' => $googleAdsConnection->customer_id,
+            'login_customer_id' => $googleAdsConnection->login_customer_id,
+            'customer_name' => $googleAdsConnection->customer_name,
+            'currency_code' => $googleAdsConnection->currency_code,
+        ]);
 
         $this->createGoogleAnalyticsReport($googleAnalyticsConnection, $target, [
             'campaign_id' => $target->google_ads_campaign_id,
@@ -236,6 +264,7 @@ class ClientReportingCurrencySummaryTest extends TestCase
     ): SocialEngagementTargetGoogleAnalyticsReport {
         return SocialEngagementTargetGoogleAnalyticsReport::query()->create(array_replace([
             'google_analytics_connection_id' => $connection->getKey(),
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => $target->googleAnalyticsAttributionMode(),

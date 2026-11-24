@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', '工作區成員')
+@section('title', '組織成員與權限')
 
 @section('content')
     <div class="page-heading">
         <div class="heading-copy">
-            <h1 class="page-title">工作區成員</h1>
-            <p class="page-description">邀請成員查看或維護監測活動。</p>
+            <h1 class="page-title">組織成員與權限</h1>
+            <p class="page-description">邀請組織人員，並設定其資料範圍與維護權限。席次 {{ number_format($occupiedSeatCount) }} / {{ $seatLimit === null ? '不限' : number_format($seatLimit) }}，含待接受邀請。</p>
         </div>
     </div>
 
@@ -44,7 +44,7 @@
                         @enderror
                     </div>
                     <fieldset class="workspace-role-fieldset @error('role') is-invalid @enderror" @if ($errors->has('role')) aria-describedby="invite-role-error" @endif>
-                        <legend class="field-label">存取權</legend>
+                    <legend class="field-label">組織權限</legend>
                         <div class="workspace-role-options">
                             <label class="workspace-role-option" for="invite-role-read-only">
                                 <input id="invite-role-read-only" name="role" type="radio" value="read_only" @checked(old('role', \App\Models\WorkspaceMembership::ROLE_READ_ONLY) === \App\Models\WorkspaceMembership::ROLE_READ_ONLY) @if ($errors->has('role')) aria-invalid="true" aria-describedby="invite-role-error" @endif>
@@ -76,7 +76,7 @@
                     <div class="workspace-role-options">
                         <label class="workspace-role-option" for="invite-client-scope-all">
                             <input id="invite-client-scope-all" name="client_scope" type="radio" value="all" required @checked(old('client_scope', \App\Models\WorkspaceMembership::CLIENT_SCOPE_ALL) === \App\Models\WorkspaceMembership::CLIENT_SCOPE_ALL) @if ($invitationClientScopeErrors->isNotEmpty()) aria-invalid="true" aria-describedby="invite-client-scope-errors" @endif>
-                            <span><strong>全部客戶</strong><span class="secondary-text">依工作區權限查看或維護</span></span>
+                            <span><strong>全部客戶</strong><span class="secondary-text">依組織權限查看或維護</span></span>
                         </label>
                         <label class="workspace-role-option" for="invite-client-scope-selected">
                             <input id="invite-client-scope-selected" name="client_scope" type="radio" value="selected" @checked(old('client_scope') === \App\Models\WorkspaceMembership::CLIENT_SCOPE_SELECTED) @if ($invitationClientScopeErrors->isNotEmpty()) aria-invalid="true" aria-describedby="invite-client-scope-errors" @endif>
@@ -116,7 +116,7 @@
     <section class="panel spaced-top" aria-labelledby="workspace-members-title">
         <div class="panel-header">
             <div>
-                <h2 id="workspace-members-title" class="panel-title">成員</h2>
+                <h2 id="workspace-members-title" class="panel-title">組織成員</h2>
                 <p class="panel-description">{{ number_format($memberships->count()) }} 位成員</p>
             </div>
         </div>
@@ -125,7 +125,7 @@
         @else
             <div class="data-table-wrap">
                 <table class="data-table">
-                    <caption class="sr-only">工作區成員與存取權</caption>
+                    <caption class="sr-only">組織成員與存取權</caption>
                     <thead>
                         <tr>
                             <th scope="col">成員</th>

@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\ClientReportShare;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
@@ -437,6 +438,13 @@ class ClientReportShareTest extends TestCase
             'ad_account_id' => '123456789',
             'currency_code' => 'TWD',
         ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $client->id,
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Shared report account',
+            'currency_code' => 'TWD',
+        ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,
             'social_engagement_target_id' => $target->id,
@@ -459,6 +467,7 @@ class ClientReportShareTest extends TestCase
             'customer_id' => '1234567890',
             'currency_code' => 'TWD',
         ]);
+        $this->mapGoogleAdsConnectionToTargetClient($googleAdsConnection, $target);
         SocialEngagementTargetGoogleAdsReport::query()->create([
             'google_ads_connection_id' => $googleAdsConnection->id,
             'social_engagement_target_id' => $target->id,
@@ -791,6 +800,13 @@ class ClientReportShareTest extends TestCase
             'ad_account_id' => '123456789',
             'currency_code' => 'TWD',
         ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $client->id,
+            'ad_account_id' => '123456789',
+            'ad_account_name' => 'Shared report account',
+            'currency_code' => 'TWD',
+        ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,
             'social_engagement_target_id' => $target->id,
@@ -813,6 +829,7 @@ class ClientReportShareTest extends TestCase
             'customer_id' => '1234567890',
             'currency_code' => 'TWD',
         ]);
+        $this->mapGoogleAdsConnectionToTargetClient($googleAdsConnection, $target);
         SocialEngagementTargetGoogleAdsReport::query()->create([
             'google_ads_connection_id' => $googleAdsConnection->id,
             'social_engagement_target_id' => $target->id,

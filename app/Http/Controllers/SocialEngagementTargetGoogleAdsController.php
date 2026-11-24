@@ -6,6 +6,7 @@ use App\Http\Requests\UpdateSocialEngagementTargetGoogleAdsCampaignRequest;
 use App\Models\SocialEngagementTarget;
 use App\Services\GoogleAdsApiException;
 use App\Services\GoogleAdsCampaignReportSync;
+use App\Services\GoogleAdsClientAccountResolver;
 use App\Services\GoogleAdsDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -17,6 +18,7 @@ class SocialEngagementTargetGoogleAdsController extends Controller
         Request $request,
         SocialEngagementTarget $socialEngagementTarget,
         GoogleAdsDataApi $dataApi,
+        GoogleAdsClientAccountResolver $clientAccountResolver,
     ): RedirectResponse {
         $connection = $request->user()->googleAdsConnection;
 
@@ -25,17 +27,19 @@ class SocialEngagementTargetGoogleAdsController extends Controller
                 ->withErrors(['google_ads' => '請先連結 Google Ads 帳戶。']);
         }
 
-        if ($connection->customer_id === null) {
+        $clientAccount = $clientAccountResolver->forTarget($connection, $socialEngagementTarget);
+
+        if ($clientAccount === null) {
             return $this->reportRedirect($socialEngagementTarget)
-                ->withErrors(['google_ads' => '請先在 Google Ads 整合設定客戶帳戶。']);
+                ->withErrors(['google_ads' => '請先在 Google Ads 整合設定此客戶的帳戶。']);
         }
 
         try {
             $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
             $campaigns = $dataApi->campaigns(
                 $accessToken,
-                $connection->customer_id,
-                $connection->login_customer_id,
+                $clientAccount->customer_id,
+                $clientAccount->login_customer_id,
             );
         } catch (GoogleAdsApiException $exception) {
             return $this->reportRedirect($socialEngagementTarget)
@@ -67,6 +71,7 @@ class SocialEngagementTargetGoogleAdsController extends Controller
         SocialEngagementTarget $socialEngagementTarget,
         GoogleAdsDataApi $dataApi,
         GoogleAdsCampaignReportSync $campaignReportSync,
+        GoogleAdsClientAccountResolver $clientAccountResolver,
     ): RedirectResponse {
         $connection = $request->user()->googleAdsConnection;
 
@@ -75,9 +80,9 @@ class SocialEngagementTargetGoogleAdsController extends Controller
                 ->withErrors(['google_ads' => '請先連結 Google Ads 帳戶。']);
         }
 
-        if ($connection->customer_id === null || $connection->currency_code === null) {
+        if ($clientAccountResolver->forTarget($connection, $socialEngagementTarget) === null) {
             return $this->reportRedirect($socialEngagementTarget)
-                ->withErrors(['google_ads' => '請先在 Google Ads 整合設定客戶帳戶。']);
+                ->withErrors(['google_ads' => '請先在 Google Ads 整合設定此客戶的帳戶。']);
         }
 
         if ($socialEngagementTarget->google_ads_campaign_id === null) {

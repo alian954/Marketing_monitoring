@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ClientSelectionContext;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
@@ -22,6 +23,7 @@ use App\Services\CampaignUtmLinkBuilder;
 use App\Services\CsvFormulaSanitizer;
 use App\Services\GoogleAdsAuctionInsightPerformanceReport;
 use App\Services\GoogleAdsAuctionInsightReportCsv;
+use App\Services\GoogleAdsClientAccountResolver;
 use App\Services\GoogleAdsDeliveryUnitPerformanceReport;
 use App\Services\GoogleAdsDeliveryUnitReportCsv;
 use App\Services\GoogleAdsDevicePerformanceReport;
@@ -37,6 +39,7 @@ use App\Services\GoogleAdsSearchTermReportCsv;
 use App\Services\GoogleAnalyticsAdContentPerformanceReport;
 use App\Services\GoogleAnalyticsAdContentReportCsv;
 use App\Services\GoogleAnalyticsCampaignTrendReport;
+use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsEventNameCostPerKeyEventReport;
 use App\Services\GoogleAnalyticsEventNamePerformanceReport;
 use App\Services\GoogleAnalyticsEventNameReportCsv;
@@ -50,6 +53,7 @@ use App\Services\MetaMarketingAdPerformanceReport;
 use App\Services\MetaMarketingAdReportCsv;
 use App\Services\MetaMarketingAdSetPerformanceReport;
 use App\Services\MetaMarketingAdSetReportCsv;
+use App\Services\MetaMarketingClientAccountResolver;
 use App\Services\MetaMarketingDemographicPerformanceReport;
 use App\Services\MetaMarketingDemographicReportCsv;
 use App\Services\MetaMarketingPlacementPerformanceReport;
@@ -76,6 +80,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SocialEngagementCampaignReportController extends Controller
 {
+    public function __construct(
+        private GoogleAnalyticsClientPropertyResolver $googleAnalyticsClientPropertyResolver,
+        private MetaMarketingClientAccountResolver $metaMarketingClientAccountResolver,
+        private GoogleAdsClientAccountResolver $googleAdsClientAccountResolver,
+    ) {}
+
     public function show(
         Request $request,
         SocialEngagementTarget $socialEngagementTarget,
@@ -397,9 +407,10 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingAdReportCsv $metaMarketingAdReportCsv,
     ): StreamedResponse {
         $connection = $request->user()->metaMarketingConnection;
+        $clientAccount = $this->metaMarketingClientAccountResolver->forTarget($connection, $socialEngagementTarget);
         abort_if(
             $connection === null
-                || $connection->ad_account_id === null
+                || $clientAccount === null
                 || $socialEngagementTarget->meta_campaign_id === null
                 || $socialEngagementTarget->starts_on === null
                 || $socialEngagementTarget->ends_on === null,
@@ -409,7 +420,7 @@ class SocialEngagementCampaignReportController extends Controller
         $report = SocialEngagementTargetMetaMarketingReport::query()
             ->where('meta_marketing_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('ad_account_id', $clientAccount->ad_account_id)
             ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
             ->whereDate('starts_on', $socialEngagementTarget->starts_on)
             ->whereDate('ends_on', $socialEngagementTarget->ends_on)
@@ -450,9 +461,10 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingAdSetReportCsv $metaMarketingAdSetReportCsv,
     ): StreamedResponse {
         $connection = $request->user()->metaMarketingConnection;
+        $clientAccount = $this->metaMarketingClientAccountResolver->forTarget($connection, $socialEngagementTarget);
         abort_if(
             $connection === null
-                || $connection->ad_account_id === null
+                || $clientAccount === null
                 || $socialEngagementTarget->meta_campaign_id === null
                 || $socialEngagementTarget->starts_on === null
                 || $socialEngagementTarget->ends_on === null,
@@ -462,7 +474,7 @@ class SocialEngagementCampaignReportController extends Controller
         $report = SocialEngagementTargetMetaMarketingReport::query()
             ->where('meta_marketing_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('ad_account_id', $clientAccount->ad_account_id)
             ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
             ->whereDate('starts_on', $socialEngagementTarget->starts_on)
             ->whereDate('ends_on', $socialEngagementTarget->ends_on)
@@ -503,9 +515,10 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingPlacementReportCsv $metaMarketingPlacementReportCsv,
     ): StreamedResponse {
         $connection = $request->user()->metaMarketingConnection;
+        $clientAccount = $this->metaMarketingClientAccountResolver->forTarget($connection, $socialEngagementTarget);
         abort_if(
             $connection === null
-                || $connection->ad_account_id === null
+                || $clientAccount === null
                 || $socialEngagementTarget->meta_campaign_id === null
                 || $socialEngagementTarget->starts_on === null
                 || $socialEngagementTarget->ends_on === null,
@@ -515,7 +528,7 @@ class SocialEngagementCampaignReportController extends Controller
         $report = SocialEngagementTargetMetaMarketingReport::query()
             ->where('meta_marketing_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('ad_account_id', $clientAccount->ad_account_id)
             ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
             ->whereDate('starts_on', $socialEngagementTarget->starts_on)
             ->whereDate('ends_on', $socialEngagementTarget->ends_on)
@@ -556,9 +569,10 @@ class SocialEngagementCampaignReportController extends Controller
         MetaMarketingDemographicReportCsv $metaMarketingDemographicReportCsv,
     ): StreamedResponse {
         $connection = $request->user()->metaMarketingConnection;
+        $clientAccount = $this->metaMarketingClientAccountResolver->forTarget($connection, $socialEngagementTarget);
         abort_if(
             $connection === null
-                || $connection->ad_account_id === null
+                || $clientAccount === null
                 || $socialEngagementTarget->meta_campaign_id === null
                 || $socialEngagementTarget->starts_on === null
                 || $socialEngagementTarget->ends_on === null,
@@ -568,7 +582,7 @@ class SocialEngagementCampaignReportController extends Controller
         $report = SocialEngagementTargetMetaMarketingReport::query()
             ->where('meta_marketing_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('ad_account_id', $connection->ad_account_id)
+            ->where('ad_account_id', $clientAccount->ad_account_id)
             ->where('campaign_id', $socialEngagementTarget->meta_campaign_id)
             ->whereDate('starts_on', $socialEngagementTarget->starts_on)
             ->whereDate('ends_on', $socialEngagementTarget->ends_on)
@@ -713,24 +727,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsSearchTermPerformanceReport $googleAdsSearchTermPerformanceReport,
         GoogleAdsSearchTermReportCsv $googleAdsSearchTermReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->search_terms_data)
@@ -766,24 +764,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsKeywordPerformanceReport $googleAdsKeywordPerformanceReport,
         GoogleAdsKeywordReportCsv $googleAdsKeywordReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->keyword_performance)
@@ -819,24 +801,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsDeliveryUnitPerformanceReport $googleAdsDeliveryUnitPerformanceReport,
         GoogleAdsDeliveryUnitReportCsv $googleAdsDeliveryUnitReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->delivery_unit_performance)
@@ -872,24 +838,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsDevicePerformanceReport $googleAdsDevicePerformanceReport,
         GoogleAdsDeviceReportCsv $googleAdsDeviceReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->device_performance)
@@ -925,24 +875,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsAuctionInsightPerformanceReport $googleAdsAuctionInsightPerformanceReport,
         GoogleAdsAuctionInsightReportCsv $googleAdsAuctionInsightReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->auction_insights)
@@ -978,24 +912,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsResponsiveSearchAdAssetPerformanceReport $googleAdsResponsiveSearchAdAssetPerformanceReport,
         GoogleAdsResponsiveSearchAdAssetReportCsv $googleAdsResponsiveSearchAdAssetReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || ! is_array($report->responsive_search_ad_asset_performance)
@@ -1031,24 +949,8 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAdsPerformanceMaxAssetPerformanceReport $googleAdsPerformanceMaxAssetPerformanceReport,
         GoogleAdsPerformanceMaxAssetReportCsv $googleAdsPerformanceMaxAssetReportCsv,
     ): StreamedResponse {
-        $connection = $request->user()->googleAdsConnection;
-        abort_if(
-            $connection === null
-                || $connection->customer_id === null
-                || $socialEngagementTarget->google_ads_campaign_id === null
-                || $socialEngagementTarget->starts_on === null
-                || $socialEngagementTarget->ends_on === null,
-            404,
-        );
-
-        $report = SocialEngagementTargetGoogleAdsReport::query()
-            ->where('google_ads_connection_id', $connection->getKey())
-            ->where('social_engagement_target_id', $socialEngagementTarget->getKey())
-            ->where('customer_id', $connection->customer_id)
-            ->where('campaign_id', $socialEngagementTarget->google_ads_campaign_id)
-            ->whereDate('starts_on', $socialEngagementTarget->starts_on)
-            ->whereDate('ends_on', $socialEngagementTarget->ends_on)
-            ->first();
+        $report = $this->googleAdsReportForTarget($request, $socialEngagementTarget);
+        abort_if($report === null, 404);
         abort_if(
             $report === null
                 || data_get($report->daily_metrics, 'campaign_channel_type') !== 'PERFORMANCE_MAX'
@@ -1294,6 +1196,12 @@ class SocialEngagementCampaignReportController extends Controller
         $sourceName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsSourceName();
         $mediumName = $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsMediumName();
         $googleAnalyticsConnection = $request->user()->googleAnalyticsConnection;
+        $googleAnalyticsClientProperty = $googleAnalyticsConnection === null
+            ? null
+            : $this->googleAnalyticsClientPropertyResolver->forTarget(
+                $googleAnalyticsConnection,
+                $socialEngagementTarget,
+            );
         $analyticsReport = $this->googleAnalyticsReportForTarget($socialEngagementTarget, $googleAnalyticsConnection);
         $paidMediaReports = $this->paidMediaReportsForTarget($request, $socialEngagementTarget);
         $metaMarketingConnection = $paidMediaReports['metaMarketingConnection'];
@@ -1404,6 +1312,8 @@ class SocialEngagementCampaignReportController extends Controller
                     $mediumName,
                     $socialEngagementTarget->googleAnalyticsAttributionMode(),
                     $usesGoogleAdsAutoTagging ? trim((string) $socialEngagementTarget->google_ads_campaign_id) : null,
+                    $googleAnalyticsClientProperty?->property_id,
+                    $googleAnalyticsClientProperty !== null && ! $googleAnalyticsClientProperty->exists,
                 )
                 : [],
             'adSpendAnalysis' => $adSpendAnalysis,
@@ -1431,8 +1341,11 @@ class SocialEngagementCampaignReportController extends Controller
     private function paidMediaReportsForTarget(Request $request, SocialEngagementTarget $target): array
     {
         $metaMarketingConnection = $request->user()->metaMarketingConnection;
+        $metaMarketingClientAccount = $metaMarketingConnection === null
+            ? null
+            : $this->metaMarketingClientAccountResolver->forTarget($metaMarketingConnection, $target);
         $metaMarketingReport = $metaMarketingConnection === null
-            || $metaMarketingConnection->ad_account_id === null
+            || $metaMarketingClientAccount === null
             || $target->meta_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null
@@ -1440,14 +1353,15 @@ class SocialEngagementCampaignReportController extends Controller
             : SocialEngagementTargetMetaMarketingReport::query()
                 ->where('meta_marketing_connection_id', $metaMarketingConnection->getKey())
                 ->where('social_engagement_target_id', $target->getKey())
-                ->where('ad_account_id', $metaMarketingConnection->ad_account_id)
+                ->where('ad_account_id', $metaMarketingClientAccount->ad_account_id)
                 ->where('campaign_id', $target->meta_campaign_id)
                 ->whereDate('starts_on', $target->starts_on)
                 ->whereDate('ends_on', $target->ends_on)
                 ->first();
         $googleAdsConnection = $request->user()->googleAdsConnection;
+        $googleAdsClientAccount = $this->googleAdsClientAccountResolver->forTarget($googleAdsConnection, $target);
         $googleAdsReport = $googleAdsConnection === null
-            || $googleAdsConnection->customer_id === null
+            || $googleAdsClientAccount === null
             || $target->google_ads_campaign_id === null
             || $target->starts_on === null
             || $target->ends_on === null
@@ -1455,7 +1369,7 @@ class SocialEngagementCampaignReportController extends Controller
             : SocialEngagementTargetGoogleAdsReport::query()
                 ->where('google_ads_connection_id', $googleAdsConnection->getKey())
                 ->where('social_engagement_target_id', $target->getKey())
-                ->where('customer_id', $googleAdsConnection->customer_id)
+                ->where('customer_id', $googleAdsClientAccount->customer_id)
                 ->where('campaign_id', $target->google_ads_campaign_id)
                 ->whereDate('starts_on', $target->starts_on)
                 ->whereDate('ends_on', $target->ends_on)
@@ -1467,6 +1381,31 @@ class SocialEngagementCampaignReportController extends Controller
             'googleAdsConnection' => $googleAdsConnection,
             'googleAdsReport' => $googleAdsReport,
         ];
+    }
+
+    private function googleAdsReportForTarget(
+        Request $request,
+        SocialEngagementTarget $target,
+    ): ?SocialEngagementTargetGoogleAdsReport {
+        $connection = $request->user()->googleAdsConnection;
+        $clientAccount = $this->googleAdsClientAccountResolver->forTarget($connection, $target);
+
+        if ($connection === null
+            || $clientAccount === null
+            || $target->google_ads_campaign_id === null
+            || $target->starts_on === null
+            || $target->ends_on === null) {
+            return null;
+        }
+
+        return SocialEngagementTargetGoogleAdsReport::query()
+            ->where('google_ads_connection_id', $connection->getKey())
+            ->where('social_engagement_target_id', $target->getKey())
+            ->where('customer_id', $clientAccount->customer_id)
+            ->where('campaign_id', $target->google_ads_campaign_id)
+            ->whereDate('starts_on', $target->starts_on)
+            ->whereDate('ends_on', $target->ends_on)
+            ->first();
     }
 
     /**
@@ -1626,6 +1565,14 @@ class SocialEngagementCampaignReportController extends Controller
             return null;
         }
 
+        $clientProperty = $this->googleAnalyticsClientPropertyResolver->forTarget($connection, $target);
+
+        if ($clientProperty === null) {
+            return null;
+        }
+
+        $propertyId = $clientProperty->property_id;
+
         $sourceName = $target->googleAnalyticsSourceName();
         $mediumName = $target->googleAnalyticsMediumName();
         $attributionMode = $target->googleAnalyticsAttributionMode();
@@ -1634,6 +1581,13 @@ class SocialEngagementCampaignReportController extends Controller
         return SocialEngagementTargetGoogleAnalyticsReport::query()
             ->where('google_analytics_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $target->getKey())
+            ->where(function (Builder $query) use ($propertyId, $clientProperty): void {
+                $query->where('property_id', $propertyId);
+
+                if (! $clientProperty->exists) {
+                    $query->orWhereNull('property_id');
+                }
+            })
             ->where('attribution_mode', $attributionMode)
             ->when($usesGoogleAdsAutoTagging, fn (Builder $query): Builder => $query->where('campaign_id', trim((string) $target->google_ads_campaign_id)))
             ->when(! $usesGoogleAdsAutoTagging, fn (Builder $query): Builder => $query->whereNull('campaign_id'))
@@ -1645,6 +1599,15 @@ class SocialEngagementCampaignReportController extends Controller
             ->when($target->starts_on !== null, fn (Builder $query): Builder => $query->whereDate('starts_on', $target->starts_on))
             ->when($target->ends_on !== null, fn (Builder $query): Builder => $query->whereDate('ends_on', $target->ends_on))
             ->first();
+    }
+
+    private function googleAnalyticsClientPropertyForTarget(
+        SocialEngagementTarget $target,
+        ?GoogleAnalyticsConnection $connection,
+    ): ?GoogleAnalyticsClientProperty {
+        return $connection === null
+            ? null
+            : $this->googleAnalyticsClientPropertyResolver->forTarget($connection, $target);
     }
 
     public function exportGoogleAnalyticsItems(
@@ -1769,11 +1732,11 @@ class SocialEngagementCampaignReportController extends Controller
         GoogleAnalyticsCampaignTrendReport $googleAnalyticsTrendReport,
     ): StreamedResponse {
         $connection = $request->user()->googleAnalyticsConnection;
+        $clientProperty = $this->googleAnalyticsClientPropertyForTarget($socialEngagementTarget, $connection);
 
         abort_if(
             $connection === null
-                || ! is_string($connection->property_id)
-                || $connection->property_id === ''
+                || $clientProperty === null
                 || $socialEngagementTarget->starts_on === null
                 || $socialEngagementTarget->ends_on === null,
             404,
@@ -1788,6 +1751,8 @@ class SocialEngagementCampaignReportController extends Controller
             $usesGoogleAdsAutoTagging ? null : $socialEngagementTarget->googleAnalyticsMediumName(),
             $socialEngagementTarget->googleAnalyticsAttributionMode(),
             $usesGoogleAdsAutoTagging ? trim((string) $socialEngagementTarget->google_ads_campaign_id) : null,
+            $clientProperty->property_id,
+            ! $clientProperty->exists,
         );
 
         return response()->streamDownload(function () use ($rows): void {

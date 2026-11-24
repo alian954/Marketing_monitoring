@@ -39,14 +39,23 @@ class GoogleAnalyticsCampaignTrendReport
         ?string $mediumName = null,
         ?string $attributionMode = null,
         ?string $campaignId = null,
+        ?string $propertyId = null,
+        bool $includeLegacyPropertyIdentity = false,
     ): array {
-        if ($target->starts_on === null || $target->ends_on === null) {
+        if ($target->starts_on === null || $target->ends_on === null || $propertyId === null) {
             return [];
         }
 
         $snapshots = GoogleAnalyticsCampaignSnapshot::query()
             ->where('google_analytics_connection_id', $connection->getKey())
             ->where('social_engagement_target_id', $target->getKey())
+            ->where(function (Builder $query) use ($propertyId, $includeLegacyPropertyIdentity): void {
+                $query->where('property_id', $propertyId);
+
+                if ($includeLegacyPropertyIdentity) {
+                    $query->orWhereNull('property_id');
+                }
+            })
             ->where('attribution_mode', $attributionMode ?? 'manual_utm')
             ->when($campaignId !== null, fn (Builder $query): Builder => $query->where('campaign_id', $campaignId))
             ->when($campaignId === null, fn (Builder $query): Builder => $query->whereNull('campaign_id'))

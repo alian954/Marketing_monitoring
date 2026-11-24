@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\UpdateMetaMarketingConnectionRequest;
+use App\Http\Requests\UpdateMetaMarketingClientAccountRequest;
+use App\Models\Client;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Services\MetaMarketingApiException;
+use App\Services\MetaMarketingClientAccountResolver;
 use App\Services\MetaMarketingDataApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -14,10 +17,26 @@ use Illuminate\View\View;
 
 class MetaMarketingIntegrationController extends Controller
 {
-    public function show(Request $request): View
+    public function show(Request $request, MetaMarketingClientAccountResolver $accountResolver): View
     {
+        $connection = $request->user()->metaMarketingConnection;
+        $clients = Client::query()->orderBy('name')->get();
+        $clientAccounts = collect();
+
+        if ($connection !== null) {
+            foreach ($clients as $client) {
+                $account = $accountResolver->forClient($connection, $client);
+
+                if ($account !== null) {
+                    $clientAccounts->put($client->getKey(), $account);
+                }
+            }
+        }
+
         return view('integrations.meta-marketing', [
-            'connection' => $request->user()->metaMarketingConnection,
+            'connection' => $connection,
+            'clients' => $clients,
+            'clientAccounts' => $clientAccounts,
             'oauthConfigured' => filled(config('services.meta_marketing.client_id'))
                 && filled(config('services.meta_marketing.client_secret')),
             'redirectUri' => $this->redirectUri(),
@@ -80,7 +99,7 @@ class MetaMarketingIntegrationController extends Controller
         }
 
         $connection = MetaMarketingConnection::query()->firstOrNew([
-            'user_id' => (int) $request->user()->getAuthIdentifier(),
+            'user_id' => $request->user()->workspaceOwnerId(),
         ]);
         $connection->access_token = $tokens['access_token'];
         $connection->token_expires_at = $tokens['expires_in'] === null
@@ -89,11 +108,12 @@ class MetaMarketingIntegrationController extends Controller
         $connection->save();
 
         return redirect()->route('integrations.meta-marketing.edit')
-            ->with('status', 'Meta Ads 帳戶已連結。請設定廣告帳戶 ID。');
+            ->with('status', 'Meta Ads 帳戶已連結。請為各客戶設定廣告帳戶。');
     }
 
-    public function updateAdAccount(
-        UpdateMetaMarketingConnectionRequest $request,
+    public function updateClientAdAccount(
+        UpdateMetaMarketingClientAccountRequest $request,
+        Client $client,
         MetaMarketingDataApi $dataApi,
     ): RedirectResponse {
         $connection = $request->user()->metaMarketingConnection;
@@ -121,13 +141,20 @@ class MetaMarketingIntegrationController extends Controller
                 ->withErrors(['meta_marketing' => '目前無法連線至 Meta，請稍後再試。']);
         }
 
-        $connection->ad_account_id = $account['account_id'];
-        $connection->ad_account_name = $account['name'];
-        $connection->currency_code = $account['currency_code'];
-        $connection->save();
+        MetaMarketingClientAccount::query()->updateOrCreate(
+            [
+                'meta_marketing_connection_id' => $connection->getKey(),
+                'client_id' => $client->getKey(),
+            ],
+            [
+                'ad_account_id' => $account['account_id'],
+                'ad_account_name' => $account['name'],
+                'currency_code' => $account['currency_code'],
+            ],
+        );
 
         return redirect()->route('integrations.meta-marketing.edit')
-            ->with('status', 'Meta 廣告帳戶已設定。');
+            ->with('status', '已為「'.$client->name.'」設定 Meta 廣告帳戶。');
     }
 
     public function disconnect(Request $request, MetaMarketingDataApi $dataApi): RedirectResponse

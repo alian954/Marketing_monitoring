@@ -27,6 +27,7 @@ class SocialEngagementCampaignCreativePerformanceCsvTest extends TestCase
             'tag' => 'Creative reporting',
             'social_platform' => 'instagram',
         ]);
+        $this->bindGoogleAnalyticsTargetToClient($user, $connection, $target);
         $this->createPost($target, 1, 'shared-creative');
         $this->createPost($target, 2, 'shared-creative');
         $this->createPost($target, 3, '=HYPERLINK("https://example.com")');
@@ -34,6 +35,7 @@ class SocialEngagementCampaignCreativePerformanceCsvTest extends TestCase
 
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'manual_utm',
@@ -112,6 +114,13 @@ class SocialEngagementCampaignCreativePerformanceCsvTest extends TestCase
             'label' => $target->tag,
             'utm_content' => $utmContent,
         ]);
+
+        if ($target->user_id !== null && $target->client_id !== null) {
+            $monitor->forceFill([
+                'user_id' => $target->user_id,
+                'client_id' => $target->client_id,
+            ])->save();
+        }
 
         CheckRun::factory()->for($monitor)->create([
             'config_version' => $monitor->config_version,

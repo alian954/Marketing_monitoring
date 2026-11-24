@@ -54,9 +54,7 @@ class MetaMarketingDataApi
             throw new MetaMarketingApiException('Meta 廣告帳戶 ID 格式無效，請輸入 5 至 32 位數字。');
         }
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(10)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 10, retryRateLimitedResponses: false)
             ->get($this->graphUrl('act_'.$adAccountId), [
                 'fields' => 'account_id,name,currency',
             ]);
@@ -123,9 +121,7 @@ class MetaMarketingDataApi
             throw new MetaMarketingApiException('Meta 廣告帳戶或活動 ID 格式無效。');
         }
 
-        $response = Http::withToken($accessToken)
-            ->acceptJson()
-            ->timeout(20)
+        $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
             ->get($this->graphUrl('act_'.$adAccountId.'/insights'), [
                 'fields' => 'account_id,campaign_id,campaign_name,spend,impressions,reach,clicks,actions,action_values,account_currency',
                 'level' => 'campaign',
@@ -271,9 +267,7 @@ class MetaMarketingDataApi
                 $pageParameters['after'] = $afterCursor;
             }
 
-            $response = Http::withToken($accessToken)
-                ->acceptJson()
-                ->timeout(20)
+            $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
                 ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
             $payload = $this->successfulPayload($response, 'Meta Ads Insights API');
             $rows = $payload['data'] ?? null;
@@ -424,9 +418,7 @@ class MetaMarketingDataApi
                 $pageParameters['after'] = $afterCursor;
             }
 
-            $response = Http::withToken($accessToken)
-                ->acceptJson()
-                ->timeout(20)
+            $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
                 ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
             $payload = $this->successfulPayload($response, 'Meta Ads Insights API');
             $rows = $payload['data'] ?? null;
@@ -579,9 +571,7 @@ class MetaMarketingDataApi
                 $pageParameters['after'] = $afterCursor;
             }
 
-            $response = Http::withToken($accessToken)
-                ->acceptJson()
-                ->timeout(20)
+            $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
                 ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
             $payload = $this->successfulPayload($response, 'Meta Ads Insights API');
             $rows = $payload['data'] ?? null;
@@ -748,9 +738,7 @@ class MetaMarketingDataApi
                 $pageParameters['after'] = $afterCursor;
             }
 
-            $response = Http::withToken($accessToken)
-                ->acceptJson()
-                ->timeout(20)
+            $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
                 ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
             $payload = $this->successfulPayload($response, 'Meta Ads Insights API 版位成效');
             $rows = $payload['data'] ?? null;
@@ -906,9 +894,7 @@ class MetaMarketingDataApi
                 $pageParameters['after'] = $afterCursor;
             }
 
-            $response = Http::withToken($accessToken)
-                ->acceptJson()
-                ->timeout(20)
+            $response = ReadOnlyApiRequest::forBearerToken($accessToken, 20, retryRateLimitedResponses: false)
                 ->get($this->graphUrl('act_'.$adAccountId.'/insights'), $pageParameters);
             $payload = $this->successfulPayload($response, 'Meta Ads Insights API 年齡與性別成效');
             $rows = $payload['data'] ?? null;
@@ -1171,10 +1157,16 @@ class MetaMarketingDataApi
     {
         if (! $response->successful()) {
             $errorCode = $response->json('error.code');
+            $normalizedErrorCode = is_numeric($errorCode) ? (int) $errorCode : null;
+            $errorSubcode = $response->json('error.error_subcode');
+            $normalizedErrorSubcode = is_numeric($errorSubcode) ? (int) $errorSubcode : null;
+            $isRateLimited = $response->status() === 429
+                || in_array($normalizedErrorCode, [4, 17, 32, 341, 613], true)
+                || ($normalizedErrorCode === 80000 && $normalizedErrorSubcode === 2446079);
             $message = match (true) {
-                $errorCode === 190 => 'Meta 授權已失效，請重新連結帳戶。',
-                $errorCode === 200 || $errorCode === 10 => 'Meta 權限不足，請重新連結並授予 ads_read 權限。',
-                $response->status() === 429 || $errorCode === 17 || $errorCode === 613 => 'Meta API 配額已用盡，請稍後再同步。',
+                $normalizedErrorCode === 190 => 'Meta 授權已失效，請重新連結帳戶。',
+                $normalizedErrorCode === 200 || $normalizedErrorCode === 10 => 'Meta 權限不足，請重新連結並授予 ads_read 權限。',
+                $isRateLimited => 'Meta API 配額已用盡，請稍後再同步。',
                 default => $serviceName.' 暫時無法讀取，請稍後再試。',
             };
 

@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAnalyticsReport;
 use App\Models\User;
@@ -12,11 +15,16 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class GoogleAnalyticsScheduledSyncTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ?int $workspaceUserId = null;
+
+    private ?int $workspaceClientId = null;
 
     public function test_daily_sync_is_scheduled_at_six_thirty_in_taipei_time(): void
     {
@@ -26,6 +34,42 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertNotNull($event);
         $this->assertSame('30 6 * * *', $event->expression);
         $this->assertSame('Asia/Taipei', $event->timezone);
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertSame(120, $event->expiresAt);
+    }
+
+    public function test_daily_sync_skips_disabled_and_expired_organization_targets(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        Http::preventStrayRequests();
+
+        foreach ([
+            ['is_enabled' => false, 'subscription_ends_on' => null],
+            ['is_enabled' => true, 'subscription_ends_on' => '2026-11-21'],
+        ] as $organizationAttributes) {
+            $user = User::factory()->create();
+            Organization::factory()->for($user, 'owner')->create($organizationAttributes);
+            $client = Client::ensureDefaultFor($user);
+            GoogleAnalyticsConnection::query()->create([
+                'user_id' => $user->getKey(),
+                'property_id' => '123456789',
+                'refresh_token' => 'refresh-token',
+            ]);
+            SocialEngagementTarget::factory()->create([
+                'user_id' => $user->getKey(),
+                'client_id' => $client->getKey(),
+                'tag' => 'Blocked campaign',
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+            ]);
+        }
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutput('目前沒有需要更新 GA4 的活動。')
+            ->assertExitCode(0);
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('social_engagement_target_google_analytics_reports', 0);
     }
 
     public function test_daily_command_syncs_only_campaigns_in_the_connection_workspace(): void
@@ -65,7 +109,11 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         foreach ([$activeTarget, $recentlyEndedTarget, $oldTarget, $futureTarget] as $target) {
             $target->forceFill(['user_id' => $connection->user_id])->save();
         }
-        $foreignTarget->forceFill(['user_id' => User::factory()->create()->id])->save();
+        $foreignUser = User::factory()->create();
+        $foreignTarget->forceFill([
+            'user_id' => $foreignUser->id,
+            'client_id' => Client::ensureDefaultFor($foreignUser)->id,
+        ])->save();
 
         $this->artisan('google-analytics:sync-due')
             ->expectsOutputToContain('完成 2 個活動，略過 0 個近期讀值，失敗 0 個。')
@@ -105,6 +153,81 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
                 'Active campaign',
                 'Recent campaign',
             ], true));
+    }
+
+    public function test_daily_command_syncs_each_client_using_its_bound_property_and_skips_unconfigured_clients(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
+            'https://analyticsdata.googleapis.com/v1beta/properties/*:runReport' => Http::response($this->emptyReportPayload()),
+        ]);
+
+        $connection = $this->createConnection();
+        $user = User::query()->findOrFail($this->workspaceUserId);
+        $defaultClient = Client::query()->findOrFail($this->workspaceClientId);
+        $clientB = $user->clients()->create(['name' => 'Client B']);
+        $unconfiguredClient = $user->clients()->create(['name' => '待設定客戶']);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $connection->getKey(),
+            'client_id' => $defaultClient->getKey(),
+            'property_id' => '111111111',
+        ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $connection->getKey(),
+            'client_id' => $clientB->getKey(),
+            'property_id' => '222222222',
+        ]);
+
+        $targetA = $this->createTarget(['tag' => 'Client A campaign']);
+        $targetB = $this->createTarget([
+            'tag' => 'Client B campaign',
+            'client_id' => $clientB->getKey(),
+        ]);
+        $unconfiguredTarget = $this->createTarget([
+            'tag' => 'Unconfigured campaign',
+            'client_id' => $unconfiguredClient->getKey(),
+        ]);
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutputToContain('完成 2 個活動，略過 1 個近期讀值，失敗 0 個。')
+            ->assertExitCode(0);
+
+        foreach ([[$targetA, '111111111'], [$targetB, '222222222']] as [$target, $propertyId]) {
+            $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
+                'google_analytics_connection_id' => $connection->getKey(),
+                'social_engagement_target_id' => $target->getKey(),
+                'property_id' => $propertyId,
+            ]);
+            $this->assertDatabaseHas('google_analytics_campaign_snapshots', [
+                'google_analytics_connection_id' => $connection->getKey(),
+                'social_engagement_target_id' => $target->getKey(),
+                'property_id' => $propertyId,
+            ]);
+        }
+
+        $this->assertDatabaseMissing('social_engagement_target_google_analytics_reports', [
+            'social_engagement_target_id' => $unconfiguredTarget->getKey(),
+        ]);
+        $this->assertSame('succeeded', $connection->fresh()->scheduled_sync_status);
+        $this->assertSame(2, $connection->fresh()->scheduled_sync_synced_count);
+        $this->assertSame(1, $connection->fresh()->scheduled_sync_skipped_count);
+        $this->assertSame(0, $connection->fresh()->scheduled_sync_failed_count);
+
+        Http::assertSentCount(15);
+        Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/properties/111111111:runReport')
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === 'Client A campaign');
+        Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/properties/222222222:runReport')
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === 'Client B campaign');
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/properties/111111111:runReport')
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === 'Client B campaign');
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/properties/222222222:runReport')
+            && $request->data()['dimensionFilter']['filter']['stringFilter']['value'] === 'Client A campaign');
+        Http::assertNotSent(fn (ClientRequest $request): bool => str_contains($request->url(), '/properties/123456789:runReport'));
     }
 
     public function test_daily_command_skips_a_matching_snapshot_synced_within_24_hours(): void
@@ -252,6 +375,8 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'access-token']),
             'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport' => Http::sequence()
                 ->push(['error' => ['message' => 'RESOURCE_EXHAUSTED']], 429)
+                ->push(['error' => ['message' => 'RESOURCE_EXHAUSTED']], 429)
+                ->push(['error' => ['message' => 'RESOURCE_EXHAUSTED']], 429)
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
                 ->push($this->emptyReportPayload())
@@ -279,8 +404,12 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         $this->assertSame('partial', $syncHealth->scheduled_sync_status);
         $this->assertSame(1, $syncHealth->scheduled_sync_synced_count);
         $this->assertSame(1, $syncHealth->scheduled_sync_failed_count);
-        $this->assertNotEmpty($syncHealth->scheduled_sync_error);
-        Http::assertSentCount(9);
+        $this->assertSame('Google Analytics API 配額已用盡，請稍後再同步。', $syncHealth->scheduled_sync_error);
+        Http::assertSentCount(11);
+        Sleep::assertSequence([
+            Sleep::for(250)->milliseconds(),
+            Sleep::for(750)->milliseconds(),
+        ]);
     }
 
     public function test_daily_command_records_an_actionable_error_when_ga4_refresh_token_is_revoked(): void
@@ -318,7 +447,11 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
     /** @param array<string, mixed> $attributes */
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create($attributes + [
+        $ownerAttributes = $this->workspaceUserId === null || $this->workspaceClientId === null
+            ? []
+            : ['user_id' => $this->workspaceUserId, 'client_id' => $this->workspaceClientId];
+
+        return SocialEngagementTarget::factory()->create($attributes + $ownerAttributes + [
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
@@ -326,8 +459,13 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
 
     private function createConnection(): GoogleAnalyticsConnection
     {
+        $user = User::factory()->create();
+        $client = Client::ensureDefaultFor($user);
+        $this->workspaceUserId = (int) $user->getKey();
+        $this->workspaceClientId = (int) $client->getKey();
+
         return GoogleAnalyticsConnection::query()->create([
-            'user_id' => User::factory()->create()->id,
+            'user_id' => $user->id,
             'property_id' => '123456789',
             'refresh_token' => 'refresh-token',
         ]);

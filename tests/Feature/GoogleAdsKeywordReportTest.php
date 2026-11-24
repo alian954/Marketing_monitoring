@@ -262,7 +262,7 @@ class GoogleAdsKeywordReportTest extends TestCase
         ]);
 
         $this->artisan('google-ads:sync-due')
-            ->expectsOutputToContain('略過 1 個近期讀值')
+            ->expectsOutputToContain('略過未設定帳戶 0 個，略過近期讀值 1 個')
             ->assertExitCode(0);
 
         $this->assertNull($report->fresh()->keyword_performance);
@@ -342,23 +342,31 @@ class GoogleAdsKeywordReportTest extends TestCase
 
     private function createTarget(): SocialEngagementTarget
     {
-        return SocialEngagementTarget::factory()->create([
+        $target = SocialEngagementTarget::factory()->create([
             'tag' => 'Winter launch',
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
             'google_ads_campaign_id' => '987654321',
         ]);
+
+        $this->bindGoogleAdsTargetFixture($target);
+
+        return $target;
     }
 
     private function createConnection(User $user): GoogleAdsConnection
     {
-        return GoogleAdsConnection::query()->create([
+        $connection = GoogleAdsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'authorized-refresh-token',
             'customer_id' => '1234567890',
             'customer_name' => 'Example Ads',
             'currency_code' => 'TWD',
         ]);
+
+        $this->trackGoogleAdsFixtureConnection($connection);
+
+        return $connection;
     }
 
     /** @param array<string, mixed> $attributes */

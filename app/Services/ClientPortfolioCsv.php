@@ -13,6 +13,8 @@ class ClientPortfolioCsv
      *     campaign_count: int,
      *     money_groups: list<array<string, mixed>>,
      *     roas_groups: list<array<string, mixed>>,
+     *     estimated_profitability_groups: list<array<string, mixed>>,
+     *     estimated_profitability_coverage: array<string, int>,
      *     uses_reporting_currency: bool,
      *     coverage: array<string, array{configured_campaigns: int, fresh_campaigns: int, missing_campaigns: int}>,
      *     comparison: array{money: array<string, array<string, array{delta: float|null, percent_change: float|null, status: string}>>, roas: array<string, array{source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: string}>}|null
@@ -37,6 +39,8 @@ class ClientPortfolioCsv
             'Meta Ads 花費',
             'Google Ads 花費',
             '平台 ROAS',
+            '估算媒體貢獻（原幣）',
+            '估算資料覆蓋',
             '資料更新',
             '資料缺漏',
         ];
@@ -49,6 +53,7 @@ class ClientPortfolioCsv
                 'Meta Ads 花費變化',
                 'Google Ads 花費變化',
                 '平台 ROAS 變化',
+                '估算媒體貢獻變化',
             ];
         }
 
@@ -67,6 +72,8 @@ class ClientPortfolioCsv
                 $this->formatMoneyGroups($row['money_groups'], 'meta_spend', 'meta_campaign_count'),
                 $this->formatMoneyGroups($row['money_groups'], 'google_ads_spend', 'google_ads_campaign_count'),
                 $this->formatRoasGroups($row['roas_groups']),
+                $this->formatEstimatedProfitabilityGroups($row['estimated_profitability_groups'] ?? []),
+                $this->formatEstimatedProfitabilityCoverage($row['estimated_profitability_coverage'] ?? []),
                 $this->formatFreshness($row['coverage']),
                 $this->formatConversionGaps($row['money_groups'], $row['coverage']),
             ];
@@ -80,6 +87,10 @@ class ClientPortfolioCsv
                     $this->formatMoneyChanges($row['money_groups'], 'meta_campaign_count', $comparison['money']['meta_spend'] ?? []),
                     $this->formatMoneyChanges($row['money_groups'], 'google_ads_campaign_count', $comparison['money']['google_ads_spend'] ?? []),
                     $this->formatRoasChanges($row['roas_groups'], $comparison['roas'] ?? []),
+                    $this->formatEstimatedProfitabilityChanges(
+                        $row['estimated_profitability_groups'] ?? [],
+                        $comparison['money']['estimated_media_contribution'] ?? [],
+                    ),
                 ];
             }
 
@@ -181,6 +192,76 @@ class ClientPortfolioCsv
         return collect($roasGroups)
             ->filter(static fn (array $group): bool => $group['roas'] !== null)
             ->map(static fn (array $group): string => $group['source_label'].' '.number_format((float) $group['roas'], 2, '.', '').'× ('.$group['currency_code'].')')
+            ->implode('；');
+    }
+
+    /** @param list<array<string, mixed>> $groups */
+    private function formatEstimatedProfitabilityGroups(array $groups): string
+    {
+        return collect($groups)
+            ->filter(static fn (array $group): bool => ($group['campaign_count'] ?? 0) > 0)
+            ->map(static fn (array $group): string => number_format((float) $group['media_contribution_amount'], 2, '.', '')
+                .' '.$group['currency_code'].'（'.$group['campaign_count'].' 筆）')
+            ->implode('；');
+    }
+
+    /** @param array<string, int> $coverage */
+    private function formatEstimatedProfitabilityCoverage(array $coverage): string
+    {
+        $parts = [];
+
+        if (($coverage['eligible_campaigns'] ?? 0) > 0) {
+            $parts[] = '可計算 '.($coverage['available_campaigns'] ?? 0).'/'.$coverage['eligible_campaigns'];
+        }
+
+        if (($coverage['unavailable_campaigns'] ?? 0) > 0) {
+            $parts[] = '資料不足 '.$coverage['unavailable_campaigns'];
+        }
+
+        if (($coverage['unconfigured_campaigns'] ?? 0) > 0) {
+            $parts[] = '未設毛利率 '.$coverage['unconfigured_campaigns'];
+        }
+
+        if (($coverage['duplicate_mappings_excluded'] ?? 0) > 0) {
+            $parts[] = '重複映射排除 '.$coverage['duplicate_mappings_excluded'];
+        }
+
+        return implode('；', $parts);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $groups
+     * @param  array<string, array{delta: float|null, percent_change: float|null, status: string}>  $changes
+     */
+    private function formatEstimatedProfitabilityChanges(array $groups, array $changes): string
+    {
+        $availableGroups = collect($groups)
+            ->filter(static fn (array $group): bool => ($group['campaign_count'] ?? 0) > 0);
+
+        if ($availableGroups->isEmpty()) {
+            return '比較資料不足';
+        }
+
+        return $availableGroups
+            ->map(function (array $group) use ($changes): string {
+                $currencyCode = $group['currency_code'];
+                $change = $changes[$currencyCode] ?? null;
+
+                if (! is_array($change) || $change['status'] === 'insufficient') {
+                    return '比較資料不足（'.$currencyCode.'）';
+                }
+
+                $delta = (float) $change['delta'];
+                $formattedDelta = ($delta > 0 ? '+' : '').number_format($delta, 2, '.', '').' '.$currencyCode;
+
+                if ($change['status'] === 'zero_baseline') {
+                    return $formattedDelta.'（前期為 0）';
+                }
+
+                $percentChange = (float) $change['percent_change'];
+
+                return $formattedDelta.'（'.($percentChange > 0 ? '+' : '').number_format($percentChange, 2, '.', '').'%）';
+            })
             ->implode('；');
     }
 

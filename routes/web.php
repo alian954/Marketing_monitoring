@@ -11,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
 use App\Http\Controllers\GoogleAnalyticsIntegrationController;
+use App\Http\Controllers\GoogleSearchConsoleIntegrationController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\MaintenanceWindowController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\MetaMarketingIntegrationController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PlatformOrganizationController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SharedClientReportController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
@@ -28,6 +30,8 @@ use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use App\Http\Controllers\WorkspaceAccessController;
+use App\Http\Middleware\EnsureOrganizationActive;
+use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureWorkspaceOwner;
 use App\Http\Middleware\RejectReadOnlyWorkspaceMemberWrites;
 use Illuminate\Support\Facades\Route;
@@ -86,7 +90,20 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
         ->name('accept');
 });
 
-Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(function (): void {
+Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class])->group(function (): void {
+    Route::middleware(EnsurePlatformAdmin::class)->prefix('platform')->name('platform.')->group(function (): void {
+        Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
+        Route::post('/organizations', [PlatformOrganizationController::class, 'store'])->name('organizations.store');
+        Route::patch('/organizations/{organization}', [PlatformOrganizationController::class, 'update'])
+            ->whereNumber('organization')
+            ->name('organizations.update');
+        Route::post('/organizations/{organization}/open', [PlatformOrganizationController::class, 'open'])
+            ->whereNumber('organization')
+            ->name('organizations.open');
+        Route::post('/organizations/leave', [PlatformOrganizationController::class, 'leaveOrganization'])
+            ->name('organizations.leave');
+    });
+
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/clients/performance/export.csv', [ClientPortfolioController::class, 'export'])->name('clients.performance.export');
     Route::get('/clients/performance', [ClientPortfolioController::class, 'index'])->name('clients.performance');
@@ -281,17 +298,34 @@ Route::middleware(['auth', RejectReadOnlyWorkspaceMemberWrites::class])->group(f
         Route::get('/integrations/google-analytics', [GoogleAnalyticsIntegrationController::class, 'show'])->name('integrations.google-analytics.edit');
         Route::post('/integrations/google-analytics/connect', [GoogleAnalyticsIntegrationController::class, 'connect'])->name('integrations.google-analytics.connect');
         Route::get('/integrations/google-analytics/callback', [GoogleAnalyticsIntegrationController::class, 'callback'])->name('integrations.google-analytics.callback');
-        Route::put('/integrations/google-analytics/property', [GoogleAnalyticsIntegrationController::class, 'updateProperty'])->name('integrations.google-analytics.property.update');
+        Route::put('/integrations/google-analytics/clients/{client}/property', [GoogleAnalyticsIntegrationController::class, 'updateProperty'])
+            ->whereNumber('client')
+            ->name('integrations.google-analytics.property.update');
         Route::delete('/integrations/google-analytics/connection', [GoogleAnalyticsIntegrationController::class, 'disconnect'])->name('integrations.google-analytics.disconnect');
+        Route::get('/integrations/google-search-console', [GoogleSearchConsoleIntegrationController::class, 'show'])->name('integrations.google-search-console.edit');
+        Route::post('/integrations/google-search-console/connect', [GoogleSearchConsoleIntegrationController::class, 'connect'])->name('integrations.google-search-console.connect');
+        Route::get('/integrations/google-search-console/callback', [GoogleSearchConsoleIntegrationController::class, 'callback'])->name('integrations.google-search-console.callback');
+        Route::put('/integrations/google-search-console/site', [GoogleSearchConsoleIntegrationController::class, 'updateSite'])->name('integrations.google-search-console.site.update');
+        Route::get('/integrations/google-search-console/report', [GoogleSearchConsoleIntegrationController::class, 'report'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.google-search-console.report');
+        Route::get('/integrations/google-search-console/report/export.csv', [GoogleSearchConsoleIntegrationController::class, 'export'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.google-search-console.report.export');
+        Route::delete('/integrations/google-search-console/connection', [GoogleSearchConsoleIntegrationController::class, 'disconnect'])->name('integrations.google-search-console.disconnect');
         Route::get('/integrations/meta-marketing', [MetaMarketingIntegrationController::class, 'show'])->name('integrations.meta-marketing.edit');
         Route::post('/integrations/meta-marketing/connect', [MetaMarketingIntegrationController::class, 'connect'])->name('integrations.meta-marketing.connect');
         Route::get('/integrations/meta-marketing/callback', [MetaMarketingIntegrationController::class, 'callback'])->name('integrations.meta-marketing.callback');
-        Route::put('/integrations/meta-marketing/ad-account', [MetaMarketingIntegrationController::class, 'updateAdAccount'])->name('integrations.meta-marketing.ad-account.update');
+        Route::put('/integrations/meta-marketing/clients/{client}/ad-account', [MetaMarketingIntegrationController::class, 'updateClientAdAccount'])
+            ->whereNumber('client')
+            ->name('integrations.meta-marketing.clients.ad-account.update');
         Route::delete('/integrations/meta-marketing/connection', [MetaMarketingIntegrationController::class, 'disconnect'])->name('integrations.meta-marketing.disconnect');
         Route::get('/integrations/google-ads', [GoogleAdsIntegrationController::class, 'show'])->name('integrations.google-ads.edit');
         Route::post('/integrations/google-ads/connect', [GoogleAdsIntegrationController::class, 'connect'])->name('integrations.google-ads.connect');
         Route::get('/integrations/google-ads/callback', [GoogleAdsIntegrationController::class, 'callback'])->name('integrations.google-ads.callback');
-        Route::put('/integrations/google-ads/customer', [GoogleAdsIntegrationController::class, 'updateCustomer'])->name('integrations.google-ads.customer.update');
+        Route::put('/integrations/google-ads/clients/{client}/customer', [GoogleAdsIntegrationController::class, 'updateClientCustomer'])
+            ->whereNumber('client')
+            ->name('integrations.google-ads.clients.customer.update');
         Route::delete('/integrations/google-ads/connection', [GoogleAdsIntegrationController::class, 'disconnect'])->name('integrations.google-ads.disconnect');
     });
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');

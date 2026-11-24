@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
@@ -115,7 +116,7 @@ class MetaMarketingAdSetReportTest extends TestCase
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-23 10:00:00', 'Asia/Taipei'));
         $user = User::factory()->create();
-        $target = $this->createTarget([
+        $target = $this->createTargetFor($user, [
             'starts_on' => '2026-09-01',
             'ends_on' => '2026-09-30',
         ]);
@@ -150,8 +151,8 @@ class MetaMarketingAdSetReportTest extends TestCase
 
     public function test_ad_set_csv_requires_authentication_and_owned_meta_connection(): void
     {
-        $target = $this->createTarget();
         $user = User::factory()->create();
+        $target = $this->createTargetFor($user);
         $connection = $this->createConnection($user);
         $report = SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $connection->getKey(),
@@ -238,7 +239,7 @@ class MetaMarketingAdSetReportTest extends TestCase
         });
 
         $user = User::factory()->create();
-        $target = $this->createTarget();
+        $target = $this->createTargetFor($user);
         $connection = $this->createConnection($user);
 
         $this->actingAs($user)
@@ -258,6 +259,16 @@ class MetaMarketingAdSetReportTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
             'meta_campaign_id' => '987654321',
+        ]);
+    }
+
+    private function createTargetFor(User $user, array $attributes = []): SocialEngagementTarget
+    {
+        $client = Client::ensureDefaultFor($user);
+
+        return $this->createTarget($attributes + [
+            'user_id' => $user->id,
+            'client_id' => $client->id,
         ]);
     }
 

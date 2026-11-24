@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
@@ -240,8 +244,16 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             'campaign_budget_amount' => '500.0000',
             'campaign_budget_currency' => 'TWD',
         ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'client_id' => $client->id,
+            'property_id' => $connection->property_id,
+        ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $connection->id,
+            'property_id' => $connection->property_id,
             'social_engagement_target_id' => $target->id,
             'campaign_name' => 'Spring launch',
             'starts_on' => $target->starts_on,
@@ -397,17 +409,34 @@ class SocialEngagementTargetAdSpendTest extends TestCase
             'meta_campaign_id' => '123456789',
             'google_ads_campaign_id' => '987654321',
         ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
         $metaConnection = MetaMarketingConnection::query()->create([
             'user_id' => $user->id,
             'access_token' => 'meta-token',
             'ad_account_id' => '123456789',
+            'ad_account_name' => 'Efficiency Meta account',
             'currency_code' => 'TWD',
+        ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $client->id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
         ]);
         $googleAdsConnection = GoogleAdsConnection::query()->create([
             'user_id' => $user->id,
             'refresh_token' => 'google-refresh-token',
             'customer_id' => '1234567890',
             'currency_code' => 'USD',
+        ]);
+        GoogleAdsClientAccount::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->id,
+            'client_id' => $client->id,
+            'customer_id' => $googleAdsConnection->customer_id,
+            'customer_name' => 'Efficiency Google Ads account',
+            'currency_code' => $googleAdsConnection->currency_code,
         ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,

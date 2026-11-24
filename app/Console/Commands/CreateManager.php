@@ -9,19 +9,19 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 
 #[Signature('monitor:create-manager {--reset : Reset the existing manager password}')]
-#[Description('建立或重設私人工作區管理者帳號')]
+#[Description('建立或重設總管理員帳號')]
 class CreateManager extends Command
 {
     public function handle(): int
     {
         $managerQuery = User::query()
-            ->whereDoesntHave('workspaceMembership')
+            ->where('is_platform_admin', true)
             ->orderBy('id');
         $manager = $managerQuery->first();
         $usersCount = $managerQuery->count();
 
         if ($usersCount > 1) {
-            $this->error('目前有多個使用者，請先手動整理成唯一管理者帳號。');
+            $this->error('目前有多個總管理員帳號，請先整理為唯一總管理員。');
 
             return self::FAILURE;
         }
@@ -44,10 +44,18 @@ class CreateManager extends Command
         }
 
         if ($manager === null) {
-            User::query()->create(['name' => $name, 'email' => $email, 'password' => Hash::make($password)]);
-            $this->info('已建立私人管理者帳號，公開註冊功能已關閉。');
+            $manager = User::query()->create([
+                'name' => $name,
+                'email' => $email,
+                'password' => Hash::make($password),
+            ]);
+            $manager->forceFill(['is_platform_admin' => true])->save();
+            $this->info('已建立總管理員帳號，公開註冊功能已關閉。');
         } else {
-            $manager->forceFill(['password' => Hash::make($password)])->save();
+            $manager->forceFill([
+                'password' => Hash::make($password),
+                'is_platform_admin' => true,
+            ])->save();
             $this->info('管理者密碼已重設。');
         }
 

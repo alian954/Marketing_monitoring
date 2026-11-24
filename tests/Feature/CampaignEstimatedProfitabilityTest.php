@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
@@ -266,18 +270,36 @@ class CampaignEstimatedProfitabilityTest extends TestCase
             'google_ads_campaign_id' => null,
             'gross_margin_percent' => '40.0000',
         ]);
+        $client = Client::ensureDefaultFor($user);
+        $target->forceFill([
+            'user_id' => $user->workspaceOwnerId(),
+            'client_id' => $client->getKey(),
+        ])->save();
         $analyticsConnection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->getKey(),
             'property_id' => '123456789',
             'refresh_token' => 'test-refresh-token',
+        ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $analyticsConnection->getKey(),
+            'client_id' => $client->getKey(),
+            'property_id' => $analyticsConnection->property_id,
         ]);
         $metaConnection = MetaMarketingConnection::factory()->create([
             'user_id' => $user->getKey(),
             'ad_account_id' => '987654321',
             'currency_code' => 'TWD',
         ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->getKey(),
+            'client_id' => $client->getKey(),
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
+        ]);
         SocialEngagementTargetGoogleAnalyticsReport::query()->create([
             'google_analytics_connection_id' => $analyticsConnection->getKey(),
+            'property_id' => $analyticsConnection->property_id,
             'social_engagement_target_id' => $target->getKey(),
             'campaign_name' => $target->googleAnalyticsCampaignName(),
             'attribution_mode' => 'manual_utm',
@@ -360,6 +382,14 @@ class CampaignEstimatedProfitabilityTest extends TestCase
             'user_id' => $user->getKey(),
             'customer_id' => '1234567890',
             'currency_code' => 'TWD',
+        ]);
+        GoogleAdsClientAccount::query()->create([
+            'google_ads_connection_id' => $googleAdsConnection->getKey(),
+            'client_id' => $client->getKey(),
+            'customer_id' => $googleAdsConnection->customer_id,
+            'login_customer_id' => $googleAdsConnection->login_customer_id,
+            'customer_name' => $googleAdsConnection->customer_name,
+            'currency_code' => $googleAdsConnection->currency_code,
         ]);
         $googleAdsReport = SocialEngagementTargetGoogleAdsReport::factory()->create([
             'google_ads_connection_id' => $googleAdsConnection->getKey(),

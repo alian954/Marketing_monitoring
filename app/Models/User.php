@@ -15,13 +15,17 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 
 #[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'is_platform_admin'])]
 class User extends Authenticatable
 {
     /** @var list<int>|null */
     private ?array $workspaceClientIdsCache = null;
 
     private bool $workspaceClientIdsResolved = false;
+
+    private ?Organization $selectedPlatformOrganizationCache = null;
+
+    private bool $selectedPlatformOrganizationResolved = false;
 
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -63,16 +67,74 @@ class User extends Authenticatable
 
     public function workspaceOwner(): self
     {
+        $selectedOrganization = $this->selectedPlatformOrganization();
+
+        if ($selectedOrganization !== null) {
+            return User::query()->find($selectedOrganization->owner_user_id) ?? $this;
+        }
+
         return $this->workspaceMembership?->owner ?? $this;
     }
 
     public function workspaceOwnerId(): int
     {
+        $selectedOrganization = $this->selectedPlatformOrganization();
+
+        if ($selectedOrganization !== null) {
+            return (int) $selectedOrganization->owner_user_id;
+        }
+
         return (int) ($this->workspaceMembership?->owner_user_id ?? $this->getKey());
+    }
+
+    public function isPlatformAdmin(): bool
+    {
+        return (bool) $this->is_platform_admin;
+    }
+
+    public function selectedPlatformOrganization(): ?Organization
+    {
+        if (! $this->isPlatformAdmin() || ! request()->hasSession()) {
+            return null;
+        }
+
+        if ($this->selectedPlatformOrganizationResolved) {
+            return $this->selectedPlatformOrganizationCache;
+        }
+
+        $organizationId = request()->session()->get('platform_organization_id');
+        $this->selectedPlatformOrganizationCache = is_numeric($organizationId) && (int) $organizationId > 0
+            ? Organization::query()->find((int) $organizationId)
+            : null;
+        $this->selectedPlatformOrganizationResolved = true;
+
+        return $this->selectedPlatformOrganizationCache;
+    }
+
+    public function workspaceOrganization(): ?Organization
+    {
+        if ($this->isPlatformAdmin()) {
+            return $this->selectedPlatformOrganization();
+        }
+
+        return Organization::query()->where('owner_user_id', $this->workspaceOwnerId())->first();
+    }
+
+    public function hasActiveOrganization(): bool
+    {
+        if ($this->isPlatformAdmin()) {
+            return true;
+        }
+
+        return $this->workspaceOrganization()?->isAccessible() ?? true;
     }
 
     public function isWorkspaceOwner(): bool
     {
+        if ($this->isPlatformAdmin()) {
+            return $this->selectedPlatformOrganization() !== null;
+        }
+
         return $this->workspaceMembership === null;
     }
 
@@ -145,6 +207,11 @@ class User extends Authenticatable
         return $this->workspaceOwner()->hasOne(GoogleAdsConnection::class);
     }
 
+    public function googleSearchConsoleConnection(): HasOne
+    {
+        return $this->workspaceOwner()->hasOne(GoogleSearchConsoleConnection::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -154,6 +221,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'is_platform_admin' => 'boolean',
             'password' => 'hashed',
         ];
     }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CheckRun;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
@@ -267,6 +268,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'ga4_source_name' => 'facebook',
             'ga4_medium_name' => 'paid_social',
         ]);
+        $client = $user->clients()->create(['name' => 'Legacy GA4 client']);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -428,6 +431,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+        $client = $user->clients()->create(['name' => 'Channel export client']);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -622,6 +627,8 @@ class SocialEngagementCampaignReportTest extends TestCase
             'campaign_budget_amount' => '500.0000',
             'campaign_budget_currency' => 'TWD',
         ]);
+        $client = $user->clients()->create(['name' => 'Campaign export client']);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
         $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -675,8 +682,16 @@ class SocialEngagementCampaignReportTest extends TestCase
         ]);
         $metaConnection = MetaMarketingConnection::factory()->create([
             'user_id' => $user->id,
-            'ad_account_id' => 'act_12345',
+            'ad_account_id' => '12345',
+            'ad_account_name' => 'Campaign export account',
             'currency_code' => 'TWD',
+        ]);
+        MetaMarketingClientAccount::query()->create([
+            'meta_marketing_connection_id' => $metaConnection->id,
+            'client_id' => $client->id,
+            'ad_account_id' => $metaConnection->ad_account_id,
+            'ad_account_name' => $metaConnection->ad_account_name,
+            'currency_code' => $metaConnection->currency_code,
         ]);
         SocialEngagementTargetMetaMarketingReport::query()->create([
             'meta_marketing_connection_id' => $metaConnection->id,

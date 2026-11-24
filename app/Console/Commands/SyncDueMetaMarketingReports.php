@@ -4,10 +4,12 @@ namespace App\Console\Commands;
 
 use App\Models\AccountScopeContext;
 use App\Models\MetaMarketingConnection;
+use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\MetaMarketingApiException;
 use App\Services\MetaMarketingCampaignReportSync;
+use App\Services\MetaMarketingClientAccountResolver;
 use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -24,6 +26,7 @@ class SyncDueMetaMarketingReports extends Command
 {
     public function handle(
         MetaMarketingCampaignReportSync $campaignReportSync,
+        MetaMarketingClientAccountResolver $clientAccountResolver,
         ScheduledSyncHealthRecorder $syncHealthRecorder,
     ): int {
         $asOf = CarbonImmutable::now('Asia/Taipei');
@@ -43,12 +46,11 @@ class SyncDueMetaMarketingReports extends Command
         $failedCount = 0;
 
         MetaMarketingConnection::query()
-            ->whereNotNull('ad_account_id')
-            ->whereNotNull('currency_code')
             ->orderBy('id')
             ->chunkById(50, function (Collection $connections) use (
                 $asOf,
                 $campaignReportSync,
+                $clientAccountResolver,
                 $syncHealthRecorder,
                 &$syncedCount,
                 &$skippedCount,
@@ -74,23 +76,29 @@ class SyncDueMetaMarketingReports extends Command
                             &$connectionSyncError,
                             $asOf,
                             $campaignReportSync,
+                            $clientAccountResolver,
                             &$syncedCount,
                             &$skippedCount,
                             &$failedCount,
                         ): void {
+                            $configuredTargets = $targets->filter(
+                                fn (SocialEngagementTarget $target): bool => $clientAccountResolver->forTarget($connection, $target) !== null,
+                            );
+                            $skippedCount += $targets->count() - $configuredTargets->count();
+
                             $reports = SocialEngagementTargetMetaMarketingReport::query()
                                 ->where('meta_marketing_connection_id', $connection->getKey())
-                                ->whereIn('social_engagement_target_id', $targets->modelKeys())
+                                ->whereIn('social_engagement_target_id', $configuredTargets->modelKeys())
                                 ->get()
                                 ->keyBy('social_engagement_target_id');
-                            $targetsToSync = $targets->reject(fn (SocialEngagementTarget $target): bool => $campaignReportSync->isSnapshotFresh(
+                            $targetsToSync = $configuredTargets->reject(fn (SocialEngagementTarget $target): bool => $campaignReportSync->isSnapshotFresh(
                                 $reports->get($target->getKey()),
                                 $connection,
                                 $target,
                                 $asOf,
                             ));
 
-                            $skippedCount += $targets->count() - $targetsToSync->count();
+                            $skippedCount += $configuredTargets->count() - $targetsToSync->count();
 
                             if ($targetsToSync->isEmpty()) {
                                 return;
@@ -150,7 +158,10 @@ class SyncDueMetaMarketingReports extends Command
             ->whereNotNull('starts_on')
             ->whereNotNull('ends_on')
             ->whereDate('starts_on', '<=', $asOf->toDateString())
-            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString());
+            ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString())
+            ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(
+                $asOf->setTimezone('Asia/Taipei')->toDateString(),
+            ));
     }
 
     private function clearExpiredAdInsights(CarbonImmutable $asOf): void

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsCampaignSnapshot;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\MetaMarketingConnection;
 use App\Models\SocialEngagementTarget;
@@ -149,16 +151,23 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             ),
         ]);
         $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => 'GA4 campaign client']);
         $target = $this->createTarget([
             'tag' => 'Spring launch posts',
             'ga4_campaign_name' => 'spring_launch_2026',
             'ga4_source_name' => 'facebook_ads',
             'ga4_medium_name' => 'paid_social',
         ]);
+        $target->forceFill(['user_id' => $user->id, 'client_id' => $client->id])->save();
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
             'refresh_token' => 'refresh-token',
+        ]);
+        GoogleAnalyticsClientProperty::query()->create([
+            'google_analytics_connection_id' => $user->googleAnalyticsConnection->id,
+            'client_id' => $client->id,
+            'property_id' => '123456789',
         ]);
 
         $this->actingAs($user)
@@ -425,6 +434,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget();
+        $this->assignTargetToUser($target, $user);
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -460,6 +470,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $owner = User::factory()->create();
         $viewer = User::factory()->create();
         $target = $this->createTarget();
+        $this->assignTargetToUser($target, $owner);
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $owner->id,
             'property_id' => '123456789',
@@ -574,6 +585,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-23 12:00:00', 'Asia/Taipei'));
         $user = User::factory()->create();
         $target = $this->createTarget(['google_ads_campaign_id' => '987654321']);
+        $this->assignTargetToUser($target, $user);
         $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -722,6 +734,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'ga4_medium_name' => 'old_utm_medium',
             'google_ads_campaign_id' => '123456789012',
         ]);
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -790,11 +803,11 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->assertStringContainsString('123456789012', $campaignCsv);
 
         $sync = app(GoogleAnalyticsCampaignReportSync::class);
-        $this->assertTrue($sync->isSnapshotFresh($report, $target, CarbonImmutable::now()));
+        $this->assertTrue($sync->isSnapshotFresh($report, $target, CarbonImmutable::now(), '123456789'));
         $target->forceFill(['ga4_campaign_name' => 'changed-unused-name'])->save();
-        $this->assertTrue($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now()));
+        $this->assertTrue($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now(), '123456789'));
         $target->forceFill(['google_ads_campaign_id' => '123456789013'])->save();
-        $this->assertFalse($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now()));
+        $this->assertFalse($sync->isSnapshotFresh($report, $target->fresh(), CarbonImmutable::now(), '123456789'));
     }
 
     public function test_ga4_campaign_report_returns_source_medium_rows_and_marks_truncated_results(): void
@@ -1051,6 +1064,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'ga4_source_name' => 'facebook_ads',
             'ga4_medium_name' => 'paid_social',
         ]);
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1116,6 +1130,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
         $user = User::factory()->create();
         $target = $this->createTarget(['tag' => 'Autumn promotion']);
+        $this->assignTargetToUser($target, $user);
         GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1293,6 +1308,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-11-30',
         ]);
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1387,6 +1403,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->travelTo('2026-11-22 08:00:00');
         $user = User::factory()->create();
         $target = $this->createTarget();
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1425,6 +1442,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-21 06:30:00', 'Asia/Taipei'));
         $user = User::factory()->create();
         $target = $this->createTarget(['tag' => 'Currency campaign']);
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1558,6 +1576,7 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
             'starts_on' => '2026-11-01',
             'ends_on' => '2026-12-31',
         ]);
+        $this->assignTargetToUser($target, $user);
         $connection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
@@ -1613,12 +1632,22 @@ class SocialEngagementTargetGoogleAnalyticsTest extends TestCase
         ]);
     }
 
+    private function assignTargetToUser(SocialEngagementTarget $target, User $user): void
+    {
+        $client = $user->clients()->firstOrCreate(['name' => Client::DEFAULT_NAME]);
+        $target->forceFill([
+            'user_id' => $user->workspaceOwnerId(),
+            'client_id' => $client->getKey(),
+        ])->save();
+    }
+
     private function createEventCostScenario(User $user, CarbonImmutable $metaSyncedAt): SocialEngagementTarget
     {
         $target = $this->createTarget([
             'tag' => 'Event cost campaign',
             'meta_campaign_id' => '987654321',
         ]);
+        $this->assignTargetToUser($target, $user);
         $googleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
             'user_id' => $user->id,
             'property_id' => '123456789',
