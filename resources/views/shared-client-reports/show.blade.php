@@ -27,6 +27,12 @@
         <p class="eyebrow">客戶報表</p>
         <h1 class="page-title">{{ $client->name }}</h1>
         <p class="public-status-description">行銷活動成效</p>
+        @if ($reportPeriod !== null)
+            <p class="public-status-updated">報表期間 {{ $reportPeriod['label'] }}</p>
+            @if (isset($reportSectionMap[\App\Models\ClientReportShare::SECTION_PUBLIC_ENGAGEMENT]))
+                <p class="campaign-report-secondary">期間內貼文的最新公開互動數。</p>
+            @endif
+        @endif
         <p class="public-status-updated">分享連結有效至 {{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</p>
     </header>
 

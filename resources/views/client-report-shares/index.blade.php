@@ -70,6 +70,17 @@
                         </select>
                         @error('expires_in_days')<p id="report-share-expiry-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
+                    <div class="field-group">
+                        <label class="field-label" for="report-share-from">報表開始日期</label>
+                        <input class="field-input{{ $errors->has('from') ? ' is-invalid' : '' }}" id="report-share-from" name="from" type="date" value="{{ old('from', $reportPeriod['from']) }}" required @if ($errors->has('from')) aria-invalid="true" aria-describedby="report-share-period-help report-share-from-error" @else aria-describedby="report-share-period-help" @endif>
+                        @error('from')<p id="report-share-from-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="report-share-to">報表結束日期</label>
+                        <input class="field-input{{ $errors->has('to') ? ' is-invalid' : '' }}" id="report-share-to" name="to" type="date" value="{{ old('to', $reportPeriod['to']) }}" max="{{ $reportPeriod['to'] }}" required @if ($errors->has('to')) aria-invalid="true" aria-describedby="report-share-period-help report-share-to-error" @else aria-describedby="report-share-period-help" @endif>
+                        @error('to')<p id="report-share-to-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <p id="report-share-period-help" class="field-help">最多 365 天，結束日限昨天以前。</p>
                     <fieldset class="report-share-targets" aria-describedby="report-share-sections-help{{ $reportSectionErrors->isNotEmpty() ? ' report-share-sections-error' : '' }}" @if ($reportSectionErrors->isNotEmpty()) aria-invalid="true" @endif>
                         <legend class="field-label">報表內容</legend>
                         <p id="report-share-sections-help" class="field-help">選擇要公開的數據區塊；網頁與 CSV 會套用相同設定。</p>
@@ -123,11 +134,12 @@
         @else
             <div class="data-table-wrap">
                 <table class="data-table">
-                            <caption class="sr-only">報表分享連結名稱、資料範圍、狀態與到期時間</caption>
+                    <caption class="sr-only">報表分享連結名稱、活動範圍、報表期間、狀態與到期時間</caption>
                     <thead>
                         <tr>
                             <th scope="col">名稱</th>
                             <th scope="col">活動範圍</th>
+                            <th scope="col">報表期間</th>
                             <th scope="col">報表內容</th>
                             <th scope="col">狀態</th>
                             <th scope="col">到期時間</th>
@@ -150,6 +162,7 @@
                             <tr>
                                 <th scope="row">{{ $share->name }}</th>
                                 <td>{{ $shareCampaignScope }} {{ number_format($shareCampaignCount) }} 項</td>
+                                <td>{{ $share->report_starts_on?->format('Y/n/j') ?? '不限' }} – {{ $share->report_ends_on?->format('Y/n/j') ?? '不限' }}</td>
                                 <td>{{ $shareReportSectionLabels }}</td>
                                 <td>{{ $shareStatus }}</td>
                                 <td><time datetime="{{ $share->expires_at->toIso8601String() }}">{{ $share->expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time></td>

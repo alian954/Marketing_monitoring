@@ -22,6 +22,7 @@ class SharedClientReportCsv
         array $reportingCurrencyGroups,
         mixed $stream,
         array $reportSections = ClientReportShare::DEFAULT_REPORT_SECTIONS,
+        ?string $reportPeriodLabel = null,
     ): void {
         fwrite($stream, "\xEF\xBB\xBF");
         $includesRoas = $campaignRows->contains(fn (array $campaignRow): bool => $this->campaignEfficiencyVisible(
@@ -34,7 +35,7 @@ class SharedClientReportCsv
         foreach ($campaignRows as $campaignRow) {
             fputcsv(
                 $stream,
-                $this->safeFields($this->orderedFields($headers, $this->campaignValues($client, $campaignRow, $reportSections))),
+                $this->safeFields($this->orderedFields($headers, $this->campaignValues($client, $campaignRow, $reportSections, $reportPeriodLabel))),
                 ',',
                 '"',
                 '',
@@ -45,7 +46,7 @@ class SharedClientReportCsv
             foreach ($reportingCurrencyGroups as $reportingCurrencyGroup) {
                 fputcsv(
                     $stream,
-                    $this->safeFields($this->orderedFields($headers, $this->currencySummaryValues($client, $reportingCurrencyGroup, $reportSections))),
+                    $this->safeFields($this->orderedFields($headers, $this->currencySummaryValues($client, $reportingCurrencyGroup, $reportSections, $reportPeriodLabel))),
                     ',',
                     '"',
                     '',
@@ -64,6 +65,7 @@ class SharedClientReportCsv
             '平台',
             '活動起日',
             '活動迄日',
+            '報表期間',
         ];
 
         if ($this->hasFinancialSection($reportSections)) {
@@ -113,7 +115,7 @@ class SharedClientReportCsv
      * @param  array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}  $campaignRow
      * @return list<string|null|int|float>
      */
-    private function campaignValues(Client $client, array $campaignRow, array $reportSections): array
+    private function campaignValues(Client $client, array $campaignRow, array $reportSections, ?string $reportPeriodLabel): array
     {
         $target = $campaignRow['target'];
         $publicEngagement = $campaignRow['public_engagement'];
@@ -136,6 +138,7 @@ class SharedClientReportCsv
             '平台' => $this->platformLabel($target->social_platform),
             '活動起日' => $target->starts_on?->toDateString(),
             '活動迄日' => $target->ends_on?->toDateString(),
+            '報表期間' => $reportPeriodLabel,
             '報表幣別' => $showFinancialSections ? $target->client?->reporting_currency_code : null,
             '公開互動' => $showPublicEngagement ? ($publicEngagement['interaction_total'] ?? null) : null,
             '完整互動貼文數' => $showPublicEngagement ? ($publicEngagement['available_posts'] ?? null) : null,
@@ -164,8 +167,12 @@ class SharedClientReportCsv
      * @param  array<string, mixed>  $reportingCurrencyGroup
      * @return list<string|int|float|null>
      */
-    private function currencySummaryValues(Client $client, array $reportingCurrencyGroup, array $reportSections): array
-    {
+    private function currencySummaryValues(
+        Client $client,
+        array $reportingCurrencyGroup,
+        array $reportSections,
+        ?string $reportPeriodLabel,
+    ): array {
         $coverage = $reportingCurrencyGroup['conversion_coverage'] ?? [];
         $showGoogleAnalytics = in_array(ClientReportShare::SECTION_GOOGLE_ANALYTICS, $reportSections, true);
         $showMetaMarketing = in_array(ClientReportShare::SECTION_META_MARKETING, $reportSections, true);
@@ -174,6 +181,7 @@ class SharedClientReportCsv
         return [
             '資料列類型' => '報表幣別彙總',
             '客戶' => $client->name,
+            '報表期間' => $reportPeriodLabel,
             '報表幣別' => $reportingCurrencyGroup['currency_code'] ?? null,
             'GA4 營收' => $showGoogleAnalytics ? ($reportingCurrencyGroup['ga4_revenue'] ?? null) : null,
             'GA4 幣別' => $showGoogleAnalytics ? ($reportingCurrencyGroup['currency_code'] ?? null) : null,

@@ -4,14 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\ClientReportShare;
+use App\Services\ClientPortfolioReportingPeriod;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 class ClientReportShareController extends Controller
 {
-    public function index(Client $client): Response
+    public function index(Client $client, ClientPortfolioReportingPeriod $reportingPeriod): Response
     {
         $shares = $client->reportShares()->latest()->get();
         $campaignTargets = $client->socialEngagementTargets()
@@ -20,7 +23,12 @@ class ClientReportShareController extends Controller
             ->get(['id', 'tag', 'social_platform']);
 
         return response()
-            ->view('client-report-shares.index', compact('client', 'shares', 'campaignTargets'))
+            ->view('client-report-shares.index', [
+                'client' => $client,
+                'shares' => $shares,
+                'campaignTargets' => $campaignTargets,
+                'reportPeriod' => $reportingPeriod->defaultPeriod(),
+            ])
             ->header('Cache-Control', 'private, no-store')
             ->header('Referrer-Policy', 'no-referrer');
     }
@@ -33,9 +41,12 @@ class ClientReportShareController extends Controller
             $request->merge(['name' => trim($name)]);
         }
 
-        $validated = $request->validate([
+        $latestCompleteDate = CarbonImmutable::now('Asia/Taipei')->startOfDay()->subDay()->toDateString();
+        $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:80'],
             'expires_in_days' => ['required', 'integer', Rule::in([7, 30, 90])],
+            'from' => ['required', 'string', 'date_format:Y-m-d'],
+            'to' => ['required', 'string', 'date_format:Y-m-d', 'after_or_equal:from', 'before_or_equal:'.$latestCompleteDate],
             'target_ids' => ['required', 'array', 'min:1'],
             'target_ids.*' => [
                 'required',
@@ -49,6 +60,14 @@ class ClientReportShareController extends Controller
             'name.required' => '請輸入分享連結名稱。',
             'name.max' => '分享連結名稱不可超過 80 個字元。',
             'expires_in_days.in' => '請選擇 7、30 或 90 天的有效期限。',
+            'from.required' => '請選擇報表開始日期。',
+            'from.string' => '報表開始日期格式無效。',
+            'from.date_format' => '報表開始日期格式無效。',
+            'to.required' => '請選擇報表結束日期。',
+            'to.string' => '報表結束日期格式無效。',
+            'to.date_format' => '報表結束日期格式無效。',
+            'to.after_or_equal' => '結束日期不可早於開始日期。',
+            'to.before_or_equal' => '報表結束日期不可晚於昨天。',
             'target_ids.required' => '請至少選擇一項要分享的活動。',
             'target_ids.array' => '活動選取格式不正確。',
             'target_ids.min' => '請至少選擇一項要分享的活動。',
@@ -62,6 +81,27 @@ class ClientReportShareController extends Controller
             'report_sections.*.in' => '所選報表區塊無效。',
             'report_sections.*.distinct' => '同一報表區塊不可重複選取。',
         ]);
+        $validator->after(function ($validator): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $from = CarbonImmutable::createFromFormat('!Y-m-d', (string) $validator->getData()['from'], 'Asia/Taipei');
+            $to = CarbonImmutable::createFromFormat('!Y-m-d', (string) $validator->getData()['to'], 'Asia/Taipei');
+
+            if ($from !== false && $to !== false && $from->addDays(364)->lessThan($to)) {
+                $validator->errors()->add('from', '報表期間最多 365 天。');
+            }
+        });
+
+        if ($validator->fails()) {
+            return redirect()
+                ->route('clients.report-shares.index', $client)
+                ->withErrors($validator)
+                ->withInput($request->all());
+        }
+
+        $validated = $validator->validated();
 
         $token = bin2hex(random_bytes(32));
         $share = $client->reportShares()->create([
@@ -69,6 +109,8 @@ class ClientReportShareController extends Controller
             'token_hash' => hash('sha256', $token),
             'campaign_target_ids' => array_map('intval', $validated['target_ids']),
             'report_sections' => array_values($validated['report_sections'] ?? ClientReportShare::DEFAULT_REPORT_SECTIONS),
+            'report_starts_on' => $validated['from'],
+            'report_ends_on' => $validated['to'],
             'expires_at' => now()->addDays((int) $validated['expires_in_days']),
         ]);
 

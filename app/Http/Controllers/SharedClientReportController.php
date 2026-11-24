@@ -8,6 +8,7 @@ use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\CampaignPortfolioMarketingSummary;
+use App\Services\ClientPortfolioReportingPeriod;
 use App\Services\DashboardCampaignMarketingSummary;
 use App\Services\SharedClientReportCsv;
 use Carbon\CarbonImmutable;
@@ -21,8 +22,9 @@ class SharedClientReportController extends Controller
         string $token,
         DashboardCampaignMarketingSummary $marketingSummaryBuilder,
         CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
+        ClientPortfolioReportingPeriod $reportingPeriod,
     ): Response {
-        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder);
+        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder, $reportingPeriod);
 
         return response()
             ->view('shared-client-reports.show', $reportData + ['token' => $token])
@@ -36,8 +38,9 @@ class SharedClientReportController extends Controller
         DashboardCampaignMarketingSummary $marketingSummaryBuilder,
         CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
         SharedClientReportCsv $csv,
+        ClientPortfolioReportingPeriod $reportingPeriod,
     ): StreamedResponse {
-        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder);
+        $reportData = $this->reportData($token, $marketingSummaryBuilder, $portfolioSummaryBuilder, $reportingPeriod);
         $response = response()->streamDownload(function () use ($csv, $reportData): void {
             $stream = fopen('php://output', 'wb');
             $csv->write(
@@ -46,11 +49,16 @@ class SharedClientReportController extends Controller
                 $reportData['reportingCurrencyGroups'],
                 $stream,
                 $reportData['reportSections'],
+                $reportData['reportPeriod'] === null
+                    ? null
+                    : $reportData['reportPeriod']['from'].' 至 '.$reportData['reportPeriod']['to'],
             );
             fclose($stream);
-        }, 'marketing-report-'.now()->format('Y-m-d').'.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        }, $reportData['reportPeriod'] === null
+            ? 'marketing-report-'.now()->format('Y-m-d').'.csv'
+            : 'marketing-report-'.$reportData['reportPeriod']['from'].'-to-'.$reportData['reportPeriod']['to'].'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
         $response->headers->set('Cache-Control', 'private, no-store');
         $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
         $response->headers->set('Referrer-Policy', 'no-referrer');
@@ -63,13 +71,16 @@ class SharedClientReportController extends Controller
      *     share: ClientReportShare,
      *     client: Client,
      *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>,
-     *     reportingCurrencyGroups: list<array<string, mixed>>
+     *     reportingCurrencyGroups: list<array<string, mixed>>,
+     *     reportSections: list<string>,
+     *     reportPeriod: array{from: string, to: string, label: string}|null
      * }
      */
     private function reportData(
         string $token,
         DashboardCampaignMarketingSummary $marketingSummaryBuilder,
         CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
+        ClientPortfolioReportingPeriod $reportingPeriod,
     ): array {
         abort_unless(preg_match('/^[a-f0-9]{64}$/', $token) === 1, 404);
 
@@ -95,17 +106,41 @@ class SharedClientReportController extends Controller
             ->orderBy('social_platform')
             ->get();
         $reportSections = $share->selectedReportSections();
+        $reportPeriod = $share->report_starts_on !== null && $share->report_ends_on !== null
+            ? [
+                'from' => $share->report_starts_on->toDateString(),
+                'to' => $share->report_ends_on->toDateString(),
+                'label' => $share->report_starts_on->format('Y/n/j').'–'.$share->report_ends_on->format('Y/n/j'),
+            ]
+            : null;
         $monitors = $client->monitors()
             ->whereNotNull('social_platform')
             ->with(['latestPublicEngagementCheckRun'])
             ->get();
-        $publicEngagementSummaries = $this->publicEngagementSummaries($targets, $monitors);
+        $publicEngagementSummaries = $this->publicEngagementSummaries(
+            $targets,
+            $monitors,
+            $reportPeriod['from'] ?? null,
+            $reportPeriod['to'] ?? null,
+        );
         $marketingSummaries = $marketingSummaryBuilder->build(
             $targets,
             $user,
             CarbonImmutable::now(),
             $publicEngagementSummaries,
         );
+
+        if ($reportPeriod !== null) {
+            $periodData = $reportingPeriod->apply(
+                $targets,
+                $marketingSummaries,
+                $reportPeriod['from'],
+                $reportPeriod['to'],
+            );
+            $targets = $periodData['targets'];
+            $marketingSummaries = $periodData['marketing_summaries'];
+        }
+
         $reportingCurrencySummary = $portfolioSummaryBuilder->build(
             $targets,
             $marketingSummaries,
@@ -118,7 +153,7 @@ class SharedClientReportController extends Controller
             'marketing' => $marketingSummaries[$target->getKey()],
         ]);
 
-        return compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups', 'reportSections');
+        return compact('share', 'client', 'campaignRows', 'reportingCurrencyGroups', 'reportSections', 'reportPeriod');
     }
 
     /**
@@ -126,13 +161,19 @@ class SharedClientReportController extends Controller
      * @param  Collection<int, Monitor>  $monitors
      * @return array<int, array{interaction_total: int|null, available_posts: int, tracked_posts: int, views_total: int|null, latest_at: CarbonImmutable|null}>
      */
-    private function publicEngagementSummaries(Collection $targets, Collection $monitors): array
-    {
+    private function publicEngagementSummaries(
+        Collection $targets,
+        Collection $monitors,
+        ?string $reportStartsOn = null,
+        ?string $reportEndsOn = null,
+    ): array {
         $summaries = [];
 
         foreach ($targets as $target) {
             $startsOn = $target->starts_on?->toDateString();
             $endsOn = $target->ends_on?->toDateString();
+            $startsOn = $reportStartsOn === null ? $startsOn : ($startsOn === null ? $reportStartsOn : max($startsOn, $reportStartsOn));
+            $endsOn = $reportEndsOn === null ? $endsOn : ($endsOn === null ? $reportEndsOn : min($endsOn, $reportEndsOn));
             $trackedPosts = 0;
             $availablePosts = 0;
             $interactionTotal = 0;

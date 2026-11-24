@@ -34,6 +34,7 @@ class ClientReportShareTest extends TestCase
                 'name' => '客戶週報',
                 'expires_in_days' => '7',
                 'target_ids' => [$target->id],
+                ...$this->validSharePeriod(),
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHas('createdShareUrl');
@@ -47,12 +48,15 @@ class ClientReportShareTest extends TestCase
         $this->assertNotSame($token, $share->token_hash);
         $this->assertSame('客戶週報', $share->name);
         $this->assertSame([$target->id], $share->campaign_target_ids);
+        $this->assertSame('2026-11-01', $share->report_starts_on->toDateString());
+        $this->assertSame('2026-11-23', $share->report_ends_on->toDateString());
         $this->assertSame(ClientReportShare::DEFAULT_REPORT_SECTIONS, $share->selectedReportSections());
         $this->assertSame('2026-12-01 12:00:00', $share->expires_at->format('Y-m-d H:i:s'));
 
         $managementResponse = $this->get(route('clients.report-shares.index', $client))
             ->assertOk()
             ->assertSee((string) $shareUrl, false)
+            ->assertSee('2026/11/1 – 2026/11/23')
             ->assertSee('有效');
         $this->assertStringContainsString('no-store', (string) $managementResponse->headers->get('Cache-Control'));
         $this->assertStringContainsString('private', (string) $managementResponse->headers->get('Cache-Control'));
@@ -75,6 +79,7 @@ class ClientReportShareTest extends TestCase
                 'name' => 'Invalid expiration',
                 'expires_in_days' => '365',
                 'target_ids' => [$target->id],
+                ...$this->validSharePeriod(),
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['expires_in_days' => '請選擇 7、30 或 90 天的有效期限。']);
@@ -84,6 +89,7 @@ class ClientReportShareTest extends TestCase
 
     public function test_share_creation_form_only_lists_campaigns_for_the_selected_client(): void
     {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
         $owner = User::factory()->create();
         $client = Client::factory()->for($owner)->create();
         $this->actingAs($owner);
@@ -104,7 +110,77 @@ class ClientReportShareTest extends TestCase
             ->assertSee('Meta Ads')
             ->assertSee('Google Ads')
             ->assertSee('只會公開勾選活動的數據。')
+            ->assertSee('name="from"', false)
+            ->assertSee('value="2026-10-25"', false)
+            ->assertSee('name="to"', false)
+            ->assertSee('value="2026-11-23"', false)
             ->assertDontSee('Private Campaign');
+    }
+
+    public function test_owner_cannot_create_a_report_share_without_reporting_dates(): void
+    {
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $target = $this->createTarget($client, 'Missing period campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Missing period',
+                'expires_in_days' => '30',
+                'target_ids' => [$target->id],
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors([
+                'from' => '請選擇報表開始日期。',
+                'to' => '請選擇報表結束日期。',
+            ]);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_owner_cannot_create_a_report_share_for_more_than_365_days(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $target = $this->createTarget($client, 'Long period campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Long report period',
+                'expires_in_days' => '30',
+                'target_ids' => [$target->id],
+                'from' => '2025-10-01',
+                'to' => '2026-11-23',
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['from' => '報表期間最多 365 天。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
+    }
+
+    public function test_owner_cannot_create_a_report_share_that_ends_before_yesterday(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $target = $this->createTarget($client, 'Future period campaign');
+
+        $this->actingAs($owner)
+            ->from(route('clients.report-shares.index', $client))
+            ->post(route('clients.report-shares.store', $client), [
+                'name' => 'Future report period',
+                'expires_in_days' => '30',
+                'target_ids' => [$target->id],
+                'from' => '2026-11-24',
+                'to' => '2026-11-24',
+            ])
+            ->assertRedirect(route('clients.report-shares.index', $client))
+            ->assertSessionHasErrors(['to' => '報表結束日期不可晚於昨天。']);
+
+        $this->assertDatabaseCount('client_report_shares', 0);
     }
 
     public function test_owner_can_limit_the_data_sections_in_a_shared_report(): void
@@ -119,6 +195,7 @@ class ClientReportShareTest extends TestCase
             'expires_in_days' => '30',
             'target_ids' => [$target->id],
             'report_sections' => [ClientReportShare::SECTION_PUBLIC_ENGAGEMENT],
+            ...$this->validSharePeriod(),
         ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHas('createdShareUrl');
@@ -145,6 +222,7 @@ class ClientReportShareTest extends TestCase
                 'expires_in_days' => '30',
                 'target_ids' => [$target->id],
                 'report_sections' => ['private_connection_data'],
+                ...$this->validSharePeriod(),
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['report_sections.0' => '所選報表區塊無效。']);
@@ -154,6 +232,7 @@ class ClientReportShareTest extends TestCase
             'expires_in_days' => '30',
             'target_ids' => [$target->id],
             'report_sections' => [],
+            ...$this->validSharePeriod(),
         ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['report_sections' => '請至少選擇一個報表區塊。']);
@@ -284,13 +363,17 @@ class ClientReportShareTest extends TestCase
         $owner = User::factory()->create();
         $client = Client::factory()->for($owner)->create();
         $this->actingAs($owner);
-        $selectedTarget = $this->createTarget($client, 'Selected Campaign');
+        $selectedTarget = $this->createTarget($client, 'Selected Campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+        ]);
         $hiddenTarget = $this->createTarget($client, 'Hidden Campaign');
 
         $response = $this->post(route('clients.report-shares.store', $client), [
             'name' => 'Selected campaign report',
             'expires_in_days' => '30',
             'target_ids' => [$selectedTarget->id],
+            ...$this->validSharePeriod(),
         ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHas('createdShareUrl');
@@ -306,6 +389,93 @@ class ClientReportShareTest extends TestCase
             ->assertOk()
             ->assertSee('Selected Campaign')
             ->assertDontSee('Hidden Campaign');
+    }
+
+    public function test_public_report_and_csv_use_the_fixed_share_period(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create(['reporting_currency_code' => 'TWD']);
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Period campaign', [
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ga4_campaign_name' => 'Period campaign',
+        ]);
+        $outsideTarget = $this->createTarget($client, 'Outside period campaign', [
+            'starts_on' => '2026-10-01',
+            'ends_on' => '2026-10-15',
+        ]);
+        $this->createGoogleAnalyticsReport($owner, $target);
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $target->getKey())
+            ->firstOrFail()
+            ->update([
+                'sessions' => 321,
+                'total_revenue' => '321.0000',
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-01', 'sessions' => 11, 'total_revenue' => '11.0000'],
+                    ['date' => '2026-11-02', 'sessions' => 22, 'total_revenue' => '22.0000'],
+                    ['date' => '2026-11-03', 'sessions' => 33, 'total_revenue' => '33.0000'],
+                    ['date' => '2026-11-04', 'sessions' => 44, 'total_revenue' => '44.0000'],
+                ], '2026-11-01', '2026-11-30'),
+            ]);
+
+        foreach ([
+            ['path' => 'in-period', 'published_at' => '2026-11-02 12:00:00', 'likes' => 5, 'comments' => 2, 'shares' => 1],
+            ['path' => 'out-of-period', 'published_at' => '2026-11-01 12:00:00', 'likes' => 100, 'comments' => 30, 'shares' => 20],
+        ] as $post) {
+            $url = 'https://www.facebook.com/posts/shared-period-'.$post['path'];
+            $monitor = Monitor::factory()->create([
+                'client_id' => $client->id,
+                'name' => 'Period post '.$post['path'],
+                'url' => $url,
+                'url_hash' => Monitor::fingerprintUrl($url),
+                'label' => $target->tag,
+            ]);
+
+            CheckRun::factory()->for($monitor)->create([
+                'config_version' => $monitor->config_version,
+                'response_published_at' => Carbon::parse($post['published_at'], 'UTC'),
+                'response_public_engagement_metrics' => [
+                    'likes' => $post['likes'],
+                    'comments' => $post['comments'],
+                    'shares' => $post['shares'],
+                ],
+            ]);
+        }
+
+        $token = str_repeat('c', 64);
+        $this->createShare(
+            $client,
+            $token,
+            [$target->id, $outsideTarget->id],
+            null,
+            ['from' => '2026-11-02', 'to' => '2026-11-03'],
+        );
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('2026/11/2–2026/11/3')
+            ->assertSee('期間內貼文的最新公開互動數')
+            ->assertSee('<dd>8</dd>', false)
+            ->assertSee('1 / 1 篇取得完整互動數')
+            ->assertSee('<dd>55</dd>', false)
+            ->assertSee('55.00 TWD')
+            ->assertDontSee('<dd>321</dd>', false)
+            ->assertDontSee('Outside period campaign');
+
+        $csvResponse = $this->get(route('client-report-shares.public.export', ['token' => $token]))
+            ->assertOk()
+            ->assertHeader('content-disposition', 'attachment; filename=marketing-report-2026-11-02-to-2026-11-03.csv');
+        $content = $csvResponse->streamedContent();
+
+        $this->assertStringContainsString('報表期間', $content);
+        $this->assertStringContainsString('2026-11-02 至 2026-11-03', $content);
+        $this->assertStringContainsString('55.0000', $content);
+        $this->assertStringNotContainsString('321', $content);
+        $this->assertStringNotContainsString('Outside period campaign', $content);
     }
 
     public function test_public_client_report_csv_export_respects_share_scope_and_sanitizes_formula_cells(): void
@@ -382,6 +552,7 @@ class ClientReportShareTest extends TestCase
                 'name' => 'Invalid campaign scope',
                 'expires_in_days' => '30',
                 'target_ids' => [$otherTarget->id],
+                ...$this->validSharePeriod(),
             ])
             ->assertRedirect(route('clients.report-shares.index', $client))
             ->assertSessionHasErrors(['target_ids.0' => '所選活動不存在或不屬於此客戶。']);
@@ -685,12 +856,40 @@ class ClientReportShareTest extends TestCase
         ]);
     }
 
+    /** @return array{from: string, to: string} */
+    private function validSharePeriod(): array
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+
+        return [
+            'from' => '2026-11-01',
+            'to' => '2026-11-23',
+        ];
+    }
+
+    /**
+     * @param  list<array<string, int|string>>  $rows
+     * @return array{status: string, requested_start_on: string, requested_end_on: string, coverage_start_on: string, coverage_end_on: string, rows: list<array<string, int|string>>}
+     */
+    private function dailyMetrics(array $rows, string $startOn, string $endOn): array
+    {
+        return [
+            'status' => 'complete',
+            'requested_start_on' => $startOn,
+            'requested_end_on' => $endOn,
+            'coverage_start_on' => $startOn,
+            'coverage_end_on' => $endOn,
+            'rows' => $rows,
+        ];
+    }
+
     /** @param  list<int>|null  $campaignTargetIds */
     private function createShare(
         Client $client,
         string $token,
         ?array $campaignTargetIds = null,
         ?array $reportSections = null,
+        ?array $reportPeriod = null,
     ): ClientReportShare {
         $attributes = [
             'name' => 'Test report share',
@@ -703,6 +902,10 @@ class ClientReportShareTest extends TestCase
         }
         if ($reportSections !== null) {
             $attributes['report_sections'] = $reportSections;
+        }
+        if ($reportPeriod !== null) {
+            $attributes['report_starts_on'] = $reportPeriod['from'];
+            $attributes['report_ends_on'] = $reportPeriod['to'];
         }
 
         return $client->reportShares()->create($attributes);
