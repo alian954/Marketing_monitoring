@@ -115,6 +115,102 @@ class CampaignEstimatedProfitabilityReport
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $marketingSummary
+     * @param  array{from: string, to: string}|null  $reportPeriod
+     * @return array<string, mixed>
+     */
+    public function buildForMarketingSummary(
+        SocialEngagementTarget $target,
+        array $marketingSummary,
+        ?array $reportPeriod = null,
+    ): array {
+        $googleAnalytics = is_array($marketingSummary['google_analytics'] ?? null)
+            ? $marketingSummary['google_analytics']
+            : [];
+        $efficiency = is_array($marketingSummary['efficiency'] ?? null)
+            ? $marketingSummary['efficiency']
+            : [];
+        $googleAnalyticsStatus = $googleAnalytics['status'] ?? null;
+        $googleAnalyticsReport = in_array($googleAnalyticsStatus, ['not_configured', 'not_connected', 'missing'], true)
+            ? null
+            : new SocialEngagementTargetGoogleAnalyticsReport([
+                'total_revenue' => $googleAnalytics['revenue'] ?? null,
+                'currency_code' => $googleAnalytics['currency_code'] ?? null,
+            ]);
+        $spendSource = $efficiency['ad_spend_source'] ?? null;
+        $spendAnalysis = [
+            'ad_spend_amount' => null,
+            'ad_spend_currency' => null,
+            'ad_spend_source' => is_string($spendSource) ? $spendSource : null,
+            'platform_currency_mismatch' => ($efficiency['platform_currency_mismatch'] ?? false) === true,
+        ];
+        $spendSnapshotIsFresh = false;
+
+        if (in_array($spendSource, ['meta_marketing', 'google_ads'], true)) {
+            $sourceSummary = is_array($marketingSummary[$spendSource] ?? null)
+                ? $marketingSummary[$spendSource]
+                : [];
+            $spendAnalysis['ad_spend_amount'] = $sourceSummary['spend_amount'] ?? null;
+            $spendAnalysis['ad_spend_currency'] = $sourceSummary['currency_code'] ?? null;
+            $spendSnapshotIsFresh = ($sourceSummary['status'] ?? null) === 'fresh';
+        } elseif ($spendSource === 'combined_paid_ads') {
+            $metaMarketing = is_array($marketingSummary['meta_marketing'] ?? null)
+                ? $marketingSummary['meta_marketing']
+                : [];
+            $googleAds = is_array($marketingSummary['google_ads'] ?? null)
+                ? $marketingSummary['google_ads']
+                : [];
+            $metaCurrency = $this->currencyCode($metaMarketing['currency_code'] ?? null);
+            $googleAdsCurrency = $this->currencyCode($googleAds['currency_code'] ?? null);
+
+            if (is_numeric($metaMarketing['spend_amount'] ?? null)
+                && is_numeric($googleAds['spend_amount'] ?? null)
+                && $metaCurrency !== $googleAdsCurrency) {
+                $spendAnalysis['ad_spend_source'] = 'currency_mismatch';
+                $spendAnalysis['platform_currency_mismatch'] = true;
+            } elseif (is_numeric($metaMarketing['spend_amount'] ?? null)
+                && is_numeric($googleAds['spend_amount'] ?? null)) {
+                $spendAnalysis['ad_spend_amount'] = (float) $metaMarketing['spend_amount'] + (float) $googleAds['spend_amount'];
+                $spendAnalysis['ad_spend_currency'] = $metaCurrency;
+                $spendSnapshotIsFresh = ($metaMarketing['status'] ?? null) === 'fresh'
+                    && ($googleAds['status'] ?? null) === 'fresh';
+            }
+        } elseif ($spendSource === 'manual' && $this->reportPeriodCoversCampaign($target, $reportPeriod)) {
+            $spendAnalysis['ad_spend_amount'] = $target->ad_spend_amount;
+            $spendAnalysis['ad_spend_currency'] = $target->ad_spend_currency;
+            $spendSnapshotIsFresh = ! filled($target->meta_campaign_id)
+                && ! filled($target->google_ads_campaign_id)
+                && is_numeric($target->ad_spend_amount);
+        }
+
+        return $this->build(
+            $target,
+            $googleAnalyticsReport,
+            $spendAnalysis,
+            $googleAnalyticsReport !== null && $googleAnalyticsStatus === 'fresh',
+            $spendSnapshotIsFresh,
+        );
+    }
+
+    /**
+     * @param  array{from: string, to: string}|null  $reportPeriod
+     */
+    private function reportPeriodCoversCampaign(SocialEngagementTarget $target, ?array $reportPeriod): bool
+    {
+        $campaignStartsOn = $target->starts_on?->toDateString();
+        $campaignEndsOn = $target->ends_on?->toDateString();
+        $reportStartsOn = $reportPeriod['from'] ?? $campaignStartsOn;
+        $reportEndsOn = $reportPeriod['to'] ?? $campaignEndsOn;
+
+        return $campaignStartsOn !== null
+            && $campaignEndsOn !== null
+            && is_string($reportStartsOn)
+            && is_string($reportEndsOn)
+            && $reportStartsOn <= $campaignStartsOn
+            && $reportEndsOn >= $campaignEndsOn;
+    }
+
     private function finiteNumber(mixed $value): ?float
     {
         if (! is_numeric($value)) {

@@ -96,6 +96,9 @@
                                     <input type="checkbox" name="report_sections[]" value="{{ $section }}" @checked(in_array($section, $selectedReportSections, true)) @if ($reportSectionErrors->isNotEmpty()) aria-invalid="true" aria-describedby="report-share-sections-error" @endif>
                                     <span>
                                         <strong>{{ $label }}</strong>
+                                        @if ($section === \App\Models\ClientReportShare::SECTION_ESTIMATED_PROFITABILITY)
+                                            <small>僅在資料完整時顯示</small>
+                                        @endif
                                     </span>
                                 </label>
                             @endforeach

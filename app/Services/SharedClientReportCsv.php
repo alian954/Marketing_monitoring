@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 class SharedClientReportCsv
 {
     /**
-     * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>  $campaignRows
+     * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, estimated_profitability?: array<string, mixed>}>  $campaignRows
      * @param  list<array<string, mixed>>  $reportingCurrencyGroups
      * @param  list<string>  $reportSections
      */
@@ -45,7 +45,7 @@ class SharedClientReportCsv
     }
 
     /**
-     * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}>  $campaignRows
+     * @param  Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, estimated_profitability?: array<string, mixed>}>  $campaignRows
      * @param  list<array<string, mixed>>  $reportingCurrencyGroups
      * @param  list<string>  $reportSections
      * @param  resource  $stream
@@ -135,6 +135,10 @@ class SharedClientReportCsv
             array_push($headers, 'Google Ads 花費', 'Google Ads 幣別', 'Google Ads 最近擷取時間（台北）');
         }
 
+        if (in_array(ClientReportShare::SECTION_ESTIMATED_PROFITABILITY, $reportSections, true)) {
+            array_push($headers, '估算毛利', '估算媒體貢獻', '獲利估算幣別', '損益兩平 ROAS', '獲利估算狀態');
+        }
+
         if ($includesRoas) {
             $headers[] = 'GA4 ROAS';
         }
@@ -181,7 +185,7 @@ class SharedClientReportCsv
     }
 
     /**
-     * @param  array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>}  $campaignRow
+     * @param  array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, estimated_profitability?: array<string, mixed>}  $campaignRow
      * @return list<string|null|int|float>
      */
     private function campaignValues(
@@ -202,8 +206,12 @@ class SharedClientReportCsv
         $showGoogleAnalytics = in_array(ClientReportShare::SECTION_GOOGLE_ANALYTICS, $reportSections, true);
         $showMetaMarketing = in_array(ClientReportShare::SECTION_META_MARKETING, $reportSections, true);
         $showGoogleAds = in_array(ClientReportShare::SECTION_GOOGLE_ADS, $reportSections, true);
+        $showEstimatedProfitability = in_array(ClientReportShare::SECTION_ESTIMATED_PROFITABILITY, $reportSections, true);
         $showFinancialSections = $this->hasFinancialSection($reportSections);
         $showEfficiency = $this->campaignEfficiencyVisible($reportSections, $efficiency);
+        $estimatedProfitability = is_array($campaignRow['estimated_profitability'] ?? null)
+            ? $campaignRow['estimated_profitability']
+            : [];
 
         return [
             '資料列類型' => '活動',
@@ -228,6 +236,17 @@ class SharedClientReportCsv
             'Google Ads 花費' => $showGoogleAds ? ($googleAds['spend_amount'] ?? null) : null,
             'Google Ads 幣別' => $showGoogleAds ? ($googleAds['currency_code'] ?? null) : null,
             'Google Ads 最近擷取時間（台北）' => $showGoogleAds ? $this->formatTimestamp($googleAds['synced_at'] ?? null) : null,
+            '估算毛利' => $showEstimatedProfitability
+                ? $this->formatDecimal($estimatedProfitability['gross_profit_amount'] ?? null)
+                : null,
+            '估算媒體貢獻' => $showEstimatedProfitability
+                ? $this->formatDecimal($estimatedProfitability['media_contribution_amount'] ?? null)
+                : null,
+            '獲利估算幣別' => $showEstimatedProfitability ? ($estimatedProfitability['currency_code'] ?? null) : null,
+            '損益兩平 ROAS' => $showEstimatedProfitability && is_numeric($estimatedProfitability['break_even_roas'] ?? null)
+                ? number_format((float) $estimatedProfitability['break_even_roas'], 4, '.', '')
+                : null,
+            '獲利估算狀態' => $showEstimatedProfitability ? ($estimatedProfitability['status_label'] ?? null) : null,
             'GA4 ROAS' => $showEfficiency ? ($efficiency['roas'] ?? null) : null,
             'GA4 換算活動數' => null,
             'Meta Ads 換算活動數' => null,
@@ -334,6 +353,15 @@ class SharedClientReportCsv
                 $currencyCode,
             ))
             ->implode('；');
+    }
+
+    private function formatDecimal(mixed $value): ?string
+    {
+        if (! is_numeric($value) || ! is_finite((float) $value)) {
+            return null;
+        }
+
+        return number_format((float) $value, 4, '.', '');
     }
 
     /** @param array{source_label: string, currency_code: string, delta: float|null, percent_change: float|null, status: string}|null $change */

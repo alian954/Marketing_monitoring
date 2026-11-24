@@ -239,6 +239,26 @@
                             @endif
                         </div>
                     @endif
+                    @if (isset($reportSectionMap[\App\Models\ClientReportShare::SECTION_ESTIMATED_PROFITABILITY]))
+                        @php
+                            $estimatedProfitability = $campaignRow['estimated_profitability'];
+                        @endphp
+                        <div>
+                            <dt>估算毛利</dt>
+                            <dd>{{ $estimatedProfitability['gross_profit_amount'] === null ? '—' : number_format($estimatedProfitability['gross_profit_amount'], 2).' '.$estimatedProfitability['currency_code'] }}</dd>
+                            <span class="campaign-report-secondary">{{ $estimatedProfitability['status_label'] }}</span>
+                        </div>
+                        <div>
+                            <dt>估算媒體貢獻</dt>
+                            <dd>{{ $estimatedProfitability['media_contribution_amount'] === null ? '—' : number_format($estimatedProfitability['media_contribution_amount'], 2).' '.$estimatedProfitability['currency_code'] }}</dd>
+                            <span class="campaign-report-secondary">不含物流、交易費與固定營運成本</span>
+                        </div>
+                        <div>
+                            <dt>損益兩平 ROAS</dt>
+                            <dd>{{ $estimatedProfitability['break_even_roas'] === null ? '—' : number_format($estimatedProfitability['break_even_roas'], 2).'×' }}</dd>
+                            <span class="campaign-report-secondary">{{ $estimatedProfitability['break_even_roas_status_label'] }}</span>
+                        </div>
+                    @endif
                     @if ($showCampaignEfficiency)
                         <div>
                         <dt>GA4 ROAS</dt>

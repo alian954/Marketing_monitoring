@@ -63,6 +63,25 @@ class ClientReportSnapshotControllerTest extends TestCase
         $this->assertArrayNotHasKey('csv_content', $publicPage->viewData('share')->snapshots->sole()->getAttributes());
     }
 
+    public function test_snapshot_preserves_the_opted_in_profitability_section(): void
+    {
+        $setup = $this->createReportShare();
+        $setup['share']->forceFill([
+            'report_sections' => [ClientReportShare::SECTION_ESTIMATED_PROFITABILITY],
+        ])->save();
+
+        $this->actingAs($setup['owner'])
+            ->post(route('clients.report-shares.snapshots.store', [$setup['client'], $setup['share']]))
+            ->assertRedirect(route('clients.report-shares.index', $setup['client']));
+
+        $snapshot = ClientReportSnapshot::query()->sole();
+
+        $this->assertSame([ClientReportShare::SECTION_ESTIMATED_PROFITABILITY], $snapshot->report_sections);
+        $this->assertStringContainsString('估算毛利', $snapshot->csv_content);
+        $this->assertStringContainsString('獲利估算狀態', $snapshot->csv_content);
+        $this->assertSame(hash('sha256', $snapshot->csv_content), $snapshot->csv_sha256);
+    }
+
     public function test_archived_csv_is_unchanged_when_live_public_engagement_changes(): void
     {
         $setup = $this->createReportShare();

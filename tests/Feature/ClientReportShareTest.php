@@ -119,6 +119,9 @@ class ClientReportShareTest extends TestCase
             ->assertSee('GA4 分析')
             ->assertSee('Meta Ads')
             ->assertSee('Google Ads')
+            ->assertSee('估算獲利')
+            ->assertSee('value="estimated_profitability"', false)
+            ->assertDontSee('value="estimated_profitability" checked', false)
             ->assertSee('只會公開勾選活動的數據。')
             ->assertSee('name="from"', false)
             ->assertSee('value="2026-10-25"', false)
@@ -357,6 +360,61 @@ class ClientReportShareTest extends TestCase
         $this->assertStringNotContainsString('321', $content);
         $this->assertStringNotContainsString('456.78', $content);
         $this->assertStringNotContainsString('報表幣別彙總', $content);
+    }
+
+    public function test_estimated_profitability_is_opt_in_and_uses_the_shared_reporting_period(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-24 12:00:00', 'UTC'));
+        $owner = User::factory()->create();
+        $client = Client::factory()->for($owner)->create();
+        $this->actingAs($owner);
+        $target = $this->createTarget($client, 'Estimate campaign', [
+            'starts_on' => '2026-11-02',
+            'ends_on' => '2026-11-03',
+            'gross_margin_percent' => '40.0000',
+            'ad_spend_amount' => '10.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
+        $this->createGoogleAnalyticsReport($owner, $target);
+        SocialEngagementTargetGoogleAnalyticsReport::query()
+            ->where('social_engagement_target_id', $target->getKey())
+            ->firstOrFail()
+            ->update([
+                'total_revenue' => '100.0000',
+                'daily_metrics' => $this->dailyMetrics([
+                    ['date' => '2026-11-02', 'sessions' => 10, 'total_revenue' => '50.0000'],
+                    ['date' => '2026-11-03', 'sessions' => 10, 'total_revenue' => '50.0000'],
+                ], '2026-11-02', '2026-11-03'),
+            ]);
+        $token = str_repeat('f', 64);
+        $this->createShare(
+            $client,
+            $token,
+            [$target->id],
+            [ClientReportShare::SECTION_ESTIMATED_PROFITABILITY],
+            ['from' => '2026-11-02', 'to' => '2026-11-03'],
+        );
+
+        $this->get(route('client-report-shares.public', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('估算毛利')
+            ->assertSee('估算媒體貢獻')
+            ->assertSee('損益兩平 ROAS')
+            ->assertSee('<dd>40.00 TWD</dd>', false)
+            ->assertSee('<dd>30.00 TWD</dd>', false)
+            ->assertDontSee('GA4 營收');
+
+        $csvContent = $this->get(route('client-report-shares.public.export', ['token' => $token]))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('估算毛利', $csvContent);
+        $this->assertStringContainsString('估算媒體貢獻', $csvContent);
+        $this->assertStringContainsString('40.0000', $csvContent);
+        $this->assertStringContainsString('30.0000', $csvContent);
+        $this->assertStringContainsString('2.5000', $csvContent);
+        $this->assertStringContainsString('估算可用', $csvContent);
+        $this->assertStringNotContainsString('GA4 營收', $csvContent);
     }
 
     public function test_report_hides_roas_when_its_selected_spend_source_is_not_shared(): void

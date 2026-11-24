@@ -79,6 +79,124 @@ class CampaignEstimatedProfitabilityTest extends TestCase
         $this->assertSame(5.0, $estimate['break_even_roas']);
     }
 
+    public function test_period_summary_uses_the_selected_period_revenue_and_platform_spend(): void
+    {
+        $target = SocialEngagementTarget::factory()->make([
+            'gross_margin_percent' => '40.0000',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'meta_campaign_id' => 'meta-123',
+        ]);
+        $marketingSummary = [
+            'google_analytics' => [
+                'status' => 'fresh',
+                'revenue' => '200.0000',
+                'currency_code' => 'TWD',
+            ],
+            'meta_marketing' => [
+                'status' => 'fresh',
+                'spend_amount' => '50.0000',
+                'currency_code' => 'TWD',
+            ],
+            'efficiency' => [
+                'ad_spend_amount' => '50.0000',
+                'ad_spend_currency' => 'TWD',
+                'ad_spend_source' => 'meta_marketing',
+                'platform_currency_mismatch' => false,
+            ],
+        ];
+
+        $estimate = app(CampaignEstimatedProfitabilityReport::class)->buildForMarketingSummary(
+            $target,
+            $marketingSummary,
+            ['from' => '2026-11-02', 'to' => '2026-11-03'],
+        );
+
+        $this->assertSame('available', $estimate['status']);
+        $this->assertSame(80.0, $estimate['gross_profit_amount']);
+        $this->assertSame(30.0, $estimate['media_contribution_amount']);
+    }
+
+    public function test_manual_spend_is_unavailable_when_the_report_covers_only_part_of_the_campaign(): void
+    {
+        $target = SocialEngagementTarget::factory()->make([
+            'gross_margin_percent' => '40.0000',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'ad_spend_amount' => '50.0000',
+            'ad_spend_currency' => 'TWD',
+        ]);
+        $marketingSummary = [
+            'google_analytics' => [
+                'status' => 'fresh',
+                'revenue' => '200.0000',
+                'currency_code' => 'TWD',
+            ],
+            'efficiency' => [
+                'ad_spend_source' => 'manual',
+                'platform_currency_mismatch' => false,
+            ],
+        ];
+
+        $estimate = app(CampaignEstimatedProfitabilityReport::class)->buildForMarketingSummary(
+            $target,
+            $marketingSummary,
+            ['from' => '2026-11-02', 'to' => '2026-11-03'],
+        );
+
+        $this->assertSame('missing_spend', $estimate['status']);
+        $this->assertNull($estimate['media_contribution_amount']);
+
+        $target->meta_campaign_id = 'meta-123';
+        $manualFallbackEstimate = app(CampaignEstimatedProfitabilityReport::class)->buildForMarketingSummary(
+            $target,
+            $marketingSummary,
+            ['from' => '2026-11-01', 'to' => '2026-11-30'],
+        );
+
+        $this->assertSame('stale', $manualFallbackEstimate['status']);
+        $this->assertNull($manualFallbackEstimate['media_contribution_amount']);
+    }
+
+    public function test_summary_profitability_combines_fresh_paid_platform_spend_and_rejects_currency_mismatch(): void
+    {
+        $target = SocialEngagementTarget::factory()->make([
+            'gross_margin_percent' => '40.0000',
+            'meta_campaign_id' => 'meta-123',
+            'google_ads_campaign_id' => 'ads-456',
+        ]);
+        $marketingSummary = [
+            'google_analytics' => [
+                'status' => 'fresh',
+                'revenue' => '1000.0000',
+                'currency_code' => 'TWD',
+            ],
+            'meta_marketing' => [
+                'status' => 'fresh',
+                'spend_amount' => '150.0000',
+                'currency_code' => 'TWD',
+            ],
+            'google_ads' => [
+                'status' => 'fresh',
+                'spend_amount' => '50.0000',
+                'currency_code' => 'TWD',
+            ],
+            'efficiency' => [
+                'ad_spend_source' => 'combined_paid_ads',
+                'platform_currency_mismatch' => false,
+            ],
+        ];
+
+        $report = app(CampaignEstimatedProfitabilityReport::class);
+        $combinedEstimate = $report->buildForMarketingSummary($target, $marketingSummary);
+        $this->assertSame(200.0, $combinedEstimate['media_contribution_amount']);
+
+        $marketingSummary['google_ads']['currency_code'] = 'USD';
+        $mismatchedEstimate = $report->buildForMarketingSummary($target, $marketingSummary);
+        $this->assertSame('currency_mismatch', $mismatchedEstimate['status']);
+        $this->assertNull($mismatchedEstimate['media_contribution_amount']);
+    }
+
     public function test_combined_meta_and_google_ads_spend_is_used_for_contribution(): void
     {
         $estimate = $this->buildEstimate(

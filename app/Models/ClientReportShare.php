@@ -22,6 +22,8 @@ class ClientReportShare extends Model
 
     public const SECTION_GOOGLE_ADS = 'google_ads';
 
+    public const SECTION_ESTIMATED_PROFITABILITY = 'estimated_profitability';
+
     /** @var list<string> */
     public const DEFAULT_REPORT_SECTIONS = [
         self::SECTION_PUBLIC_ENGAGEMENT,
@@ -36,6 +38,7 @@ class ClientReportShare extends Model
         self::SECTION_GOOGLE_ANALYTICS => 'GA4 分析',
         self::SECTION_META_MARKETING => 'Meta Ads',
         self::SECTION_GOOGLE_ADS => 'Google Ads',
+        self::SECTION_ESTIMATED_PROFITABILITY => '估算獲利',
     ];
 
     /** @use HasFactory<ClientReportShareFactory> */
@@ -59,7 +62,7 @@ class ClientReportShare extends Model
         }
 
         return array_values(array_filter(
-            self::DEFAULT_REPORT_SECTIONS,
+            array_keys(self::REPORT_SECTION_LABELS),
             fn (string $section): bool => in_array($section, $this->report_sections, true),
         ));
     }

@@ -18,13 +18,14 @@ class SharedClientReportDataBuilder
         private CampaignPortfolioMarketingSummary $portfolioSummaryBuilder,
         private ClientPortfolioMetricComparison $metricComparison,
         private ClientPortfolioReportingPeriod $reportingPeriod,
+        private CampaignEstimatedProfitabilityReport $estimatedProfitabilityReport,
     ) {}
 
     /**
      * @return array{
      *     share: ClientReportShare,
      *     client: Client,
-     *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, comparison: array<string, mixed>|null}>,
+     *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, estimated_profitability: array<string, mixed>, comparison: array<string, mixed>|null}>,
      *     reportingCurrencyGroups: list<array<string, mixed>>,
      *     reportSections: list<string>,
      *     reportPeriod: array{from: string, to: string, label: string}|null,
@@ -52,7 +53,7 @@ class SharedClientReportDataBuilder
      * @return array{
      *     share: ClientReportShare,
      *     client: Client,
-     *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, comparison: array<string, mixed>|null}>,
+     *     campaignRows: Collection<int, array{target: SocialEngagementTarget, public_engagement: array<string, mixed>, marketing: array<string, mixed>, estimated_profitability: array<string, mixed>, comparison: array<string, mixed>|null}>,
      *     reportingCurrencyGroups: list<array<string, mixed>>,
      *     reportSections: list<string>,
      *     reportPeriod: array{from: string, to: string, label: string}|null,
@@ -167,6 +168,8 @@ class SharedClientReportDataBuilder
             $exchangeRates,
             $marketingSummaries,
             $publicEngagementSummaries,
+            $reportPeriod,
+            $reportSections,
         ): array {
             $targetId = (int) $target->getKey();
             $marketing = $marketingSummaries[$targetId];
@@ -201,6 +204,13 @@ class SharedClientReportDataBuilder
                 'target' => $target,
                 'public_engagement' => $publicEngagementSummaries[$targetId],
                 'marketing' => $marketing,
+                'estimated_profitability' => in_array(ClientReportShare::SECTION_ESTIMATED_PROFITABILITY, $reportSections, true)
+                    ? $this->estimatedProfitabilityReport->buildForMarketingSummary(
+                        $target,
+                        $marketing,
+                        $reportPeriod === null ? null : ['from' => $reportPeriod['from'], 'to' => $reportPeriod['to']],
+                    )
+                    : [],
                 'comparison' => $comparison,
             ];
         });
