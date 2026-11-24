@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckRun;
+use App\Models\Client;
 use App\Models\Monitor;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
@@ -120,6 +121,23 @@ class DashboardFocusLayoutTest extends TestCase
             ->assertDontSee('dashboard-summary-grid');
     }
 
+    public function test_dashboard_hides_client_filter_until_the_user_has_multiple_clients(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('dashboard-client-filter');
+
+        Client::factory()->for($user)->create(['name' => '第二個客戶']);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('dashboard-client-filter')
+            ->assertSee('第二個客戶');
+    }
+
     public function test_dashboard_attention_list_shows_problem_monitors_before_the_collapsed_full_list(): void
     {
         $healthyMonitor = Monitor::factory()->create([
@@ -164,7 +182,7 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertSame(1, $response->viewData('counts')['issue']);
     }
 
-    public function test_dashboard_attention_list_shows_only_three_items_and_reports_the_remaining_count(): void
+    public function test_dashboard_attention_list_shows_three_items_and_one_link_to_the_remaining_work(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
@@ -188,7 +206,8 @@ class DashboardFocusLayoutTest extends TestCase
         $response = $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee('aria-label="待處理 4 項，監測項目 4 項"', false)
-            ->assertSee('另有 1 項');
+            ->assertSee('還有 1 項需處理')
+            ->assertDontSee('另有 1 項');
 
         $responseContent = $response->getContent();
         $attentionStart = strpos($responseContent, 'id="dashboard-attention"');
@@ -199,5 +218,6 @@ class DashboardFocusLayoutTest extends TestCase
         $this->assertStringContainsString('異常網站 2', $attentionMarkup);
         $this->assertStringContainsString('異常網站 3', $attentionMarkup);
         $this->assertStringNotContainsString('異常網站 4', $attentionMarkup);
+        $this->assertSame(1, substr_count($attentionMarkup, 'dashboard-attention-more'));
     }
 }

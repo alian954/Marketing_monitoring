@@ -213,6 +213,28 @@ textarea {
     padding: 38px 0 60px;
 }
 
+.read-only-banner {
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    color: var(--ink-soft);
+    background: var(--surface-tint);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-password-form) {
+    display: none;
+}
+
+.workspace-access-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+}
+
 .page-footer {
     width: min(1160px, calc(100% - 48px));
     margin: 0 auto;
@@ -788,14 +810,6 @@ textarea {
     font-weight: 760;
 }
 
-.dashboard-attention-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
 .dashboard-attention-list {
     margin: 0;
     padding: 0;
@@ -827,11 +841,13 @@ textarea {
 }
 
 .dashboard-attention-more {
+    display: block;
     margin: 0;
     padding: 10px 20px 16px;
     border-top: 1px solid var(--line);
     color: var(--muted);
     font-size: 12px;
+    text-decoration: none;
 }
 
 .stat-grid {
@@ -2353,6 +2369,10 @@ a.platform-chip:hover {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .workspace-access-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .client-create-form .button {
         width: 100%;
     }
@@ -2391,10 +2411,6 @@ a.platform-chip:hover {
         align-items: flex-start;
         flex-direction: column;
         padding: 4px 15px 15px;
-    }
-
-    .dashboard-attention-actions {
-        justify-content: flex-start;
     }
 
     .dashboard-attention-summary strong {

@@ -68,7 +68,7 @@ class DashboardScalabilityTest extends TestCase
         $response = $this->actingAs(User::factory()->create())
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('aria-label="2 項需要處理"', false)
+            ->assertSee('aria-label="待處理 2 項，監測項目 501 項"', false)
             ->assertDontSee('dashboard-focus-value');
 
         $this->assertSame(501, $response->viewData('monitorCount'));

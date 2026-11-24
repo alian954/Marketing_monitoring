@@ -20,16 +20,20 @@
             <h1 class="page-title">監測總覽</h1>
         </div>
         <div class="heading-actions">
-            <form action="{{ route('dashboard') }}" method="GET" class="dashboard-client-filter">
-                <label class="field-label" for="dashboard-client">客戶</label>
-                <select class="field-select" id="dashboard-client" name="client_id">
-                    @foreach ($clients as $client)
-                        <option value="{{ $client->id }}" @selected($selectedClientId === $client->id)>{{ $client->name }}</option>
-                    @endforeach
-                </select>
-                <button class="button button-secondary button-small" type="submit">套用</button>
-            </form>
-            <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+            @if ($clients->count() > 1)
+                <form action="{{ route('dashboard') }}" method="GET" class="dashboard-client-filter">
+                    <label class="field-label" for="dashboard-client">客戶</label>
+                    <select class="field-select" id="dashboard-client" name="client_id">
+                        @foreach ($clients as $client)
+                            <option value="{{ $client->id }}" @selected($selectedClientId === $client->id)>{{ $client->name }}</option>
+                        @endforeach
+                    </select>
+                    <button class="button button-secondary button-small" type="submit">套用</button>
+                </form>
+            @endif
+            @if ($totalMonitors > 0)
+                <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+            @endif
         </div>
     </div>
 
@@ -42,12 +46,8 @@
                         <strong>尚未新增監測項目</strong>
                     @else
                         <strong>{{ number_format($attentionCount) }} 項需要處理</strong>
-                        <span>{{ number_format($totalMonitors) }} 項監測中</span>
                     @endif
                 </p>
-            </div>
-            <div class="dashboard-attention-actions">
-                <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看監測項目 <span aria-hidden="true">→</span></a>
             </div>
         </div>
         @if ($totalMonitors === 0)
@@ -79,9 +79,14 @@
                     </li>
                 @endforeach
             </ul>
-            @if ($attentionCount > $attentionMonitors->count())
-                <p class="dashboard-attention-more">另有 {{ number_format($attentionCount - $attentionMonitors->count()) }} 項</p>
-            @endif
+            <a class="dashboard-attention-more strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">
+                @if ($attentionCount > $attentionMonitors->count())
+                    查看完整清單 · 還有 {{ number_format($attentionCount - $attentionMonitors->count()) }} 項需處理
+                @else
+                    查看完整監測清單
+                @endif
+                <span aria-hidden="true">→</span>
+            </a>
         @endif
     </section>
 
@@ -103,7 +108,9 @@
                     <h2 class="panel-title">監測項目</h2>
                 </div>
                 <div class="row-actions">
+                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
                     <a class="strong-link" href="{{ route('status-pages.edit') }}">公開狀態頁</a>
+                    @endunless
                     <a class="strong-link" href="{{ route('monitors.export', ['client_id' => $selectedClientId]) }}">匯出 CSV</a>
                     <a class="strong-link" href="{{ route('monitors.index', ['client_id' => $selectedClientId]) }}">查看全部 <span aria-hidden="true">→</span></a>
                 </div>
