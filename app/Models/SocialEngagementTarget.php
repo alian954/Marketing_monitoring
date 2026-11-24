@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
 
-#[Fillable(['tag', 'social_platform', 'client_id', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ga4_medium_name', 'ga4_goal_metric', 'ga4_goal_value', 'ga4_goal_currency', 'paid_media_goal_source', 'paid_media_goal_roas', 'gross_margin_percent', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
+#[Fillable(['tag', 'social_platform', 'client_id', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ga4_medium_name', 'ga4_goal_metric', 'ga4_goal_event_name', 'ga4_goal_value', 'ga4_goal_currency', 'paid_media_goal_source', 'paid_media_goal_roas', 'gross_margin_percent', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
 #[Hidden(['user_id'])]
 class SocialEngagementTarget extends Model
 {

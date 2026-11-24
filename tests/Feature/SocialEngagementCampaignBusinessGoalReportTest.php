@@ -39,6 +39,86 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertNull($progress['goal_currency_code']);
     }
 
+    public function test_named_ga4_event_goal_uses_only_the_matching_key_event_count(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $target->ga4_goal_event_name = 'purchase';
+        $analyticsReport = $this->analyticsReport([
+            'key_events' => '12.5000',
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'event_name_report' => [
+                'status' => 'complete',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'truncated' => false,
+                'rows' => [
+                    ['event_name' => 'generate_lead', 'key_events' => '10.0000'],
+                    ['event_name' => 'purchase', 'key_events' => '2.5000'],
+                ],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+        ]);
+
+        $progress = app(SocialEngagementCampaignBusinessGoalReport::class)->build(
+            $target,
+            $analyticsReport,
+            false,
+        );
+
+        $this->assertSame('available', $progress['status']);
+        $this->assertSame('purchase', $progress['event_name']);
+        $this->assertSame('GA4 重要事件：purchase', $progress['metric_label']);
+        $this->assertSame(2.5, $progress['actual_value']);
+        $this->assertSame(12.5, $progress['completion_percent']);
+        $this->assertSame(17.5, $progress['remaining_value']);
+    }
+
+    public function test_named_ga4_event_goal_does_not_turn_missing_event_details_into_zero(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $target->ga4_goal_event_name = 'sign_up';
+        $completeWithoutEvent = $this->analyticsReport([
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'event_name_report' => [
+                'status' => 'complete',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'truncated' => false,
+                'rows' => [['event_name' => 'purchase', 'key_events' => '2.5000']],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+        ]);
+        $thresholded = $this->analyticsReport([
+            'starts_on' => '2026-11-01',
+            'ends_on' => '2026-11-30',
+            'event_name_report' => [
+                'status' => 'thresholded',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'truncated' => false,
+                'rows' => [],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+        ]);
+
+        foreach ([$completeWithoutEvent, $thresholded] as $analyticsReport) {
+            $progress = app(SocialEngagementCampaignBusinessGoalReport::class)->build(
+                $target,
+                $analyticsReport,
+                false,
+            );
+
+            $this->assertSame('event_unavailable', $progress['status']);
+            $this->assertNull($progress['actual_value']);
+            $this->assertNull($progress['completion_percent']);
+            $this->assertSame('data_unavailable', $progress['time_pacing']['status']);
+        }
+    }
+
     public function test_active_ga4_goal_pacing_compares_actual_progress_with_elapsed_campaign_time(): void
     {
         $this->travelTo('2026-11-15 12:00:00');
@@ -368,6 +448,52 @@ class SocialEngagementCampaignBusinessGoalReportTest extends TestCase
         $this->assertSame('200.0', $fields['paid_media_roas_attainment_percent']);
         $this->assertSame('2.0000', $fields['paid_media_roas_difference']);
         $this->assertSame('達成度可用', $fields['paid_media_roas_goal_status']);
+    }
+
+    public function test_campaign_report_and_csv_show_the_named_ga4_event_goal(): void
+    {
+        $this->travelTo('2026-11-15 12:00:00');
+        $user = User::factory()->create();
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $user->id,
+            'property_id' => '123456789',
+            'refresh_token' => 'encrypted-token',
+        ]);
+        $target = $this->businessGoalTarget('key_events', '20.0000');
+        $target->update(['ga4_goal_event_name' => 'purchase']);
+        $this->storeCampaignAnalyticsReport($connection, $target, [
+            'key_events' => '12.5000',
+            'event_name_report' => [
+                'status' => 'complete',
+                'window_start_on' => '2026-11-01',
+                'window_end_on' => '2026-11-30',
+                'truncated' => false,
+                'rows' => [
+                    ['event_name' => 'generate_lead', 'event_count' => 9, 'key_events' => '10.0000', 'total_revenue' => '0.0000'],
+                    ['event_name' => 'purchase', 'event_count' => 3, 'key_events' => '2.5000', 'total_revenue' => '500.0000'],
+                ],
+            ],
+            'event_name_expires_at' => now()->addDays(30),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('social-engagement-targets.report', $target))
+            ->assertOk()
+            ->assertSee('GA4 重要事件：purchase')
+            ->assertSee('2.50')
+            ->assertSee('<dd>12.5%</dd>', false);
+
+        $csvResponse = $this->get(route('social-engagement-targets.report.export', $target))
+            ->assertOk();
+        $rows = array_map(
+            static fn (string $line): array => str_getcsv($line),
+            preg_split('/\r\n|\r|\n/', trim($csvResponse->streamedContent())) ?: [],
+        );
+        $fields = array_combine($rows[0], $rows[1]);
+
+        $this->assertSame('purchase', $fields['ga4_business_goal_event_name']);
+        $this->assertSame('2.5000', $fields['ga4_business_goal_actual_value']);
+        $this->assertSame('12.5', $fields['ga4_business_goal_completion_percent']);
     }
 
     private function businessGoalTarget(

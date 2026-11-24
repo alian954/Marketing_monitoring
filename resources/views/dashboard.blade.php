@@ -681,6 +681,12 @@
                             @error('ga4_goal_metric', 'socialEngagementTarget')<p id="social-engagement-target-ga4-goal-metric-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                         </div>
                         <div class="field-group">
+                            <label class="field-label" for="social-engagement-target-ga4-goal-event-name">重要事件名稱（選填）</label>
+                            <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_event_name') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-goal-event-name" name="ga4_goal_event_name" type="text" maxlength="100" value="{{ old('ga4_goal_event_name', $socialEngagementTargetFormTarget?->ga4_goal_event_name) }}" aria-describedby="social-engagement-target-ga4-goal-event-name-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_event_name') ? ' social-engagement-target-ga4-goal-event-name-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_goal_event_name')) aria-invalid="true" @endif>
+                            <p id="social-engagement-target-ga4-goal-event-name-help" class="field-help">名稱須與 GA4 一致；留白時合計全部重要事件。</p>
+                            @error('ga4_goal_event_name', 'socialEngagementTarget')<p id="social-engagement-target-ga4-goal-event-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="field-group">
                             <label class="field-label" for="social-engagement-target-ga4-goal-value">目標數值</label>
                             <input class="field-input{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_value') ? ' is-invalid' : '' }}" id="social-engagement-target-ga4-goal-value" name="ga4_goal_value" type="number" inputmode="decimal" min="0.0001" max="9999999999999999" step="0.0001" value="{{ old('ga4_goal_value', $socialEngagementTargetFormTarget?->ga4_goal_value) }}" aria-describedby="social-engagement-target-ga4-goal-value-help{{ $errors->getBag('socialEngagementTarget')->has('ga4_goal_value') ? ' social-engagement-target-ga4-goal-value-error' : '' }}" @if ($errors->getBag('socialEngagementTarget')->has('ga4_goal_value')) aria-invalid="true" @endif>
                             <p id="social-engagement-target-ga4-goal-value-help" class="field-help">重要事件或營收目標都需大於 0。</p>

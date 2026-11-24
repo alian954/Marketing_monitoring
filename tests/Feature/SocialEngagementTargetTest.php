@@ -44,6 +44,7 @@ class SocialEngagementTargetTest extends TestCase
             ->assertOk()
             ->assertSee('GA4 商業目標')
             ->assertSee('name="ga4_goal_metric"', false)
+            ->assertSee('name="ga4_goal_event_name"', false)
             ->assertSee('name="ga4_goal_value"', false)
             ->assertSee('name="ga4_goal_currency"', false)
             ->assertSee('付費媒體 ROAS 目標')
@@ -254,6 +255,7 @@ class SocialEngagementTargetTest extends TestCase
                 'target_interactions' => 1000,
                 ...$campaignDates,
                 'ga4_goal_metric' => 'key_events',
+                'ga4_goal_event_name' => 'purchase',
                 'ga4_goal_value' => '25.5000',
                 'ga4_goal_currency' => 'TWD',
             ])
@@ -265,6 +267,7 @@ class SocialEngagementTargetTest extends TestCase
 
         $target = SocialEngagementTarget::query()->sole();
         $this->assertSame('key_events', $target->ga4_goal_metric);
+        $this->assertSame('purchase', $target->ga4_goal_event_name);
         $this->assertSame('25.5000', $target->ga4_goal_value);
         $this->assertNull($target->ga4_goal_currency);
 
@@ -275,6 +278,7 @@ class SocialEngagementTargetTest extends TestCase
                 'target_interactions' => 1000,
                 ...$campaignDates,
                 'ga4_goal_metric' => 'total_revenue',
+                'ga4_goal_event_name' => 'purchase',
                 'ga4_goal_value' => '10000.0000',
                 'ga4_goal_currency' => 'TWD',
             ])
@@ -289,6 +293,7 @@ class SocialEngagementTargetTest extends TestCase
         $this->assertSame('total_revenue', $target->ga4_goal_metric);
         $this->assertSame('10000.0000', $target->ga4_goal_value);
         $this->assertSame('TWD', $target->ga4_goal_currency);
+        $this->assertNull($target->ga4_goal_event_name);
 
         $this->actingAs($user)
             ->post(route('social-engagement-targets.store'), [
@@ -428,6 +433,30 @@ class SocialEngagementTargetTest extends TestCase
             ->assertRedirect(route('dashboard'))
             ->assertSessionHasErrorsIn('socialEngagementTarget', [
                 'ga4_goal_metric' => 'GA4 商業目標指標無效。',
+            ]);
+
+        $this->assertDatabaseCount('social_engagement_targets', 0);
+    }
+
+    public function test_ga4_goal_event_name_is_limited_to_one_hundred_characters(): void
+    {
+        $this->createSocialMonitor('instagram', 'IG-GOAL-06', 'Spring launch');
+
+        $this->actingAs(User::factory()->create())
+            ->from(route('dashboard'))
+            ->post(route('social-engagement-targets.store'), [
+                'tag' => 'Spring launch',
+                'social_platform' => 'instagram',
+                'target_interactions' => 1000,
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'ga4_goal_metric' => 'key_events',
+                'ga4_goal_event_name' => str_repeat('x', 101),
+                'ga4_goal_value' => '100',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrorsIn('socialEngagementTarget', [
+                'ga4_goal_event_name' => 'GA4 事件名稱不可超過 100 個字元。',
             ]);
 
         $this->assertDatabaseCount('social_engagement_targets', 0);

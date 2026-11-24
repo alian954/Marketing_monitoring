@@ -12,6 +12,7 @@ class SocialEngagementCampaignBusinessGoalReport
      * @return array{
      *     metric: string|null,
      *     metric_label: string|null,
+     *     event_name: string|null,
      *     target_value: float|null,
      *     actual_value: float|null,
      *     goal_currency_code: string|null,
@@ -29,8 +30,13 @@ class SocialEngagementCampaignBusinessGoalReport
         bool $analyticsReportIsStale,
     ): array {
         $metric = is_string($target->ga4_goal_metric) ? $target->ga4_goal_metric : null;
+        $goalEventName = $metric === 'key_events'
+            && is_string($target->ga4_goal_event_name)
+            && trim($target->ga4_goal_event_name) !== ''
+            ? trim($target->ga4_goal_event_name)
+            : null;
         $metricLabel = match ($metric) {
-            'key_events' => 'GA4 重要事件',
+            'key_events' => $goalEventName === null ? 'GA4 重要事件' : 'GA4 重要事件：'.$goalEventName,
             'total_revenue' => 'GA4 營收',
             default => null,
         };
@@ -45,9 +51,13 @@ class SocialEngagementCampaignBusinessGoalReport
         $actualValue = null;
 
         if ($analyticsReport !== null && $metric !== null) {
-            $reportedValue = $metric === 'key_events'
-                ? $analyticsReport->key_events
-                : ($metric === 'total_revenue' ? $analyticsReport->total_revenue : null);
+            $reportedValue = match ($metric) {
+                'key_events' => $goalEventName === null
+                    ? $analyticsReport->key_events
+                    : $this->keyEventsForNamedEvent($analyticsReport, $goalEventName),
+                'total_revenue' => $analyticsReport->total_revenue,
+                default => null,
+            };
 
             if (is_numeric($reportedValue)) {
                 $actualValue = (float) $reportedValue;
@@ -61,10 +71,12 @@ class SocialEngagementCampaignBusinessGoalReport
         } elseif ($target->starts_on === null || $target->ends_on === null) {
             $status = 'missing_period';
             $actualValue = null;
-        } elseif ($analyticsReport === null || $actualValue === null) {
+        } elseif ($analyticsReport === null) {
             $status = 'unavailable';
         } elseif ($analyticsReportIsStale) {
             $status = 'stale';
+        } elseif ($actualValue === null) {
+            $status = $goalEventName === null ? 'unavailable' : 'event_unavailable';
         } elseif ($metric === 'total_revenue' && $reportCurrencyCode === null) {
             $status = 'currency_unknown';
         } elseif ($metric === 'total_revenue' && $reportCurrencyCode !== $goalCurrencyCode) {
@@ -77,6 +89,7 @@ class SocialEngagementCampaignBusinessGoalReport
         return [
             'metric' => $metricLabel === null ? null : $metric,
             'metric_label' => $metricLabel,
+            'event_name' => $goalEventName,
             'target_value' => $targetValue,
             'actual_value' => $actualValue,
             'goal_currency_code' => $goalCurrencyCode,
@@ -91,6 +104,42 @@ class SocialEngagementCampaignBusinessGoalReport
             'status_label' => $this->statusLabel($status),
             'time_pacing' => $timePacing,
         ];
+    }
+
+    private function keyEventsForNamedEvent(
+        SocialEngagementTargetGoogleAnalyticsReport $analyticsReport,
+        string $eventName,
+    ): ?float {
+        $eventNameReport = $analyticsReport->event_name_report;
+        $expiresAt = $analyticsReport->event_name_expires_at;
+        $windowStartOn = $analyticsReport->starts_on?->toDateString();
+        $windowEndOn = $analyticsReport->ends_on?->toDateString();
+
+        if (! is_array($eventNameReport)
+            || ($eventNameReport['status'] ?? null) !== 'complete'
+            || $expiresAt?->isFuture() !== true
+            || $windowStartOn === null
+            || $windowEndOn === null
+            || ($eventNameReport['window_start_on'] ?? null) !== $windowStartOn
+            || ($eventNameReport['window_end_on'] ?? null) !== $windowEndOn
+            || ! is_array($eventNameReport['rows'] ?? null)
+            || ! array_is_list($eventNameReport['rows'])) {
+            return null;
+        }
+
+        foreach ($eventNameReport['rows'] as $row) {
+            if (! is_array($row) || ($row['event_name'] ?? null) !== $eventName) {
+                continue;
+            }
+
+            $keyEvents = $row['key_events'] ?? null;
+
+            return is_numeric($keyEvents) && is_finite((float) $keyEvents) && (float) $keyEvents >= 0
+                ? (float) $keyEvents
+                : null;
+        }
+
+        return null;
     }
 
     /**
@@ -167,6 +216,7 @@ class SocialEngagementCampaignBusinessGoalReport
             'available' => '進度可用',
             'missing_period' => '需設定活動期間',
             'unavailable' => '尚無可用 GA4 數據',
+            'event_unavailable' => '指定 GA4 事件尚無可比較資料',
             'stale' => 'GA4 資料超過 24 小時，請更新後查看達成率',
             'currency_unknown' => 'GA4 未提供幣別，無法比較營收',
             'currency_mismatch' => '目標與 GA4 幣別不同，無法比較',

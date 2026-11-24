@@ -238,6 +238,8 @@
                     <p class="campaign-report-empty">GA4 數據已超過 24 小時；目前值保留供參考，更新後才會計算達成率。</p>
                 @elseif ($businessGoal['status'] === 'unavailable')
                     <p class="campaign-report-empty">尚無可用 GA4 指標；請確認 GA4 連線、活動條件與資料讀取狀態。</p>
+                @elseif ($businessGoal['status'] === 'event_unavailable')
+                    <p class="campaign-report-empty">找不到指定事件的完整 GA4 數據；請確認事件名稱或等待下次同步。</p>
                 @endif
             @endif
         </section>

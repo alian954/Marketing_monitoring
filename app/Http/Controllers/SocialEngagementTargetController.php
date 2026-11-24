@@ -34,6 +34,10 @@ class SocialEngagementTargetController extends Controller
                 'ga4_source_name' => filled($data['ga4_source_name'] ?? null) ? trim($data['ga4_source_name']) : null,
                 'ga4_medium_name' => filled($data['ga4_medium_name'] ?? null) ? trim($data['ga4_medium_name']) : null,
                 'ga4_goal_metric' => $data['ga4_goal_metric'] ?? null,
+                'ga4_goal_event_name' => ($data['ga4_goal_metric'] ?? null) === 'key_events'
+                    && filled($data['ga4_goal_event_name'] ?? null)
+                    ? trim($data['ga4_goal_event_name'])
+                    : null,
                 'ga4_goal_value' => ($data['ga4_goal_metric'] ?? null) !== null
                     ? $data['ga4_goal_value']
                     : null,
