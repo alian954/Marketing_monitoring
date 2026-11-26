@@ -10,6 +10,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -108,7 +109,7 @@ class PlatformOrganizationController extends Controller
                 'password' => $validated['owner_password'],
             ]);
 
-            Organization::query()->create([
+            $organization = Organization::query()->create([
                 'name' => trim($validated['name']),
                 'owner_user_id' => $owner->getKey(),
                 'subscription_ends_on' => $this->subscriptionEndDate($validated['subscription_ends_on'] ?? null),
@@ -118,6 +119,10 @@ class PlatformOrganizationController extends Controller
                 'monitor_limit' => $validated['monitor_limit'] ?? null,
                 'campaign_limit' => $validated['campaign_limit'] ?? null,
                 'is_enabled' => true,
+            ]);
+
+            $organization->workspace()->create([
+                'public_id' => (string) Str::uuid(),
             ]);
         });
 

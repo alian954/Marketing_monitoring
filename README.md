@@ -48,4 +48,4 @@ npm run build
 
 ## 長期架構方向
 
-本專案的長期目標是「中央管理平台 + 多個獨立商業產品」。目前先進行唯讀架構盤點；現況、責任劃分、資料所有權、SSO、訂閱權益與漸進式重構方案列於 [多產品 SaaS 架構提案](docs/multi-product-saas-platform-architecture.md)。方案待確認後才進入程式或資料庫修改。
+本專案的長期目標是「中央管理平台 + 多個獨立商業產品」。依已確認的方向，以 Organization 作為第一版 tenant/workspace，採模組化單體並逐步建立產品邊界。現況、資料所有權、SSO、產品註冊、訂閱權益與遷移驗收方案列於 [多產品 SaaS 架構文件](docs/multi-product-saas-platform-architecture.md)。

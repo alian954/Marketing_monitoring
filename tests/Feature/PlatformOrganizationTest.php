@@ -63,11 +63,14 @@ class PlatformOrganizationTest extends TestCase
 
         $newOwner = User::query()->where('email', 'agency-owner@example.test')->firstOrFail();
         $organization = Organization::query()->where('owner_user_id', $newOwner->id)->firstOrFail();
+        $workspace = $organization->workspace()->firstOrFail();
 
         $this->assertSame('客戶負責人', $newOwner->name);
         $this->assertTrue(Hash::check('new-customer-password-123', $newOwner->password));
         $this->assertFalse($newOwner->isPlatformAdmin());
         $this->assertSame('北區行銷代理商', $organization->name);
+        $this->assertSame($organization->id, $workspace->organization_id);
+        $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/i', $workspace->public_id);
         $this->assertSame('2027-12-31', $organization->subscription_ends_on?->toDateString());
         $this->assertSame(3, $organization->seat_limit);
         $this->assertSame('代理商試用', $organization->plan_name);

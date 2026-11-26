@@ -120,6 +120,11 @@ class User extends Authenticatable
         return Organization::query()->where('owner_user_id', $this->workspaceOwnerId())->first();
     }
 
+    public function currentWorkspace(): ?Workspace
+    {
+        return $this->workspaceOrganization()?->workspace;
+    }
+
     public function hasActiveOrganization(): bool
     {
         if ($this->isPlatformAdmin()) {
