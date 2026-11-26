@@ -110,12 +110,30 @@ Outbox 為每個事件建立唯一的邏輯通知事件。郵件伺服器已收�
 
 ## 備份
 
-備份前建議暫停應用程式、工作者與排程器，避免備份期間資料仍變更。MySQL 使用 InnoDB，可用交易一致性匯出：
+備份前暫停應用程式、工作者與排程器，避免備份期間資料仍變更。命令會先寫入同目錄的暫存檔，成功後才取代 `monitoring.sql`；若匯出失敗，會刪除暫存檔並嘗試重新啟動服務。`--single-transaction` 讓 InnoDB 資料以一致交易匯出；`--no-tablespaces` 可避免備份帳號需要全域 `PROCESS` 權限。密碼透過權限受限的臨時 MySQL option file 提供，不放在 mysqldump 命令列參數中。
 
 ```sh
+set -e
+temporary_backup=$(mktemp monitoring.sql.XXXXXX)
+restart_services() {
+  rm -f "$temporary_backup"
+  docker compose start app worker scheduler
+}
+trap restart_services EXIT
+
 docker compose stop app worker scheduler
-docker compose exec -T db sh -c 'exec mysqldump --single-transaction -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > monitoring.sql
+docker compose exec -T db sh -c '
+set -eu
+umask 077
+credentials=$(mktemp)
+trap "rm -f $credentials" EXIT
+printf "[client]\nuser=%s\npassword=%s\n" "$MYSQL_USER" "$MYSQL_PASSWORD" > "$credentials"
+mysqldump --defaults-extra-file="$credentials" --single-transaction --no-tablespaces --default-character-set=utf8mb4 "$MYSQL_DATABASE"
+' > "$temporary_backup"
+mv "$temporary_backup" monitoring.sql
+shasum -a 256 monitoring.sql
 docker compose start app worker scheduler
+trap - EXIT
 ```
 
 請另外以加密、受限存取的方式備份 `.env` 中的 `APP_KEY` 及資料庫密碼；不要將明文機密放在與 SQL 檔相同的公開或一般共享位置。`APP_KEY` 是解密監測 URL、檢查設定快照與預覽資料的必要金鑰，遺失後無法還原這些資料。備份完成後可計算雜湊並將檔案移至加密儲存：
@@ -125,6 +143,8 @@ shasum -a 256 monitoring.sql
 ```
 
 ## 還原
+
+還原會覆蓋備份中同名資料表的內容。先確認 `.env` 指向正確的專用資料庫，並備份目前目標資料庫；不要直接匯入共用或非本應用程式的資料庫。
 
 1. 先確認 `.env` 的原始 `APP_KEY` 和資料庫密碼仍可用，啟動資料庫並停止其他服務：
 
@@ -136,7 +156,14 @@ shasum -a 256 monitoring.sql
 2. 將資料庫還原至此應用程式專用資料庫：
 
    ```sh
-   docker compose exec -T db sh -c 'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < monitoring.sql
+   docker compose exec -T db sh -c '
+   set -eu
+   umask 077
+   credentials=$(mktemp)
+   trap "rm -f $credentials" EXIT
+   printf "[client]\nuser=%s\npassword=%s\n" "$MYSQL_USER" "$MYSQL_PASSWORD" > "$credentials"
+   mysql --defaults-extra-file="$credentials" "$MYSQL_DATABASE"
+   ' < monitoring.sql
    ```
 
 3. 若程式版本含有較新的遷移，再執行遷移並重新啟動：
@@ -159,4 +186,4 @@ vendor/bin/pint --dirty --format agent
 npm run build
 ```
 
-正式操作路徑以 Docker Compose/MySQL 為準，仍需在具備 Docker Compose v2 daemon 的主機實際建置、啟動、遷移、工作者、排程器與郵件記錄。CSV 500 筆上限、串流匯出、30 天保留行為與排程功能已有 SQLite 功能測試；正式 MySQL 負載仍未驗收。其他未完成項目包含：外部 SMTP 投遞驗收、TLS 到期門檻與 AdsBot 模擬的正式目標驗收、完整瀏覽器互動驗收，以及部署前審查。AdsBot 僅模擬 User-Agent 字串，不代表 Google 官方檢查結果。
+正式操作路徑以 Docker Compose/MySQL 為準，仍需在具備 Docker Compose v2 daemon 的主機實際建置、啟動、遷移、工作者、排程器與郵件記錄。MySQL 8.4 的備份與還原命令尚未實際演練；本機 SQLite 測試不能替代此驗收。CSV 500 筆上限、串流匯出、30 天保留行為與排程功能已有 SQLite 功能測試；正式 MySQL 負載仍未驗收。其他未完成項目包含：外部 SMTP 投遞驗收、TLS 到期門檻與 AdsBot 模擬的正式目標驗收、完整瀏覽器互動驗收，以及部署前審查。AdsBot 僅模擬 User-Agent 字串，不代表 Google 官方檢查結果。
