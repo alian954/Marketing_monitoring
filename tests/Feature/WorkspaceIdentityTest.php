@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\GoogleSearchConsoleClientSite;
 use App\Models\GoogleSearchConsoleConnection;
+use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
@@ -16,6 +20,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
 use Database\Seeders\WorkspaceSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -131,6 +136,27 @@ class WorkspaceIdentityTest extends TestCase
         $firstGoogleSearchConsoleConnection = GoogleSearchConsoleConnection::factory()->for($firstOwner)->create();
         $firstMetaMarketingConnection = MetaMarketingConnection::factory()->create(['user_id' => $firstOwner->id]);
         $firstGoogleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $firstOwner->id]);
+        $firstClient = Client::query()->create(['name' => '第一工作區整合客戶']);
+        $firstGoogleAnalyticsProperty = $firstGoogleAnalyticsConnection->clientProperties()->create([
+            'client_id' => $firstClient->id,
+            'property_id' => '10001',
+        ]);
+        $firstGoogleSearchConsoleSite = $firstGoogleSearchConsoleConnection->clientSites()->create([
+            'client_id' => $firstClient->id,
+            'site_url' => 'https://first.example.com/',
+        ]);
+        $firstMetaMarketingAccount = $firstMetaMarketingConnection->clientAccounts()->create([
+            'client_id' => $firstClient->id,
+            'ad_account_id' => 'act_10001',
+            'ad_account_name' => '第一工作區廣告帳戶',
+            'currency_code' => 'TWD',
+        ]);
+        $firstGoogleAdsAccount = $firstGoogleAdsConnection->clientAccounts()->create([
+            'client_id' => $firstClient->id,
+            'customer_id' => '10001',
+            'customer_name' => '第一工作區 Google Ads 帳戶',
+            'currency_code' => 'TWD',
+        ]);
 
         $this->actingAs($secondOwner);
         $secondMonitor = Monitor::factory()->create(['name' => 'second workspace monitor']);
@@ -151,6 +177,27 @@ class WorkspaceIdentityTest extends TestCase
         $secondGoogleSearchConsoleConnection = GoogleSearchConsoleConnection::factory()->for($secondOwner)->create();
         $secondMetaMarketingConnection = MetaMarketingConnection::factory()->create(['user_id' => $secondOwner->id]);
         $secondGoogleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $secondOwner->id]);
+        $secondClient = Client::query()->create(['name' => '第二工作區整合客戶']);
+        $secondGoogleAnalyticsProperty = $secondGoogleAnalyticsConnection->clientProperties()->create([
+            'client_id' => $secondClient->id,
+            'property_id' => '20001',
+        ]);
+        $secondGoogleSearchConsoleSite = $secondGoogleSearchConsoleConnection->clientSites()->create([
+            'client_id' => $secondClient->id,
+            'site_url' => 'https://second.example.com/',
+        ]);
+        $secondMetaMarketingAccount = $secondMetaMarketingConnection->clientAccounts()->create([
+            'client_id' => $secondClient->id,
+            'ad_account_id' => 'act_20001',
+            'ad_account_name' => '第二工作區廣告帳戶',
+            'currency_code' => 'TWD',
+        ]);
+        $secondGoogleAdsAccount = $secondGoogleAdsConnection->clientAccounts()->create([
+            'client_id' => $secondClient->id,
+            'customer_id' => '20001',
+            'customer_name' => '第二工作區 Google Ads 帳戶',
+            'currency_code' => 'TWD',
+        ]);
 
         $this->assertSame($firstWorkspace->id, $firstMonitor->workspace_id);
         $this->assertSame($firstWorkspace->id, $firstTarget->workspace_id);
@@ -168,6 +215,14 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertSame($secondWorkspace->id, $secondGoogleSearchConsoleConnection->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondMetaMarketingConnection->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondGoogleAdsConnection->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleAnalyticsProperty->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleSearchConsoleSite->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstMetaMarketingAccount->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleAdsAccount->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleAnalyticsProperty->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleSearchConsoleSite->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondMetaMarketingAccount->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleAdsAccount->workspace_id);
         $this->assertArrayNotHasKey('refresh_token', $firstGoogleAnalyticsConnection->toArray());
         $this->assertArrayNotHasKey('refresh_token', $firstGoogleSearchConsoleConnection->toArray());
         $this->assertArrayNotHasKey('access_token', $firstMetaMarketingConnection->toArray());
@@ -182,5 +237,36 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertSame([$firstGoogleSearchConsoleConnection->id], GoogleSearchConsoleConnection::query()->pluck('id')->all());
         $this->assertSame([$firstMetaMarketingConnection->id], MetaMarketingConnection::query()->pluck('id')->all());
         $this->assertSame([$firstGoogleAdsConnection->id], GoogleAdsConnection::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleAnalyticsProperty->id], GoogleAnalyticsClientProperty::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleSearchConsoleSite->id], GoogleSearchConsoleClientSite::query()->pluck('id')->all());
+        $this->assertSame([$firstMetaMarketingAccount->id], MetaMarketingClientAccount::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleAdsAccount->id], GoogleAdsClientAccount::query()->pluck('id')->all());
+    }
+
+    public function test_provider_client_mapping_cannot_connect_records_from_different_workspaces(): void
+    {
+        $firstOwner = User::factory()->create();
+        $firstOrganization = Organization::factory()->for($firstOwner, 'owner')->create();
+        Workspace::factory()->for($firstOrganization)->create();
+        $secondOwner = User::factory()->create();
+        $secondOrganization = Organization::factory()->for($secondOwner, 'owner')->create();
+        Workspace::factory()->for($secondOrganization)->create();
+
+        $this->actingAs($firstOwner);
+        $firstConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $firstOwner->id,
+            'refresh_token' => 'first-workspace-token',
+        ]);
+
+        $this->actingAs($secondOwner);
+        $secondClient = Client::query()->create(['name' => '目標工作區客戶']);
+
+        $this->expectException(QueryException::class);
+
+        GoogleAnalyticsClientProperty::withoutGlobalScopes()->create([
+            'google_analytics_connection_id' => $firstConnection->id,
+            'client_id' => $secondClient->id,
+            'property_id' => '20002',
+        ]);
     }
 }
