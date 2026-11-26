@@ -45,3 +45,7 @@ npm run build
 - 尚未完成外部 SMTP 實際投遞、正式目標的 TLS/AdsBot 驗收、完整瀏覽器使用者驗收，以及 Docker Compose 建置與啟動驗證。HTTP 檢查會嘗試讀取 TLS 到期資訊；獨立 TLS 檢查可在憑證鏈驗證失敗時讀取到期時間，但若 TLS 交握失敗則無法取得憑證。預設 Compose 僅啟動一個佇列工作者。
 
 此版本尚未部署；請勿將其直接對外公開。操作與已知限制均列於 [操作手冊](docs/operations.md)。
+
+## 長期架構方向
+
+本專案的長期目標是「中央管理平台 + 多個獨立商業產品」。目前先進行唯讀架構盤點；現況、責任劃分、資料所有權、SSO、訂閱權益與漸進式重構方案列於 [多產品 SaaS 架構提案](docs/multi-product-saas-platform-architecture.md)。方案待確認後才進入程式或資料庫修改。
