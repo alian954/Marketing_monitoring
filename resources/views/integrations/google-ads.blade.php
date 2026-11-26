@@ -36,7 +36,7 @@
 
             @if ($connection)
                 <p class="connection-status" role="status">Google Ads 帳戶已連結。</p>
-                <x-scheduled-sync-health :connection="$connection" />
+                <x-scheduled-sync-health :connection="$connection" daily-sync-time="06:50" />
                 <p class="panel-description">每個客戶需設定自己的 10 位 Google Ads 客戶 ID；若經管理員帳戶存取，也要為該客戶填入管理員 ID。系統會向 Google 驗證後儲存幣別。</p>
 
                 <div class="client-ga4-properties">

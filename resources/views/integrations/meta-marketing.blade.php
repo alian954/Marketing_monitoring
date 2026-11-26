@@ -38,7 +38,7 @@
                         授權期限：{{ $connection->token_expires_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}
                     @endif
                 </p>
-                <x-scheduled-sync-health :connection="$connection" />
+                <x-scheduled-sync-health :connection="$connection" daily-sync-time="06:40" />
 
                 @foreach ($clients as $client)
                     @php

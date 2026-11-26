@@ -1,4 +1,4 @@
-@props(['connection'])
+@props(['connection', 'dailySyncTime'])
 
 @if ($connection->scheduled_sync_status !== null)
     @php
@@ -27,5 +27,11 @@
         @endif
     </section>
 @else
-    <p class="field-help">尚無排程同步紀錄。</p>
+    <section class="integration-sync-health" aria-labelledby="scheduled-sync-health-title">
+        <div class="integration-sync-health__heading">
+            <h3 id="scheduled-sync-health-title">排程同步</h3>
+            <span class="badge badge-pending">尚無紀錄</span>
+        </div>
+        <p>完成客戶資料來源設定並建立活動目標後，排程每日 <time datetime="{{ $dailySyncTime }}">{{ $dailySyncTime }}</time>（台北時間）檢查待更新資料。</p>
+    </section>
 @endif

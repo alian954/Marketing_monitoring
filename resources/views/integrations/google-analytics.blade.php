@@ -33,7 +33,7 @@
 
             @if ($connection)
                 <p class="connection-status" role="status">帳戶已連結。</p>
-                <x-scheduled-sync-health :connection="$connection" />
+                <x-scheduled-sync-health :connection="$connection" daily-sync-time="06:30" />
                 <div class="client-ga4-properties">
                     @foreach ($clients as $client)
                         @php
