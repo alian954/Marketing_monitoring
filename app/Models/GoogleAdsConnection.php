@@ -24,11 +24,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'scheduled_sync_failed_count',
     'scheduled_sync_error',
 ])]
-#[Hidden(['refresh_token'])]
+#[Hidden(['refresh_token', 'workspace_id'])]
 class GoogleAdsConnection extends Model
 {
     /** @use HasFactory<GoogleAdsConnectionFactory> */
-    use HasFactory;
+    use BelongsToAuthenticatedWorkspace, HasFactory;
 
     public function clientAccounts(): HasMany
     {

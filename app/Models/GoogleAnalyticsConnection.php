@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -18,8 +19,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'scheduled_sync_failed_count',
     'scheduled_sync_error',
 ])]
+#[Hidden(['workspace_id', 'refresh_token'])]
 class GoogleAnalyticsConnection extends Model
 {
+    use BelongsToAuthenticatedWorkspace;
+
     public function clientProperties(): HasMany
     {
         return $this->hasMany(GoogleAnalyticsClientProperty::class);

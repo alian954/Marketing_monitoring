@@ -3,6 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\GoogleAdsConnection;
+use App\Models\GoogleAnalyticsConnection;
+use App\Models\GoogleSearchConsoleConnection;
+use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\Organization;
@@ -99,7 +103,7 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertModelExists($secondClient->fresh());
     }
 
-    public function test_monitoring_roots_are_mapped_to_and_scoped_by_their_workspace(): void
+    public function test_monitoring_and_provider_connection_roots_are_mapped_to_and_scoped_by_their_workspace(): void
     {
         $firstOwner = User::factory()->create();
         $firstOrganization = Organization::factory()->for($firstOwner, 'owner')->create();
@@ -120,6 +124,13 @@ class WorkspaceIdentityTest extends TestCase
             'monitor_id' => null,
             'status_page_subscription_id' => null,
         ]);
+        $firstGoogleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $firstOwner->id,
+            'refresh_token' => 'first-ga-token',
+        ]);
+        $firstGoogleSearchConsoleConnection = GoogleSearchConsoleConnection::factory()->for($firstOwner)->create();
+        $firstMetaMarketingConnection = MetaMarketingConnection::factory()->create(['user_id' => $firstOwner->id]);
+        $firstGoogleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $firstOwner->id]);
 
         $this->actingAs($secondOwner);
         $secondMonitor = Monitor::factory()->create(['name' => 'second workspace monitor']);
@@ -133,20 +144,43 @@ class WorkspaceIdentityTest extends TestCase
             'monitor_id' => null,
             'status_page_subscription_id' => null,
         ]);
+        $secondGoogleAnalyticsConnection = GoogleAnalyticsConnection::query()->create([
+            'user_id' => $secondOwner->id,
+            'refresh_token' => 'second-ga-token',
+        ]);
+        $secondGoogleSearchConsoleConnection = GoogleSearchConsoleConnection::factory()->for($secondOwner)->create();
+        $secondMetaMarketingConnection = MetaMarketingConnection::factory()->create(['user_id' => $secondOwner->id]);
+        $secondGoogleAdsConnection = GoogleAdsConnection::factory()->create(['user_id' => $secondOwner->id]);
 
         $this->assertSame($firstWorkspace->id, $firstMonitor->workspace_id);
         $this->assertSame($firstWorkspace->id, $firstTarget->workspace_id);
         $this->assertSame($firstWorkspace->id, $firstStatusPage->workspace_id);
         $this->assertSame($firstWorkspace->id, $firstOutbox->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleAnalyticsConnection->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleSearchConsoleConnection->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstMetaMarketingConnection->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstGoogleAdsConnection->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondMonitor->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondTarget->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondStatusPage->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondOutbox->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleAnalyticsConnection->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleSearchConsoleConnection->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondMetaMarketingConnection->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondGoogleAdsConnection->workspace_id);
+        $this->assertArrayNotHasKey('refresh_token', $firstGoogleAnalyticsConnection->toArray());
+        $this->assertArrayNotHasKey('refresh_token', $firstGoogleSearchConsoleConnection->toArray());
+        $this->assertArrayNotHasKey('access_token', $firstMetaMarketingConnection->toArray());
+        $this->assertArrayNotHasKey('refresh_token', $firstGoogleAdsConnection->toArray());
 
         $this->actingAs($firstOwner);
         $this->assertSame([$firstMonitor->id], Monitor::query()->pluck('id')->all());
         $this->assertSame([$firstTarget->id], SocialEngagementTarget::query()->pluck('id')->all());
         $this->assertSame([$firstStatusPage->id], StatusPage::query()->pluck('id')->all());
         $this->assertSame([$firstOutbox->id], NotificationOutbox::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleAnalyticsConnection->id], GoogleAnalyticsConnection::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleSearchConsoleConnection->id], GoogleSearchConsoleConnection::query()->pluck('id')->all());
+        $this->assertSame([$firstMetaMarketingConnection->id], MetaMarketingConnection::query()->pluck('id')->all());
+        $this->assertSame([$firstGoogleAdsConnection->id], GoogleAdsConnection::query()->pluck('id')->all());
     }
 }
