@@ -196,4 +196,4 @@ vendor/bin/pint --dirty --format agent
 npm run build
 ```
 
-正式操作路徑以 Docker Compose/MySQL 為準，仍需在具備 Docker Compose v2 daemon 的主機實際建置、啟動、遷移、工作者、排程器與郵件記錄。MySQL 8.4 的備份與還原命令尚未實際演練；本機 SQLite 測試不能替代此驗收。CSV 500 筆上限、串流匯出、30 天保留行為與排程功能已有 SQLite 功能測試；正式 MySQL 負載仍未驗收。其他未完成項目包含：外部 SMTP 投遞驗收、TLS 到期門檻與 AdsBot 模擬的正式目標驗收、完整瀏覽器互動驗收，以及部署前審查。AdsBot 僅模擬 User-Agent 字串，不代表 Google 官方檢查結果。
+正式操作路徑以 Docker Compose/MySQL 為準，仍需在具備 Docker Compose v2 daemon 的主機實際建置、啟動、遷移、工作者、排程器與郵件記錄。本次已在 XAMPP MariaDB 10.4.27 的隔離暫存資料目錄，以含特殊字元的測試帳密實際匯出並還原兩筆 InnoDB 資料；這只驗證 MariaDB 10.4 客戶端路徑。MySQL 8.4 的備份與還原命令尚未實際演練，本機 SQLite 測試不能替代此驗收。CSV 500 筆上限、串流匯出、30 天保留行為與排程功能已有 SQLite 功能測試；正式 MySQL 負載仍未驗收。其他未完成項目包含：外部 SMTP 投遞驗收、TLS 到期門檻與 AdsBot 模擬的正式目標驗收、完整瀏覽器互動驗收，以及部署前審查。AdsBot 僅模擬 User-Agent 字串，不代表 Google 官方檢查結果。
