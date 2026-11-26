@@ -50,11 +50,19 @@
 - 排程器每分鐘派送到期監測，佇列工作者執行檢查和郵件 outbox。一般檢查間隔預設 15 分鐘，派送最多加入 60 秒抖動（不超過檢查間隔的四分之一）；第一次異常需跨過 60 秒確認，事件成立後，需再經兩次成功檢查確認恢復。
 - Compose 預設只有一個佇列工作者。若增加 worker，HTTP 檢查與每日 TLS 檢查仍會以同一把快取鎖序列化相同正規化主機名稱的請求；不同子網域使用不同鎖。鎖衝突的工作延遲 30 秒重試，鎖在 60 秒後到期；所有 worker 必須共用支援原子鎖的快取，預設資料庫快取符合此條件。
 - 每日任務依 `APP_TIMEZONE` 執行：03:00 派送 HTTPS 憑證檢查，06:00 建立前一個應用程式時區日期的 DNS 摘要，02:05 清除保留期限外的已結束檢查。DNS 摘要只在前一日有變更且已設定 `MONITOR_NOTIFY_EMAIL` 時建立郵件；摘要事件時間以 UTC 顯示。
-- 排程器心跳會顯示在總覽頁。若心跳過期，先看 `scheduler` 容器狀態，再看其錯誤記錄：
+- 總覽會分開顯示排程器與 `Queue worker` 心跳。Worker 區塊也會列出佇列總數、可立即處理／延遲／保留中的工作，以及最近成功處理時間；超過 2 分鐘沒有 worker 心跳時，請先檢查 `worker` 容器與記錄：
 
   ```sh
-  docker compose ps
-  docker compose logs --tail=100 scheduler worker
+  docker compose ps worker
+  docker compose logs --tail=100 worker
+  ```
+
+- 若總覽中的排程器心跳過期，檢查 `scheduler` 容器和最近記錄；再用 `schedule:list` 確認目前映像內已註冊的任務與時區。`schedule:list` 只顯示排程設定，不代表排程器正在執行；仍要確認容器狀態與心跳：
+
+  ```sh
+  docker compose ps scheduler
+  docker compose logs --tail=100 scheduler
+  docker compose exec app php artisan schedule:list
   ```
 
 - `MONITOR_TRANSPORT=fixture` 是完全離線的合成測試傳輸，只接受 `fixture.test` 與 `healthy.fixture.test`，可用 `/ok`、`/403`、`/404`、`/500`、`/429`、`/missing-text`、`/timeout`、`/redirect-private` 等固定路徑檢視狀態。啟用方式是修改 `.env` 後重建服務設定：
