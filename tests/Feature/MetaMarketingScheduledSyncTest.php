@@ -513,6 +513,58 @@ class MetaMarketingScheduledSyncTest extends TestCase
         $this->assertNotEmpty($syncHealth->scheduled_sync_error);
     }
 
+    public function test_meta_sync_clears_provider_error_after_a_later_successful_run(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 06:40:00', 'Asia/Taipei'));
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://graph.facebook.com/v27.0/act_123456789/insights*' => Http::sequence()
+                ->push(['error' => ['code' => 10, 'message' => 'Permission denied.']], 403)
+                ->push(['data' => [[
+                    'account_id' => '123456789',
+                    'campaign_id' => '987654321',
+                    'campaign_name' => 'Recovered campaign',
+                    'spend' => '125.50',
+                    'impressions' => '1200',
+                    'reach' => '900',
+                    'clicks' => '48',
+                    'account_currency' => 'TWD',
+                ]]])
+                ->push(['data' => []])
+                ->push(['data' => []])
+                ->push(['data' => []])
+                ->push(['data' => []])
+                ->push(['data' => []]),
+        ]);
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget($user, 'Recovered campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('meta-marketing:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertSame('failed', $connection->fresh()->scheduled_sync_status);
+        $this->assertNotEmpty($connection->fresh()->scheduled_sync_error);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 06:40:00', 'Asia/Taipei'));
+
+        $this->artisan('meta-marketing:sync-due')
+            ->expectsOutputToContain('完成 1 個活動')
+            ->assertExitCode(0);
+
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNull($syncHealth->scheduled_sync_error);
+        $this->assertDatabaseHas('social_engagement_target_meta_marketing_reports', [
+            'social_engagement_target_id' => $target->id,
+            'spend_amount' => '125.5000',
+        ]);
+        Http::assertSentCount(7);
+    }
+
     private function createConnection(User $user, mixed $tokenExpiresAt = null): MetaMarketingConnection
     {
         return MetaMarketingConnection::query()->create([
