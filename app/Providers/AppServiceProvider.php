@@ -18,7 +18,9 @@ use App\Services\Probe\SecureTlsCertificateProbe;
 use App\Services\Probe\StreamTlsCertificateTransport;
 use App\Services\Probe\TlsCertificateProbe;
 use App\Services\Probe\TlsCertificateTransport;
+use App\Services\ProductRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -32,6 +34,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(ProductRegistry::class, static fn (Application $app): ProductRegistry => new ProductRegistry(
+            $app['config']->get('products', []),
+        ));
+
         $this->app->bind(HostResolver::class, NativeHostResolver::class);
         $this->app->bind(ProbeTransport::class, CurlProbeTransport::class);
         $this->app->bind(DcardBrowserRenderer::class, PlaywrightDcardBrowserRenderer::class);

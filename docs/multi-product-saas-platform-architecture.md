@@ -92,7 +92,7 @@ flowchart TB
 | 全域身分 | 本機 `users`、session login；無 SSO | 全域唯一 subject、登入、SSO、帳號生命週期、MFA/安全政策 |
 | 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，工作區隱含於 owner | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
 | 全域角色 | `is_platform_admin`；工作區 `editor/read_only` | Super Admin、組織管理角色、產品管理角色與客戶範圍分離 |
-| 產品註冊及開通 | 尚無產品目錄或產品啟用狀態 | 產品 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
+| 產品註冊及開通 | 已有版控中的產品 manifest registry；尚無資料庫產品目錄、組織開通及訂閱授權 | 中央 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
 | 訂閱/方案/權益 | 只有組織層級的 `plan_name`、日期及席次/資源上限 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
 | 訂單、付款、帳務 | 平台沒有訂單、付款紀錄或發票資料 | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
 | 稽核與營運 | scheduler/worker heartbeat 和產品事件紀錄零散 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
@@ -222,6 +222,8 @@ platform_audit_logs / outbox_events / inbox_events
 ## 7. 產品註冊、開通及產品模組契約
 
 ### 7.1 執行期產品註冊
+
+第一階段已以 `config/products.php` 和 `App\Services\ProductRegistry` 建立 boot-time manifest registry，提供 `all`、`find`、`declaresFeature` 查詢，並在讀取時驗證產品代碼、名稱、版本、生命週期、入口 route 名稱與不重複的 feature keys；功能測試另確認入口 route 存在。現有 `website-monitoring` 和 `marketing-insights` 已登錄；測試證明新增第三個產品只需增加 manifest。這仍只是程式碼層產品註冊，尚未提供資料庫 catalog、管理者開通、組織訂閱或 server-side entitlement 授權。
 
 產品目錄只接受經版本控制及審查的程式碼 manifest，不允許管理者上傳任意 PHP/plugin 程式。每個產品 manifest 至少聲明：
 
