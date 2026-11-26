@@ -423,6 +423,67 @@ class GoogleAdsScheduledSyncTest extends TestCase
         $this->assertNotEmpty($syncHealth->scheduled_sync_error);
     }
 
+    public function test_google_ads_sync_clears_provider_error_after_a_later_successful_run(): void
+    {
+        $this->travelTo('2026-11-22 06:50:00');
+        Http::preventStrayRequests();
+        $shouldFailCampaignRequest = true;
+        Http::fake(function (ClientRequest $request) use (&$shouldFailCampaignRequest) {
+            if (str_contains($request->url(), '/token')) {
+                return Http::response(['access_token' => 'temporary-access-token']);
+            }
+
+            if (str_contains($request->url(), 'googleAds:searchStream')) {
+                if ($shouldFailCampaignRequest) {
+                    $shouldFailCampaignRequest = false;
+
+                    return Http::response(['error' => ['message' => 'Access denied.']], 403);
+                }
+
+                $query = $request->data()['query'] ?? '';
+
+                if (str_contains($query, 'campaign.advertising_channel_type')) {
+                    return Http::response($this->campaignPayload('987654321', 'Recovered campaign', '125500000', 'TWD'));
+                }
+
+                if (str_contains($query, 'segments.conversion_action')) {
+                    return Http::response($this->conversionActionsPayload('987654321'));
+                }
+
+                return Http::response([]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $user = User::factory()->create();
+        $connection = $this->createConnection($user);
+        $target = $this->createTarget('Recovered campaign', '987654321', '2026-11-01', '2026-11-30');
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertSame('failed', $connection->fresh()->scheduled_sync_status);
+        $this->assertNotEmpty($connection->fresh()->scheduled_sync_error);
+
+        $this->travelTo('2026-11-23 06:50:00');
+
+        $this->artisan('google-ads:sync-due')
+            ->expectsOutputToContain('完成 1 個活動')
+            ->assertExitCode(0);
+
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNull($syncHealth->scheduled_sync_error);
+        $this->assertDatabaseHas('social_engagement_target_google_ads_reports', [
+            'social_engagement_target_id' => $target->id,
+            'spend_amount' => '125.5000',
+        ]);
+    }
+
     public function test_daily_command_records_an_actionable_error_when_google_ads_refresh_token_is_revoked(): void
     {
         $this->travelTo('2026-11-22 06:50:00');

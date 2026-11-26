@@ -444,6 +444,59 @@ class GoogleAnalyticsScheduledSyncTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_ga4_sync_clears_provider_error_after_a_later_successful_run(): void
+    {
+        $this->travelTo('2026-11-22 12:00:00');
+        config([
+            'services.google_analytics.client_id' => 'client-id',
+            'services.google_analytics.client_secret' => 'client-secret',
+        ]);
+        Http::preventStrayRequests();
+        $shouldFailReport = true;
+        Http::fake(function (ClientRequest $request) use (&$shouldFailReport) {
+            if (str_contains($request->url(), '/token')) {
+                return Http::response(['access_token' => 'access-token']);
+            }
+
+            if (str_contains($request->url(), ':runReport')) {
+                if ($shouldFailReport) {
+                    $shouldFailReport = false;
+
+                    return Http::response(['error' => ['message' => 'Permission denied.']], 403);
+                }
+
+                return Http::response($this->emptyReportPayload());
+            }
+
+            return Http::response([], 404);
+        });
+
+        $connection = $this->createConnection();
+        $target = $this->createTarget(['tag' => 'Recovered GA4 campaign']);
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutputToContain('失敗 1 個')
+            ->assertExitCode(1);
+
+        $this->assertSame('failed', $connection->fresh()->scheduled_sync_status);
+        $this->assertNotEmpty($connection->fresh()->scheduled_sync_error);
+
+        $this->travelTo('2026-11-23 12:00:00');
+
+        $this->artisan('google-analytics:sync-due')
+            ->expectsOutputToContain('完成 1 個活動')
+            ->assertExitCode(0);
+
+        $syncHealth = $connection->fresh();
+        $this->assertSame('succeeded', $syncHealth->scheduled_sync_status);
+        $this->assertSame(1, $syncHealth->scheduled_sync_synced_count);
+        $this->assertSame(0, $syncHealth->scheduled_sync_failed_count);
+        $this->assertNull($syncHealth->scheduled_sync_error);
+        $this->assertDatabaseHas('social_engagement_target_google_analytics_reports', [
+            'social_engagement_target_id' => $target->id,
+        ]);
+    }
+
     /** @param array<string, mixed> $attributes */
     private function createTarget(array $attributes = []): SocialEngagementTarget
     {
