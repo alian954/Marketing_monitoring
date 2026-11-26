@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['name', 'reporting_currency_code'])]
-#[Hidden(['user_id'])]
+#[Hidden(['user_id', 'workspace_id'])]
 class Client extends Model
 {
     public const DEFAULT_NAME = '未分類';
@@ -23,16 +23,29 @@ class Client extends Model
 
     protected static function booted(): void
     {
-        static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new AuthenticatedWorkspaceScope);
         static::addGlobalScope(new WorkspaceClientScope);
 
         static::creating(static function (Client $client): void {
             $user = Auth::user();
 
-            if ($user instanceof User && $client->user_id === null) {
-                $client->forceFill(['user_id' => $user->workspaceOwnerId()]);
+            if ($user instanceof User) {
+                if ($client->user_id === null) {
+                    $client->forceFill(['user_id' => $user->workspaceOwnerId()]);
+                }
+            } elseif (is_numeric($client->user_id)) {
+                $user = User::query()->find((int) $client->user_id);
+            }
+
+            if ($user instanceof User && $client->workspace_id === null) {
+                $client->forceFill(['workspace_id' => $user->currentWorkspace()?->getKey()]);
             }
         });
+    }
+
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     public function user(): BelongsTo

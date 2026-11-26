@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\Workspace;
@@ -65,5 +66,32 @@ class WorkspaceIdentityTest extends TestCase
         (new WorkspaceSeeder)->run();
 
         $this->assertDatabaseCount('workspaces', 2);
+    }
+
+    public function test_client_directory_is_scoped_by_workspace_and_hides_other_workspace_records(): void
+    {
+        $firstOwner = User::factory()->create();
+        $firstOrganization = Organization::factory()->for($firstOwner, 'owner')->create();
+        $firstWorkspace = Workspace::factory()->for($firstOrganization)->create();
+        $secondOwner = User::factory()->create();
+        $secondOrganization = Organization::factory()->for($secondOwner, 'owner')->create();
+        $secondWorkspace = Workspace::factory()->for($secondOrganization)->create();
+
+        $this->actingAs($firstOwner);
+        $firstClient = Client::query()->create(['name' => '第一工作區客戶']);
+        $this->actingAs($secondOwner);
+        $secondClient = Client::query()->create(['name' => '第二工作區客戶']);
+
+        $this->assertSame($firstWorkspace->id, $firstClient->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondClient->workspace_id);
+
+        $this->actingAs($firstOwner)
+            ->get(route('clients.index'))
+            ->assertOk()
+            ->assertSee('第一工作區客戶')
+            ->assertDontSee('第二工作區客戶');
+
+        $this->delete(route('clients.destroy', $secondClient))->assertNotFound();
+        $this->assertModelExists($secondClient->fresh());
     }
 }

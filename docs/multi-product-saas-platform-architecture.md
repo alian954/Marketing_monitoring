@@ -47,11 +47,10 @@ flowchart TB
 
 - `users` 是本機 email/password 帳號；登入、登出及密碼重設由 Laravel Web session 處理。目前沒有 OIDC 身分提供者、跨產品 SSO 或標準 access token。
 - `is_platform_admin` 是使用者上的全域布林旗標。總管理介面可選擇組織進入該組織的工作區上下文。
-- `organizations.owner_user_id` 唯一連到一個 owner 使用者；尚無可容納多家公司、多工作區或同一使用者跨多組織成員關係的正規租戶模型。
+- `organizations.owner_user_id` 唯一連到一個 owner 使用者。已新增一對一 `workspaces.organization_id` 身分映射和穩定 `public_id`；同一使用者跨多組織成員關係仍未支援。
 - `workspace_memberships.member_user_id` 唯一；目前一個會員使用者只能有一筆工作區會員關係。角色為 `editor` 或 `read_only`，客戶範圍由工作區層級設定。
-- 目前「工作區」是由 owner 使用者及會員關係推導出來，資料庫沒有獨立 `workspaces` 表。`organizations` 與工作區在業務上近似一對一，但責任尚未拆清。
-- `Client` 是代理商的外部客戶/品牌，並非 SaaS 租戶。它以 `user_id` 歸屬工作區 owner，再供監測項目、活動、平台帳號對應和報表分享使用。
-- `AuthenticatedAccountScope`、`AuthenticatedRelationScope`、`WorkspaceClientScope` 等 Eloquent scopes 以 `user_id`、關聯和 client 範圍執行隔離。正式資料以 owner 使用者作為主要歸屬；測試環境另容許 ownerless fixture，不能拿該例外當正式隔離模型。
+- `Client` 是代理商的外部客戶/品牌，並非 SaaS 租戶。它保留 `user_id` 相容欄位，並開始寫入及使用 `workspace_id`；既有資料透過 organization owner 對應 workspace。
+- 共用客戶目錄已以 `workspace_id` 為主要 scope，`user_id` 只作遷移期間的 legacy fallback。監測、社群目標、整合連線等產品資料仍以 `user_id`、關聯和 client 範圍隔離，尚未完成 canonical workspace 遷移。
 
 ### 2.3 資料表和產品責任
 
@@ -59,7 +58,7 @@ flowchart TB
 
 | 資料群 | 代表資料表 / 模型 | 目前歸屬方式 | 目標責任 |
 | --- | --- | --- | --- |
-| 身分與工作區 | `users`, `organizations`, `workspace_memberships`, `workspace_invitations`, `clients` | owner user ID；工作區由使用者關係推導 | 中央平台：全域身分、組織、工作區、成員及客戶主檔 |
+| 身分與工作區 | `users`, `organizations`, `workspaces`, `workspace_memberships`, `workspace_invitations`, `clients` | Organization/Workspace 一對一；Client 同時帶 `workspace_id` 及 legacy `user_id` | 中央平台：全域身分、組織、工作區、成員及客戶主檔 |
 | 網站可靠度 | `monitors`, `check_runs`, `incidents`, `incident_events`, `maintenance_windows`, `tls_observations`, `dns_change_events`, `robots_observations`, `status_pages` | `user_id`、`client_id` 或 monitor 關聯 | 網站可靠度產品擁有業務資料；通知投遞底層可共用 |
 | 行銷活動與公開貼文 | `social_engagement_targets`, `check_runs` 社群監測欄位、貼文及活動報表/快照 | `user_id`、`client_id`、平台欄位 | 行銷成效產品；不依 Facebook、Instagram、Threads 拆成獨立產品 |
 | 外部分析與廣告連線 | `google_analytics_connections`, `google_search_console_connections`, `meta_marketing_connections`, `google_ads_connections` 及 per-client property/account 對應 | 連線以 owner user ID；各客戶另綁 property/site/ad account | 行銷產品的連接器模組；憑證設定服務可共用 |
@@ -274,7 +273,7 @@ platform_audit_logs / outbox_events / inbox_events
 | 階段 | 目標及主要工作 | 主要風險 | 驗收與測試門檻 |
 | --- | --- | --- | --- |
 | 0. 架構確認 | 已採用模組化單體、Organization = company/tenant/workspace、Client 為外部客戶、工作區角色與產品 entitlement 分離、先人工帳務等第一版方向。 | 未確認的發票、退款及資料刪除期限可能延誤商用。 | 每階段仍記錄決策；不在本階段接金流或自動刪除客戶資料。 |
-| 1. Canonical 租戶 | 新增一對一 Workspace/Organization identity mapping 和穩定 public UUID；先盤點每筆 `user_id` 與 client 擁有權，分批回填 canonical ID，短期保留舊欄位相容。 | 舊資料 owner 缺漏或錯誤回填導致跨租戶外洩。 | migration 前後各表筆數/owner 對帳；兩個組織、同 ID 資源、不同角色的正負向 CRUD、report/CSV/share、job recheck 全通過；可回滾至舊欄位讀取。 |
+| 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients` 回填及切換至 workspace scope；下一批是 monitors、social targets、status pages 與通知，再遷移 provider connections 和其關聯資料。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
 | 2. RBAC 與產品目錄 | 建立 product registry manifest、註冊、停用、產品角色及 server-side feature entitlement；先為既有功能明確設定 `website-monitoring` 和 `marketing-insights`。 | 權益快取未失效、未註冊產品誤放行。 | table-driven 覆蓋每個 product/role/feature/state 組合；停用入口、API、queue run 和匯出均拒絕；在測試中加入第 3 個範例產品，只加 manifest 也能被 registry 讀取。 |
 | 3. 訂閱與商業帳務 | 將 Organization 上的 `plan_name` 和 quota 轉成 product plan/subscription items；支援 free/trial/paid/enterprise、bundle、人工付款 ledger、升降級/寬限期。舊欄位採 dual-read 遷移並保留操作日誌。 | 金額/幣別或到期換算錯誤、過期帳戶錯誤續權。 | 方案矩陣、時區邊界、核款、重複核款冪等、退款/沖正、單產品取消、bundle 分項、降級不刪資料、跨租戶用量隔離及財務對帳測試。 |
 | 4. 全域 SSO | 中央 OIDC issuer/IdP 與網站、行銷產品 clients；逐步將本機 login 綁定 global subject，不自動依未驗證 email 合併使用者。 | 帳號錯誤合併、token 重放、logout/revocation 不一致。 | OIDC test provider integration、PKCE/state/nonce 失敗、錯誤 issuer/audience、過期/replay、無訂閱、跨租戶角色、帳號停用及跨產品登出驗收。 |
@@ -318,7 +317,7 @@ platform_audit_logs / outbox_events / inbox_events
 此盤點對照下列現有檔案與命令輸出；路徑代表目前實作依據，不表示它們就是最終模組邊界：
 
 - 身分、平台管理與工作區：`app/Models/User.php`、`Organization.php`、`WorkspaceMembership.php`、`AccountScopeContext.php`；`app/Http/Controllers/AuthController.php`、`PlatformOrganizationController.php`、`WorkspaceAccessController.php`；`app/Http/Middleware/`；`routes/web.php`。
-- 核心 schema：`database/migrations/` 中 `organizations`、`workspace_memberships`、`workspace_invitations`、`clients`、monitoring、social engagement、provider connections、client report shares/snapshots migrations。
+- 核心 schema：`database/migrations/` 中 `organizations`、`workspaces`、`workspace_memberships`、`workspace_invitations`、`clients`、monitoring、social engagement、provider connections、client report shares/snapshots migrations。
 - 行銷整合：`app/Http/Controllers/*IntegrationController.php`、`config/services.php`、`app/Models/*Connection.php` 及 `app/Services/*DataApi.php`。
 - 排程與部署：`routes/console.php`、`app/Console/Commands/`、`app/Jobs/`、`compose.yaml`、`Dockerfile`、`.env.example`、`README.md`、`docs/operations.md`。
 - 租戶及分享驗收：`tests/Feature/AgencyWorkflowAcceptanceTest.php`、`AccountDataIsolationTest.php`、`PlatformOrganizationTest.php`、`CommercialUsageLimitTest.php`、`ClientReportShareTest.php`、`ClientReportSnapshotControllerTest.php`。

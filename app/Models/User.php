@@ -27,6 +27,10 @@ class User extends Authenticatable
 
     private bool $selectedPlatformOrganizationResolved = false;
 
+    private ?Workspace $currentWorkspaceCache = null;
+
+    private bool $currentWorkspaceResolved = false;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
@@ -122,7 +126,14 @@ class User extends Authenticatable
 
     public function currentWorkspace(): ?Workspace
     {
-        return $this->workspaceOrganization()?->workspace;
+        if ($this->currentWorkspaceResolved) {
+            return $this->currentWorkspaceCache;
+        }
+
+        $this->currentWorkspaceCache = $this->workspaceOrganization()?->workspace;
+        $this->currentWorkspaceResolved = true;
+
+        return $this->currentWorkspaceCache;
     }
 
     public function hasActiveOrganization(): bool

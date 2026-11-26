@@ -18,6 +18,17 @@ class AccountScopeContext
         return $user->workspaceOwnerId();
     }
 
+    public static function authenticatedWorkspaceId(): ?int
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User || self::usesPublicWorkspaceScope()) {
+            return null;
+        }
+
+        return $user->currentWorkspace()?->getKey();
+    }
+
     /** @return list<int>|null Null means the authenticated user can access all workspace clients. */
     public static function authenticatedClientIds(): ?array
     {
@@ -42,6 +53,30 @@ class AccountScopeContext
 
             if (app()->environment('testing')) {
                 $accountQuery->orWhereNull($column);
+            }
+        });
+    }
+
+    public static function constrainWorkspaceAndLegacyUser(Builder $query, int $userId, ?int $workspaceId): void
+    {
+        $workspaceColumn = $query->getModel()->qualifyColumn('workspace_id');
+        $userColumn = $query->getModel()->qualifyColumn('user_id');
+
+        $query->where(function (Builder $workspaceQuery) use ($userId, $workspaceId, $workspaceColumn, $userColumn): void {
+            if ($workspaceId !== null) {
+                $workspaceQuery->where($workspaceColumn, $workspaceId);
+            }
+
+            $workspaceQuery->orWhere(function (Builder $legacyQuery) use ($userId, $workspaceColumn, $userColumn): void {
+                $legacyQuery->whereNull($workspaceColumn)
+                    ->where($userColumn, $userId);
+            });
+
+            if (app()->environment('testing')) {
+                $workspaceQuery->orWhere(function (Builder $ownerlessQuery) use ($workspaceColumn, $userColumn): void {
+                    $ownerlessQuery->whereNull($workspaceColumn)
+                        ->whereNull($userColumn);
+                });
             }
         });
     }
