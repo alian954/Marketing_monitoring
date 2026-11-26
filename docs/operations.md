@@ -110,7 +110,7 @@ Outbox 為每個事件建立唯一的邏輯通知事件。郵件伺服器已收�
 
 ## 備份
 
-備份前暫停應用程式、工作者與排程器，避免備份期間資料仍變更。命令會先寫入同目錄的暫存檔，成功後才取代 `monitoring.sql`；若匯出失敗，會刪除暫存檔並嘗試重新啟動服務。`--single-transaction` 讓 InnoDB 資料以一致交易匯出；`--no-tablespaces` 可避免備份帳號需要全域 `PROCESS` 權限。密碼透過權限受限的臨時 MySQL option file 提供，不放在 mysqldump 命令列參數中。
+備份前暫停應用程式、工作者與排程器，避免備份期間資料仍變更。命令會先寫入同目錄的暫存檔，成功後才取代 `monitoring.sql`；若匯出失敗，會刪除暫存檔並嘗試重新啟動服務。`--single-transaction` 讓 InnoDB 資料以一致交易匯出；`--no-tablespaces` 可避免備份帳號需要全域 `PROCESS` 權限。密碼透過權限受限的臨時 MySQL option file 提供，不放在 mysqldump 命令列參數中。帳密須為單行值；範例會跳脫反斜線和雙引號，並以雙引號包覆值。
 
 ```sh
 set -e
@@ -127,7 +127,12 @@ set -eu
 umask 077
 credentials=$(mktemp)
 trap "rm -f $credentials" EXIT
-printf "[client]\nuser=%s\npassword=%s\n" "$MYSQL_USER" "$MYSQL_PASSWORD" > "$credentials"
+escape_option_value() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+escaped_user=$(escape_option_value "$MYSQL_USER")
+escaped_password=$(escape_option_value "$MYSQL_PASSWORD")
+printf '[client]\nuser="%s"\npassword="%s"\n' "$escaped_user" "$escaped_password" > "$credentials"
 mysqldump --defaults-extra-file="$credentials" --single-transaction --no-tablespaces --default-character-set=utf8mb4 "$MYSQL_DATABASE"
 ' > "$temporary_backup"
 mv "$temporary_backup" monitoring.sql
@@ -161,7 +166,12 @@ shasum -a 256 monitoring.sql
    umask 077
    credentials=$(mktemp)
    trap "rm -f $credentials" EXIT
-   printf "[client]\nuser=%s\npassword=%s\n" "$MYSQL_USER" "$MYSQL_PASSWORD" > "$credentials"
+   escape_option_value() {
+     printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+   }
+   escaped_user=$(escape_option_value "$MYSQL_USER")
+   escaped_password=$(escape_option_value "$MYSQL_PASSWORD")
+   printf '[client]\nuser="%s"\npassword="%s"\n' "$escaped_user" "$escaped_password" > "$credentials"
    mysql --defaults-extra-file="$credentials" "$MYSQL_DATABASE"
    ' < monitoring.sql
    ```
