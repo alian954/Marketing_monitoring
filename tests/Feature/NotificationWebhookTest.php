@@ -7,6 +7,7 @@ use App\Models\CheckRun;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
+use App\Models\User;
 use App\Services\NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -106,6 +107,61 @@ class NotificationWebhookTest extends TestCase
         $this->assertStringNotContainsString($webhookUrl, (string) $outbox->fresh()->last_error);
         $this->assertStringNotContainsString('SECRET', (string) $outbox->fresh()->last_error);
         Http::assertSent(fn (Request $request): bool => $request->url() === $webhookUrl);
+    }
+
+    public function test_database_queue_worker_processes_notification_failure_and_manual_retry_to_success(): void
+    {
+        $webhookUrl = 'https://hooks.slack.com/services/T123/SECRET/WEBHOOK';
+        config(['queue.default' => 'database']);
+        Http::fake([
+            $webhookUrl => Http::sequence()
+                ->push('temporarily unavailable', 503)
+                ->push('', 200),
+        ]);
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $outbox = NotificationOutbox::factory()->create([
+            'incident_id' => null,
+            'event_type' => 'dns_daily_summary',
+            'channel' => NotificationOutbox::CHANNEL_SLACK,
+            'recipient' => $webhookUrl,
+            'status' => 'pending',
+        ]);
+
+        Queue::connection('database')->push(new SendNotificationOutbox($outbox->id));
+        $this->assertDatabaseCount('jobs', 1);
+
+        $this->artisan('queue:work database --once --sleep=0 --tries=1')->assertExitCode(0);
+
+        $this->assertDatabaseHas('notification_outbox', [
+            'id' => $outbox->id,
+            'status' => 'unknown',
+            'attempts' => 1,
+        ]);
+        $this->assertDatabaseCount('jobs', 0);
+
+        $this->from(route('notifications.index'))
+            ->post(route('notifications.retry', $outbox), ['acknowledge_duplicate_risk' => '1'])
+            ->assertRedirect(route('notifications.index'))
+            ->assertSessionHas('status');
+        $this->assertDatabaseHas('notification_outbox', [
+            'id' => $outbox->id,
+            'status' => 'pending',
+            'attempts' => 1,
+        ]);
+        $this->assertDatabaseCount('jobs', 1);
+
+        $this->artisan('queue:work database --once --sleep=0 --tries=1')->assertExitCode(0);
+
+        $this->assertDatabaseHas('notification_outbox', [
+            'id' => $outbox->id,
+            'status' => 'sent',
+            'attempts' => 2,
+            'last_error' => null,
+        ]);
+        $this->assertNotNull($outbox->fresh()->sent_at);
+        $this->assertDatabaseCount('jobs', 0);
+        Http::assertSentCount(2);
     }
 
     public function test_insecure_slack_webhook_is_not_called_and_error_does_not_reveal_secret(): void
