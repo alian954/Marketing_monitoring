@@ -190,7 +190,8 @@ product_usages (product_id, workspace_id, feature_key, period, amount)
 orders / order_items / payment_transactions / invoices / manual_payment_records
 integration_app_credentials (workspace_id, product_id, provider, encrypted client secret)
 integration_connections (workspace_id, provider, encrypted account tokens, status)
-product-specific tables (workspace_id, client_id, product-owned foreign keys)
+product roots and independently addressable tables (workspace_id, client_id, product-owned foreign keys)
+dependent history rows (parent foreign key; optional workspace_id for multi-parent links)
 platform_audit_logs / outbox_events / inbox_events
 ```
 
@@ -199,7 +200,7 @@ platform_audit_logs / outbox_events / inbox_events
 ### 5.3 隔離規則
 
 - 中央資料由中央服務擁有；產品資料只能由該產品模組讀寫。通用 client ID 只能指向同 workspace 的 client。
-- 所有產品資源含 `workspace_id`；客戶範圍資料另含 `client_id`。資料庫使用 composite foreign key/unique key（例如 `(workspace_id, client_id)`）阻止錯誤關聯，應用層再依 membership 和 entitlement 授權。
+- 產品根資料及可獨立尋址的資源含 `workspace_id`；純歷史/子記錄可由一個不可變 parent foreign key 繼承租戶範圍，並透過 parent 的 workspace scope 查詢，避免重複存放容易不一致的 workspace 欄位。若一筆資料直接連結多個租戶資源，應加 `workspace_id` 與 composite foreign key/unique key 確認所有 parent 同屬一個 workspace。客戶範圍資料另含 `client_id`。
 - API 的 tenant/product scope 來自已驗證身份及中央授權結果，不信任瀏覽器或 caller 任意傳入的 tenant ID。
 - 報表分享固定 snapshot 應帶 workspace/client/share 範圍，分享 token 使用雜湊存放；公開分享只提供建立時指定的產品區段、客戶及期間。
 - 產品間讀取採「報表 provider/contract」回傳 DTO；禁止在 Marketing controller 直接 join Website product 的內部表，反之亦然。
@@ -273,7 +274,7 @@ platform_audit_logs / outbox_events / inbox_events
 | 階段 | 目標及主要工作 | 主要風險 | 驗收與測試門檻 |
 | --- | --- | --- | --- |
 | 0. 架構確認 | 已採用模組化單體、Organization = company/tenant/workspace、Client 為外部客戶、工作區角色與產品 entitlement 分離、先人工帳務等第一版方向。 | 未確認的發票、退款及資料刪除期限可能延誤商用。 | 每階段仍記錄決策；不在本階段接金流或自動刪除客戶資料。 |
-| 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients`、監測根表、`notification_outbox`、四種 provider connection 和 per-client property/site/ad account 對應回填及切換至 workspace scope；下一步遷移仍只靠父關聯/legacy 欄位隔離的監測子記錄及報表快照。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
+| 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients`、監測根表、`notification_outbox`、四種 provider connection 和 per-client property/site/ad account 對應回填及切換至 workspace scope；純子記錄沿用受限 parent scope，後續審查跨根資料連結是否需 composite key。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
 | 2. RBAC 與產品目錄 | 建立 product registry manifest、註冊、停用、產品角色及 server-side feature entitlement；先為既有功能明確設定 `website-monitoring` 和 `marketing-insights`。 | 權益快取未失效、未註冊產品誤放行。 | table-driven 覆蓋每個 product/role/feature/state 組合；停用入口、API、queue run 和匯出均拒絕；在測試中加入第 3 個範例產品，只加 manifest 也能被 registry 讀取。 |
 | 3. 訂閱與商業帳務 | 將 Organization 上的 `plan_name` 和 quota 轉成 product plan/subscription items；支援 free/trial/paid/enterprise、bundle、人工付款 ledger、升降級/寬限期。舊欄位採 dual-read 遷移並保留操作日誌。 | 金額/幣別或到期換算錯誤、過期帳戶錯誤續權。 | 方案矩陣、時區邊界、核款、重複核款冪等、退款/沖正、單產品取消、bundle 分項、降級不刪資料、跨租戶用量隔離及財務對帳測試。 |
 | 4. 全域 SSO | 中央 OIDC issuer/IdP 與網站、行銷產品 clients；逐步將本機 login 綁定 global subject，不自動依未驗證 email 合併使用者。 | 帳號錯誤合併、token 重放、logout/revocation 不一致。 | OIDC test provider integration、PKCE/state/nonce 失敗、錯誤 issuer/audience、過期/replay、無訂閱、跨租戶角色、帳號停用及跨產品登出驗收。 |

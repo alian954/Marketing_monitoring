@@ -2,20 +2,28 @@
 
 namespace Tests\Feature;
 
+use App\Models\CheckRun;
 use App\Models\Client;
+use App\Models\DnsChangeEvent;
+use App\Models\DomainRegistrationObservation;
 use App\Models\GoogleAdsClientAccount;
 use App\Models\GoogleAdsConnection;
 use App\Models\GoogleAnalyticsClientProperty;
 use App\Models\GoogleAnalyticsConnection;
 use App\Models\GoogleSearchConsoleClientSite;
 use App\Models\GoogleSearchConsoleConnection;
+use App\Models\Incident;
+use App\Models\IncidentEvent;
+use App\Models\MaintenanceWindow;
 use App\Models\MetaMarketingClientAccount;
 use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\NotificationOutbox;
 use App\Models\Organization;
+use App\Models\RobotsObservation;
 use App\Models\SocialEngagementTarget;
 use App\Models\StatusPage;
+use App\Models\TlsObservation;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
@@ -108,7 +116,7 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertModelExists($secondClient->fresh());
     }
 
-    public function test_monitoring_and_provider_connection_roots_are_mapped_to_and_scoped_by_their_workspace(): void
+    public function test_monitoring_roots_history_and_integrations_are_scoped_by_their_workspace(): void
     {
         $firstOwner = User::factory()->create();
         $firstOrganization = Organization::factory()->for($firstOwner, 'owner')->create();
@@ -119,6 +127,17 @@ class WorkspaceIdentityTest extends TestCase
 
         $this->actingAs($firstOwner);
         $firstMonitor = Monitor::factory()->create(['name' => 'first workspace monitor']);
+        $firstCheckRun = CheckRun::factory()->for($firstMonitor)->create();
+        $firstIncident = Incident::factory()->for($firstMonitor)->create();
+        $firstIncidentEvent = IncidentEvent::factory()
+            ->for($firstIncident)
+            ->for($firstCheckRun, 'checkRun')
+            ->create();
+        $firstMaintenanceWindow = MaintenanceWindow::factory()->for($firstMonitor)->create();
+        $firstTlsObservation = TlsObservation::factory()->for($firstMonitor)->create();
+        $firstDnsChangeEvent = DnsChangeEvent::factory()->forCheckRun($firstCheckRun)->create();
+        $firstRobotsObservation = RobotsObservation::factory()->for($firstMonitor)->create();
+        $firstDomainRegistrationObservation = DomainRegistrationObservation::factory()->for($firstMonitor)->create();
         $firstTarget = SocialEngagementTarget::factory()->create([
             'tag' => 'first workspace campaign',
             'social_platform' => 'threads',
@@ -160,6 +179,17 @@ class WorkspaceIdentityTest extends TestCase
 
         $this->actingAs($secondOwner);
         $secondMonitor = Monitor::factory()->create(['name' => 'second workspace monitor']);
+        $secondCheckRun = CheckRun::factory()->for($secondMonitor)->create();
+        $secondIncident = Incident::factory()->for($secondMonitor)->create();
+        $secondIncidentEvent = IncidentEvent::factory()
+            ->for($secondIncident)
+            ->for($secondCheckRun, 'checkRun')
+            ->create();
+        $secondMaintenanceWindow = MaintenanceWindow::factory()->for($secondMonitor)->create();
+        $secondTlsObservation = TlsObservation::factory()->for($secondMonitor)->create();
+        $secondDnsChangeEvent = DnsChangeEvent::factory()->forCheckRun($secondCheckRun)->create();
+        $secondRobotsObservation = RobotsObservation::factory()->for($secondMonitor)->create();
+        $secondDomainRegistrationObservation = DomainRegistrationObservation::factory()->for($secondMonitor)->create();
         $secondTarget = SocialEngagementTarget::factory()->create([
             'tag' => 'second workspace campaign',
             'social_platform' => 'threads',
@@ -223,6 +253,14 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertSame($secondWorkspace->id, $secondGoogleSearchConsoleSite->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondMetaMarketingAccount->workspace_id);
         $this->assertSame($secondWorkspace->id, $secondGoogleAdsAccount->workspace_id);
+        $this->assertSame($firstMonitor->id, $firstCheckRun->monitor_id);
+        $this->assertSame($firstMonitor->id, $firstIncident->monitor_id);
+        $this->assertSame($firstIncident->id, $firstIncidentEvent->incident_id);
+        $this->assertSame($firstMonitor->id, $firstMaintenanceWindow->monitor_id);
+        $this->assertSame($firstMonitor->id, $firstTlsObservation->monitor_id);
+        $this->assertSame($firstMonitor->id, $firstDnsChangeEvent->monitor_id);
+        $this->assertSame($firstMonitor->id, $firstRobotsObservation->monitor_id);
+        $this->assertSame($firstMonitor->id, $firstDomainRegistrationObservation->monitor_id);
         $this->assertArrayNotHasKey('refresh_token', $firstGoogleAnalyticsConnection->toArray());
         $this->assertArrayNotHasKey('refresh_token', $firstGoogleSearchConsoleConnection->toArray());
         $this->assertArrayNotHasKey('access_token', $firstMetaMarketingConnection->toArray());
@@ -230,6 +268,16 @@ class WorkspaceIdentityTest extends TestCase
 
         $this->actingAs($firstOwner);
         $this->assertSame([$firstMonitor->id], Monitor::query()->pluck('id')->all());
+        $this->assertSame([$firstCheckRun->id], CheckRun::query()->pluck('id')->all());
+        $this->assertSame([$firstIncident->id], Incident::query()->pluck('id')->all());
+        $this->assertSame([$firstIncidentEvent->id], IncidentEvent::query()->pluck('id')->all());
+        $this->assertSame([$firstMaintenanceWindow->id], MaintenanceWindow::query()->pluck('id')->all());
+        $this->assertSame([$firstTlsObservation->id], TlsObservation::query()->pluck('id')->all());
+        $this->assertSame([$firstDnsChangeEvent->id], DnsChangeEvent::query()->pluck('id')->all());
+        $this->assertSame([$firstRobotsObservation->id], RobotsObservation::query()->pluck('id')->all());
+        $this->assertSame([
+            $firstDomainRegistrationObservation->id,
+        ], DomainRegistrationObservation::query()->pluck('id')->all());
         $this->assertSame([$firstTarget->id], SocialEngagementTarget::query()->pluck('id')->all());
         $this->assertSame([$firstStatusPage->id], StatusPage::query()->pluck('id')->all());
         $this->assertSame([$firstOutbox->id], NotificationOutbox::query()->pluck('id')->all());
