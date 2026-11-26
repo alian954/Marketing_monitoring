@@ -12,6 +12,7 @@ class StreamTlsCertificateTransport implements TlsCertificateTransport
     {
         $ip = $target['ips'][0];
         $socketIp = str_contains($ip, ':') ? '['.$ip.']' : $ip;
+        $timeoutSeconds = max(1, $timeoutSeconds);
         $context = stream_context_create([
             'ssl' => [
                 'capture_peer_cert' => true,
@@ -22,7 +23,7 @@ class StreamTlsCertificateTransport implements TlsCertificateTransport
             ],
         ]);
         $connection = @stream_socket_client(
-            'tls://'.$socketIp.':'.$target['port'],
+            'tcp://'.$socketIp.':'.$target['port'],
             $errorNumber,
             $errorMessage,
             $timeoutSeconds,
@@ -35,6 +36,11 @@ class StreamTlsCertificateTransport implements TlsCertificateTransport
         }
 
         try {
+            if (! stream_set_timeout($connection, $timeoutSeconds)
+                || @stream_socket_enable_crypto($connection, true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
+                return new TlsCertificateResult(null, 'tls_handshake', 'TLS 交握失敗或無法連接至憑證主機。');
+            }
+
             $parameters = stream_context_get_params($connection);
             $certificate = $parameters['options']['ssl']['peer_certificate'] ?? null;
 

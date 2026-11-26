@@ -115,6 +115,7 @@ class SecureTlsCertificateProbeTest extends TestCase
         $address = stream_socket_get_name($server, false);
         $this->assertIsString($address);
         $port = (int) substr(strrchr($address, ':'), 1);
+        $startedAt = hrtime(true);
 
         try {
             $result = (new StreamTlsCertificateTransport)->inspect([
@@ -129,5 +130,7 @@ class SecureTlsCertificateProbeTest extends TestCase
 
         $this->assertSame('tls_handshake', $result->errorType);
         $this->assertNull($result->expiresAt);
+        $elapsedSeconds = (hrtime(true) - $startedAt) / 1_000_000_000;
+        $this->assertLessThan(3, $elapsedSeconds);
     }
 }
