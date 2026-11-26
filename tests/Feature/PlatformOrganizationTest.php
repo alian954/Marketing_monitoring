@@ -417,7 +417,7 @@ class PlatformOrganizationTest extends TestCase
 
     public function test_platform_admin_can_open_and_reactivate_an_expired_organization(): void
     {
-        $owner = User::factory()->create();
+        $owner = User::factory()->create(['password' => Hash::make('customer-password-123')]);
         $organization = Organization::factory()->create([
             'owner_user_id' => $owner->id,
             'subscription_ends_on' => '2000-01-01',
@@ -443,6 +443,15 @@ class PlatformOrganizationTest extends TestCase
 
         $this->assertTrue($organization->fresh()->isAccessible());
         $this->assertSame('已恢復服務的組織', $organization->fresh()->name);
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->post(route('login.store'), [
+            'email' => $owner->email,
+            'password' => 'customer-password-123',
+        ])
+            ->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($owner);
+        $this->get(route('dashboard'))->assertOk();
     }
 
     #[DataProvider('inactiveOrganizationSettings')]
