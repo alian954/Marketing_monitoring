@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['user_id', 'incident_id', 'monitor_id', 'status_page_subscription_id', 'event_key', 'channel', 'recipient', 'event_type', 'status', 'attempts', 'attempt_started_at', 'sent_at', 'subject', 'body', 'last_error'])]
-#[Hidden(['recipient', 'user_id'])]
+#[Hidden(['recipient', 'user_id', 'workspace_id'])]
 class NotificationOutbox extends Model
 {
     public const CHANNEL_EMAIL = 'email';
@@ -47,42 +47,51 @@ class NotificationOutbox extends Model
 
     protected static function booted(): void
     {
-        static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new AuthenticatedWorkspaceScope);
         static::addGlobalScope(new WorkspaceClientRelationScope);
 
         static::creating(static function (NotificationOutbox $outbox): void {
             $user = Auth::user();
+            $userId = null;
 
             if ($user instanceof User) {
-                $outbox->forceFill(['user_id' => $user->workspaceOwnerId()]);
+                $userId = $user->workspaceOwnerId();
+            } else {
+                $userId = $outbox->user_id;
 
-                return;
-            }
+                if ($userId === null && $outbox->monitor_id !== null) {
+                    $userId = Monitor::withoutGlobalScopes()->whereKey($outbox->monitor_id)->value('user_id');
+                }
 
-            $userId = $outbox->user_id;
+                if ($userId === null && $outbox->incident_id !== null) {
+                    $userId = Incident::withoutGlobalScopes()
+                        ->with('monitor')
+                        ->find($outbox->incident_id)
+                        ?->monitor
+                        ?->user_id;
+                }
 
-            if ($userId === null && $outbox->monitor_id !== null) {
-                $userId = Monitor::withoutGlobalScopes()->whereKey($outbox->monitor_id)->value('user_id');
-            }
-
-            if ($userId === null && $outbox->incident_id !== null) {
-                $userId = Incident::withoutGlobalScopes()
-                    ->with('monitor')
-                    ->find($outbox->incident_id)
-                    ?->monitor
-                    ?->user_id;
-            }
-
-            if ($userId === null && $outbox->status_page_subscription_id !== null) {
-                $userId = StatusPageSubscription::query()
-                    ->with('statusPage')
-                    ->find($outbox->status_page_subscription_id)
-                    ?->statusPage
-                    ?->user_id;
+                if ($userId === null && $outbox->status_page_subscription_id !== null) {
+                    $userId = StatusPageSubscription::query()
+                        ->with('statusPage')
+                        ->find($outbox->status_page_subscription_id)
+                        ?->statusPage
+                        ?->user_id;
+                }
             }
 
             if ($userId !== null) {
                 $outbox->forceFill(['user_id' => $userId]);
+
+                if ($outbox->workspace_id === null) {
+                    $workspaceId = $user instanceof User
+                        ? $user->currentWorkspace()?->getKey()
+                        : Workspace::idForOwnerUserId((int) $userId);
+
+                    if ($workspaceId !== null) {
+                        $outbox->forceFill(['workspace_id' => $workspaceId]);
+                    }
+                }
             }
         });
     }

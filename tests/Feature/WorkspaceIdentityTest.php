@@ -3,7 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Client;
+use App\Models\Monitor;
+use App\Models\NotificationOutbox;
 use App\Models\Organization;
+use App\Models\SocialEngagementTarget;
+use App\Models\StatusPage;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMembership;
@@ -93,5 +97,56 @@ class WorkspaceIdentityTest extends TestCase
 
         $this->delete(route('clients.destroy', $secondClient))->assertNotFound();
         $this->assertModelExists($secondClient->fresh());
+    }
+
+    public function test_monitoring_roots_are_mapped_to_and_scoped_by_their_workspace(): void
+    {
+        $firstOwner = User::factory()->create();
+        $firstOrganization = Organization::factory()->for($firstOwner, 'owner')->create();
+        $firstWorkspace = Workspace::factory()->for($firstOrganization)->create();
+        $secondOwner = User::factory()->create();
+        $secondOrganization = Organization::factory()->for($secondOwner, 'owner')->create();
+        $secondWorkspace = Workspace::factory()->for($secondOrganization)->create();
+
+        $this->actingAs($firstOwner);
+        $firstMonitor = Monitor::factory()->create(['name' => 'first workspace monitor']);
+        $firstTarget = SocialEngagementTarget::factory()->create([
+            'tag' => 'first workspace campaign',
+            'social_platform' => 'threads',
+        ]);
+        $firstStatusPage = StatusPage::factory()->create();
+        $firstOutbox = NotificationOutbox::factory()->create([
+            'incident_id' => null,
+            'monitor_id' => null,
+            'status_page_subscription_id' => null,
+        ]);
+
+        $this->actingAs($secondOwner);
+        $secondMonitor = Monitor::factory()->create(['name' => 'second workspace monitor']);
+        $secondTarget = SocialEngagementTarget::factory()->create([
+            'tag' => 'second workspace campaign',
+            'social_platform' => 'threads',
+        ]);
+        $secondStatusPage = StatusPage::factory()->create();
+        $secondOutbox = NotificationOutbox::factory()->create([
+            'incident_id' => null,
+            'monitor_id' => null,
+            'status_page_subscription_id' => null,
+        ]);
+
+        $this->assertSame($firstWorkspace->id, $firstMonitor->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstTarget->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstStatusPage->workspace_id);
+        $this->assertSame($firstWorkspace->id, $firstOutbox->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondMonitor->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondTarget->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondStatusPage->workspace_id);
+        $this->assertSame($secondWorkspace->id, $secondOutbox->workspace_id);
+
+        $this->actingAs($firstOwner);
+        $this->assertSame([$firstMonitor->id], Monitor::query()->pluck('id')->all());
+        $this->assertSame([$firstTarget->id], SocialEngagementTarget::query()->pluck('id')->all());
+        $this->assertSame([$firstStatusPage->id], StatusPage::query()->pluck('id')->all());
+        $this->assertSame([$firstOutbox->id], NotificationOutbox::query()->pluck('id')->all());
     }
 }

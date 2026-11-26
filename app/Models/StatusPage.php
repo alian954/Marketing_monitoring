@@ -17,18 +17,28 @@ class StatusPage extends Model
 
     protected static function booted(): void
     {
-        static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new AuthenticatedWorkspaceScope);
 
         static::creating(static function (StatusPage $statusPage): void {
             $user = Auth::user();
 
             if ($user instanceof User) {
                 $statusPage->forceFill(['user_id' => $user->workspaceOwnerId()]);
+            } elseif (is_numeric($statusPage->user_id)) {
+                $user = User::query()->find((int) $statusPage->user_id);
+            }
+
+            if ($user instanceof User && $statusPage->workspace_id === null) {
+                $workspaceId = $user->currentWorkspace()?->getKey();
+
+                if ($workspaceId !== null) {
+                    $statusPage->forceFill(['workspace_id' => $workspaceId]);
+                }
             }
         });
     }
 
-    protected $hidden = ['user_id', 'public_token', 'public_token_hash'];
+    protected $hidden = ['user_id', 'workspace_id', 'public_token', 'public_token_hash'];
 
     protected function casts(): array
     {

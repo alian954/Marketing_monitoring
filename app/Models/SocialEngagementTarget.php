@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
 
 #[Fillable(['tag', 'social_platform', 'client_id', 'target_interactions', 'starts_on', 'ends_on', 'ga4_campaign_name', 'ga4_source_name', 'ga4_medium_name', 'ga4_goal_metric', 'ga4_goal_event_name', 'ga4_goal_value', 'ga4_goal_currency', 'paid_media_goal_source', 'paid_media_goal_roas', 'gross_margin_percent', 'meta_campaign_id', 'google_ads_campaign_id', 'ad_spend_amount', 'ad_spend_currency', 'campaign_budget_amount', 'campaign_budget_currency'])]
-#[Hidden(['user_id'])]
+#[Hidden(['user_id', 'workspace_id'])]
 class SocialEngagementTarget extends Model
 {
     /** @use HasFactory<SocialEngagementTargetFactory> */
@@ -19,7 +19,7 @@ class SocialEngagementTarget extends Model
 
     protected static function booted(): void
     {
-        static::addGlobalScope(new AuthenticatedAccountScope);
+        static::addGlobalScope(new AuthenticatedWorkspaceScope);
         static::addGlobalScope(new WorkspaceClientScope);
         static::addGlobalScope(new SelectedClientScope);
 
@@ -34,6 +34,14 @@ class SocialEngagementTarget extends Model
 
             if ($user instanceof User && $target->client_id === null) {
                 $target->forceFill(['client_id' => Client::ensureDefaultFor($user)->id]);
+            }
+
+            if ($user instanceof User && $target->workspace_id === null) {
+                $workspaceId = $user->currentWorkspace()?->getKey();
+
+                if ($workspaceId !== null) {
+                    $target->forceFill(['workspace_id' => $workspaceId]);
+                }
             }
         });
     }
