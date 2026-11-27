@@ -26,6 +26,8 @@ class MarketingAlertRule extends Model
 
     public const METRIC_SYNC_STALE = 'sync_stale';
 
+    public const METRIC_ANOMALY = 'anomaly';
+
     /**
      * @var array<string, array{label: string, threshold_label: string|null, default_threshold: string|null, help: string}>
      */
@@ -59,6 +61,12 @@ class MarketingAlertRule extends Model
             'threshold_label' => '超過時間進度（%）',
             'default_threshold' => '10',
             'help' => '累計花費超過依活動天數換算的預期花費，或已達活動預算；同一活動只通知一次。',
+        ],
+        self::METRIC_ANOMALY => [
+            'label' => '數據偏離平常範圍',
+            'threshold_label' => '偏離幾個標準差',
+            'default_threshold' => '3',
+            'help' => '昨日花費、轉換、CPA 或 CTR 偏離該活動前 14 日的平常範圍；不必替每個客戶設定固定門檻，至少需 7 天歷史資料。',
         ],
         self::METRIC_SYNC_STALE => [
             'label' => '廣告數據未更新',

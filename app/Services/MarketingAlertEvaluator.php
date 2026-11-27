@@ -30,6 +30,10 @@ class MarketingAlertEvaluator
 
     private const MIN_PRIOR_CONVERSIONS = 3;
 
+    private const ANOMALY_HISTORY_DAYS = 14;
+
+    private const ANOMALY_MIN_HISTORY_DAYS = 7;
+
     /**
      * Normalized daily-row keys for each paid media source.
      *
@@ -273,6 +277,14 @@ class MarketingAlertEvaluator
                     ));
                 }
             }
+
+            if ($rule->metric === MarketingAlertRule::METRIC_ANOMALY && $threshold !== null) {
+                $anomaly = $this->anomalyCandidate($target, $source, $prefix, $currencyCode, $row, $sourceSignal['rows'], $yesterday, $threshold);
+
+                if ($anomaly !== null) {
+                    $candidates[] = $anomaly;
+                }
+            }
         }
 
         return $candidates;
@@ -339,6 +351,114 @@ class MarketingAlertEvaluator
      * @param  array<string, array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
+    /**
+     * Flags metrics whose value yesterday is more than $zThreshold standard deviations from the
+     * previous 14 days, so each campaign is judged against its own normal range instead of a fixed
+     * number. All anomalous metrics of one source-day are reported together in a single event.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, array<string, mixed>>  $rows
+     * @return array{target: SocialEngagementTarget, source: string, observed_on: string, observed_value: float|null, currency_code: string|null, message: string}|null
+     */
+    private function anomalyCandidate(
+        SocialEngagementTarget $target,
+        string $source,
+        string $prefix,
+        ?string $currencyCode,
+        array $row,
+        array $rows,
+        CarbonImmutable $yesterday,
+        float $zThreshold,
+    ): ?array {
+        $history = [];
+
+        for ($daysBack = 1; $daysBack <= self::ANOMALY_HISTORY_DAYS; $daysBack++) {
+            $historyRow = $rows[$yesterday->subDays($daysBack)->toDateString()] ?? null;
+
+            if ($historyRow !== null) {
+                $history[] = $historyRow;
+            }
+        }
+
+        if (count($history) < self::ANOMALY_MIN_HISTORY_DAYS) {
+            return null;
+        }
+
+        $conversionKey = self::SOURCE_KEYS[$source]['conversions'];
+        $metrics = [
+            'spend' => ['label' => '花費', 'value' => fn (array $values): ?float => $this->number($values['spend_amount'] ?? null), 'money' => true],
+            'conversions' => ['label' => '轉換', 'value' => fn (array $values): ?float => $this->number($values[$conversionKey] ?? null), 'money' => false],
+            'cost_per_action' => ['label' => 'CPA', 'value' => fn (array $values): ?float => $this->number($values['cost_per_action'] ?? null), 'money' => true],
+            'ctr' => ['label' => 'CTR', 'value' => function (array $values): ?float {
+                $impressions = $this->number($values['impressions'] ?? null);
+                $clicks = $this->number($values['clicks'] ?? null);
+
+                return $impressions !== null && $impressions > 0 && $clicks !== null ? $clicks / $impressions * 100 : null;
+            }, 'money' => false],
+        ];
+        $findings = [];
+        $largestDeviation = 0.0;
+        $observedValue = null;
+
+        foreach ($metrics as $metric) {
+            $current = ($metric['value'])($row);
+            $values = array_values(array_filter(
+                array_map($metric['value'], $history),
+                static fn (?float $value): bool => $value !== null,
+            ));
+
+            if ($current === null || count($values) < self::ANOMALY_MIN_HISTORY_DAYS) {
+                continue;
+            }
+
+            $mean = array_sum($values) / count($values);
+            $variance = array_sum(array_map(static fn (float $value): float => ($value - $mean) ** 2, $values)) / (count($values) - 1);
+            $standardDeviation = sqrt($variance);
+
+            if ($mean <= 0 && $current <= 0) {
+                continue;
+            }
+
+            // A flat history has no spread; treat a 50% move away from it as anomalous.
+            $deviation = $standardDeviation > 0
+                ? abs($current - $mean) / $standardDeviation
+                : ($mean > 0 && abs($current - $mean) / $mean >= 0.5 ? INF : 0.0);
+
+            if ($deviation < $zThreshold) {
+                continue;
+            }
+
+            $format = fn (float $value): string => $metric['money']
+                ? $this->money($value, $currencyCode)
+                : ($metric['label'] === 'CTR' ? number_format($value, 2).'%' : number_format($value, 1));
+            $findings[] = sprintf(
+                '%s %s（前 %d 日平均 %s，%s%s）',
+                $metric['label'],
+                $format($current),
+                count($values),
+                $format($mean),
+                $current > $mean ? '偏高' : '偏低',
+                is_infinite($deviation) ? '' : ' '.number_format($deviation, 1).' 個標準差',
+            );
+
+            if ($deviation > $largestDeviation) {
+                $largestDeviation = $deviation;
+                $observedValue = $current;
+            }
+        }
+
+        if ($findings === []) {
+            return null;
+        }
+
+        return $this->candidate($target, $source, $yesterday->toDateString(), $observedValue, $currencyCode, sprintf(
+            '%s %s 數據偏離平常範圍：%s。',
+            $prefix,
+            $yesterday->format('n/j'),
+            implode('；', $findings),
+        ));
+    }
+
     private function historyRows(array $rows, CarbonImmutable $yesterday): array
     {
         $history = [];

@@ -269,6 +269,46 @@ class MarketingAlertTest extends TestCase
         $this->assertSame(0, $disabledRule->events()->count());
     }
 
+    public function test_anomaly_rule_flags_metrics_outside_the_campaigns_normal_range(): void
+    {
+        ['client' => $client, 'target' => $target] = $this->createClientWithTarget();
+        $days = [];
+
+        for ($day = 12; $day <= 25; $day++) {
+            $days['2026-11-'.$day] = ['spend' => $day % 2 === 0 ? 1000 : 1080, 'conversions' => $day % 2 === 0 ? 2 : 3, 'value' => 3000];
+        }
+
+        $days['2026-11-26'] = ['spend' => 1040, 'conversions' => 0, 'value' => 0];
+        $this->createGoogleAdsReport($target, $days);
+        $rule = MarketingAlertRule::factory()->metric(MarketingAlertRule::METRIC_ANOMALY, '3')->create(['client_id' => $client->id]);
+
+        $this->artisan('marketing-alerts:evaluate')->assertExitCode(0);
+
+        $event = $rule->events()->sole();
+        $this->assertSame('2026-11-26', $event->observed_on->toDateString());
+        $this->assertStringContainsString('數據偏離平常範圍', $event->message);
+        $this->assertStringContainsString('轉換 0.0（前 14 日平均 2.5，偏低', $event->message);
+        $this->assertStringNotContainsString('花費', $event->message, 'Spend stayed inside its usual range.');
+        $this->assertStringNotContainsString('CTR', $event->message, 'A flat CTR that did not move is not anomalous.');
+    }
+
+    public function test_anomaly_rule_needs_a_week_of_history(): void
+    {
+        ['client' => $client, 'target' => $target] = $this->createClientWithTarget();
+        $this->createGoogleAdsReport($target, [
+            '2026-11-22' => ['spend' => 100, 'conversions' => 2, 'value' => 300],
+            '2026-11-23' => ['spend' => 110, 'conversions' => 3, 'value' => 300],
+            '2026-11-24' => ['spend' => 100, 'conversions' => 2, 'value' => 300],
+            '2026-11-25' => ['spend' => 110, 'conversions' => 3, 'value' => 300],
+            '2026-11-26' => ['spend' => 5000, 'conversions' => 0, 'value' => 0],
+        ]);
+        MarketingAlertRule::factory()->metric(MarketingAlertRule::METRIC_ANOMALY, '3')->create(['client_id' => $client->id]);
+
+        $this->artisan('marketing-alerts:evaluate')->assertExitCode(0);
+
+        $this->assertDatabaseCount('marketing_alert_events', 0);
+    }
+
     /**
      * @return array{owner: User, client: Client, target: SocialEngagementTarget}
      */
