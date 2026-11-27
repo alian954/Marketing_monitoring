@@ -151,12 +151,14 @@ textarea {
     display: flex;
     min-width: 0;
     flex: 1;
+    flex-wrap: wrap;
     align-items: center;
     gap: 7px;
 }
 
 .nav-link {
     padding: 9px 12px;
+    white-space: nowrap;
     border-radius: 8px;
     color: var(--muted);
     font-size: 13px;
@@ -1163,6 +1165,7 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 }
 
 .data-table-wrap {
+    position: relative;
     width: 100%;
     overflow-x: auto;
     border-radius: 0 0 13px 13px;
