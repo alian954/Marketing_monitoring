@@ -12,6 +12,7 @@ use App\Http\Controllers\ClientReportScheduleController;
 use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\ClientReportSnapshotController;
 use App\Http\Controllers\ClientReportTemplateController;
+use App\Http\Controllers\ClientStoreRevenueController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeatureGuideController;
 use App\Http\Controllers\GoogleAdsIntegrationController;
@@ -312,6 +313,16 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
         ->whereNumber('client')
         ->middleware('throttle:10,1')
         ->name('clients.insights.store');
+    Route::get('/clients/{client}/store-revenue', [ClientStoreRevenueController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.store-revenue.index');
+    Route::post('/clients/{client}/store-revenue', [ClientStoreRevenueController::class, 'store'])
+        ->whereNumber('client')
+        ->middleware('throttle:20,1')
+        ->name('clients.store-revenue.store');
+    Route::delete('/clients/{client}/store-revenue', [ClientStoreRevenueController::class, 'destroy'])
+        ->whereNumber('client')
+        ->name('clients.store-revenue.destroy');
     Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.budgets.index');

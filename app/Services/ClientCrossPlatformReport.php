@@ -20,6 +20,7 @@ class ClientCrossPlatformReport
         private readonly ClientCrossPlatformOverview $crossPlatformOverview,
         private readonly ClientMarketingTimeline $marketingTimeline,
         private readonly ClientBudgetPacing $budgetPacing,
+        private readonly ClientStoreRevenueSummary $storeRevenueSummary,
     ) {}
 
     /**
@@ -33,7 +34,8 @@ class ClientCrossPlatformReport
      *     timeline: list<array{date: string, source: string, category_label: string, title: string, note: string|null}>,
      *     chart_markers: list<array{date: string, x: float, sources: list<string>, label: string}>,
      *     campaign_count: int,
-     *     budget_pacing: array<string, mixed>|null
+     *     budget_pacing: array<string, mixed>|null,
+     *     store_revenue: array<string, mixed>
      * }
      */
     public function build(Client $client, User $user, array $period): array
@@ -63,6 +65,7 @@ class ClientCrossPlatformReport
                     && $target->ends_on->toDateString() >= $period['from'],
             )->count(),
             'budget_pacing' => $budget === null ? null : $this->budgetPacing($budget, $client, $user, $now),
+            'store_revenue' => $this->storeRevenueSummary->build($client, $period['from'], $period['to'], $overview),
         ];
     }
 

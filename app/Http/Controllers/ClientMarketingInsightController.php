@@ -95,6 +95,7 @@ class ClientMarketingInsightController extends Controller
                 $report['previous_period'],
                 $report['timeline'],
                 $report['budget_pacing'],
+                $report['store_revenue'],
             ),
             'requested_by_user_id' => $user->getKey(),
         ]);

@@ -47,6 +47,7 @@ class ClientCrossPlatformOverviewController extends Controller
                 'chartMarkers' => $report['chart_markers'],
                 'campaignCount' => $report['campaign_count'],
                 'budgetPacing' => $report['budget_pacing'],
+                'storeRevenue' => $report['store_revenue'],
                 'insight' => $client->marketingInsights()
                     ->whereDate('from_on', $period['from'])
                     ->whereDate('to_on', $period['to'])

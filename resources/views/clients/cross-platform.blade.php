@@ -421,6 +421,46 @@
         </div>
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="cross-platform-store-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="cross-platform-store-title" class="panel-title">實際營收與 MER</h2>
+                <p class="panel-description">以商店後台匯入的訂單計算，不受各廣告平台歸因方式影響。</p>
+            </div>
+            <a class="button button-secondary button-small" href="{{ route('clients.store-revenue.index', $client) }}">電商營收</a>
+        </div>
+        <div class="panel-body">
+            @if (! $storeRevenue['has_data'])
+                <p class="empty-copy">此期間沒有匯入的電商營收。匯入訂單 CSV 後即可計算 MER 與新客取得成本。</p>
+            @else
+                <dl class="cross-platform-facts">
+                    <div>
+                        <dt>實際營收</dt>
+                        <dd>{{ number_format($storeRevenue['revenue'], 0) }}<span class="secondary-text">{{ $storeRevenue['currency_code'] }} · {{ number_format($storeRevenue['orders']) }} 筆訂單</span></dd>
+                    </div>
+                    <div>
+                        <dt>MER（營收 ÷ 廣告花費）</dt>
+                        <dd>{{ $metric($storeRevenue['mer'], 2, ' 倍') }}</dd>
+                    </div>
+                    <div>
+                        <dt>新客取得成本</dt>
+                        <dd>{{ $metric($storeRevenue['new_customer_acquisition_cost'], 0) }}<span class="secondary-text">{{ $storeRevenue['new_customer_orders'] === null ? '檔案未提供新客欄位' : number_format($storeRevenue['new_customer_orders']).' 筆新客訂單' }}</span></dd>
+                    </div>
+                    <div>
+                        <dt>平台回報價值 ÷ 實際營收</dt>
+                        <dd>{{ $metric($storeRevenue['platform_to_store_revenue_ratio'], 2, ' 倍') }}</dd>
+                    </div>
+                </dl>
+                @if ($storeRevenue['platform_to_store_revenue_ratio'] !== null && $storeRevenue['platform_to_store_revenue_ratio'] > 1)
+                    <p class="cross-platform-attribution cross-platform-attribution--platform_higher" role="status">廣告平台回報的轉換價值高於商店實際營收，代表平台之間有重複歸因，或計入了瀏覽歸因的訂單；評估整體成效時建議以 MER 為準。</p>
+                @endif
+                @if ($storeRevenue['other_currency_revenue'] !== [])
+                    <p class="field-help">另有其他幣別營收未計入：@foreach ($storeRevenue['other_currency_revenue'] as $currencyCode => $revenue){{ number_format($revenue, 2) }} {{ $currencyCode }}@if (! $loop->last)、@endif @endforeach</p>
+                @endif
+            @endif
+        </div>
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="cross-platform-coverage-title">
         <div class="panel-header">
             <div>

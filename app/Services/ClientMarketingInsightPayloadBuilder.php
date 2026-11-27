@@ -21,6 +21,7 @@ class ClientMarketingInsightPayloadBuilder
      * @param  array{from: string, to: string}  $previousPeriod
      * @param  list<array{date: string, source: string, category_label: string, title: string, note: string|null}>  $timeline
      * @param  array<string, mixed>|null  $budgetPacing
+     * @param  array<string, mixed>|null  $storeRevenue
      * @return array<string, mixed>
      */
     public function build(
@@ -30,6 +31,7 @@ class ClientMarketingInsightPayloadBuilder
         array $previousPeriod,
         array $timeline,
         ?array $budgetPacing,
+        ?array $storeRevenue = null,
     ): array {
         $platformLabels = array_map(
             static fn (array $definition): string => $definition['label'],
@@ -80,6 +82,7 @@ class ClientMarketingInsightPayloadBuilder
             'attribution_check' => $overview['attribution'] ?? null,
             'data_coverage' => $coverage,
             'monthly_budget_pacing' => $budgetPacing,
+            'store_revenue' => $storeRevenue === null || ! $storeRevenue['has_data'] ? null : array_diff_key($storeRevenue, ['daily_revenue' => true, 'has_data' => true]),
             'events' => array_map(
                 static fn (array $entry): array => [
                     'date' => $entry['date'],
