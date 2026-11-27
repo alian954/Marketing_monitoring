@@ -161,6 +161,7 @@ return [
             'clients.report-schedules.store' => ['marketing.reports'],
             'clients.report-schedules.update' => ['marketing.reports'],
             'clients.report-schedules.destroy' => ['marketing.reports'],
+            'clients.insights.store' => ['marketing.reports'],
             'clients.budgets.index' => ['marketing.reports'],
             'clients.budgets.store' => ['marketing.reports'],
             'clients.budgets.destroy' => ['marketing.reports'],

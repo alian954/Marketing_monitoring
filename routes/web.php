@@ -6,6 +6,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientMarketingAnnotationController;
+use App\Http\Controllers\ClientMarketingInsightController;
 use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportScheduleController;
 use App\Http\Controllers\ClientReportShareController;
@@ -307,6 +308,10 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::get('/clients/{client}/cross-platform', [ClientCrossPlatformOverviewController::class, 'show'])
         ->whereNumber('client')
         ->name('clients.cross-platform');
+    Route::post('/clients/{client}/insights', [ClientMarketingInsightController::class, 'store'])
+        ->whereNumber('client')
+        ->middleware('throttle:10,1')
+        ->name('clients.insights.store');
     Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.budgets.index');

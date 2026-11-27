@@ -3,12 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
-use App\Models\SocialEngagementTarget;
 use App\Models\User;
-use App\Services\ClientCrossPlatformOverview;
-use App\Services\ClientMarketingTimeline;
+use App\Services\ClientCrossPlatformReport;
 use App\Services\ClientPortfolioReportingPeriod;
-use App\Services\DashboardCampaignMarketingSummary;
+use App\Services\MarketingInsightWriter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,9 +21,8 @@ class ClientCrossPlatformOverviewController extends Controller
         Request $request,
         Client $client,
         ClientPortfolioReportingPeriod $reportingPeriod,
-        DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
-        ClientCrossPlatformOverview $crossPlatformOverview,
-        ClientMarketingTimeline $marketingTimeline,
+        ClientCrossPlatformReport $crossPlatformReport,
+        MarketingInsightWriter $insightWriter,
     ): Response|RedirectResponse {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
@@ -36,35 +33,26 @@ class ClientCrossPlatformOverviewController extends Controller
             return $period;
         }
 
-        $previousPeriod = $this->previousPeriod($period);
-        $targets = SocialEngagementTarget::query()
-            ->where('client_id', $client->getKey())
-            ->whereDate('starts_on', '<=', $period['to'])
-            ->whereDate('ends_on', '>=', $previousPeriod['from'])
-            ->orderBy('id')
-            ->get();
-        $marketingSummaries = $dashboardCampaignMarketingSummary->build($targets, $user, now()->toImmutable());
-        $overview = $crossPlatformOverview->build($targets, $marketingSummaries, $period['from'], $period['to']);
-        $previousOverview = $crossPlatformOverview->build($targets, $marketingSummaries, $previousPeriod['from'], $previousPeriod['to']);
-        $chart = $crossPlatformOverview->chart($overview['daily']);
-        $timeline = $marketingTimeline->build($client, $period['from'], $period['to']);
+        $report = $crossPlatformReport->build($client, $user, $period);
 
         return response()
             ->view('clients.cross-platform', [
                 'client' => $client,
                 'period' => $period,
-                'previousPeriod' => $previousPeriod,
-                'overview' => $overview,
-                'comparison' => $crossPlatformOverview->compare($overview, $previousOverview),
-                'chart' => $chart,
-                'timeline' => $timeline,
-                'chartMarkers' => $chart === null ? [] : $marketingTimeline->chartMarkers($timeline, $chart['bars']),
-                'campaignCount' => $targets->filter(
-                    static fn (SocialEngagementTarget $target): bool => $target->starts_on !== null
-                        && $target->ends_on !== null
-                        && $target->starts_on->toDateString() <= $period['to']
-                        && $target->ends_on->toDateString() >= $period['from'],
-                )->count(),
+                'previousPeriod' => $report['previous_period'],
+                'overview' => $report['overview'],
+                'comparison' => $report['comparison'],
+                'chart' => $report['chart'],
+                'timeline' => $report['timeline'],
+                'chartMarkers' => $report['chart_markers'],
+                'campaignCount' => $report['campaign_count'],
+                'budgetPacing' => $report['budget_pacing'],
+                'insight' => $client->marketingInsights()
+                    ->whereDate('from_on', $period['from'])
+                    ->whereDate('to_on', $period['to'])
+                    ->latest('id')
+                    ->first(),
+                'insightAvailable' => $insightWriter->isConfigured(),
             ])
             ->header('Cache-Control', 'private, no-store');
     }
@@ -110,22 +98,5 @@ class ClientCrossPlatformOverviewController extends Controller
         }
 
         return ['from' => $query['from'], 'to' => $query['to']];
-    }
-
-    /**
-     * @param  array{from: string, to: string}  $period
-     * @return array{from: string, to: string}
-     */
-    private function previousPeriod(array $period): array
-    {
-        $from = CarbonImmutable::createFromFormat('!Y-m-d', $period['from'], 'Asia/Taipei');
-        $to = CarbonImmutable::createFromFormat('!Y-m-d', $period['to'], 'Asia/Taipei');
-        $days = (int) $from->diff($to)->days + 1;
-        $previousTo = $from->subDay();
-
-        return [
-            'from' => $previousTo->subDays($days - 1)->toDateString(),
-            'to' => $previousTo->toDateString(),
-        ];
     }
 }

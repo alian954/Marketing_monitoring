@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\ClaudeMarketingInsightWriter;
+use App\Services\MarketingInsightWriter;
 use App\Services\Probe\CurlProbeTransport;
 use App\Services\Probe\DcardBrowserRenderer;
 use App\Services\Probe\FixtureProbeClient;
@@ -36,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         $this->app->bind(HostResolver::class, NativeHostResolver::class);
+        $this->app->bind(MarketingInsightWriter::class, ClaudeMarketingInsightWriter::class);
         $this->app->bind(ProbeTransport::class, CurlProbeTransport::class);
         $this->app->bind(DcardBrowserRenderer::class, PlaywrightDcardBrowserRenderer::class);
         $this->app->bind(RobotsTxtProbe::class, SecureRobotsTxtProbe::class);

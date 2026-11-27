@@ -118,6 +118,79 @@
         </section>
     @endif
 
+    @if ($budgetPacing !== null && $budgetPacing['total']['status'] !== null)
+        <section class="panel spaced-top" aria-labelledby="cross-platform-budget-title">
+            <div class="panel-header">
+                <div>
+                    <h2 id="cross-platform-budget-title" class="panel-title">{{ $budgetPacing['month'] }} 月預算</h2>
+                    <p class="panel-description">
+                        已花費 {{ number_format($budgetPacing['total']['spend'], 0) }} / {{ number_format($budgetPacing['total']['budget'], 0) }} {{ $budgetPacing['currency_code'] }}
+                        · 預估月底 {{ $budgetPacing['total']['projected_spend'] === null ? '—' : number_format($budgetPacing['total']['projected_spend'], 0) }}
+                    </p>
+                </div>
+                <div class="row-actions">
+                    <span class="budget-status budget-status--{{ $budgetPacing['total']['status'] }}">{{ \App\Services\ClientBudgetPacing::STATUS_LABELS[$budgetPacing['total']['status']] }}</span>
+                    <a class="strong-link" href="{{ route('clients.budgets.index', ['client' => $client, 'month' => $budgetPacing['month']]) }}">查看月預算</a>
+                </div>
+            </div>
+        </section>
+    @endif
+
+    <section class="panel spaced-top" aria-labelledby="cross-platform-insight-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="cross-platform-insight-title" class="panel-title">AI 洞察摘要</h2>
+                <p class="panel-description">由 Claude 依本頁數據、月預算與期間事件寫出重點、異常與建議。產生時會把彙總後的成效數據傳送給 Anthropic，不含帳號憑證或聯絡資料。</p>
+            </div>
+            @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                @if ($insightAvailable && $primaryGroup !== null && ! ($insight?->isPending() ?? false))
+                    <form action="{{ route('clients.insights.store', $client) }}" method="POST" class="inline-form">
+                        @csrf
+                        <input type="hidden" name="from" value="{{ $period['from'] }}">
+                        <input type="hidden" name="to" value="{{ $period['to'] }}">
+                        <button class="button button-secondary button-small" type="submit">{{ $insight === null ? '產生 AI 摘要' : '重新產生' }}</button>
+                    </form>
+                @endif
+            @endunless
+        </div>
+        <div class="panel-body">
+            @error('insight')<p class="field-error" role="alert">{{ $message }}</p>@enderror
+            @if (! $insightAvailable)
+                <p class="empty-copy">系統尚未設定 ANTHROPIC_API_KEY，暫時無法使用 AI 摘要。</p>
+            @elseif ($insight === null)
+                <p class="empty-copy">{{ $primaryGroup === null ? '此期間沒有廣告數據，無法產生摘要。' : '尚未產生此期間的摘要。' }}</p>
+            @elseif ($insight->isPending())
+                <p class="empty-copy" role="status">AI 摘要產生中，請稍後<a href="{{ route('clients.cross-platform', ['client' => $client, 'from' => $period['from'], 'to' => $period['to']]) }}">重新整理</a>。</p>
+            @elseif (! $insight->isCompleted() || $insight->sections() === null)
+                <p class="field-error" role="alert">{{ $insight->error_message ?? 'AI 摘要產生失敗，請重新產生。' }}</p>
+            @else
+                @php $sections = $insight->sections(); @endphp
+                <p class="insight-summary">{{ $sections['summary'] }}</p>
+                <div class="insight-grid">
+                    <div>
+                        <h3 class="insight-heading">表現亮點</h3>
+                        <ul class="insight-list">
+                            @foreach ($sections['highlights'] as $item)<li>{{ $item }}</li>@endforeach
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="insight-heading">需要注意</h3>
+                        <ul class="insight-list">
+                            @foreach ($sections['issues'] as $issue)<li><strong>{{ $issue['title'] }}</strong>：{{ $issue['detail'] }}</li>@endforeach
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="insight-heading">下期建議</h3>
+                        <ul class="insight-list">
+                            @foreach ($sections['recommendations'] as $item)<li>{{ $item }}</li>@endforeach
+                        </ul>
+                    </div>
+                </div>
+                <p class="field-help">產生於 <time datetime="{{ $insight->completed_at?->toIso8601String() }}">{{ $insight->completed_at?->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>。AI 摘要可能有誤，請對照上方數據確認後再提供給客戶。</p>
+            @endif
+        </div>
+    </section>
+
     @foreach ($overview['currency_groups'] as $group)
         <section class="panel spaced-top" aria-labelledby="cross-platform-table-{{ $group['currency_code'] }}">
             <div class="panel-header">

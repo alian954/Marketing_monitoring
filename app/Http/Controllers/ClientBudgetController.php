@@ -4,11 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\ClientMonthlyBudget;
-use App\Models\SocialEngagementTarget;
 use App\Models\User;
-use App\Services\ClientBudgetPacing;
-use App\Services\ClientCrossPlatformOverview;
-use App\Services\DashboardCampaignMarketingSummary;
+use App\Services\ClientCrossPlatformReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,11 +18,7 @@ class ClientBudgetController extends Controller
 
     private const MAX_AMOUNT = 9999999999999;
 
-    public function __construct(
-        private readonly ClientBudgetPacing $budgetPacing,
-        private readonly ClientCrossPlatformOverview $crossPlatformOverview,
-        private readonly DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
-    ) {}
+    public function __construct(private readonly ClientCrossPlatformReport $crossPlatformReport) {}
 
     public function index(Request $request, Client $client): Response|RedirectResponse
     {
@@ -157,21 +150,7 @@ class ClientBudgetController extends Controller
     /** @return array<string, mixed> */
     private function pacingFor(ClientMonthlyBudget $budget, Client $client, User $user, CarbonImmutable $now): array
     {
-        $period = $this->budgetPacing->dataPeriod($budget->month, $now);
-        $overview = null;
-
-        if ($period['has_elapsed_days']) {
-            $targets = SocialEngagementTarget::query()
-                ->where('client_id', $client->getKey())
-                ->whereDate('starts_on', '<=', $period['to'])
-                ->whereDate('ends_on', '>=', $period['from'])
-                ->orderBy('id')
-                ->get();
-            $summaries = $this->dashboardCampaignMarketingSummary->build($targets, $user, $now);
-            $overview = $this->crossPlatformOverview->build($targets, $summaries, $period['from'], $period['to']);
-        }
-
-        return $this->budgetPacing->pace($budget, $overview, $now);
+        return $this->crossPlatformReport->budgetPacing($budget, $client, $user, $now);
     }
 
     private function isValidMonth(string $month): bool

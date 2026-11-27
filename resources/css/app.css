@@ -3712,3 +3712,38 @@ a.platform-chip:hover {
         min-width: 0;
     }
 }
+
+.insight-summary {
+    margin: 0 0 16px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ink);
+}
+
+.insight-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.insight-heading {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink-soft);
+}
+
+.insight-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+    .insight-grid {
+        grid-template-columns: 1fr;
+    }
+}

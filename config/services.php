@@ -61,4 +61,10 @@ return [
         'api_version' => env('GOOGLE_ADS_API_VERSION', 'v26'),
     ],
 
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'insight_model' => env('ANTHROPIC_INSIGHT_MODEL', 'claude-opus-5-5'),
+        'insight_effort' => env('ANTHROPIC_INSIGHT_EFFORT', 'medium'),
+    ],
+
 ];

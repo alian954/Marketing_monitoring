@@ -88,6 +88,11 @@ class Client extends Model
         return $this->hasMany(ClientMarketingAnnotation::class);
     }
 
+    public function marketingInsights(): HasMany
+    {
+        return $this->hasMany(ClientMarketingInsight::class);
+    }
+
     public function monthlyBudgets(): HasMany
     {
         return $this->hasMany(ClientMonthlyBudget::class);
