@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClientBudgetController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
@@ -306,6 +307,17 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::get('/clients/{client}/cross-platform', [ClientCrossPlatformOverviewController::class, 'show'])
         ->whereNumber('client')
         ->name('clients.cross-platform');
+    Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.budgets.index');
+    Route::post('/clients/{client}/budgets', [ClientBudgetController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.budgets.store');
+    Route::delete('/clients/{client}/budgets/{monthlyBudget}', [ClientBudgetController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('monthlyBudget')
+        ->scopeBindings()
+        ->name('clients.budgets.destroy');
     Route::get('/clients/{client}/annotations', [ClientMarketingAnnotationController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.annotations.index');
