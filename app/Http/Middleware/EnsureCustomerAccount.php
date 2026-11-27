@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Services\PlatformConsole;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +30,11 @@ class EnsureCustomerAccount
         Auth::guard('web')->logout();
         $request->session()->regenerateToken();
 
-        return redirect()->route('platform.login')->with('status', '平台管理員帳號請由管理後台登入。');
+        // A console on its own host is not linked from the customer platform, so its address is not revealed here.
+        $destination = PlatformConsole::isEnabled() && PlatformConsole::domain() === null
+            ? route('platform.login')
+            : route('login');
+
+        return redirect()->to($destination)->with('status', '平台管理員帳號請由管理後台登入。');
     }
 }

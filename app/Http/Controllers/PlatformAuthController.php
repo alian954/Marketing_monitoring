@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\PlatformConsole;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -65,21 +66,11 @@ class PlatformAuthController extends Controller
         return redirect()->to($this->intendedConsoleUrl($request));
     }
 
-    /**
-     * The customer and admin sign-ins share one session, so only an intended URL inside the console is honored.
-     */
-    public static function isConsoleUrl(string $url): bool
-    {
-        $path = '/'.ltrim((string) parse_url($url, PHP_URL_PATH), '/');
-
-        return $path === '/admin' || str_starts_with($path, '/admin/');
-    }
-
     private function intendedConsoleUrl(Request $request): string
     {
         $intendedUrl = $request->session()->pull('url.intended');
 
-        return is_string($intendedUrl) && self::isConsoleUrl($intendedUrl)
+        return is_string($intendedUrl) && PlatformConsole::isConsoleUrl($intendedUrl)
             ? $intendedUrl
             : route('platform.index');
     }

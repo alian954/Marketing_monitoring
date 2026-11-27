@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class PlatformConsoleSeparationTest extends TestCase
@@ -93,6 +95,67 @@ class PlatformConsoleSeparationTest extends TestCase
             ->assertOk()
             ->assertDontSee(route('platform.index'))
             ->assertDontSee('平台管理員');
+    }
+
+    public function test_console_and_customer_platform_use_separate_session_cookies(): void
+    {
+        $this->get(route('platform.login'))
+            ->assertOk()
+            ->assertCookie(config('platform.console_session_cookie'))
+            ->assertCookieMissing(config('platform.customer_session_cookie'));
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertCookie(config('platform.customer_session_cookie'))
+            ->assertCookieMissing(config('platform.console_session_cookie'));
+    }
+
+    public function test_console_on_a_dedicated_host_is_not_served_on_the_customer_host(): void
+    {
+        $this->reloadRoutesWith(['platform.console_domain' => 'admin.example.test']);
+
+        $this->assertSame('admin.example.test', parse_url(route('platform.login'), PHP_URL_HOST));
+        $this->get('http://app.example.test/admin/login')->assertNotFound();
+        $this->get('http://app.example.test/platform')->assertNotFound();
+        $this->get('http://admin.example.test/admin/login')->assertOk();
+        $this->get('http://admin.example.test/')->assertRedirect('/admin');
+        $this->get('http://admin.example.test/login')->assertNotFound();
+        $this->get('http://admin.example.test/monitors')->assertNotFound();
+
+        $this->actingAs($this->platformAdmin(), 'web')
+            ->get('http://app.example.test/')
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_customer_deployment_can_disable_the_console_entirely(): void
+    {
+        $this->reloadRoutesWith(['platform.console_enabled' => false]);
+
+        $this->assertFalse(Route::has('platform.login'));
+        $this->get('/admin/login')->assertNotFound();
+        $this->get('/admin')->assertNotFound();
+        $this->get('/platform')->assertNotFound();
+
+        $this->actingAs($this->platformAdmin(), 'web')
+            ->get(route('dashboard'))
+            ->assertRedirect(route('login'));
+        $this->assertGuest('web');
+    }
+
+    /**
+     * Console routes are registered from configuration at boot, so re-register them after changing it.
+     *
+     * @param  array<string, mixed>  $settings
+     */
+    private function reloadRoutesWith(array $settings): void
+    {
+        config($settings);
+        $router = $this->app['router'];
+        $router->setRoutes(new RouteCollection);
+        $router->middleware('web')->group(base_path('routes/web.php'));
+        $router->getRoutes()->refreshNameLookups();
+        $router->getRoutes()->refreshActionLookups();
+        $this->app['url']->setRoutes($router->getRoutes());
     }
 
     private function platformAdmin(): User

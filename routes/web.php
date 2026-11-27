@@ -47,6 +47,7 @@ use App\Http\Middleware\EnsureOrganizationActive;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureWorkspaceOwner;
 use App\Http\Middleware\RejectReadOnlyWorkspaceMemberWrites;
+use App\Services\PlatformConsole;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function (): void {
@@ -110,77 +111,88 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
         ->name('accept');
 });
 
-Route::prefix('admin')->name('platform.')->group(function (): void {
-    Route::middleware('guest:platform')->group(function (): void {
-        Route::get('/login', [PlatformAuthController::class, 'create'])->name('login');
-        Route::post('/login', [PlatformAuthController::class, 'store'])->middleware('throttle:login')->name('login.store');
+if (PlatformConsole::isEnabled()) {
+    $consoleRoutes = Route::prefix(PlatformConsole::PATH_PREFIX)->name('platform.');
+
+    if (PlatformConsole::domain() !== null) {
+        $consoleRoutes->domain(PlatformConsole::domain());
+    }
+
+    $consoleRoutes->group(function (): void {
+        Route::middleware('guest:platform')->group(function (): void {
+            Route::get('/login', [PlatformAuthController::class, 'create'])->name('login');
+            Route::post('/login', [PlatformAuthController::class, 'store'])->middleware('throttle:login')->name('login.store');
+        });
+
+        Route::middleware(['auth:platform', EnsurePlatformAdmin::class])->group(function (): void {
+            Route::post('/logout', [PlatformAuthController::class, 'destroy'])->name('logout');
+            Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
+            Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
+            Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
+            Route::patch('/products/{product}/lifecycle', [PlatformProductController::class, 'updateLifecycle'])
+                ->whereNumber('product')
+                ->name('products.lifecycle.update');
+            Route::post('/products/{product}/plans', [PlatformProductController::class, 'storePlan'])
+                ->whereNumber('product')
+                ->name('products.plans.store');
+            Route::patch('/products/plans/{productPlan}', [PlatformProductController::class, 'updatePlan'])
+                ->whereNumber('productPlan')
+                ->name('products.plans.update');
+            Route::post('/organizations', [PlatformOrganizationController::class, 'store'])->name('organizations.store');
+            Route::get('/organizations/{organization}/billing', [PlatformBillingController::class, 'index'])
+                ->whereNumber('organization')
+                ->name('organizations.billing');
+            Route::post('/organizations/{organization}/billing/orders', [PlatformBillingController::class, 'storeOrder'])
+                ->whereNumber('organization')
+                ->name('organizations.billing.orders.store');
+            Route::post('/organizations/{organization}/billing/orders/{billingOrder}/payments', [PlatformBillingController::class, 'storePayment'])
+                ->whereNumber('organization')
+                ->whereNumber('billingOrder')
+                ->name('organizations.billing.payments.store');
+            Route::post('/organizations/{organization}/billing/orders/{billingOrder}/refunds', [PlatformBillingController::class, 'storeRefund'])
+                ->whereNumber('organization')
+                ->whereNumber('billingOrder')
+                ->name('organizations.billing.refunds.store');
+            Route::post('/organizations/{organization}/billing/orders/{billingOrder}/cancel', [PlatformBillingController::class, 'cancelOrder'])
+                ->whereNumber('organization')
+                ->whereNumber('billingOrder')
+                ->name('organizations.billing.orders.cancel');
+            Route::get('/organizations/{organization}/products', [PlatformSubscriptionController::class, 'index'])
+                ->whereNumber('organization')
+                ->name('organizations.products');
+            Route::post('/organizations/{organization}/subscriptions', [PlatformSubscriptionController::class, 'store'])
+                ->whereNumber('organization')
+                ->name('organizations.subscriptions.store');
+            Route::patch('/organizations/{organization}/subscriptions/{subscription}', [PlatformSubscriptionController::class, 'update'])
+                ->whereNumber('organization')
+                ->whereNumber('subscription')
+                ->name('organizations.subscriptions.update');
+            Route::post('/organizations/{organization}/subscriptions/{subscription}/items', [PlatformSubscriptionController::class, 'storeItem'])
+                ->whereNumber('organization')
+                ->whereNumber('subscription')
+                ->name('organizations.subscriptions.items.store');
+            Route::patch('/organizations/{organization}/subscriptions/{subscription}/items/{subscriptionItem}', [PlatformSubscriptionController::class, 'updateItem'])
+                ->whereNumber('organization')
+                ->whereNumber('subscription')
+                ->whereNumber('subscriptionItem')
+                ->name('organizations.subscriptions.items.update');
+            Route::patch('/organizations/{organization}', [PlatformOrganizationController::class, 'update'])
+                ->whereNumber('organization')
+                ->name('organizations.update');
+            Route::patch('/organizations/{organization}/entitlement-enforcement', [PlatformOrganizationController::class, 'updateEntitlementEnforcement'])
+                ->whereNumber('organization')
+                ->name('organizations.entitlement-enforcement.update');
+            Route::get('/organizations/{organization}', [PlatformOrganizationController::class, 'show'])
+                ->whereNumber('organization')
+                ->name('organizations.show');
+            Route::get('/system', [PlatformSystemStatusController::class, 'index'])->name('system.index');
+        });
     });
 
-    Route::middleware(['auth:platform', EnsurePlatformAdmin::class])->group(function (): void {
-        Route::post('/logout', [PlatformAuthController::class, 'destroy'])->name('logout');
-        Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
-        Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
-        Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
-        Route::patch('/products/{product}/lifecycle', [PlatformProductController::class, 'updateLifecycle'])
-            ->whereNumber('product')
-            ->name('products.lifecycle.update');
-        Route::post('/products/{product}/plans', [PlatformProductController::class, 'storePlan'])
-            ->whereNumber('product')
-            ->name('products.plans.store');
-        Route::patch('/products/plans/{productPlan}', [PlatformProductController::class, 'updatePlan'])
-            ->whereNumber('productPlan')
-            ->name('products.plans.update');
-        Route::post('/organizations', [PlatformOrganizationController::class, 'store'])->name('organizations.store');
-        Route::get('/organizations/{organization}/billing', [PlatformBillingController::class, 'index'])
-            ->whereNumber('organization')
-            ->name('organizations.billing');
-        Route::post('/organizations/{organization}/billing/orders', [PlatformBillingController::class, 'storeOrder'])
-            ->whereNumber('organization')
-            ->name('organizations.billing.orders.store');
-        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/payments', [PlatformBillingController::class, 'storePayment'])
-            ->whereNumber('organization')
-            ->whereNumber('billingOrder')
-            ->name('organizations.billing.payments.store');
-        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/refunds', [PlatformBillingController::class, 'storeRefund'])
-            ->whereNumber('organization')
-            ->whereNumber('billingOrder')
-            ->name('organizations.billing.refunds.store');
-        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/cancel', [PlatformBillingController::class, 'cancelOrder'])
-            ->whereNumber('organization')
-            ->whereNumber('billingOrder')
-            ->name('organizations.billing.orders.cancel');
-        Route::get('/organizations/{organization}/products', [PlatformSubscriptionController::class, 'index'])
-            ->whereNumber('organization')
-            ->name('organizations.products');
-        Route::post('/organizations/{organization}/subscriptions', [PlatformSubscriptionController::class, 'store'])
-            ->whereNumber('organization')
-            ->name('organizations.subscriptions.store');
-        Route::patch('/organizations/{organization}/subscriptions/{subscription}', [PlatformSubscriptionController::class, 'update'])
-            ->whereNumber('organization')
-            ->whereNumber('subscription')
-            ->name('organizations.subscriptions.update');
-        Route::post('/organizations/{organization}/subscriptions/{subscription}/items', [PlatformSubscriptionController::class, 'storeItem'])
-            ->whereNumber('organization')
-            ->whereNumber('subscription')
-            ->name('organizations.subscriptions.items.store');
-        Route::patch('/organizations/{organization}/subscriptions/{subscription}/items/{subscriptionItem}', [PlatformSubscriptionController::class, 'updateItem'])
-            ->whereNumber('organization')
-            ->whereNumber('subscription')
-            ->whereNumber('subscriptionItem')
-            ->name('organizations.subscriptions.items.update');
-        Route::patch('/organizations/{organization}', [PlatformOrganizationController::class, 'update'])
-            ->whereNumber('organization')
-            ->name('organizations.update');
-        Route::patch('/organizations/{organization}/entitlement-enforcement', [PlatformOrganizationController::class, 'updateEntitlementEnforcement'])
-            ->whereNumber('organization')
-            ->name('organizations.entitlement-enforcement.update');
-        Route::get('/organizations/{organization}', [PlatformOrganizationController::class, 'show'])
-            ->whereNumber('organization')
-            ->name('organizations.show');
-        Route::get('/system', [PlatformSystemStatusController::class, 'index'])->name('system.index');
-    });
-});
-Route::redirect('/platform', '/admin');
+    if (PlatformConsole::domain() === null) {
+        Route::redirect('/platform', '/'.PlatformConsole::PATH_PREFIX);
+    }
+}
 
 Route::middleware(['auth', EnsureCustomerAccount::class])->group(function (): void {
     Route::get('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'showJoinInvitation'])

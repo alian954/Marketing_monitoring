@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\IsolatePlatformConsole;
+use App\Services\PlatformConsole;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,8 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $isConsoleRequest = static fn (Request $request): bool => $request->is('admin', 'admin/*');
+        $isConsoleRequest = static fn (Request $request): bool => PlatformConsole::isConsoleRequest($request);
 
+        $middleware->web(prepend: [IsolatePlatformConsole::class]);
         $middleware->redirectGuestsTo(
             static fn (Request $request): string => $isConsoleRequest($request) ? route('platform.login') : route('login'),
         );

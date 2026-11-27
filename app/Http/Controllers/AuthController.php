@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\PlatformConsole;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -175,7 +176,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $intendedUrl = $request->session()->pull('url.intended');
 
-        return redirect()->to(is_string($intendedUrl) && ! PlatformAuthController::isConsoleUrl($intendedUrl)
+        return redirect()->to(is_string($intendedUrl) && ! PlatformConsole::isConsoleUrl($intendedUrl)
             ? $intendedUrl
             : route('dashboard'));
     }

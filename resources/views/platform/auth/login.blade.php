@@ -22,7 +22,7 @@
             <section class="login-card" aria-labelledby="login-heading">
                 <p class="eyebrow">Platform administration</p>
                 <h1 id="login-heading" class="login-heading">管理後台登入</h1>
-                <p class="login-description">管理組織、方案訂閱、試用申請與稽核紀錄。客戶帳號請改由<a class="strong-link" href="{{ route('login') }}">客戶平台</a>登入。</p>
+                <p class="login-description">管理組織、方案訂閱、試用申請與稽核紀錄。客戶帳號請改由<a class="strong-link" href="{{ rtrim((string) config('app.url'), '/') }}/login">客戶平台</a>登入。</p>
 
                 @if (session('status'))
                     <div class="alert alert-warning" role="status">{{ session('status') }}</div>
