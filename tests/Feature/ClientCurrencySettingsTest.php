@@ -110,6 +110,30 @@ class ClientCurrencySettingsTest extends TestCase
         $this->assertDatabaseCount('client_exchange_rates', 1);
     }
 
+    public function test_a_rejected_new_rate_does_not_prefill_existing_rate_rows(): void
+    {
+        $user = User::factory()->create();
+        $client = $user->clients()->create(['name' => 'Northwind', 'reporting_currency_code' => 'TWD']);
+        $exchangeRate = ClientExchangeRate::factory()->for($client)->create([
+            'effective_on' => '2026-11-01',
+            'rate_to_reporting_currency' => '30.00000000',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->from(route('clients.currencies.index', $client))
+            ->followingRedirects()
+            ->post(route('clients.exchange-rates.store', $client), [
+                'reporting_currency_code' => 'TWD',
+                'source_currency_code' => 'USD',
+                'effective_on' => '2026-11-01',
+                'rate_to_reporting_currency' => '999',
+            ])
+            ->assertOk();
+
+        $this->assertMatchesRegularExpression('/id="new-exchange-rate"[^>]*value="999"/', $response->getContent());
+        $this->assertMatchesRegularExpression('/id="exchange-rate-value-'.$exchangeRate->id.'"[^>]*value="30.00000000"/', $response->getContent());
+    }
+
     public function test_an_account_cannot_view_or_change_another_accounts_currency_settings(): void
     {
         $owner = User::factory()->create();

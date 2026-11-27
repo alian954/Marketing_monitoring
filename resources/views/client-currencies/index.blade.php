@@ -73,19 +73,19 @@
                     <input type="hidden" name="reporting_currency_code" value="{{ $client->reporting_currency_code }}">
                     <div class="field-group">
                         <label class="field-label" for="new-source-currency-code">來源幣別</label>
-                        <input class="field-input{{ $createExchangeRateErrors->has('source_currency_code') ? ' is-invalid' : '' }}" id="new-source-currency-code" name="source_currency_code" type="text" value="{{ old('source_currency_code', '', 'createExchangeRate') }}" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocorrect="off" spellcheck="false" required aria-describedby="new-source-currency-help{{ $createExchangeRateErrors->has('source_currency_code') ? ' new-source-currency-error' : '' }}">
+                        <input class="field-input{{ $createExchangeRateErrors->has('source_currency_code') ? ' is-invalid' : '' }}" id="new-source-currency-code" name="source_currency_code" type="text" value="{{ $createExchangeRateErrors->any() ? old('source_currency_code') : '' }}" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocorrect="off" spellcheck="false" required aria-describedby="new-source-currency-help{{ $createExchangeRateErrors->has('source_currency_code') ? ' new-source-currency-error' : '' }}">
                         <p id="new-source-currency-help" class="field-help">例如 USD</p>
                         @error('source_currency_code', 'createExchangeRate')<p id="new-source-currency-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="field-group">
                         <label class="field-label" for="new-exchange-effective-on">生效日</label>
-                        <input class="field-input{{ $createExchangeRateErrors->has('effective_on') ? ' is-invalid' : '' }}" id="new-exchange-effective-on" name="effective_on" type="date" value="{{ old('effective_on', now()->toDateString(), 'createExchangeRate') }}" required aria-describedby="new-exchange-effective-on-help{{ $createExchangeRateErrors->has('effective_on') ? ' new-exchange-effective-on-error' : '' }}">
+                        <input class="field-input{{ $createExchangeRateErrors->has('effective_on') ? ' is-invalid' : '' }}" id="new-exchange-effective-on" name="effective_on" type="date" value="{{ $createExchangeRateErrors->any() ? old('effective_on') : now()->toDateString() }}" required aria-describedby="new-exchange-effective-on-help{{ $createExchangeRateErrors->has('effective_on') ? ' new-exchange-effective-on-error' : '' }}">
                         <p id="new-exchange-effective-on-help" class="field-help">按監測平台日期</p>
                         @error('effective_on', 'createExchangeRate')<p id="new-exchange-effective-on-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="field-group">
                         <label class="field-label" for="new-exchange-rate">1 來源幣別兌 {{ $client->reporting_currency_code }}</label>
-                        <input class="field-input{{ $createExchangeRateErrors->has('rate_to_reporting_currency') ? ' is-invalid' : '' }}" id="new-exchange-rate" name="rate_to_reporting_currency" type="number" inputmode="decimal" min="0.00000001" step="0.00000001" value="{{ old('rate_to_reporting_currency', '', 'createExchangeRate') }}" required aria-describedby="new-exchange-rate-help{{ $createExchangeRateErrors->has('rate_to_reporting_currency') ? ' new-exchange-rate-error' : '' }}">
+                        <input class="field-input{{ $createExchangeRateErrors->has('rate_to_reporting_currency') ? ' is-invalid' : '' }}" id="new-exchange-rate" name="rate_to_reporting_currency" type="number" inputmode="decimal" min="0.00000001" step="0.00000001" value="{{ $createExchangeRateErrors->any() ? old('rate_to_reporting_currency') : '' }}" required aria-describedby="new-exchange-rate-help{{ $createExchangeRateErrors->has('rate_to_reporting_currency') ? ' new-exchange-rate-error' : '' }}">
                         <p id="new-exchange-rate-help" class="field-help">最多 8 位小數</p>
                         @error('rate_to_reporting_currency', 'createExchangeRate')<p id="new-exchange-rate-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
@@ -117,18 +117,18 @@
                         <tr>
                             <td>
                                 <label class="sr-only" for="exchange-rate-source-{{ $exchangeRate->id }}">來源幣別</label>
-                                <input class="field-input{{ $exchangeRateErrors->has('source_currency_code') ? ' is-invalid' : '' }}" id="exchange-rate-source-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="source_currency_code" type="text" value="{{ old('source_currency_code', $exchangeRate->source_currency_code, 'exchangeRate'.$exchangeRate->id) }}" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
+                                <input class="field-input{{ $exchangeRateErrors->has('source_currency_code') ? ' is-invalid' : '' }}" id="exchange-rate-source-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="source_currency_code" type="text" value="{{ $exchangeRateErrors->any() ? old('source_currency_code', $exchangeRate->source_currency_code) : $exchangeRate->source_currency_code }}" maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
                                 @error('source_currency_code', 'exchangeRate'.$exchangeRate->id)<p class="field-error" role="alert">{{ $message }}</p>@enderror
                             </td>
                             <td>{{ $exchangeRate->reporting_currency_code }}</td>
                             <td>
                                 <label class="sr-only" for="exchange-rate-date-{{ $exchangeRate->id }}">生效日</label>
-                                <input class="field-input{{ $exchangeRateErrors->has('effective_on') ? ' is-invalid' : '' }}" id="exchange-rate-date-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="effective_on" type="date" value="{{ old('effective_on', $exchangeRate->effective_on->toDateString(), 'exchangeRate'.$exchangeRate->id) }}" required>
+                                <input class="field-input{{ $exchangeRateErrors->has('effective_on') ? ' is-invalid' : '' }}" id="exchange-rate-date-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="effective_on" type="date" value="{{ $exchangeRateErrors->any() ? old('effective_on', $exchangeRate->effective_on->toDateString()) : $exchangeRate->effective_on->toDateString() }}" required>
                                 @error('effective_on', 'exchangeRate'.$exchangeRate->id)<p class="field-error" role="alert">{{ $message }}</p>@enderror
                             </td>
                             <td class="numeric">
                                 <label class="sr-only" for="exchange-rate-value-{{ $exchangeRate->id }}">每單位兌換匯率</label>
-                                <input class="field-input{{ $exchangeRateErrors->has('rate_to_reporting_currency') ? ' is-invalid' : '' }}" id="exchange-rate-value-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="rate_to_reporting_currency" type="number" inputmode="decimal" min="0.00000001" step="0.00000001" value="{{ old('rate_to_reporting_currency', $exchangeRate->rate_to_reporting_currency, 'exchangeRate'.$exchangeRate->id) }}" required>
+                                <input class="field-input{{ $exchangeRateErrors->has('rate_to_reporting_currency') ? ' is-invalid' : '' }}" id="exchange-rate-value-{{ $exchangeRate->id }}" form="{{ $exchangeRateFormId }}" name="rate_to_reporting_currency" type="number" inputmode="decimal" min="0.00000001" step="0.00000001" value="{{ $exchangeRateErrors->any() ? old('rate_to_reporting_currency', $exchangeRate->rate_to_reporting_currency) : $exchangeRate->rate_to_reporting_currency }}" required>
                                 @error('rate_to_reporting_currency', 'exchangeRate'.$exchangeRate->id)<p class="field-error" role="alert">{{ $message }}</p>@enderror
                             </td>
                             <td>

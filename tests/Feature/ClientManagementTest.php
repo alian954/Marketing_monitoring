@@ -101,6 +101,41 @@ class ClientManagementTest extends TestCase
         $this->assertDatabaseCount('clients', 2);
     }
 
+    public function test_a_rejected_new_client_name_does_not_prefill_the_rename_fields(): void
+    {
+        $user = User::factory()->create();
+        Client::ensureDefaultFor($user);
+        $client = $user->clients()->create(['name' => 'Studio']);
+        $user->clients()->create(['name' => 'Agency']);
+
+        $response = $this->actingAs($user)
+            ->from(route('clients.index'))
+            ->followingRedirects()
+            ->post(route('clients.store'), ['name' => 'Agency'])
+            ->assertOk();
+
+        $this->assertMatchesRegularExpression('/id="new-client-name"[^>]*value="Agency"/', $response->getContent());
+        $this->assertMatchesRegularExpression('/id="client-name-'.$client->id.'"[^>]*value="Studio"/', $response->getContent());
+    }
+
+    public function test_a_rejected_rename_keeps_the_input_only_on_its_own_row(): void
+    {
+        $user = User::factory()->create();
+        Client::ensureDefaultFor($user);
+        $client = $user->clients()->create(['name' => 'Studio']);
+        $otherClient = $user->clients()->create(['name' => 'Agency']);
+
+        $response = $this->actingAs($user)
+            ->from(route('clients.index'))
+            ->followingRedirects()
+            ->put(route('clients.update', $client), ['name' => Client::DEFAULT_NAME])
+            ->assertOk();
+
+        $this->assertMatchesRegularExpression('/id="client-name-'.$client->id.'"[^>]*value="'.Client::DEFAULT_NAME.'"/', $response->getContent());
+        $this->assertMatchesRegularExpression('/id="client-name-'.$otherClient->id.'"[^>]*value="Agency"/', $response->getContent());
+        $this->assertMatchesRegularExpression('/id="new-client-name"[^>]*value=""/', $response->getContent());
+    }
+
     public function test_default_client_cannot_be_renamed_or_deleted(): void
     {
         $user = User::factory()->create();

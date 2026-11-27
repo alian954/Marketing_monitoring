@@ -38,7 +38,7 @@
                 @csrf
                 <div class="field-group">
                     <label class="field-label" for="new-client-name">客戶名稱</label>
-                    <input class="field-input{{ $errors->getBag('createClient')->has('name') ? ' is-invalid' : '' }}" id="new-client-name" name="name" type="text" maxlength="120" value="{{ old('name', '', 'createClient') }}" autocomplete="organization" required aria-describedby="new-client-name-help{{ $errors->getBag('createClient')->has('name') ? ' new-client-name-error' : '' }}" @if ($errors->getBag('createClient')->has('name')) aria-invalid="true" @endif>
+                    <input class="field-input{{ $errors->getBag('createClient')->has('name') ? ' is-invalid' : '' }}" id="new-client-name" name="name" type="text" maxlength="120" value="{{ $errors->getBag('createClient')->any() ? old('name') : '' }}" autocomplete="organization" required aria-describedby="new-client-name-help{{ $errors->getBag('createClient')->has('name') ? ' new-client-name-error' : '' }}" @if ($errors->getBag('createClient')->has('name')) aria-invalid="true" @endif>
                     <p id="new-client-name-help" class="field-help">名稱需在此帳戶內唯一。</p>
                     @error('name', 'createClient')<p id="new-client-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                 </div>
@@ -109,7 +109,7 @@
                                         @csrf
                                         @method('PUT')
                                         <label class="sr-only" for="client-name-{{ $client->id }}">更新{{ $client->name }}名稱</label>
-                                        <input class="field-input{{ $clientUpdateErrors->has('name') ? ' is-invalid' : '' }}" id="client-name-{{ $client->id }}" name="name" type="text" maxlength="120" value="{{ old('name', $client->name, 'updateClient'.$client->id) }}" required aria-describedby="client-name-help-{{ $client->id }}{{ $clientUpdateErrors->has('name') ? ' client-name-error-'.$client->id : '' }}" @if ($clientUpdateErrors->has('name')) aria-invalid="true" @endif>
+                                        <input class="field-input{{ $clientUpdateErrors->has('name') ? ' is-invalid' : '' }}" id="client-name-{{ $client->id }}" name="name" type="text" maxlength="120" value="{{ $clientUpdateErrors->any() ? old('name', $client->name) : $client->name }}" required aria-describedby="client-name-help-{{ $client->id }}{{ $clientUpdateErrors->has('name') ? ' client-name-error-'.$client->id : '' }}" @if ($clientUpdateErrors->has('name')) aria-invalid="true" @endif>
                                         <button class="button button-secondary button-small" type="submit">儲存</button>
                                         <span id="client-name-help-{{ $client->id }}" class="sr-only">名稱需在此帳戶內唯一。</span>
                                         @if ($clientUpdateErrors->has('name'))
