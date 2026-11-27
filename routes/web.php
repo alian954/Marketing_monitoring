@@ -7,6 +7,7 @@ use App\Http\Controllers\ClientBudgetController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
+use App\Http\Controllers\ClientLeadController;
 use App\Http\Controllers\ClientMarketingAnnotationController;
 use App\Http\Controllers\ClientMarketingInsightController;
 use App\Http\Controllers\ClientPortfolioController;
@@ -340,6 +341,19 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::delete('/clients/{client}/ad-imports', [ClientAdPlatformImportController::class, 'destroy'])
         ->whereNumber('client')
         ->name('clients.ad-imports.destroy');
+    Route::get('/clients/{client}/leads', [ClientLeadController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.leads.index');
+    Route::post('/clients/{client}/leads', [ClientLeadController::class, 'store'])
+        ->whereNumber('client')
+        ->middleware('throttle:20,1')
+        ->name('clients.leads.store');
+    Route::get('/clients/{client}/leads/offline-conversions.csv', [ClientLeadController::class, 'exportOfflineConversions'])
+        ->whereNumber('client')
+        ->name('clients.leads.offline-conversions');
+    Route::delete('/clients/{client}/leads', [ClientLeadController::class, 'destroy'])
+        ->whereNumber('client')
+        ->name('clients.leads.destroy');
     Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.budgets.index');

@@ -48,6 +48,7 @@ class ClientCrossPlatformOverviewController extends Controller
                 'campaignCount' => $report['campaign_count'],
                 'budgetPacing' => $report['budget_pacing'],
                 'storeRevenue' => $report['store_revenue'],
+                'leadFunnel' => $report['lead_funnel'],
                 'insight' => $client->marketingInsights()
                     ->whereDate('from_on', $period['from'])
                     ->whereDate('to_on', $period['to'])

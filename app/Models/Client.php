@@ -98,6 +98,11 @@ class Client extends Model
         return $this->hasMany(ClientAdPlatformDailyMetric::class);
     }
 
+    public function leads(): HasMany
+    {
+        return $this->hasMany(ClientLead::class);
+    }
+
     public function storeOrders(): HasMany
     {
         return $this->hasMany(ClientStoreOrder::class);

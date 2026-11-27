@@ -22,6 +22,7 @@ class ClientCrossPlatformReport
         private readonly ClientBudgetPacing $budgetPacing,
         private readonly ClientStoreRevenueSummary $storeRevenueSummary,
         private readonly ClientAdPlatformMetricImporter $adPlatformMetrics,
+        private readonly ClientLeadFunnelReport $leadFunnelReport,
     ) {}
 
     /**
@@ -36,7 +37,8 @@ class ClientCrossPlatformReport
      *     chart_markers: list<array{date: string, x: float, sources: list<string>, label: string}>,
      *     campaign_count: int,
      *     budget_pacing: array<string, mixed>|null,
-     *     store_revenue: array<string, mixed>
+     *     store_revenue: array<string, mixed>,
+     *     lead_funnel: array<string, mixed>
      * }
      */
     public function build(Client $client, User $user, array $period): array
@@ -68,6 +70,7 @@ class ClientCrossPlatformReport
             )->count(),
             'budget_pacing' => $budget === null ? null : $this->budgetPacing($budget, $client, $user, $now),
             'store_revenue' => $this->storeRevenueSummary->build($client, $period['from'], $period['to'], $overview),
+            'lead_funnel' => $this->leadFunnelReport->build($client, $period['from'], $period['to'], $overview),
         ];
     }
 

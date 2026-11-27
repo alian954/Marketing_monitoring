@@ -462,6 +462,19 @@
         </div>
     </section>
 
+    @if ($leadFunnel['has_data'])
+        <section class="panel spaced-top" aria-labelledby="cross-platform-leads-title">
+            <div class="panel-header">
+                <div>
+                    <h2 id="cross-platform-leads-title" class="panel-title">名單品質（{{ $leadFunnel['currency_code'] ?? '—' }}）</h2>
+                    <p class="panel-description">依 CRM 匯入的名單狀態，比較各平台每筆有效名單與成交的成本。</p>
+                </div>
+                <a class="button button-secondary button-small" href="{{ route('clients.leads.index', ['client' => $client, 'from' => $period['from'], 'to' => $period['to']]) }}">名單成效</a>
+            </div>
+            @include('clients.partials.lead-funnel-table', ['funnel' => $leadFunnel])
+        </section>
+    @endif
+
     <section class="panel spaced-top" aria-labelledby="cross-platform-coverage-title">
         <div class="panel-header">
             <div>
