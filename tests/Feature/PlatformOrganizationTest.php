@@ -4,10 +4,6 @@ namespace Tests\Feature;
 
 use App\Jobs\RunMonitorCheck;
 use App\Models\Client;
-use App\Models\GoogleAdsConnection;
-use App\Models\GoogleAnalyticsConnection;
-use App\Models\GoogleSearchConsoleConnection;
-use App\Models\MetaMarketingConnection;
 use App\Models\Monitor;
 use App\Models\Organization;
 use App\Models\User;
@@ -19,7 +15,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Queue;
@@ -39,12 +34,12 @@ class PlatformOrganizationTest extends TestCase
 
         $this->actingAs($customerOwner)
             ->get(route('platform.index'))
-            ->assertForbidden();
-        $this->post(route('platform.organizations.store'), [])->assertForbidden();
+            ->assertRedirect(route('platform.login'));
+        $this->post(route('platform.organizations.store'), [])->assertRedirect(route('platform.login'));
 
         $platformAdmin = $this->createPlatformAdmin();
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->post(route('platform.organizations.store'), [
                 'name' => '北區行銷代理商',
                 'owner_name' => '客戶負責人',
@@ -79,7 +74,7 @@ class PlatformOrganizationTest extends TestCase
         $this->assertSame(10, $organization->campaign_limit);
         $this->assertTrue($organization->is_enabled);
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->patch(route('platform.organizations.update', $organization), [
                 'name' => '北區行銷代理商',
                 'subscription_ends_on' => '2000-01-01',
@@ -100,7 +95,7 @@ class PlatformOrganizationTest extends TestCase
         $this->assertSame(100, $organization->fresh()->monitor_limit);
         $this->assertSame(50, $organization->fresh()->campaign_limit);
 
-        $this->actingAs($platformAdmin->fresh())
+        $this->actingAs($platformAdmin->fresh(), 'platform')
             ->get(route('platform.index'))
             ->assertOk()
             ->assertSee('方案與用量上限')
@@ -110,7 +105,7 @@ class PlatformOrganizationTest extends TestCase
             ->assertSee('0 / 50');
         $this->assertSame('訂閱已到期', $organization->statusLabel());
 
-        $this->actingAs($platformAdmin->fresh())
+        $this->actingAs($platformAdmin->fresh(), 'platform')
             ->patch(route('platform.organizations.update', $organization), [
                 'name' => '北區行銷代理商',
                 'subscription_ends_on' => '2027-12-31',
@@ -130,7 +125,7 @@ class PlatformOrganizationTest extends TestCase
     {
         $platformAdmin = $this->createPlatformAdmin();
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->from(route('platform.index'))
             ->post(route('platform.organizations.store'), [
                 'name' => '待設定方案的組織',
@@ -155,7 +150,7 @@ class PlatformOrganizationTest extends TestCase
         ]);
         $platformAdmin = $this->createPlatformAdmin();
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->from(route('platform.index'))
             ->followingRedirects()
             ->patch(route('platform.organizations.update', $organization), [
@@ -195,7 +190,7 @@ class PlatformOrganizationTest extends TestCase
         ]);
         $platformAdmin = $this->createPlatformAdmin();
 
-        $response = $this->actingAs($platformAdmin)
+        $response = $this->actingAs($platformAdmin, 'platform')
             ->get(route('platform.index'))
             ->assertOk()
             ->assertSee('3 / 3')
@@ -243,7 +238,7 @@ class PlatformOrganizationTest extends TestCase
             $field => 0,
         ];
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->patch(route('platform.organizations.update', $organization), $payload)
             ->assertSessionHasErrors([$field => $message]);
 
@@ -336,7 +331,7 @@ class PlatformOrganizationTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $workspaceMember->id, 'is_platform_admin' => false]);
     }
 
-    public function test_platform_admin_context_is_tenant_scoped_and_cannot_be_forged_by_a_customer(): void
+    public function test_organization_detail_is_tenant_scoped_and_cannot_be_forged_by_a_customer(): void
     {
         $firstOwner = User::factory()->create();
         $firstOrganization = Organization::factory()->create([
@@ -359,26 +354,14 @@ class PlatformOrganizationTest extends TestCase
             ->assertSee($firstClient->name)
             ->assertDontSee($secondClient->name);
 
-        $this->get(route('platform.index'))->assertForbidden();
+        $this->get(route('platform.index'))->assertRedirect(route('platform.login'));
 
         $platformAdmin = $this->createPlatformAdmin();
-        $this->actingAs($platformAdmin)
-            ->post(route('platform.organizations.open', $firstOrganization))
-            ->assertRedirect(route('dashboard'));
-
-        $this->get(route('clients.index'))
+        $this->actingAs($platformAdmin, 'platform')
+            ->get(route('platform.organizations.show', $firstOrganization))
             ->assertOk()
+            ->assertSee('第一家代理商')
             ->assertSee($firstClient->name)
-            ->assertDontSee($secondClient->name);
-
-        $this->post(route('platform.organizations.leave'))
-            ->assertRedirect(route('platform.index'))
-            ->assertSessionMissing('platform_organization_id');
-
-        $this->actingAs($platformAdmin->fresh())
-            ->get(route('clients.index'))
-            ->assertOk()
-            ->assertDontSee($firstClient->name)
             ->assertDontSee($secondClient->name);
     }
 
@@ -418,7 +401,7 @@ class PlatformOrganizationTest extends TestCase
         $this->assertSame(WorkspaceMembership::ROLE_EDITOR, $member->workspaceMembership?->role);
     }
 
-    public function test_platform_admin_can_open_and_reactivate_an_expired_organization(): void
+    public function test_platform_admin_can_review_and_reactivate_an_expired_organization(): void
     {
         $owner = User::factory()->create(['password' => Hash::make('customer-password-123')]);
         $organization = Organization::factory()->create([
@@ -428,15 +411,12 @@ class PlatformOrganizationTest extends TestCase
         ]);
         $platformAdmin = $this->createPlatformAdmin();
 
-        $this->actingAs($platformAdmin)
-            ->post(route('platform.organizations.open', $organization))
-            ->assertRedirect(route('dashboard'));
+        $this->actingAs($platformAdmin, 'platform')
+            ->get(route('platform.organizations.show', $organization))
+            ->assertOk()
+            ->assertSee('訂閱已到期');
 
-        $this->actingAs($platformAdmin->fresh())
-            ->get(route('dashboard'))
-            ->assertOk();
-
-        $this->actingAs($platformAdmin->fresh())
+        $this->actingAs($platformAdmin->fresh(), 'platform')
             ->patch(route('platform.organizations.update', $organization), [
                 'name' => '已恢復服務的組織',
                 'subscription_ends_on' => now('Asia/Taipei')->addDay()->toDateString(),
@@ -572,128 +552,18 @@ class PlatformOrganizationTest extends TestCase
         $this->assertSame($originalPassword, $owner->fresh()->password);
     }
 
-    public function test_platform_admin_reads_external_connections_from_the_selected_organization_owner(): void
+    public function test_platform_admin_cannot_work_inside_a_customer_workspace(): void
     {
         $organizationOwner = User::factory()->create();
-        $organization = Organization::factory()->create(['owner_user_id' => $organizationOwner->id]);
-        $otherOwner = User::factory()->create();
-        Organization::factory()->create(['owner_user_id' => $otherOwner->id]);
+        Organization::factory()->create(['owner_user_id' => $organizationOwner->id]);
         $platformAdmin = $this->createPlatformAdmin();
 
-        GoogleAnalyticsConnection::query()->create([
-            'user_id' => $organizationOwner->id,
-            'property_id' => '1010101',
-            'refresh_token' => 'organization-refresh-token',
-        ]);
-        GoogleAnalyticsConnection::query()->create([
-            'user_id' => $otherOwner->id,
-            'property_id' => '2020202',
-            'refresh_token' => 'other-refresh-token',
-        ]);
-        GoogleAdsConnection::factory()->create([
-            'user_id' => $organizationOwner->id,
-            'customer_id' => '1112223333',
-        ]);
-        GoogleAdsConnection::factory()->create([
-            'user_id' => $otherOwner->id,
-            'customer_id' => '9998887777',
-        ]);
-        MetaMarketingConnection::factory()->create([
-            'user_id' => $organizationOwner->id,
-            'ad_account_id' => 'act_11111111',
-        ]);
-        MetaMarketingConnection::factory()->create([
-            'user_id' => $otherOwner->id,
-            'ad_account_id' => 'act_99999999',
-        ]);
-        GoogleSearchConsoleConnection::factory()->create([
-            'user_id' => $organizationOwner->id,
-            'site_url' => 'https://agency-client.example.test/',
-        ]);
-        GoogleSearchConsoleConnection::factory()->create([
-            'user_id' => $otherOwner->id,
-            'site_url' => 'https://other-client.example.test/',
-        ]);
-
-        $this->fakeConnectedSiteList();
-        $this->actingAs($platformAdmin)->withSession(['platform_organization_id' => $organization->id]);
-
-        $analyticsResponse = $this->get(route('integrations.google-analytics.edit'))->assertOk();
-        $this->assertSame($organizationOwner->id, $analyticsResponse->viewData('connection')->user_id);
-        $this->assertSame('1010101', $analyticsResponse->viewData('connection')->property_id);
-
-        $googleAdsResponse = $this->get(route('integrations.google-ads.edit'))->assertOk();
-        $this->assertSame($organizationOwner->id, $googleAdsResponse->viewData('connection')->user_id);
-        $this->assertSame('1112223333', $googleAdsResponse->viewData('connection')->customer_id);
-
-        $metaResponse = $this->get(route('integrations.meta-marketing.edit'))->assertOk();
-        $this->assertSame($organizationOwner->id, $metaResponse->viewData('connection')->user_id);
-        $this->assertSame('act_11111111', $metaResponse->viewData('connection')->ad_account_id);
-
-        $searchConsoleResponse = $this->get(route('integrations.google-search-console.edit'))->assertOk();
-        $this->assertSame($organizationOwner->id, $searchConsoleResponse->viewData('connection')->user_id);
-        $this->assertSame('https://agency-client.example.test/', $searchConsoleResponse->viewData('connection')->site_url);
-    }
-
-    public function test_oauth_callbacks_store_external_connections_under_the_selected_organization_owner(): void
-    {
-        config([
-            'services.google_analytics.client_id' => 'ga-client-id',
-            'services.google_analytics.client_secret' => 'ga-client-secret',
-            'services.google_ads.client_id' => 'ads-client-id',
-            'services.google_ads.client_secret' => 'ads-client-secret',
-            'services.google_search_console.client_id' => 'search-console-client-id',
-            'services.google_search_console.client_secret' => 'search-console-client-secret',
-            'services.meta_marketing.client_id' => 'meta-client-id',
-            'services.meta_marketing.client_secret' => 'meta-client-secret',
-        ]);
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::sequence()
-                ->push(['access_token' => 'ga-access-token', 'refresh_token' => 'ga-refresh-token'])
-                ->push(['access_token' => 'ads-access-token', 'refresh_token' => 'ads-refresh-token'])
-                ->push(['access_token' => 'search-console-access-token', 'refresh_token' => 'search-console-refresh-token']),
-            'https://graph.facebook.com/v27.0/oauth/access_token*' => Http::sequence()
-                ->push(['access_token' => 'meta-short-token', 'expires_in' => 3600])
-                ->push(['access_token' => 'meta-access-token', 'expires_in' => 3600]),
-        ]);
-
-        $organizationOwner = User::factory()->create();
-        $organization = Organization::factory()->create(['owner_user_id' => $organizationOwner->id]);
-        $platformAdmin = $this->createPlatformAdmin();
-
-        $this->actingAs($platformAdmin)->withSession([
-            'platform_organization_id' => $organization->id,
-            'google_analytics.oauth_state' => 'ga-state',
-            'google_ads.oauth_state' => 'ads-state',
-            'google_search_console.oauth_state' => 'search-console-state',
-            'meta_marketing.oauth_state' => 'meta-state',
-        ]);
-
-        $this->get(route('integrations.google-analytics.callback', ['state' => 'ga-state', 'code' => 'ga-code']))
-            ->assertRedirect(route('integrations.google-analytics.edit'));
-        $this->get(route('integrations.google-ads.callback', ['state' => 'ads-state', 'code' => 'ads-code']))
-            ->assertRedirect(route('integrations.google-ads.edit'));
-        $this->get(route('integrations.meta-marketing.callback', ['state' => 'meta-state', 'code' => 'meta-code']))
-            ->assertRedirect(route('integrations.meta-marketing.edit'));
-        $this->get(route('integrations.google-search-console.callback', [
-            'state' => 'search-console-state',
-            'code' => 'search-console-code',
-        ]))->assertRedirect(route('integrations.google-search-console.edit'));
-
-        $this->assertSame($organizationOwner->id, GoogleAnalyticsConnection::query()->sole()->user_id);
-        $this->assertSame('ga-refresh-token', GoogleAnalyticsConnection::query()->sole()->refresh_token);
-        $this->assertSame($organizationOwner->id, GoogleAdsConnection::query()->sole()->user_id);
-        $this->assertSame('ads-refresh-token', GoogleAdsConnection::query()->sole()->refresh_token);
-        $this->assertSame($organizationOwner->id, MetaMarketingConnection::query()->sole()->user_id);
-        $this->assertSame('meta-access-token', MetaMarketingConnection::query()->sole()->access_token);
-        $this->assertSame($organizationOwner->id, GoogleSearchConsoleConnection::query()->sole()->user_id);
-        $this->assertSame('search-console-refresh-token', GoogleSearchConsoleConnection::query()->sole()->refresh_token);
+        $this->actingAs($platformAdmin, 'web')
+            ->get(route('integrations.google-analytics.edit'))
+            ->assertRedirect(route('platform.login'));
+        $this->assertGuest('web');
 
         $this->assertDatabaseMissing('google_analytics_connections', ['user_id' => $platformAdmin->id]);
-        $this->assertDatabaseMissing('google_ads_connections', ['user_id' => $platformAdmin->id]);
-        $this->assertDatabaseMissing('meta_marketing_connections', ['user_id' => $platformAdmin->id]);
-        $this->assertDatabaseMissing('google_search_console_connections', ['user_id' => $platformAdmin->id]);
     }
 
     public static function inactiveOrganizationSettings(): array
@@ -740,21 +610,5 @@ class PlatformOrganizationTest extends TestCase
         $addSeatLimitMigration->up();
         $addUsageLimitsMigration = require base_path('database/migrations/2026_11_24_172649_add_usage_limits_to_organizations_table.php');
         $addUsageLimitsMigration->up();
-    }
-
-    private function fakeConnectedSiteList(): void
-    {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'organization-access-token',
-            ]),
-            'https://www.googleapis.com/webmasters/v3/sites' => Http::response([
-                'siteEntry' => [
-                    ['siteUrl' => 'https://agency-client.example.test/', 'permissionLevel' => 'siteOwner'],
-                    ['siteUrl' => 'https://other-client.example.test/', 'permissionLevel' => 'siteOwner'],
-                ],
-            ]),
-        ]);
     }
 }

@@ -23,10 +23,6 @@ class User extends Authenticatable
 
     private bool $workspaceClientIdsResolved = false;
 
-    private ?Organization $selectedPlatformOrganizationCache = null;
-
-    private bool $selectedPlatformOrganizationResolved = false;
-
     private ?Workspace $currentWorkspaceCache = null;
 
     private bool $currentWorkspaceResolved = false;
@@ -234,23 +230,11 @@ class User extends Authenticatable
 
     public function workspaceOwner(): self
     {
-        $selectedOrganization = $this->selectedPlatformOrganization();
-
-        if ($selectedOrganization !== null) {
-            return User::query()->find($selectedOrganization->owner_user_id) ?? $this;
-        }
-
         return $this->workspaceMembership?->owner ?? $this;
     }
 
     public function workspaceOwnerId(): int
     {
-        $selectedOrganization = $this->selectedPlatformOrganization();
-
-        if ($selectedOrganization !== null) {
-            return (int) $selectedOrganization->owner_user_id;
-        }
-
         return (int) ($this->workspaceMembership?->owner_user_id ?? $this->getKey());
     }
 
@@ -259,33 +243,8 @@ class User extends Authenticatable
         return (bool) $this->is_platform_admin;
     }
 
-    public function selectedPlatformOrganization(): ?Organization
-    {
-        if (! $this->isPlatformAdmin() || ! request()->hasSession()) {
-            return null;
-        }
-
-        if ($this->selectedPlatformOrganizationResolved) {
-            return $this->selectedPlatformOrganizationCache;
-        }
-
-        $organizationId = request()->session()->get('platform_organization_id');
-        $this->selectedPlatformOrganizationCache = is_numeric($organizationId) && (int) $organizationId > 0
-            ? Organization::query()->find((int) $organizationId)
-            : null;
-        $this->selectedPlatformOrganizationResolved = true;
-
-        return $this->selectedPlatformOrganizationCache;
-    }
-
     public function workspaceOrganization(): ?Organization
     {
-        if ($this->isPlatformAdmin()) {
-            // Until another organization is opened, an admin who owns an organization works in it.
-            return $this->selectedPlatformOrganization()
-                ?? Organization::query()->where('owner_user_id', $this->getKey())->first();
-        }
-
         return Organization::query()->where('owner_user_id', $this->workspaceOwnerId())->first();
     }
 
@@ -312,10 +271,6 @@ class User extends Authenticatable
 
     public function isWorkspaceOwner(): bool
     {
-        if ($this->isPlatformAdmin()) {
-            return $this->workspaceOrganization() !== null;
-        }
-
         return $this->workspaceMembership === null;
     }
 

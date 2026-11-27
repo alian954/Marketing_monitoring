@@ -68,8 +68,8 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_succeeded_at' => now(),
         ]);
 
-        $freshResponse = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $freshResponse = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('Queue worker')
             ->assertSee('目前佇列工作總數：0 筆')
@@ -92,7 +92,7 @@ class QueueWorkerHeartbeatTest extends TestCase
 
         $workerHeartbeat->update(['last_succeeded_at' => now()->subMinutes(3)]);
 
-        $staleResponse = $this->get(route('dashboard'))
+        $staleResponse = $this->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('queue worker 是否停止或佇列是否塞住');
 
@@ -100,7 +100,7 @@ class QueueWorkerHeartbeatTest extends TestCase
         $this->assertSame('healthy', $staleResponse->viewData('heartbeatStatus'));
     }
 
-    public function test_dashboard_prioritizes_stalled_monitoring_services_over_an_individual_monitor_alert(): void
+    public function test_system_status_reports_stalled_services_that_customers_never_see(): void
     {
         $this->travelTo(now()->startOfMinute());
         Config::set('queue.default', 'database');
@@ -129,24 +129,21 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_succeeded_at' => now()->subMinutes(5),
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('排程器未正常回報')
-            ->assertSee('監測資料更新可能延遲')
-            ->assertSee('#dashboard-runtime-details');
+            ->assertSee('Queue worker');
 
-        $responseContent = $response->getContent();
-        $overviewStart = strpos($responseContent, 'id="dashboard-overview"');
-        $detailsStart = strpos($responseContent, 'id="dashboard-monitor-summary"');
-        $overviewMarkup = substr($responseContent, $overviewStart, $detailsStart - $overviewStart);
+        $this->assertSame('排程器未正常回報', $response->viewData('attention')['title']);
+        $this->assertTrue($response->viewData('checkRunQueueHealth')['queued_warning']);
 
-        $this->assertSame('排程器未正常回報', $response->viewData('dashboardSystemAttention')['title']);
-        $this->assertSame(1, $response->viewData('counts')['issue']);
-        $this->assertStringContainsString('個別網站異常', $overviewMarkup);
-        $this->assertStringContainsString('監測資料更新可能延遲', $overviewMarkup);
-        $this->assertStringNotContainsString('排程器未正常回報', $overviewMarkup);
-        $this->assertStringContainsString('Queue worker', $response->getContent());
+        $this->actingAs(User::factory()->create(), 'web')
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('個別網站異常')
+            ->assertDontSee('排程器未正常回報')
+            ->assertDontSee('系統檢查資訊');
     }
 
     public function test_dashboard_keeps_individual_monitor_focus_when_monitoring_services_are_fresh(): void
@@ -192,12 +189,12 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_succeeded_at' => now()->subMinutes(5),
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('Queue worker 未正常回報');
 
-        $this->assertSame('Queue worker 未正常回報', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('Queue worker 未正常回報', $response->viewData('attention')['title']);
     }
 
     public function test_dashboard_prioritizes_a_recent_scheduler_failure(): void
@@ -209,12 +206,12 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_error' => '排程器最近執行失敗。',
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('排程器最近執行失敗');
 
-        $this->assertSame('排程器最近執行失敗', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('排程器最近執行失敗', $response->viewData('attention')['title']);
     }
 
     public function test_dashboard_marks_a_recent_scheduler_failure_as_an_issue_despite_a_fresh_success(): void
@@ -227,15 +224,15 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_error' => '排程器失敗（RuntimeException）。',
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('badge-issue')
             ->assertSee('排程器失敗（RuntimeException）。');
 
         $this->assertTrue($response->viewData('heartbeatFresh'));
         $this->assertSame('issue', $response->viewData('heartbeatStatus'));
-        $this->assertSame('排程器最近執行失敗', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('排程器最近執行失敗', $response->viewData('attention')['title']);
     }
 
     public function test_dashboard_counts_only_jobs_on_the_default_queue(): void
@@ -244,8 +241,8 @@ class QueueWorkerHeartbeatTest extends TestCase
         Queue::push(new RecordQueueWorkerHeartbeat);
         Queue::pushOn('emails', new RecordQueueWorkerHeartbeat);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('目前佇列工作總數：1 筆');
 
@@ -260,8 +257,8 @@ class QueueWorkerHeartbeatTest extends TestCase
         $reservedJobId = Queue::push(new RecordQueueWorkerHeartbeat);
         DB::table('jobs')->where('id', $reservedJobId)->update(['reserved_at' => now()->timestamp]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('目前佇列工作總數：3 筆')
             ->assertSee('可立即處理 1 筆、延遲等待 1 筆、保留中 1 筆。');
@@ -309,8 +306,8 @@ class QueueWorkerHeartbeatTest extends TestCase
             'finished_at' => null,
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('監測檢查正在排隊')
             ->assertSee('到期排隊 2 筆')
@@ -328,7 +325,7 @@ class QueueWorkerHeartbeatTest extends TestCase
             'longest_running_seconds' => 240,
             'running_warning' => true,
         ], $response->viewData('checkRunQueueHealth'));
-        $this->assertSame('監測檢查正在排隊', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('監測檢查正在排隊', $response->viewData('attention')['title']);
     }
 
     public function test_dashboard_warns_when_a_monitor_check_runs_too_long_without_other_service_alerts(): void
@@ -351,12 +348,12 @@ class QueueWorkerHeartbeatTest extends TestCase
             'last_succeeded_at' => now(),
         ]);
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('監測檢查執行過久');
 
-        $this->assertSame('監測檢查執行過久', $response->viewData('dashboardSystemAttention')['title']);
+        $this->assertSame('監測檢查執行過久', $response->viewData('attention')['title']);
     }
 
     public function test_dashboard_counts_failed_jobs_when_database_storage_is_configured(): void
@@ -375,8 +372,8 @@ class QueueWorkerHeartbeatTest extends TestCase
         foreach (['database', 'database-uuids'] as $driver) {
             Config::set('queue.failed.driver', $driver);
 
-            $response = $this->actingAs($user)
-                ->get(route('dashboard'))
+            $response = $this->actingAs($user, 'platform')
+                ->get(route('platform.system.index'))
                 ->assertOk()
                 ->assertSee('目前記錄 1 件失敗工作。');
 
@@ -389,8 +386,8 @@ class QueueWorkerHeartbeatTest extends TestCase
     {
         Config::set('queue.failed.driver', 'null');
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertDontSee('失敗佇列工作');
 
@@ -403,8 +400,8 @@ class QueueWorkerHeartbeatTest extends TestCase
         Config::set('queue.failed.driver', 'database-uuids');
         Config::set('queue.failed.table', 'missing_failed_jobs');
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('目前無法取得失敗佇列工作數。');
 
@@ -419,8 +416,8 @@ class QueueWorkerHeartbeatTest extends TestCase
             ->once()
             ->andThrow(new RuntimeException('Queue backend unavailable'));
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('目前無法取得佇列工作數。');
 
@@ -431,8 +428,8 @@ class QueueWorkerHeartbeatTest extends TestCase
     {
         Config::set('queue.default', 'sync');
 
-        $response = $this->actingAs($this->createPlatformAdmin())
-            ->get(route('dashboard'))
+        $response = $this->actingAs($this->createPlatformAdmin(), 'platform')
+            ->get(route('platform.system.index'))
             ->assertOk()
             ->assertSee('目前使用 sync 同步佇列，工作由目前程序直接執行，沒有獨立 worker 心跳。')
             ->assertDontSee('目前佇列工作總數')

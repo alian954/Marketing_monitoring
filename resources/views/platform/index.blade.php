@@ -1,12 +1,12 @@
-@extends('layouts.app')
+@extends('layouts.platform')
 
-@section('title', '總管理平台')
+@section('title', '組織管理')
 
 @section('content')
     <div class="page-heading">
         <div class="heading-copy">
             <p class="eyebrow">Platform administration</p>
-            <h1 class="page-title">總管理平台</h1>
+            <h1 class="page-title">組織管理</h1>
             <p class="page-description">管理組織、工作區與平台營運狀態。</p>
         </div>
     </div>
@@ -220,10 +220,7 @@
                                         <input type="hidden" name="organization_id" value="{{ $organization->id }}">
                                         <button class="button button-secondary button-small" type="submit">儲存</button>
                                     </form>
-                                    <form action="{{ route('platform.organizations.open', $organization) }}" method="POST" class="platform-org-actions">
-                                        @csrf
-                                        <button class="button button-primary button-small" type="submit">進入組織</button>
-                                    </form>
+                                    <a class="button button-primary button-small platform-org-actions" href="{{ route('platform.organizations.show', $organization) }}">查看詳情</a>
                                     <form action="{{ route('platform.organizations.entitlement-enforcement.update', $organization) }}" method="POST" class="platform-org-actions">
                                         @csrf
                                         @method('PATCH')

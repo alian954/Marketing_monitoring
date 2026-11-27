@@ -11,7 +11,6 @@ use App\Models\DomainRegistrationObservation;
 use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
-use App\Models\SchedulerHeartbeat;
 use App\Models\SocialEngagementTarget;
 use App\Models\TlsObservation;
 use App\Models\User;
@@ -27,18 +26,11 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Throwable;
 
 class DashboardController extends Controller
 {
-    private const QUEUED_CHECK_WARNING_AFTER_SECONDS = 120;
-
-    private const RUNNING_CHECK_WARNING_AFTER_SECONDS = 180;
-
     private const MAINTENANCE_LOOKAHEAD_DAYS = 30;
 
     private const MAX_DASHBOARD_MAINTENANCE_OCCURRENCES = 10;
@@ -531,94 +523,15 @@ class DashboardController extends Controller
             ->latest('detected_at')
             ->limit(10)
             ->get();
-        $heartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-scheduler')->first();
-        $heartbeatFresh = $heartbeat?->last_succeeded_at !== null && $heartbeat->last_succeeded_at->gte(now()->subMinutes(2));
-        $heartbeatError = is_string($heartbeat?->last_error) && trim($heartbeat->last_error) !== ''
-            ? trim($heartbeat->last_error)
-            : null;
-        $heartbeatStatus = $heartbeatError !== null
-            ? 'issue'
-            : ($heartbeatFresh ? 'healthy' : 'stale');
-        $workerHeartbeat = SchedulerHeartbeat::query()->where('job_key', 'monitor-worker')->first();
-        $workerHeartbeatFresh = $workerHeartbeat?->last_succeeded_at !== null && $workerHeartbeat->last_succeeded_at->gte(now()->subMinutes(2));
-        $queueWorkerEnabled = config('queue.default') !== 'sync';
-        $checkRunQueueHealth = $queueWorkerEnabled ? $this->checkRunQueueHealth($asOf) : null;
-        $queueSize = null;
-        $queueStateCounts = null;
-        $failedQueueJobStorageSupported = in_array(config('queue.failed.driver'), ['database', 'database-uuids'], true);
-        $failedQueueJobCount = null;
-
-        if ($queueWorkerEnabled) {
-            try {
-                $queueSize = Queue::size();
-            } catch (Throwable $exception) {
-                report($exception);
-            }
-
-            try {
-                $queueConnection = Queue::connection();
-
-                if (method_exists($queueConnection, 'pendingSize')
-                    && method_exists($queueConnection, 'delayedSize')
-                    && method_exists($queueConnection, 'reservedSize')) {
-                    $queueStateCounts = [
-                        'pending' => $queueConnection->pendingSize(),
-                        'delayed' => $queueConnection->delayedSize(),
-                        'reserved' => $queueConnection->reservedSize(),
-                    ];
-                }
-            } catch (Throwable $exception) {
-                report($exception);
-            }
-        }
-
-        if ($failedQueueJobStorageSupported) {
-            try {
-                $failedQueueJobCount = DB::connection(config('queue.failed.database'))
-                    ->table(config('queue.failed.table'))
-                    ->count();
-            } catch (Throwable $exception) {
-                report($exception);
-            }
-        }
-
         $dashboardMarketingDataAttention = $this->dashboardMarketingDataAttention(
             $socialEngagementMarketingSummaries,
             $request->user(),
         );
 
-        $dashboardSystemAttention = null;
-
-        if ($monitorCount > 0 || $socialEngagementTargetModels->isNotEmpty()) {
-            if ($heartbeatError !== null) {
-                $dashboardSystemAttention = [
-                    'title' => '排程器最近執行失敗',
-                    'description' => '監測排程可能未正常執行，請查看服務狀態與最近錯誤。',
-                ];
-            } elseif ($heartbeat !== null && ! $heartbeatFresh) {
-                $dashboardSystemAttention = [
-                    'title' => '排程器未正常回報',
-                    'description' => '監測項目可能尚未依排程更新，請確認排程服務。',
-                ];
-            } elseif ($queueWorkerEnabled && $workerHeartbeat !== null && ! $workerHeartbeatFresh) {
-                $dashboardSystemAttention = [
-                    'title' => 'Queue worker 未正常回報',
-                    'description' => '排入佇列的監測工作可能無法執行，請確認 worker 服務。',
-                ];
-            } elseif ($checkRunQueueHealth['queued_warning'] ?? false) {
-                $dashboardSystemAttention = [
-                    'title' => '監測檢查正在排隊',
-                    'description' => '到期檢查等待超過 2 分鐘，請確認佇列服務。',
-                ];
-            } elseif ($checkRunQueueHealth['running_warning'] ?? false) {
-                $dashboardSystemAttention = [
-                    'title' => '監測檢查執行過久',
-                    'description' => '有檢查執行超過 3 分鐘，請查看服務狀態。',
-                ];
-            } elseif ($dashboardMarketingDataAttention !== null) {
-                $dashboardSystemAttention = $dashboardMarketingDataAttention;
-            }
-        }
+        // Scheduler and queue health moved to the admin console; customers only see marketing-data attention here.
+        $dashboardSystemAttention = $monitorCount > 0 || $socialEngagementTargetModels->isNotEmpty()
+            ? $dashboardMarketingDataAttention
+            : null;
 
         return view('dashboard', [
             'clients' => $clientSelection['clients'],
@@ -633,18 +546,6 @@ class DashboardController extends Controller
             'expiringDomainCount' => $expiringDomainCount,
             'incidents' => $incidents,
             'dnsChanges' => $dnsChanges,
-            'heartbeat' => $heartbeat,
-            'heartbeatFresh' => $heartbeatFresh,
-            'heartbeatError' => $heartbeatError,
-            'heartbeatStatus' => $heartbeatStatus,
-            'workerHeartbeat' => $workerHeartbeat,
-            'workerHeartbeatFresh' => $workerHeartbeatFresh,
-            'queueWorkerEnabled' => $queueWorkerEnabled,
-            'checkRunQueueHealth' => $checkRunQueueHealth,
-            'queueSize' => $queueSize,
-            'queueStateCounts' => $queueStateCounts,
-            'failedQueueJobStorageSupported' => $failedQueueJobStorageSupported,
-            'failedQueueJobCount' => $failedQueueJobCount,
             'dashboardSystemAttention' => $dashboardSystemAttention,
             'dashboardMarketingDataAttention' => $dashboardMarketingDataAttention,
             'counts' => $counts,
@@ -2206,51 +2107,6 @@ class DashboardController extends Controller
         }
 
         return null;
-    }
-
-    /**
-     * @return array{
-     *     due_queued_count: int,
-     *     oldest_due_wait_seconds: int|null,
-     *     queued_warning: bool,
-     *     running_count: int,
-     *     longest_running_seconds: int|null,
-     *     running_warning: bool
-     * }
-     */
-    private function checkRunQueueHealth(CarbonImmutable $asOf): array
-    {
-        $queuedSummary = CheckRun::query()
-            ->where('status', 'queued')
-            ->where('scheduled_at', '<=', $asOf)
-            ->selectRaw('COUNT(*) AS run_count, MIN(scheduled_at) AS oldest_at')
-            ->first();
-        $runningSummary = CheckRun::query()
-            ->where('status', 'running')
-            ->whereNotNull('started_at')
-            ->selectRaw('COUNT(*) AS run_count, MIN(started_at) AS oldest_at')
-            ->first();
-        $oldestDueAt = $queuedSummary?->oldest_at === null
-            ? null
-            : CarbonImmutable::parse((string) $queuedSummary->oldest_at, (string) config('app.timezone', 'UTC'));
-        $oldestRunningAt = $runningSummary?->oldest_at === null
-            ? null
-            : CarbonImmutable::parse((string) $runningSummary->oldest_at, (string) config('app.timezone', 'UTC'));
-        $oldestDueWaitSeconds = $oldestDueAt === null
-            ? null
-            : max(0, $asOf->getTimestamp() - $oldestDueAt->getTimestamp());
-        $longestRunningSeconds = $oldestRunningAt === null
-            ? null
-            : max(0, $asOf->getTimestamp() - $oldestRunningAt->getTimestamp());
-
-        return [
-            'due_queued_count' => (int) ($queuedSummary?->run_count ?? 0),
-            'oldest_due_wait_seconds' => $oldestDueWaitSeconds,
-            'queued_warning' => $oldestDueWaitSeconds !== null && $oldestDueWaitSeconds >= self::QUEUED_CHECK_WARNING_AFTER_SECONDS,
-            'running_count' => (int) ($runningSummary?->run_count ?? 0),
-            'longest_running_seconds' => $longestRunningSeconds,
-            'running_warning' => $longestRunningSeconds !== null && $longestRunningSeconds >= self::RUNNING_CHECK_WARNING_AFTER_SECONDS,
-        ];
     }
 
     /**

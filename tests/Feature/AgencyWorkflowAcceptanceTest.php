@@ -209,7 +209,7 @@ class AgencyWorkflowAcceptanceTest extends TestCase
     /** @return array{User, Organization} */
     private function createOrganization(User $platformAdmin, string $name, string $ownerEmail): array
     {
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->post(route('platform.organizations.store'), [
                 'name' => $name,
                 'owner_name' => $name.' Owner',

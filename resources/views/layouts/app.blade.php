@@ -31,11 +31,6 @@
                         <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
                         <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
                     @endif
-                    @if (auth()->user()?->isPlatformAdmin())
-                        <a class="nav-link" href="{{ route('platform.index') }}" @if (request()->routeIs('platform.index', 'platform.organizations.*')) aria-current="page" @endif>總管理平台</a>
-                        <a class="nav-link" href="{{ route('platform.products.index') }}" @if (request()->routeIs('platform.products.*')) aria-current="page" @endif>產品與功能</a>
-                        <a class="nav-link" href="{{ route('platform.audit-events.index') }}" @if (request()->routeIs('platform.audit-events.*')) aria-current="page" @endif>稽核紀錄</a>
-                    @endif
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
                 </nav>
@@ -67,17 +62,7 @@
                 </form>
             @endif
             <x-flash-messages />
-            @if (auth()->user()?->isPlatformAdmin() && $platformSelectedOrganization !== null)
-                <div class="read-only-banner platform-context-banner" role="status">
-                    <span>平台管理員 · 正在檢視組織：{{ $platformSelectedOrganization->name }}（{{ $platformSelectedOrganization->statusLabel() }}）</span>
-                    <form action="{{ route('platform.organizations.leave') }}" method="POST">
-                        @csrf
-                        <button class="button button-quiet button-small" type="submit">返回總管理平台</button>
-                    </form>
-                </div>
-            @elseif (auth()->user()?->isPlatformAdmin())
-                <div class="read-only-banner" role="status">平台管理員 · 全組織管理功能</div>
-            @elseif (auth()->user()?->isReadOnlyWorkspaceMember())
+            @if (auth()->user()?->isReadOnlyWorkspaceMember())
                 <div class="read-only-banner" role="status">唯讀成員 · 僅能檢視授權的組織資料</div>
             @elseif (! auth()->user()?->isWorkspaceOwner())
                 <div class="read-only-banner" role="status">可編輯成員 · 可維護監測項目與活動</div>

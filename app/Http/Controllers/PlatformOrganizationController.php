@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\Incident;
 use App\Models\Organization;
 use App\Models\PlatformAuditAction;
+use App\Models\PlatformAuditEvent;
 use App\Models\User;
 use App\Services\PlatformAuditLogger;
 use Carbon\Carbon;
@@ -248,24 +250,97 @@ class PlatformOrganizationController extends Controller
             : '「'.$organization->name.'」已恢復舊模式，不依訂閱限制產品功能。');
     }
 
-    public function open(Request $request, Organization $organization): RedirectResponse
+    /**
+     * Read-only support view of one organization; administrators no longer work inside customer workspaces.
+     */
+    public function show(Organization $organization): View
     {
-        $request->session()->put('platform_organization_id', $organization->getKey());
-        $this->auditLogger->record(
-            PlatformAuditAction::OrganizationOpenedByPlatformAdmin,
-            $organization,
-            [],
-            (int) $organization->owner_user_id,
-        );
+        $organization->load(['owner:id,name,email', 'workspace']);
+        $ownerId = (int) $organization->owner_user_id;
+        $members = DB::table('workspace_memberships')
+            ->join('users', 'users.id', '=', 'workspace_memberships.member_user_id')
+            ->where('workspace_memberships.owner_user_id', $ownerId)
+            ->whereNull('workspace_memberships.revoked_at')
+            ->orderBy('users.name')
+            ->get([
+                'users.name',
+                'users.email',
+                'workspace_memberships.role',
+                'workspace_memberships.client_scope',
+                'workspace_memberships.accepted_at',
+            ]);
+        $clients = DB::table('clients')
+            ->where('user_id', $ownerId)
+            ->orderByRaw('name = ? DESC', [Client::DEFAULT_NAME])
+            ->orderBy('name')
+            ->get(['id', 'name', 'created_at']);
+        $clientIds = $clients->pluck('id')->all();
+        $monitorCountsByClient = $this->countByClient('monitors', $clientIds);
+        $campaignCountsByClient = $this->countByClient('social_engagement_targets', $clientIds);
+        $recentIncidents = DB::table('incidents')
+            ->join('monitors', 'monitors.id', '=', 'incidents.monitor_id')
+            ->where('monitors.user_id', $ownerId)
+            ->orderByDesc('incidents.opened_at')
+            ->orderByDesc('incidents.id')
+            ->limit(10)
+            ->get([
+                'incidents.rule_key',
+                'incidents.severity',
+                'incidents.state',
+                'incidents.opened_at',
+                'incidents.resolved_at',
+                'monitors.name as monitor_name',
+            ]);
+        $openIncidentCount = DB::table('incidents')
+            ->join('monitors', 'monitors.id', '=', 'incidents.monitor_id')
+            ->where('monitors.user_id', $ownerId)
+            ->whereIn('incidents.state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN])
+            ->count();
+        $recentAuditEvents = $organization->workspace === null
+            ? collect()
+            : PlatformAuditEvent::query()
+                ->with('actor:id,name,email')
+                ->where('workspace_id', $organization->workspace->getKey())
+                ->latest('created_at')
+                ->latest('id')
+                ->limit(10)
+                ->get();
 
-        return redirect()->route('dashboard')->with('status', '已切換至「'.$organization->name.'」。');
+        return view('platform.organizations.show', [
+            'organization' => $organization,
+            'members' => $members,
+            'clientRows' => $clients->map(static fn (object $client): array => [
+                'name' => $client->name,
+                'is_default' => $client->name === Client::DEFAULT_NAME,
+                'monitor_count' => $monitorCountsByClient[(int) $client->id] ?? 0,
+                'campaign_count' => $campaignCountsByClient[(int) $client->id] ?? 0,
+            ]),
+            'monitorCount' => array_sum($monitorCountsByClient),
+            'campaignCount' => array_sum($campaignCountsByClient),
+            'openIncidentCount' => $openIncidentCount,
+            'recentIncidents' => $recentIncidents,
+            'recentAuditEvents' => $recentAuditEvents,
+        ]);
     }
 
-    public function leaveOrganization(Request $request): RedirectResponse
+    /**
+     * @param  list<int>  $clientIds
+     * @return array<int, int>
+     */
+    private function countByClient(string $table, array $clientIds): array
     {
-        $request->session()->forget('platform_organization_id');
+        if ($clientIds === []) {
+            return [];
+        }
 
-        return redirect()->route('platform.index')->with('status', '已返回總管理平台。');
+        return DB::table($table)
+            ->whereIn('client_id', $clientIds)
+            ->select('client_id')
+            ->selectRaw('COUNT(*) AS aggregate')
+            ->groupBy('client_id')
+            ->pluck('aggregate', 'client_id')
+            ->mapWithKeys(static fn (mixed $count, mixed $clientId): array => [(int) $clientId => (int) $count])
+            ->all();
     }
 
     /** @param list<int> $ownerIds

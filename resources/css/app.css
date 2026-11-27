@@ -1287,15 +1287,62 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
     margin: 2px;
 }
 
-.platform-context-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+/* Admin console: a dark header keeps it visually distinct from the customer platform. */
+.platform-header {
+    border-bottom-color: var(--navy-strong);
+    background: var(--navy-strong);
 }
 
-.platform-context-banner form {
+.platform-header .brand,
+.platform-header .brand:hover,
+.platform-header .account-label {
+    color: #fff;
+}
+
+.platform-header .nav-link {
+    color: rgb(255 255 255 / 72%);
+}
+
+.platform-header .nav-link:hover,
+.platform-header .nav-link[aria-current='page'] {
+    color: #fff;
+    background: rgb(255 255 255 / 14%);
+}
+
+.platform-header .logout-button {
+    color: rgb(255 255 255 / 72%);
+}
+
+.platform-header .logout-button:hover {
+    color: #fff;
+}
+
+.platform-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--navy-strong);
+    background: #f4c6d2;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0;
+}
+
+.platform-detail-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px 24px;
     margin: 0;
+}
+
+.platform-detail-list dt {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.platform-detail-list dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
 }
 
 .platform-catalog-header {

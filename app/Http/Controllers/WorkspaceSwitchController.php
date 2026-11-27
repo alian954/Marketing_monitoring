@@ -15,7 +15,7 @@ class WorkspaceSwitchController extends Controller
     {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
-        abort_if($user->isPlatformAdmin(), 403, '平台管理員請由總管理平台切換組織。');
+        abort_if($user->isPlatformAdmin(), 403, '平台管理員請由管理後台登入。');
 
         $validated = $request->validate([
             'workspace' => ['required', 'string', 'max:20'],

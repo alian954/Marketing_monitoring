@@ -54,60 +54,6 @@ class WorkspaceIdentityTest extends TestCase
         $this->assertArrayHasKey('public_id', $workspace->toArray());
     }
 
-    public function test_platform_admin_resolves_the_workspace_selected_for_support(): void
-    {
-        $owner = User::factory()->create();
-        $organization = Organization::factory()->for($owner, 'owner')->create();
-        $workspace = Workspace::factory()->for($organization)->create();
-        $platformAdmin = User::factory()->create();
-        $platformAdmin->forceFill(['is_platform_admin' => true])->save();
-
-        $this->actingAs($platformAdmin)
-            ->withSession(['platform_organization_id' => $organization->id])
-            ->get(route('dashboard'))
-            ->assertOk();
-
-        $this->assertSame($workspace->id, $platformAdmin->fresh()->currentWorkspace()?->id);
-    }
-
-    public function test_platform_admin_who_owns_an_organization_uses_its_workspace_until_another_is_opened(): void
-    {
-        $platformAdmin = User::factory()->create();
-        $platformAdmin->forceFill(['is_platform_admin' => true])->save();
-        $ownOrganization = Organization::factory()->for($platformAdmin, 'owner')->create();
-        $ownWorkspace = Workspace::factory()->for($ownOrganization)->create();
-        $ownClient = Client::withoutGlobalScopes()->forceCreate([
-            'user_id' => $platformAdmin->id,
-            'workspace_id' => $ownWorkspace->id,
-            'name' => Client::DEFAULT_NAME,
-        ]);
-        $otherOwner = User::factory()->create();
-        $otherOrganization = Organization::factory()->for($otherOwner, 'owner')->create();
-        Workspace::factory()->for($otherOrganization)->create();
-        Client::withoutGlobalScopes()->forceCreate([
-            'user_id' => $otherOwner->id,
-            'workspace_id' => Workspace::idForOwnerUserId($otherOwner->id),
-            'name' => '其他代理商客戶',
-        ]);
-
-        $this->actingAs($platformAdmin)
-            ->get(route('dashboard'))
-            ->assertOk();
-        $this->get(route('clients.index'))
-            ->assertOk()
-            ->assertSee($ownClient->name)
-            ->assertDontSee('其他代理商客戶');
-
-        $this->assertSame(1, Client::withoutGlobalScopes()->where('user_id', $platformAdmin->id)->count());
-        $this->assertSame($ownWorkspace->id, $platformAdmin->fresh()->currentWorkspace()?->id);
-
-        $this->actingAs($platformAdmin->fresh())
-            ->withSession(['platform_organization_id' => $otherOrganization->id])
-            ->get(route('clients.index'))
-            ->assertOk()
-            ->assertSee('其他代理商客戶');
-    }
-
     public function test_workspace_seeder_repairs_missing_mappings_without_replacing_existing_ones(): void
     {
         $mappedOrganization = Organization::factory()->create();

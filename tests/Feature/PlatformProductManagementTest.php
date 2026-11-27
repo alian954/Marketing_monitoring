@@ -25,9 +25,9 @@ class PlatformProductManagementTest extends TestCase
     {
         $this->actingAs(User::factory()->create())
             ->get(route('platform.products.index'))
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->get(route('platform.products.index'))
             ->assertOk()
             ->assertSee('產品與功能')
@@ -45,7 +45,7 @@ class PlatformProductManagementTest extends TestCase
         $targetFeature = $product->features->firstWhere('feature_key', 'monitoring.targets');
         $featureSettings[$targetFeature->id] = ['is_enabled' => '1', 'limit_value' => '25'];
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->post(route('platform.products.plans.store', $product), [
                 'product_id' => $product->id,
                 'plan_code' => 'starter',
@@ -80,7 +80,7 @@ class PlatformProductManagementTest extends TestCase
             $feature->id => ['is_enabled' => '0', 'limit_value' => ''],
         ])->all();
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->from(route('platform.products.index'))
             ->post(route('platform.products.plans.store', $product), [
                 'product_id' => $product->id,
@@ -104,7 +104,7 @@ class PlatformProductManagementTest extends TestCase
         $plan = ProductPlan::factory()->for($product)->create(['plan_code' => 'starter', 'version' => 1]);
         $admin = $this->platformAdmin();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->from(route('platform.products.index'))
             ->post(route('platform.products.plans.store', $product), [
                 'product_id' => $product->id,
@@ -130,7 +130,7 @@ class PlatformProductManagementTest extends TestCase
             'currency_code' => null,
         ]);
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->patch(route('platform.products.plans.update', $plan), ['status' => 'active'])
             ->assertSessionHasErrorsIn('productPlanStatus', ['status']);
 
@@ -142,7 +142,7 @@ class PlatformProductManagementTest extends TestCase
             'is_enabled' => true,
         ]);
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->patch(route('platform.products.plans.update', $plan), ['status' => 'active'])
             ->assertRedirect(route('platform.products.index'));
 

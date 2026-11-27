@@ -24,7 +24,7 @@ class PlatformAuditTrailTest extends TestCase
     {
         $admin = $this->platformAdmin();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->post(route('platform.organizations.store'), [
                 'name' => '稽核代理商',
                 'owner_name' => '負責人',
@@ -61,7 +61,7 @@ class PlatformAuditTrailTest extends TestCase
             'is_enabled' => '0',
         ];
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->patch(route('platform.organizations.update', $organization), $payload)
             ->assertSessionHasNoErrors();
 
@@ -78,30 +78,12 @@ class PlatformAuditTrailTest extends TestCase
         $this->assertSame(1, PlatformAuditEvent::query()->count());
     }
 
-    public function test_platform_admin_entering_an_organization_is_recorded(): void
-    {
-        $organization = Organization::factory()->create();
-        $workspace = Workspace::factory()->create(['organization_id' => $organization->id]);
-        $admin = $this->platformAdmin();
-
-        $this->actingAs($admin)
-            ->post(route('platform.organizations.open', $organization))
-            ->assertRedirect(route('dashboard'));
-
-        $this->assertDatabaseHas('platform_audit_events', [
-            'action' => PlatformAuditAction::OrganizationOpenedByPlatformAdmin->value,
-            'actor_user_id' => $admin->id,
-            'workspace_id' => $workspace->id,
-            'subject_id' => $organization->id,
-        ]);
-    }
-
     public function test_product_lifecycle_change_is_recorded_with_before_and_after_values(): void
     {
         $this->seed(ProductCatalogSeeder::class);
         $product = Product::query()->where('product_code', 'website-monitoring')->firstOrFail();
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->patch(route('platform.products.lifecycle.update', $product), ['lifecycle' => 'maintenance'])
             ->assertRedirect(route('platform.products.index'));
 
@@ -211,9 +193,9 @@ class PlatformAuditTrailTest extends TestCase
 
         $this->actingAs(User::factory()->create())
             ->get(route('platform.audit-events.index'))
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->get(route('platform.audit-events.index'))
             ->assertOk()
             ->assertSee('變更成員權限')

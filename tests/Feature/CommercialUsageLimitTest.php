@@ -210,7 +210,7 @@ class CommercialUsageLimitTest extends TestCase
         $platformAdmin = User::factory()->create();
         $platformAdmin->forceFill(['is_platform_admin' => true])->save();
 
-        $this->actingAs($platformAdmin)
+        $this->actingAs($platformAdmin, 'platform')
             ->patch(route('platform.organizations.update', $organization), [
                 'name' => $organization->name,
                 'subscription_ends_on' => null,

@@ -12,7 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $isConsoleRequest = static fn (Request $request): bool => $request->is('admin', 'admin/*');
+
+        $middleware->redirectGuestsTo(
+            static fn (Request $request): string => $isConsoleRequest($request) ? route('platform.login') : route('login'),
+        );
+        $middleware->redirectUsersTo(
+            static fn (Request $request): string => $isConsoleRequest($request) ? route('platform.index') : route('dashboard'),
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']);

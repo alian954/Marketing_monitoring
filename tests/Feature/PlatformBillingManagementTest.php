@@ -30,12 +30,12 @@ class PlatformBillingManagementTest extends TestCase
         $organization = Organization::factory()->create(['owner_user_id' => $owner->id]);
         $order = BillingOrder::factory()->create(['organization_id' => $organization->id]);
 
-        $this->actingAs($owner)->get(route('platform.organizations.billing', $organization))->assertForbidden();
-        $this->post(route('platform.organizations.billing.orders.store', $organization), [])->assertForbidden();
-        $this->post(route('platform.organizations.billing.payments.store', [$organization, $order]), [])->assertForbidden();
-        $this->post(route('platform.organizations.billing.orders.cancel', [$organization, $order]), [])->assertForbidden();
+        $this->actingAs($owner)->get(route('platform.organizations.billing', $organization))->assertRedirect(route('platform.login'));
+        $this->post(route('platform.organizations.billing.orders.store', $organization), [])->assertRedirect(route('platform.login'));
+        $this->post(route('platform.organizations.billing.payments.store', [$organization, $order]), [])->assertRedirect(route('platform.login'));
+        $this->post(route('platform.organizations.billing.orders.cancel', [$organization, $order]), [])->assertRedirect(route('platform.login'));
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->get(route('platform.organizations.billing', $organization))
             ->assertOk()
             ->assertSee($organization->name.' · 訂單與收款')
@@ -48,7 +48,7 @@ class PlatformBillingManagementTest extends TestCase
         $plan = $this->sellablePlan(150050);
         $admin = $this->platformAdmin();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->post(route('platform.organizations.billing.orders.store', $organization), [
                 'product_plan_id' => $plan->id,
                 'quantity' => 2,
@@ -98,7 +98,7 @@ class PlatformBillingManagementTest extends TestCase
         $organization = Organization::factory()->create();
         $otherOrder = BillingOrder::factory()->create();
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->post(route('platform.organizations.billing.payments.store', [$organization, $otherOrder]), [
                 'amount' => '1',
                 'method' => BillingPayment::METHOD_CASH,
@@ -116,7 +116,7 @@ class PlatformBillingManagementTest extends TestCase
     {
         $organization = Organization::factory()->create();
         $order = BillingOrder::factory()->create(['organization_id' => $organization->id, 'total_minor' => 5000]);
-        $this->actingAs($this->platformAdmin());
+        $this->actingAs($this->platformAdmin(), 'platform');
 
         $this->post(route('platform.organizations.billing.payments.store', [$organization, $order]), [
             'amount' => '12.345',
@@ -154,9 +154,9 @@ class PlatformBillingManagementTest extends TestCase
 
         $this->actingAs(User::factory()->create())
             ->post(route('platform.organizations.billing.refunds.store', [$organization, $order]), $payload)
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->post(route('platform.organizations.billing.refunds.store', [$organization, $otherOrder]), $payload)
             ->assertNotFound();
         $this->post(route('platform.organizations.billing.refunds.store', [$organization, $order]), $payload)

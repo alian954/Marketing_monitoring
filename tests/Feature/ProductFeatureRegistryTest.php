@@ -100,7 +100,7 @@ class ProductFeatureRegistryTest extends TestCase
         $admin = User::factory()->create();
         $admin->forceFill(['is_platform_admin' => true])->save();
 
-        $this->actingAs($admin)->get(route('platform.products.index'))->assertOk();
+        $this->actingAs($admin, 'platform')->get(route('platform.products.index'))->assertOk();
     }
 
     public function test_unsynced_product_catalog_preserves_existing_registered_features(): void
@@ -138,12 +138,12 @@ class ProductFeatureRegistryTest extends TestCase
 
         $this->actingAs(User::factory()->create())
             ->patch(route('platform.products.lifecycle.update', $product), $payload)
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
 
         $admin = User::factory()->create();
         $admin->forceFill(['is_platform_admin' => true])->save();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->patch(route('platform.products.lifecycle.update', $product), $payload)
             ->assertRedirect(route('platform.products.index'))
             ->assertSessionHasNoErrors();

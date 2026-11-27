@@ -31,9 +31,9 @@ class PlatformSubscriptionManagementTest extends TestCase
 
         $this->actingAs(User::factory()->create())
             ->get(route('platform.organizations.products', $organization))
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->get(route('platform.organizations.products', $organization))
             ->assertOk()
             ->assertSee($organization->name)
@@ -49,7 +49,7 @@ class PlatformSubscriptionManagementTest extends TestCase
         $admin = $this->platformAdmin();
         $startsAt = now('Asia/Taipei')->subDay()->format('Y-m-d\TH:i');
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->post(route('platform.organizations.subscriptions.store', $organization), [
                 'status' => 'active',
                 'starts_at' => $startsAt,
@@ -62,7 +62,7 @@ class PlatformSubscriptionManagementTest extends TestCase
 
         $subscription = Subscription::query()->where('organization_id', $organization->id)->firstOrFail();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->post(route('platform.organizations.subscriptions.items.store', [$organization, $subscription]), [
                 'subscription_id' => $subscription->id,
                 'product_plan_id' => $plan->id,
@@ -79,7 +79,7 @@ class PlatformSubscriptionManagementTest extends TestCase
         $this->assertTrue($grant->isGranted);
         $this->assertSame(35, $grant->limitValue);
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->get(route('platform.organizations.products', $organization))
             ->assertOk()
             ->assertSee('網站可靠度監測')
@@ -90,7 +90,7 @@ class PlatformSubscriptionManagementTest extends TestCase
     {
         $organization = Organization::factory()->create();
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->post(route('platform.organizations.subscriptions.store', $organization), [
                 'status' => 'active',
                 'starts_at' => '2026-12-01T09:00',
@@ -110,7 +110,7 @@ class PlatformSubscriptionManagementTest extends TestCase
         $organization = Organization::factory()->create();
         $startsAt = now('Asia/Taipei')->format('Y-m-d\TH:i');
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->from(route('platform.organizations.products', $organization))
             ->post(route('platform.organizations.subscriptions.store', $organization), [
                 'status' => 'trialing',
@@ -135,7 +135,7 @@ class PlatformSubscriptionManagementTest extends TestCase
         $item = $this->createSubscriptionItem($organization, $subscription, $websiteProduct, $websitePlan);
         $admin = $this->platformAdmin();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->from(route('platform.organizations.products', $organization))
             ->post(route('platform.organizations.subscriptions.items.store', [$organization, $subscription]), [
                 'subscription_id' => $subscription->id,
@@ -146,7 +146,7 @@ class PlatformSubscriptionManagementTest extends TestCase
             ])
             ->assertSessionHasErrorsIn('subscriptionItem', ['product_plan_id']);
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->from(route('platform.organizations.products', $organization))
             ->patch(route('platform.organizations.subscriptions.items.update', [$organization, $subscription, $item]), [
                 'subscription_item_id' => $item->id,
@@ -172,7 +172,7 @@ class PlatformSubscriptionManagementTest extends TestCase
         $item = $this->createSubscriptionItem($secondOrganization, $secondSubscription, $product, $plan);
         $admin = $this->platformAdmin();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->patch(route('platform.organizations.subscriptions.update', [$firstOrganization, $secondSubscription]), [
                 'status' => 'canceled',
                 'starts_at' => now()->subDay()->format('Y-m-d\TH:i'),
@@ -183,7 +183,7 @@ class PlatformSubscriptionManagementTest extends TestCase
             ])
             ->assertNotFound();
 
-        $this->actingAs($admin)
+        $this->actingAs($admin, 'platform')
             ->patch(route('platform.organizations.subscriptions.items.update', [$firstOrganization, $firstSubscription, $item]), [
                 'status' => 'canceled',
                 'product_plan_id' => $plan->id,

@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.platform')
 
 @section('title', '產品與功能')
 
@@ -9,7 +9,7 @@
             <h1 class="page-title">產品與功能</h1>
             <p class="page-description">管理產品登錄、功能模組與入口狀態。</p>
         </div>
-        <a class="button button-secondary" href="{{ route('platform.index') }}">返回總管理平台</a>
+        <a class="button button-secondary" href="{{ route('platform.index') }}">返回組織管理</a>
     </div>
 
     @if ($products->isEmpty())

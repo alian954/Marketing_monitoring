@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.platform')
 
 @section('title', '稽核紀錄')
 
@@ -11,7 +11,7 @@
             <h1 class="page-title">稽核紀錄</h1>
             <p class="page-description">追蹤組織、產品、方案、訂閱與成員權限的管理操作。紀錄只會新增，不可修改或刪除。</p>
         </div>
-        <a class="button button-secondary" href="{{ route('platform.index') }}">返回總管理平台</a>
+        <a class="button button-secondary" href="{{ route('platform.index') }}">返回組織管理</a>
     </div>
 
     <section class="panel" aria-labelledby="audit-event-list-title">

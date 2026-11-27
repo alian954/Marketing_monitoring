@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Models\User;
 use App\Services\Probe\CurlProbeTransport;
 use App\Services\Probe\DcardBrowserRenderer;
 use App\Services\Probe\FixtureProbeClient;
@@ -21,10 +20,8 @@ use App\Services\Probe\TlsCertificateTransport;
 use App\Services\ProductRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -60,15 +57,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        View::composer('layouts.app', static function (ViewContract $view): void {
-            $user = auth()->user();
-
-            $view->with(
-                'platformSelectedOrganization',
-                $user instanceof User ? $user->selectedPlatformOrganization() : null,
-            );
-        });
-
         RateLimiter::for('login', static fn (Request $request): Limit => Limit::perMinute(30)->by('login-ip:'.(string) $request->ip())
         );
         RateLimiter::for('notification-test', static function (Request $request): Limit {

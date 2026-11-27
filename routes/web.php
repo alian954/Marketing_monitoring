@@ -23,10 +23,12 @@ use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PlatformAuditEventController;
+use App\Http\Controllers\PlatformAuthController;
 use App\Http\Controllers\PlatformBillingController;
 use App\Http\Controllers\PlatformOrganizationController;
 use App\Http\Controllers\PlatformProductController;
 use App\Http\Controllers\PlatformSubscriptionController;
+use App\Http\Controllers\PlatformSystemStatusController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SharedClientReportController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
@@ -40,6 +42,7 @@ use App\Http\Controllers\WorkspaceAccessController;
 use App\Http\Controllers\WorkspaceActivityController;
 use App\Http\Controllers\WorkspaceSwitchController;
 use App\Http\Middleware\EnforceProductFeatureAvailability;
+use App\Http\Middleware\EnsureCustomerAccount;
 use App\Http\Middleware\EnsureOrganizationActive;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureWorkspaceOwner;
@@ -107,21 +110,14 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
         ->name('accept');
 });
 
-Route::middleware('auth')->group(function (): void {
-    Route::get('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'showJoinInvitation'])
-        ->where('token', '[A-Za-z0-9]{64}')
-        ->name('team.invitations.join.show');
-    Route::post('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'joinInvitation'])
-        ->where('token', '[A-Za-z0-9]{64}')
-        ->middleware('throttle:5,1')
-        ->name('team.invitations.join');
-    Route::post('/workspaces/switch', WorkspaceSwitchController::class)
-        ->middleware('throttle:30,1')
-        ->name('workspaces.switch');
-});
+Route::prefix('admin')->name('platform.')->group(function (): void {
+    Route::middleware('guest:platform')->group(function (): void {
+        Route::get('/login', [PlatformAuthController::class, 'create'])->name('login');
+        Route::post('/login', [PlatformAuthController::class, 'store'])->middleware('throttle:login')->name('login.store');
+    });
 
-Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class, EnforceProductFeatureAvailability::class])->group(function (): void {
-    Route::middleware(EnsurePlatformAdmin::class)->prefix('platform')->name('platform.')->group(function (): void {
+    Route::middleware(['auth:platform', EnsurePlatformAdmin::class])->group(function (): void {
+        Route::post('/logout', [PlatformAuthController::class, 'destroy'])->name('logout');
         Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
         Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
         Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
@@ -178,13 +174,28 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
         Route::patch('/organizations/{organization}/entitlement-enforcement', [PlatformOrganizationController::class, 'updateEntitlementEnforcement'])
             ->whereNumber('organization')
             ->name('organizations.entitlement-enforcement.update');
-        Route::post('/organizations/{organization}/open', [PlatformOrganizationController::class, 'open'])
+        Route::get('/organizations/{organization}', [PlatformOrganizationController::class, 'show'])
             ->whereNumber('organization')
-            ->name('organizations.open');
-        Route::post('/organizations/leave', [PlatformOrganizationController::class, 'leaveOrganization'])
-            ->name('organizations.leave');
+            ->name('organizations.show');
+        Route::get('/system', [PlatformSystemStatusController::class, 'index'])->name('system.index');
     });
+});
+Route::redirect('/platform', '/admin');
 
+Route::middleware(['auth', EnsureCustomerAccount::class])->group(function (): void {
+    Route::get('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'showJoinInvitation'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('team.invitations.join.show');
+    Route::post('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'joinInvitation'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->middleware('throttle:5,1')
+        ->name('team.invitations.join');
+    Route::post('/workspaces/switch', WorkspaceSwitchController::class)
+        ->middleware('throttle:30,1')
+        ->name('workspaces.switch');
+});
+
+Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class, EnforceProductFeatureAvailability::class])->group(function (): void {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/clients/performance/export.csv', [ClientPortfolioController::class, 'export'])->name('clients.performance.export');
     Route::get('/clients/performance', [ClientPortfolioController::class, 'index'])->name('clients.performance');

@@ -75,17 +75,6 @@ class ProductEntitlementEnforcementTest extends TestCase
         $this->get(route('clients.performance'))->assertForbidden();
     }
 
-    public function test_platform_admin_is_not_limited_when_viewing_an_enforced_organization(): void
-    {
-        $organization = Organization::factory()->create(['entitlements_enforced_at' => now()]);
-        $admin = $this->platformAdmin();
-
-        $this->actingAs($admin)
-            ->post(route('platform.organizations.open', $organization))
-            ->assertRedirect(route('dashboard'));
-        $this->get(route('monitors.index'))->assertOk();
-    }
-
     public function test_only_platform_admins_toggle_enforcement_and_changes_are_audited(): void
     {
         $owner = User::factory()->create();
@@ -93,10 +82,10 @@ class ProductEntitlementEnforcementTest extends TestCase
 
         $this->actingAs($owner)
             ->patch(route('platform.organizations.entitlement-enforcement.update', $organization), ['enforce' => '1'])
-            ->assertForbidden();
+            ->assertRedirect(route('platform.login'));
         $this->assertFalse($organization->fresh()->enforcesEntitlements());
 
-        $this->actingAs($this->platformAdmin())
+        $this->actingAs($this->platformAdmin(), 'platform')
             ->patch(route('platform.organizations.entitlement-enforcement.update', $organization), ['enforce' => '1'])
             ->assertRedirect(route('platform.index'));
         $this->assertTrue($organization->fresh()->enforcesEntitlements());

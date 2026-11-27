@@ -498,7 +498,7 @@ class WorkspaceAccessController extends Controller
         }
 
         if ($account->isPlatformAdmin()) {
-            throw ValidationException::withMessages([$errorKey => '平台管理員帳戶不能加入組織，請改用總管理平台檢視組織。']);
+            throw ValidationException::withMessages([$errorKey => '平台管理員帳戶不能加入組織，請改用管理後台檢視組織。']);
         }
 
         $isActiveMember = WorkspaceMembership::query()

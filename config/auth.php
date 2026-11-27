@@ -42,6 +42,12 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Platform administrators sign in separately from customer accounts, through /admin/login.
+        'platform' => [
+            'driver' => 'session',
+            'provider' => 'users',
+        ],
     ],
 
     /*

@@ -68,7 +68,7 @@ class AuthController extends Controller
         $email = mb_strtolower(trim($validated['email']));
         $user = User::query()->whereRaw('lower(email) = ?', [$email])->first();
 
-        if ($user instanceof User && ! $user->hasActiveOrganization()) {
+        if ($user instanceof User && ($user->isPlatformAdmin() || ! $user->hasActiveOrganization())) {
             return back()->with('status', '如果這個電子郵件對應監測台帳戶，我們會寄送重設密碼連結。請查看收件匣與垃圾郵件。');
         }
 
@@ -104,7 +104,7 @@ class AuthController extends Controller
         $status = Password::reset(
             $validated,
             function (User $user, string $password): void {
-                if (! $user->hasActiveOrganization()) {
+                if ($user->isPlatformAdmin() || ! $user->hasActiveOrganization()) {
                     throw ValidationException::withMessages([
                         'email' => '所屬組織的訂閱已到期或已停用，無法重設帳戶密碼。',
                     ]);
@@ -153,6 +153,15 @@ class AuthController extends Controller
         RateLimiter::clear($key);
         $authenticatedUser = Auth::user();
 
+        if ($authenticatedUser instanceof User && $authenticatedUser->isPlatformAdmin()) {
+            Auth::logout();
+            $request->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => '平台管理員帳號請由管理後台登入。',
+            ]);
+        }
+
         if (! $authenticatedUser instanceof User || ! $authenticatedUser->hasActiveOrganization()) {
             Auth::logout();
             $request->session()->invalidate();
@@ -164,12 +173,11 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+        $intendedUrl = $request->session()->pull('url.intended');
 
-        $destination = $authenticatedUser->isPlatformAdmin()
-            ? route('platform.index')
-            : route('dashboard');
-
-        return redirect()->intended($destination);
+        return redirect()->to(is_string($intendedUrl) && ! PlatformAuthController::isConsoleUrl($intendedUrl)
+            ? $intendedUrl
+            : route('dashboard'));
     }
 
     public function destroy(Request $request): RedirectResponse
