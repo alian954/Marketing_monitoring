@@ -108,7 +108,7 @@ class DashboardController extends Controller
         $expiringDomains = [];
 
         Monitor::query()
-            ->with(['latestCheckRun', 'latestTlsObservation', 'latestDomainRegistrationObservation', 'activeIncidents'])
+            ->with(['latestCheckRun', 'latestTlsObservation', 'latestDomainRegistrationObservation', 'activeIncidents', 'pauseEvents'])
             ->chunkById(500, function (EloquentCollection $monitorBatch) use (
                 $asOf,
                 &$monitorCount,

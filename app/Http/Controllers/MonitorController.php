@@ -167,7 +167,7 @@ class MonitorController extends Controller
         ];
 
         $query = $this->filterMonitorList(Monitor::query(), $filters)
-            ->with(['latestCheckRun', 'activeIncidents']);
+            ->with(['latestCheckRun', 'activeIncidents', 'pauseEvents']);
         $query = match ($sort) {
             'last_checked_desc' => $query->orderByDesc('last_checked_at')->orderBy('name')->orderBy('id'),
             'last_checked_asc' => $query->orderBy('last_checked_at')->orderBy('name')->orderBy('id'),

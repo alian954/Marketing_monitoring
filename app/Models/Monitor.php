@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
@@ -168,6 +169,14 @@ class Monitor extends Model
     public function activeIncidents(): HasMany
     {
         return $this->hasMany(Incident::class)->whereIn('state', [Incident::STATE_SUSPECT, Incident::STATE_OPEN]);
+    }
+
+    /**
+     * Records of incidents that were interrupted because this monitor was paused.
+     */
+    public function pauseEvents(): HasManyThrough
+    {
+        return $this->hasManyThrough(IncidentEvent::class, Incident::class)->where('incident_events.event_type', 'paused');
     }
 
     public function latestCheckRun(): HasOne
@@ -474,6 +483,10 @@ class Monitor extends Model
 
         $run = $this->latestCheckRun;
 
+        if ($run !== null && ($run->config_version !== $this->config_version || $this->wasPausedAfter($run))) {
+            return 'pending';
+        }
+
         if ($run?->status === 'failed') {
             return 'warning';
         }
@@ -502,5 +515,14 @@ class Monitor extends Model
             || ($run->adsbot_status !== null && ! $this->acceptsHttpStatus($run->adsbot_status))
             ? 'warning'
             : 'healthy';
+    }
+
+    /**
+     * Whether a pause interrupted an incident after the given check, so that its result no longer describes the
+     * monitor until another check finishes.
+     */
+    private function wasPausedAfter(CheckRun $run): bool
+    {
+        return $this->pauseEvents->contains(fn (IncidentEvent $event): bool => $event->created_at >= $run->finished_at);
     }
 }

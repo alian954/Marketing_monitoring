@@ -46,7 +46,7 @@ class StatusPageController extends Controller
     {
         $statusPage = StatusPage::query()->where('setting_key', 'default')->first();
         $monitors = Monitor::query()
-            ->with(['latestCheckRun', 'activeIncidents'])
+            ->with(['latestCheckRun', 'activeIncidents', 'pauseEvents'])
             ->orderBy('name')
             ->get();
 
@@ -152,7 +152,7 @@ class StatusPageController extends Controller
         $monitors = Monitor::query()
             ->where('public_status', true)
             ->where('user_id', $statusPage->user_id)
-            ->with(['latestCheckRun', 'activeIncidents'])
+            ->with(['latestCheckRun', 'activeIncidents', 'pauseEvents'])
             ->orderBy('name')
             ->get();
 
