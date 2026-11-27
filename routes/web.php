@@ -20,6 +20,8 @@ use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PlatformOrganizationController;
+use App\Http\Controllers\PlatformProductController;
+use App\Http\Controllers\PlatformSubscriptionController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SharedClientReportController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
@@ -93,7 +95,33 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
 Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class])->group(function (): void {
     Route::middleware(EnsurePlatformAdmin::class)->prefix('platform')->name('platform.')->group(function (): void {
         Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
+        Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
+        Route::post('/products/{product}/plans', [PlatformProductController::class, 'storePlan'])
+            ->whereNumber('product')
+            ->name('products.plans.store');
+        Route::patch('/products/plans/{productPlan}', [PlatformProductController::class, 'updatePlan'])
+            ->whereNumber('productPlan')
+            ->name('products.plans.update');
         Route::post('/organizations', [PlatformOrganizationController::class, 'store'])->name('organizations.store');
+        Route::get('/organizations/{organization}/products', [PlatformSubscriptionController::class, 'index'])
+            ->whereNumber('organization')
+            ->name('organizations.products');
+        Route::post('/organizations/{organization}/subscriptions', [PlatformSubscriptionController::class, 'store'])
+            ->whereNumber('organization')
+            ->name('organizations.subscriptions.store');
+        Route::patch('/organizations/{organization}/subscriptions/{subscription}', [PlatformSubscriptionController::class, 'update'])
+            ->whereNumber('organization')
+            ->whereNumber('subscription')
+            ->name('organizations.subscriptions.update');
+        Route::post('/organizations/{organization}/subscriptions/{subscription}/items', [PlatformSubscriptionController::class, 'storeItem'])
+            ->whereNumber('organization')
+            ->whereNumber('subscription')
+            ->name('organizations.subscriptions.items.store');
+        Route::patch('/organizations/{organization}/subscriptions/{subscription}/items/{subscriptionItem}', [PlatformSubscriptionController::class, 'updateItem'])
+            ->whereNumber('organization')
+            ->whereNumber('subscription')
+            ->whereNumber('subscriptionItem')
+            ->name('organizations.subscriptions.items.update');
         Route::patch('/organizations/{organization}', [PlatformOrganizationController::class, 'update'])
             ->whereNumber('organization')
             ->name('organizations.update');

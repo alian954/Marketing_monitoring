@@ -35,6 +35,8 @@ class PlanEntitlementFactory extends Factory
             ProductFeature::query()->firstOrCreate([
                 'product_id' => $entitlement->product_id,
                 'feature_key' => $entitlement->feature_key,
+            ], [
+                'display_name' => $entitlement->feature_key,
             ]);
         });
     }

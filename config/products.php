@@ -16,6 +16,14 @@ return [
             'monitoring.status_pages',
             'monitoring.notifications',
         ],
+        'feature_labels' => [
+            'monitoring.targets' => '監測目標',
+            'monitoring.check_history' => '檢查紀錄',
+            'monitoring.incidents' => '事件管理',
+            'monitoring.maintenance_windows' => '維護時段',
+            'monitoring.status_pages' => '公開狀態頁',
+            'monitoring.notifications' => '通知規則',
+        ],
     ],
     'marketing-insights' => [
         'product_code' => 'marketing-insights',
@@ -31,6 +39,14 @@ return [
             'marketing.ads.meta',
             'marketing.ads.google',
             'marketing.reports',
+        ],
+        'feature_labels' => [
+            'marketing.social_posts' => '公開貼文監測',
+            'marketing.analytics.ga4' => 'Google Analytics 4',
+            'marketing.analytics.search_console' => 'Google Search Console',
+            'marketing.ads.meta' => 'Meta 廣告數據',
+            'marketing.ads.google' => 'Google Ads 數據',
+            'marketing.reports' => '行銷成效報表',
         ],
     ],
 ];

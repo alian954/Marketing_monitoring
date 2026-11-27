@@ -224,9 +224,9 @@ platform_audit_logs / outbox_events / inbox_events
 
 ### 7.1 執行期產品註冊
 
-第一階段以 `config/products.php` 和 `App\Services\ProductRegistry` 建立 boot-time manifest registry，提供 `all`、`find`、`declaresFeature` 查詢，並驗證產品代碼、名稱、版本、生命週期、入口 route 名稱與不重複的 feature keys。現有 `website-monitoring` 和 `marketing-insights` 已登錄；測試證明新增第三個產品只需增加 manifest。第二階段新增中央產品/功能 catalog、方案、訂閱及訂閱項目資料表，`products:sync` 可冪等同步程式碼 manifest，`ProductEntitlementService` 會依產品、功能鍵、租戶、方案、訂閱狀態與有效期間計算授權；跨租戶及跨產品方案組合由複合外鍵阻擋。
+第一階段以 `config/products.php` 和 `App\Services\ProductRegistry` 建立 boot-time manifest registry，提供 `all`、`find`、`declaresFeature` 查詢，並驗證產品代碼、名稱、版本、生命週期、入口 route 名稱、不重複的 feature keys 與逐項顯示名稱。現有 `website-monitoring` 和 `marketing-insights` 已登錄；測試證明新增第三個產品只需增加 manifest。第二階段新增中央產品/功能 catalog、方案、訂閱及訂閱項目資料表，`products:sync` 可冪等同步程式碼 manifest，`ProductEntitlementService` 會依產品、功能鍵、租戶、方案、訂閱狀態與有效期間計算授權；跨租戶及跨產品方案組合由複合外鍵阻擋。
 
-目前 entitlement 仍是尚未接入路由、API、背景工作或管理介面的核心服務；新資料模型沒有回填舊 `Organization` 方案，也沒有管理 UI 或金流。`EnsureOrganizationActive` 與既有配額欄位保持原狀，entitlement resolver 仍額外尊重舊組織停用/到期狀態，避免新模型意外重新開放舊帳戶。需在建立回填、中央方案管理與產品入口授權流程後，才可逐步切換舊方案欄位。
+目前已有平台管理員專用的產品方案目錄、方案版本/功能權益設定、方案上架/停售，以及組織訂閱合約與產品項目管理；`ProductEntitlementService` 仍未接入既有產品路由、API 或背景工作。新資料模型沒有回填舊 `Organization` 方案，也沒有付款、訂單或收款 ledger。`EnsureOrganizationActive` 與既有配額欄位保持原狀，entitlement resolver 仍額外尊重舊組織停用/到期狀態，避免新模型意外重新開放舊帳戶。後續需先完成舊客戶映射、可回復的 entitlement 對照與各產品入口測試，才逐步切換舊方案欄位。
 
 產品目錄只接受經版本控制及審查的程式碼 manifest，不允許管理者上傳任意 PHP/plugin 程式。每個產品 manifest 至少聲明：
 
@@ -280,8 +280,8 @@ platform_audit_logs / outbox_events / inbox_events
 | --- | --- | --- | --- |
 | 0. 架構確認 | 已採用模組化單體、Organization = company/tenant/workspace、Client 為外部客戶、工作區角色與產品 entitlement 分離、先人工帳務等第一版方向。 | 未確認的發票、退款及資料刪除期限可能延誤商用。 | 每階段仍記錄決策；不在本階段接金流或自動刪除客戶資料。 |
 | 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients`、監測根表、`notification_outbox`、四種 provider connection 和 per-client property/site/ad account 對應回填及切換至 workspace scope；純子記錄沿用受限 parent scope，後續審查跨根資料連結是否需 composite key。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
-| 2. RBAC 與產品目錄 | 建立 product registry manifest、註冊、停用、產品角色及 server-side feature entitlement；先為既有功能明確設定 `website-monitoring` 和 `marketing-insights`。 | 權益快取未失效、未註冊產品誤放行。 | table-driven 覆蓋每個 product/role/feature/state 組合；停用入口、API、queue run 和匯出均拒絕；在測試中加入第 3 個範例產品，只加 manifest 也能被 registry 讀取。 |
-| 3. 訂閱與商業帳務 | 將 Organization 上的 `plan_name` 和 quota 轉成 product plan/subscription items；支援 free/trial/paid/enterprise、bundle、人工付款 ledger、升降級/寬限期。舊欄位採 dual-read 遷移並保留操作日誌。 | 金額/幣別或到期換算錯誤、過期帳戶錯誤續權。 | 方案矩陣、時區邊界、核款、重複核款冪等、退款/沖正、單產品取消、bundle 分項、降級不刪資料、跨租戶用量隔離及財務對帳測試。 |
+| 2. RBAC 與產品目錄 | 已建立 registry manifest、產品功能標籤、catalog 同步、產品方案版本與權益管理、產品上架/停售、組織訂閱與產品項目管理；下一步為角色授權、權益用量及入口接線。 | 在權益尚未接線時誤以為已限制產品存取；未註冊產品誤放行。 | 已驗證方案金額/功能權益、管理員限制、訂閱加入/取消、租戶隔離及 entitlement resolver；後續覆蓋所有產品路由、API、queue、匯出及 feature 狀態矩陣。 |
+| 3. 訂閱與商業帳務 | 下一步將 Organization 上的 `plan_name` 和 quota 漸進對應 product plan/subscription items，補上 free/trial/paid/enterprise、bundle、人工付款 ledger、升降級/寬限期與歷史稽核。舊欄位採 dual-read 遷移並保留操作日誌。 | 金額/幣別或到期換算錯誤、過期帳戶錯誤續權。 | 方案矩陣、時區邊界、核款、重複核款冪等、退款/沖正、單產品取消、bundle 分項、降級不刪資料、跨租戶用量隔離及財務對帳測試。 |
 | 4. 全域 SSO | 中央 OIDC issuer/IdP 與網站、行銷產品 clients；逐步將本機 login 綁定 global subject，不自動依未驗證 email 合併使用者。 | 帳號錯誤合併、token 重放、logout/revocation 不一致。 | OIDC test provider integration、PKCE/state/nonce 失敗、錯誤 issuer/audience、過期/replay、無訂閱、跨租戶角色、帳號停用及跨產品登出驗收。 |
 | 5. 整合憑證與資料來源 | 新增 workspace-level provider app 設定頁和 encrypted secret storage；拆分 app client credential 與使用者 OAuth grant，為每個 client 設定 data source mapping。 | Secret 外洩、callback URI/domain 白名單錯誤、provider 審核限制。 | secret 寫入/更新/遮蔽/刪除、權限、log redaction、加密備份還原、錯誤 app credentials、token revoke/refresh；以正式測試 app 完成每家 provider 真實 OAuth/API 驗收。 |
 | 6. 產品模組和工作隔離 | 先建立兩個產品的內部 contracts、report providers、具名 queues/worker 與每產品 health/heartbeat；逐模組遷移，不重寫功能。 | contract 遺漏導致報表差異；某產品工作延遲。 | 舊/新 report golden dataset 比對；單產品 worker 故障不阻塞另一產品；retry、poison message、replay、scheduler 和 alert 測試；organization/client 資料歸屬不變。 |

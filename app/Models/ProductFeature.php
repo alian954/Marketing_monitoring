@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['product_id', 'feature_key'])]
+#[Fillable(['product_id', 'feature_key', 'display_name'])]
 class ProductFeature extends Model
 {
     /** @use HasFactory<ProductFeatureFactory> */

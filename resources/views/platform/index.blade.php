@@ -224,6 +224,7 @@
                                         @csrf
                                         <button class="button button-primary button-small" type="submit">進入組織</button>
                                     </form>
+                                    <a class="button button-secondary button-small platform-org-actions" href="{{ route('platform.organizations.products', $organization) }}">產品訂閱</a>
                                 </td>
                             </tr>
                         @endforeach

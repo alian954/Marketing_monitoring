@@ -55,6 +55,10 @@ class ProductRegistry
         $hasValidEntryRoute = is_string($manifest['entry_route'] ?? null)
             && trim($manifest['entry_route']) !== '';
         $hasValidFeatureKeys = $this->hasValidFeatureKeys($manifest['feature_keys'] ?? null);
+        $hasValidFeatureLabels = $this->hasValidFeatureLabels(
+            $manifest['feature_keys'] ?? null,
+            $manifest['feature_labels'] ?? null,
+        );
 
         if (! $isValidCode
             || ($manifest['product_code'] ?? null) !== $productCode
@@ -63,7 +67,8 @@ class ProductRegistry
             || ! $hasValidManifestVersion
             || ! $hasValidLifecycle
             || ! $hasValidEntryRoute
-            || ! $hasValidFeatureKeys) {
+            || ! $hasValidFeatureKeys
+            || ! $hasValidFeatureLabels) {
             throw new InvalidArgumentException("The product manifest [{$productCode}] is invalid.");
         }
     }
@@ -82,6 +87,23 @@ class ProductRegistry
             }
 
             $registeredFeatureKeys[$featureKey] = true;
+        }
+
+        return true;
+    }
+
+    private function hasValidFeatureLabels(mixed $featureKeys, mixed $featureLabels): bool
+    {
+        if (! is_array($featureKeys) || ! is_array($featureLabels) || count($featureKeys) !== count($featureLabels)) {
+            return false;
+        }
+
+        foreach ($featureKeys as $featureKey) {
+            if (! is_string($featureKey)
+                || ! is_string($featureLabels[$featureKey] ?? null)
+                || trim($featureLabels[$featureKey]) === '') {
+                return false;
+            }
         }
 
         return true;

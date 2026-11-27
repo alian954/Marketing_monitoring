@@ -40,10 +40,13 @@ class ProductCatalogSeeder extends Seeder
                 );
 
                 foreach ($manifest['feature_keys'] as $featureKey) {
-                    ProductFeature::query()->firstOrCreate([
-                        'product_id' => $product->id,
-                        'feature_key' => $featureKey,
-                    ]);
+                    ProductFeature::query()->updateOrCreate(
+                        [
+                            'product_id' => $product->id,
+                            'feature_key' => $featureKey,
+                        ],
+                        ['display_name' => $manifest['feature_labels'][$featureKey]],
+                    );
                 }
             }
         });

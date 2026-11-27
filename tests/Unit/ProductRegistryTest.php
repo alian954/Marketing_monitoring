@@ -33,6 +33,7 @@ class ProductRegistryTest extends TestCase
             'lifecycle' => 'active',
             'entry_route' => 'clients.index',
             'feature_keys' => ['customers.directory'],
+            'feature_labels' => ['customers.directory' => '客戶目錄'],
         ];
 
         $registry = new ProductRegistry($manifests);
@@ -52,6 +53,7 @@ class ProductRegistryTest extends TestCase
                 'lifecycle' => 'active',
                 'entry_route' => 'monitors.index',
                 'feature_keys' => [],
+                'feature_labels' => [],
             ],
         ]);
 
@@ -71,6 +73,7 @@ class ProductRegistryTest extends TestCase
                 'lifecycle' => 'active',
                 'entry_route' => 'monitors.index',
                 'feature_keys' => ['monitoring.targets', 'monitoring.targets'],
+                'feature_labels' => ['monitoring.targets' => '監測目標'],
             ],
         ]);
 

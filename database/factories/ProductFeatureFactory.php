@@ -21,6 +21,7 @@ class ProductFeatureFactory extends Factory
         return [
             'product_id' => Product::factory(),
             'feature_key' => 'test.feature-'.$this->faker->unique()->word(),
+            'display_name' => $this->faker->words(2, true),
         ];
     }
 }

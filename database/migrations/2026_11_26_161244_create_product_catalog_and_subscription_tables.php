@@ -26,6 +26,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->string('feature_key', 120);
+            $table->string('display_name', 120);
             $table->timestamps();
             $table->unique(['product_id', 'feature_key']);
         });
