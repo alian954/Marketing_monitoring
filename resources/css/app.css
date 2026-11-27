@@ -3249,6 +3249,54 @@ a.platform-chip:hover {
     background: #fbf3e4;
 }
 
+.timeline-marker line {
+    stroke: var(--timeline-color);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
+
+.timeline-marker circle {
+    fill: var(--timeline-color);
+}
+
+.timeline-marker--annotation,
+.timeline-legend--annotation {
+    --timeline-color: var(--navy);
+}
+
+.timeline-marker--incident,
+.timeline-legend--incident {
+    --timeline-color: var(--red);
+}
+
+.timeline-marker--alert,
+.timeline-legend--alert {
+    --timeline-color: var(--amber);
+}
+
+.timeline-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 12px;
+    white-space: nowrap;
+}
+
+.timeline-legend::before {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--timeline-color);
+    content: '';
+}
+
+.annotation-note {
+    display: block;
+    margin-top: 4px;
+    font-weight: 400;
+    white-space: pre-line;
+}
+
 @media (max-width: 900px) {
     .cross-platform-stat-grid,
     .cross-platform-facts {

@@ -126,6 +126,7 @@
                                 <a class="button button-secondary button-small" href="{{ route('clients.cross-platform', $client) }}">跨平台總覽</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.report-shares.index', $client) }}">報表分享</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.marketing-alerts.index', $client) }}">行銷警示</a>
+                                <a class="button button-secondary button-small" href="{{ route('clients.annotations.index', $client) }}">行銷日曆</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.currencies.index', $client) }}">幣別與匯率</a>
                                 @unless ($client->isDefault() || $hasAssignments)
                                     <form action="{{ route('clients.destroy', $client) }}" method="POST" class="inline-form">

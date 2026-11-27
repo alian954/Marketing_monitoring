@@ -49,6 +49,7 @@
             </p>
         </div>
         <div class="heading-actions">
+            <a class="button button-secondary" href="{{ route('clients.annotations.index', $client) }}">行銷日曆</a>
             <a class="button button-secondary" href="{{ route('clients.performance', $period) }}">所有客戶成效</a>
             <a class="button button-secondary" href="{{ route('clients.index') }}">返回客戶</a>
         </div>
@@ -213,6 +214,13 @@
                                 @endif
                             </g>
                         @endforeach
+                        @foreach ($chartMarkers as $marker)
+                            <g class="timeline-marker timeline-marker--{{ $marker['sources'][0] }}">
+                                <title>{{ $marker['label'] }}</title>
+                                <line x1="{{ $marker['x'] }}" y1="18" x2="{{ $marker['x'] }}" y2="154"></line>
+                                <circle cx="{{ $marker['x'] }}" cy="14" r="4"></circle>
+                            </g>
+                        @endforeach
                         @foreach ($chart['axis_labels'] as $axisLabel)
                             <text class="metric-trend-axis-label" x="{{ $axisLabel['x'] }}" y="174" text-anchor="middle">{{ $axisLabel['label'] }}</text>
                         @endforeach
@@ -247,6 +255,55 @@
             </div>
         </section>
     @endif
+
+    <section class="panel spaced-top" aria-labelledby="cross-platform-timeline-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="cross-platform-timeline-title" class="panel-title">期間事件</h2>
+                <p class="panel-description">
+                    @foreach (\App\Services\ClientMarketingTimeline::SOURCE_LABELS as $source => $sourceLabel)
+                        <span class="timeline-legend timeline-legend--{{ $source }}">{{ $sourceLabel }}</span>
+                    @endforeach
+                    · 上方圖表的圓點標示有事件的日期。
+                </p>
+            </div>
+            @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                <a class="button button-secondary button-small" href="{{ route('clients.annotations.index', $client) }}">新增註記</a>
+            @endunless
+        </div>
+        @if ($timeline === [])
+            <p class="empty-copy panel-body">此期間沒有行銷註記、網站監測事件或行銷警示。</p>
+        @else
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <caption class="sr-only">期間內的行銷註記、網站監測事件與行銷警示</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">日期</th>
+                            <th scope="col">來源</th>
+                            <th scope="col">類型</th>
+                            <th scope="col">內容</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($timeline as $entry)
+                            <tr>
+                                <td><time datetime="{{ $entry['date'] }}">{{ $formatDate($entry['date']) }}</time></td>
+                                <td><span class="timeline-legend timeline-legend--{{ $entry['source'] }}">{{ \App\Services\ClientMarketingTimeline::SOURCE_LABELS[$entry['source']] }}</span></td>
+                                <td>{{ $entry['category_label'] }}</td>
+                                <td>
+                                    {{ $entry['title'] }}
+                                    @if ($entry['note'] !== null)
+                                        <span class="secondary-text annotation-note">{{ $entry['note'] }}</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
 
     <section class="panel spaced-top" aria-labelledby="cross-platform-ga4-title">
         <div class="panel-header">

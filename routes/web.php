@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
+use App\Http\Controllers\ClientMarketingAnnotationController;
 use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportScheduleController;
 use App\Http\Controllers\ClientReportShareController;
@@ -305,6 +306,17 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::get('/clients/{client}/cross-platform', [ClientCrossPlatformOverviewController::class, 'show'])
         ->whereNumber('client')
         ->name('clients.cross-platform');
+    Route::get('/clients/{client}/annotations', [ClientMarketingAnnotationController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.annotations.index');
+    Route::post('/clients/{client}/annotations', [ClientMarketingAnnotationController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.annotations.store');
+    Route::delete('/clients/{client}/annotations/{marketingAnnotation}', [ClientMarketingAnnotationController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('marketingAnnotation')
+        ->scopeBindings()
+        ->name('clients.annotations.destroy');
     Route::get('/clients/{client}/marketing-alerts', [MarketingAlertRuleController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.marketing-alerts.index');

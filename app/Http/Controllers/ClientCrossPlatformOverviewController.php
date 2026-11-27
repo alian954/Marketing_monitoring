@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\SocialEngagementTarget;
 use App\Models\User;
 use App\Services\ClientCrossPlatformOverview;
+use App\Services\ClientMarketingTimeline;
 use App\Services\ClientPortfolioReportingPeriod;
 use App\Services\DashboardCampaignMarketingSummary;
 use Carbon\CarbonImmutable;
@@ -24,6 +25,7 @@ class ClientCrossPlatformOverviewController extends Controller
         ClientPortfolioReportingPeriod $reportingPeriod,
         DashboardCampaignMarketingSummary $dashboardCampaignMarketingSummary,
         ClientCrossPlatformOverview $crossPlatformOverview,
+        ClientMarketingTimeline $marketingTimeline,
     ): Response|RedirectResponse {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
@@ -44,6 +46,8 @@ class ClientCrossPlatformOverviewController extends Controller
         $marketingSummaries = $dashboardCampaignMarketingSummary->build($targets, $user, now()->toImmutable());
         $overview = $crossPlatformOverview->build($targets, $marketingSummaries, $period['from'], $period['to']);
         $previousOverview = $crossPlatformOverview->build($targets, $marketingSummaries, $previousPeriod['from'], $previousPeriod['to']);
+        $chart = $crossPlatformOverview->chart($overview['daily']);
+        $timeline = $marketingTimeline->build($client, $period['from'], $period['to']);
 
         return response()
             ->view('clients.cross-platform', [
@@ -52,7 +56,9 @@ class ClientCrossPlatformOverviewController extends Controller
                 'previousPeriod' => $previousPeriod,
                 'overview' => $overview,
                 'comparison' => $crossPlatformOverview->compare($overview, $previousOverview),
-                'chart' => $crossPlatformOverview->chart($overview['daily']),
+                'chart' => $chart,
+                'timeline' => $timeline,
+                'chartMarkers' => $chart === null ? [] : $marketingTimeline->chartMarkers($timeline, $chart['bars']),
                 'campaignCount' => $targets->filter(
                     static fn (SocialEngagementTarget $target): bool => $target->starts_on !== null
                         && $target->ends_on !== null

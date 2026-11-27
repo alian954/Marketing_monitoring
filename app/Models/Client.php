@@ -83,6 +83,11 @@ class Client extends Model
         return $this->hasMany(MarketingAlertRule::class);
     }
 
+    public function marketingAnnotations(): HasMany
+    {
+        return $this->hasMany(ClientMarketingAnnotation::class);
+    }
+
     public function exchangeRates(): HasMany
     {
         return $this->hasMany(ClientExchangeRate::class);
