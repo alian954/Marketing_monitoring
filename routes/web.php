@@ -4,9 +4,11 @@ use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientAdPlatformImportController;
 use App\Http\Controllers\ClientBudgetController;
+use App\Http\Controllers\ClientCompetitorController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
+use App\Http\Controllers\ClientKeywordController;
 use App\Http\Controllers\ClientLeadController;
 use App\Http\Controllers\ClientMarketingAnnotationController;
 use App\Http\Controllers\ClientMarketingInsightController;
@@ -354,6 +356,24 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::delete('/clients/{client}/leads', [ClientLeadController::class, 'destroy'])
         ->whereNumber('client')
         ->name('clients.leads.destroy');
+    Route::get('/clients/{client}/keywords', [ClientKeywordController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.keywords.index');
+    Route::post('/clients/{client}/keywords', [ClientKeywordController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.keywords.store');
+    Route::post('/clients/{client}/keywords/refresh', [ClientKeywordController::class, 'refresh'])
+        ->whereNumber('client')
+        ->middleware('throttle:5,1')
+        ->name('clients.keywords.refresh');
+    Route::delete('/clients/{client}/keywords/{trackedKeyword}', [ClientKeywordController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('trackedKeyword')
+        ->scopeBindings()
+        ->name('clients.keywords.destroy');
+    Route::get('/clients/{client}/competitors', [ClientCompetitorController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.competitors.index');
     Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.budgets.index');

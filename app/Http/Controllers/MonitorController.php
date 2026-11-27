@@ -372,8 +372,12 @@ class MonitorController extends Controller
             ? Client::query()->find((int) $requestedClientId)
             : null;
 
+        $monitor = $request->query('preset') === 'competitor'
+            ? new Monitor(['label' => ClientCompetitorController::TAG, 'alert_on_visible_text_change' => true])
+            : new Monitor;
+
         return view('monitors.form', [
-            'monitor' => new Monitor,
+            'monitor' => $monitor,
             'clients' => Client::query()->orderBy('name')->get(['id', 'name']),
             'selectedClientId' => $selectedClient?->id ?? $defaultClient->id,
             'formAction' => route('monitors.store'),

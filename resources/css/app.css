@@ -3767,3 +3767,22 @@ a.platform-chip:hover {
 .api-token-value {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+.keyword-change--up {
+    color: var(--green);
+    font-weight: 650;
+}
+
+.keyword-change--down {
+    color: var(--red);
+    font-weight: 650;
+}
+
+.keyword-history {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+}

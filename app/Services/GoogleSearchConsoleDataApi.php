@@ -218,6 +218,75 @@ class GoogleSearchConsoleDataApi
         ];
     }
 
+    /**
+     * Reads search metrics for specific queries on the site, keyed by the lowercased query.
+     *
+     * Search Console filters cannot OR several "equals" conditions, so the keywords are matched
+     * with one anchored RE2 regular expression instead.
+     *
+     * @param  list<string>  $keywords
+     * @return array<string, array{clicks: float, impressions: float, ctr: float, position: float}>
+     */
+    public function keywordMetrics(string $accessToken, string $siteUrl, string $startsOn, string $endsOn, array $keywords): array
+    {
+        $keywords = array_values(array_unique(array_filter(array_map(
+            static fn (string $keyword): string => mb_strtolower(trim($keyword)),
+            $keywords,
+        ), static fn (string $keyword): bool => $keyword !== '')));
+
+        if ($keywords === []) {
+            return [];
+        }
+
+        if (! $this->isCalendarDate($startsOn) || ! $this->isCalendarDate($endsOn) || $startsOn > $endsOn || trim($siteUrl) === '') {
+            throw new GoogleSearchConsoleApiException('Search Console 關鍵字查詢設定無效。');
+        }
+
+        $expression = '^('.implode('|', array_map(static fn (string $keyword): string => preg_quote($keyword, null), $keywords)).')$';
+
+        if (strlen($expression) > 4000) {
+            throw new GoogleSearchConsoleApiException('追蹤的關鍵字過多，請減少後再試。');
+        }
+
+        $response = $this->readOnlyRequest($accessToken)
+            ->post(
+                'https://www.googleapis.com/webmasters/v3/sites/'.rawurlencode($siteUrl).'/searchAnalytics/query',
+                [
+                    'startDate' => $startsOn,
+                    'endDate' => $endsOn,
+                    'type' => 'web',
+                    'dataState' => 'final',
+                    'dimensions' => ['query'],
+                    'dimensionFilterGroups' => [[
+                        'filters' => [[
+                            'dimension' => 'query',
+                            'operator' => 'includingRegex',
+                            'expression' => $expression,
+                        ]],
+                    ]],
+                    'rowLimit' => max(1, count($keywords)),
+                ],
+            );
+        $payload = $this->successfulPayload($response, 'Google Search Console Search Analytics API');
+        $rows = $payload['rows'] ?? [];
+
+        if (! is_array($rows)) {
+            throw new GoogleSearchConsoleApiException('Search Console 報表資料格式無效，請稍後再試。');
+        }
+
+        $metrics = [];
+
+        foreach ($rows as $row) {
+            $query = is_array($row) && is_array($row['keys'] ?? null) ? ($row['keys'][0] ?? null) : null;
+
+            if (is_string($query)) {
+                $metrics[mb_strtolower($query)] = $this->metrics($row);
+            }
+        }
+
+        return $metrics;
+    }
+
     /** @return array<string, mixed> */
     private function query(
         string $accessToken,

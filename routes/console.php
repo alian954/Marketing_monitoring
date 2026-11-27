@@ -20,6 +20,7 @@ Schedule::command('monitors:send-dns-summary')->dailyAt('06:00')->withoutOverlap
 Schedule::command('google-analytics:sync-due')->dailyAt('06:30')->timezone('Asia/Taipei')->withoutOverlapping(120);
 Schedule::command('meta-marketing:sync-due')->dailyAt('06:40')->timezone('Asia/Taipei')->withoutOverlapping(120);
 Schedule::command('google-ads:sync-due')->dailyAt('06:50')->timezone('Asia/Taipei')->withoutOverlapping(120);
+Schedule::command('keywords:sync-rankings')->weeklyOn(1, '07:10')->timezone('Asia/Taipei')->withoutOverlapping(60);
 Schedule::command('monitors:prune')->dailyAt('02:05')->withoutOverlapping();
 Schedule::command('auth:clear-resets')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('marketing-alerts:evaluate')->dailyAt('07:23')->timezone('Asia/Taipei')->withoutOverlapping(60);

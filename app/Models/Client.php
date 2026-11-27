@@ -103,6 +103,11 @@ class Client extends Model
         return $this->hasMany(ClientLead::class);
     }
 
+    public function trackedKeywords(): HasMany
+    {
+        return $this->hasMany(ClientTrackedKeyword::class);
+    }
+
     public function storeOrders(): HasMany
     {
         return $this->hasMany(ClientStoreOrder::class);
