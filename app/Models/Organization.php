@@ -159,10 +159,19 @@ class Organization extends Model
         return '使用中';
     }
 
+    /**
+     * Whether product features for this organization are gated by its subscription entitlements.
+     */
+    public function enforcesEntitlements(): bool
+    {
+        return $this->entitlements_enforced_at !== null;
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
         return [
+            'entitlements_enforced_at' => 'immutable_datetime',
             'subscription_ends_on' => 'date',
             'seat_limit' => 'integer',
             'client_limit' => 'integer',

@@ -31,6 +31,11 @@ class User extends Authenticatable
 
     private bool $currentWorkspaceResolved = false;
 
+    /** @var array{membershipOwnerUserId: int|null}|null */
+    private ?array $activeWorkspaceSelectionCache = null;
+
+    public const CURRENT_WORKSPACE_SESSION_KEY = 'current_workspace_owner_id';
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
@@ -54,9 +59,167 @@ class User extends Authenticatable
         return $this->workspaceOwner()->hasOne(StatusPage::class);
     }
 
+    /**
+     * The membership used for the workspace currently selected in this session; none while working in the user's own workspace.
+     */
     public function workspaceMembership(): HasOne
     {
-        return $this->hasOne(WorkspaceMembership::class, 'member_user_id')->whereNull('revoked_at');
+        $relation = $this->hasOne(WorkspaceMembership::class, 'member_user_id')->whereNull('revoked_at');
+        $membershipOwnerUserId = $this->activeMembershipOwnerUserId();
+
+        return $membershipOwnerUserId === null
+            ? $relation->whereRaw('1 = 0')
+            : $relation->where('owner_user_id', $membershipOwnerUserId);
+    }
+
+    /**
+     * Active memberships this user holds in other owners' workspaces.
+     */
+    public function joinedWorkspaceMemberships(): HasMany
+    {
+        return $this->hasMany(WorkspaceMembership::class, 'member_user_id')
+            ->whereNull('revoked_at')
+            ->orderBy('accepted_at')
+            ->orderBy('id');
+    }
+
+    public function ownsOrganization(): bool
+    {
+        return Organization::query()->where('owner_user_id', $this->getKey())->exists();
+    }
+
+    /**
+     * Whether the user may work in their own workspace: owners of an organization, or accounts without other memberships.
+     */
+    public function canUseOwnWorkspace(): bool
+    {
+        return $this->ownsOrganization() || ! $this->joinedWorkspaceMemberships()->exists();
+    }
+
+    /**
+     * @return list<array{key: string, name: string, roleLabel: string, isCurrent: bool, isAccessible: bool}>
+     */
+    public function availableWorkspaces(): array
+    {
+        if ($this->isPlatformAdmin()) {
+            return [];
+        }
+
+        $currentOwnerId = $this->workspaceOwnerId();
+        $workspaces = [];
+
+        if ($this->canUseOwnWorkspace()) {
+            $ownOrganization = Organization::query()->where('owner_user_id', $this->getKey())->first();
+            $workspaces[] = [
+                'key' => 'own',
+                'name' => $ownOrganization?->name ?? $this->name.' 的組織',
+                'roleLabel' => '擁有者',
+                'isCurrent' => $currentOwnerId === (int) $this->getKey(),
+                'isAccessible' => $ownOrganization?->isAccessible() ?? true,
+            ];
+        }
+
+        $memberships = $this->joinedWorkspaceMemberships()->with('owner:id,name')->get();
+        $organizations = Organization::query()
+            ->whereIn('owner_user_id', $memberships->pluck('owner_user_id'))
+            ->get()
+            ->keyBy('owner_user_id');
+
+        foreach ($memberships as $membership) {
+            $organization = $organizations->get($membership->owner_user_id);
+            $workspaces[] = [
+                'key' => (string) $membership->getKey(),
+                'name' => $organization?->name ?? ($membership->owner?->name ?? '未命名').' 的組織',
+                'roleLabel' => $membership->roleLabel().'成員',
+                'isCurrent' => $currentOwnerId === (int) $membership->owner_user_id,
+                'isAccessible' => $organization?->isAccessible() ?? true,
+            ];
+        }
+
+        return $workspaces;
+    }
+
+    /**
+     * Resolve the workspace owner for a switcher key, or null when the key is not one of this user's workspaces.
+     */
+    public function workspaceOwnerIdForSwitchKey(string $key): ?int
+    {
+        if ($key === 'own') {
+            return $this->canUseOwnWorkspace() ? (int) $this->getKey() : null;
+        }
+
+        if (! ctype_digit($key)) {
+            return null;
+        }
+
+        $ownerUserId = $this->joinedWorkspaceMemberships()->whereKey((int) $key)->value('owner_user_id');
+
+        return is_numeric($ownerUserId) ? (int) $ownerUserId : null;
+    }
+
+    public function forgetWorkspaceContext(): void
+    {
+        $this->activeWorkspaceSelectionCache = null;
+        $this->workspaceClientIdsCache = null;
+        $this->workspaceClientIdsResolved = false;
+        $this->currentWorkspaceCache = null;
+        $this->currentWorkspaceResolved = false;
+        $this->unsetRelation('workspaceMembership');
+    }
+
+    /**
+     * Owner of the joined workspace in use, or null for the user's own workspace.
+     *
+     * A valid, accessible session selection wins. Otherwise the user's own organization is preferred,
+     * then the earliest joined workspace; accessible workspaces are preferred over suspended ones.
+     */
+    private function activeMembershipOwnerUserId(): ?int
+    {
+        if ($this->activeWorkspaceSelectionCache !== null) {
+            return $this->activeWorkspaceSelectionCache['membershipOwnerUserId'];
+        }
+
+        if (! $this->exists) {
+            return null;
+        }
+
+        $ownUserId = (int) $this->getKey();
+        $joinedOwnerIds = $this->joinedWorkspaceMemberships()
+            ->pluck('owner_user_id')
+            ->map(static fn (mixed $ownerUserId): int => (int) $ownerUserId)
+            ->all();
+
+        $candidateOwnerIds = [];
+
+        if ($joinedOwnerIds === [] || $this->ownsOrganization()) {
+            $candidateOwnerIds[] = $ownUserId;
+        }
+
+        array_push($candidateOwnerIds, ...$joinedOwnerIds);
+
+        $selectedOwnerId = request()->hasSession()
+            ? request()->session()->get(self::CURRENT_WORKSPACE_SESSION_KEY)
+            : null;
+        $selectedOwnerId = is_numeric($selectedOwnerId) ? (int) $selectedOwnerId : null;
+
+        if ($selectedOwnerId !== null && in_array($selectedOwnerId, $candidateOwnerIds, true)) {
+            array_unshift($candidateOwnerIds, $selectedOwnerId);
+        }
+
+        $resolvedOwnerId = $candidateOwnerIds[0];
+
+        foreach (array_values(array_unique($candidateOwnerIds)) as $candidateOwnerId) {
+            if (Organization::isAccessibleForOwner($candidateOwnerId)) {
+                $resolvedOwnerId = $candidateOwnerId;
+
+                break;
+            }
+        }
+
+        $membershipOwnerUserId = $resolvedOwnerId === $ownUserId ? null : $resolvedOwnerId;
+        $this->activeWorkspaceSelectionCache = ['membershipOwnerUserId' => $membershipOwnerUserId];
+
+        return $membershipOwnerUserId;
     }
 
     public function workspaceMemberships(): HasMany

@@ -14,6 +14,38 @@ class ProductEntitlementService
 {
     public function __construct(private readonly ProductRegistry $productRegistry) {}
 
+    /**
+     * Owners of organizations that opted into subscription access but are not entitled to a feature.
+     *
+     * Background jobs exclude these owners' data. Organizations still on the legacy model are never listed.
+     *
+     * @return list<int>
+     */
+    public function unentitledOwnerIds(string $productCode, string $featureKey, ?DateTimeInterface $asOf = null): array
+    {
+        return Organization::query()
+            ->whereNotNull('entitlements_enforced_at')
+            ->get()
+            ->reject(fn (Organization $organization): bool => $this->resolve($organization, $productCode, $featureKey, $asOf)->isGranted)
+            ->map(static fn (Organization $organization): int => (int) $organization->owner_user_id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Whether data owned by this workspace owner may be served for a feature on public or background paths.
+     *
+     * Owners without an organization, or organizations still on the legacy model, are always allowed.
+     */
+    public function ownerHasFeature(int $ownerUserId, string $productCode, string $featureKey): bool
+    {
+        $organization = Organization::query()->where('owner_user_id', $ownerUserId)->first();
+
+        return $organization === null
+            || ! $organization->enforcesEntitlements()
+            || $this->resolve($organization, $productCode, $featureKey)->isGranted;
+    }
+
     public function resolve(
         Organization $organization,
         string $productCode,
@@ -39,7 +71,8 @@ class ProductEntitlementService
             return ProductFeatureGrant::denied();
         }
 
-        $timestamp = $evaluationTime->toDateTimeString();
+        // Subscription timestamps are stored in the application timezone (UTC); compare the same instant, not Taiwan wall-clock time.
+        $timestamp = $evaluationTime->copy()->setTimezone(config('app.timezone'))->toDateTimeString();
         $subscriptionItem = SubscriptionItem::query()
             ->where('organization_id', $organization->getKey())
             ->where('product_id', $product->getKey())

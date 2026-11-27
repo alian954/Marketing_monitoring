@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Probe\ResponseHeaderCondition;
+use App\Services\ProductEntitlementService;
 use Carbon\CarbonImmutable;
 use Database\Factories\MonitorFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -420,6 +421,19 @@ class Monitor extends Model
 
         return ($statusCode >= 200 && $statusCode < 400)
             || in_array($statusCode, array_map('intval', $this->accepted_status_codes ?? []), true);
+    }
+
+    /**
+     * Whether queued checks for this monitor may still run: the owner organization must be accessible and, when it
+     * opted into subscription access, entitled to monitoring targets.
+     */
+    public function ownerAllowsChecks(): bool
+    {
+        $ownerUserId = $this->user_id === null ? null : (int) $this->user_id;
+
+        return Organization::isAccessibleForOwner($ownerUserId)
+            && ($ownerUserId === null
+                || app(ProductEntitlementService::class)->ownerHasFeature($ownerUserId, 'website-monitoring', 'monitoring.targets'));
     }
 
     public function healthState(): string

@@ -11,6 +11,7 @@ use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsCampaignReportSync;
 use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsDataApi;
+use App\Services\ProductEntitlementService;
 use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -178,6 +179,17 @@ class SyncDueGoogleAnalyticsReports extends Command
         return $failedCount === 0 ? self::SUCCESS : self::FAILURE;
     }
 
+    /**
+     * Owners whose organization opted into subscription access without this data source.
+     *
+     * @return list<int>
+     */
+    private function unentitledOwnerIds(CarbonImmutable $asOf): array
+    {
+        return app(ProductEntitlementService::class)
+            ->unentitledOwnerIds('marketing-insights', 'marketing.analytics.ga4', $asOf);
+    }
+
     /** @return Builder<SocialEngagementTarget> */
     private function dueTargets(CarbonImmutable $asOf): Builder
     {
@@ -188,7 +200,8 @@ class SyncDueGoogleAnalyticsReports extends Command
             ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString())
             ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(
                 $asOf->setTimezone('Asia/Taipei')->toDateString(),
-            ));
+            ))
+            ->whereNotIn('user_id', $this->unentitledOwnerIds($asOf));
     }
 
     private function clearExpiredLandingPageReports(CarbonImmutable $asOf): void

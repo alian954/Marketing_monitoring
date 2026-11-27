@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\EnforceProductFeatureAvailability;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\ProductRegistry;
@@ -40,10 +41,11 @@ class ProductFeatureRegistryTest extends TestCase
         }
     }
 
-    public function test_every_product_specific_authenticated_route_is_mapped_to_a_feature(): void
+    public function test_every_product_specific_route_including_public_entry_points_is_mapped_to_a_feature(): void
     {
         $registry = app(ProductRegistry::class);
         $routePrefixes = [
+            'client-report-shares.',
             'clients.performance',
             'clients.report-shares.',
             'incidents.',
@@ -52,6 +54,7 @@ class ProductFeatureRegistryTest extends TestCase
             'notifications.',
             'social-engagement-targets.',
             'social-post-maturity.',
+            'status-page-subscriptions.',
             'status-pages.',
         ];
 
@@ -62,8 +65,17 @@ class ProductFeatureRegistryTest extends TestCase
                 continue;
             }
 
-            if ($routeName === 'status-pages.public') {
+            // Recipients must always be able to unsubscribe, whatever the product lifecycle or entitlement.
+            if (in_array($routeName, ['status-page-subscriptions.unsubscribe', 'status-page-subscriptions.unsubscribe.store'], true)) {
                 continue;
+            }
+
+            if ($registry->featureRequirementsForRoute($routeName) !== []) {
+                $this->assertContains(
+                    EnforceProductFeatureAvailability::class,
+                    $route->gatherMiddleware(),
+                    "Product route [{$routeName}] must enforce product availability.",
+                );
             }
 
             foreach ($routePrefixes as $prefix) {

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\CheckTlsCertificate;
 use App\Models\Monitor;
 use App\Models\Organization;
+use App\Services\ProductEntitlementService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -23,6 +24,7 @@ class DispatchDailyTlsChecks extends Command
             ->where('enabled', true)
             ->whereNull('social_platform')
             ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(now('Asia/Taipei')->toDateString()))
+            ->whereNotIn('user_id', app(ProductEntitlementService::class)->unentitledOwnerIds('website-monitoring', 'monitoring.targets'))
             ->whereDoesntHave('tlsObservations', static fn (Builder $query) => $query->whereDate('observed_on', today()))
             ->orderBy('id')
             ->chunkById(100, function (Collection $monitors) use (&$queued): void {

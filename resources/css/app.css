@@ -177,6 +177,40 @@ textarea {
     gap: 15px;
 }
 
+.workspace-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.workspace-switcher-label {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.workspace-switcher .field-select {
+    width: auto;
+    min-width: 0;
+    max-width: min(320px, 100%);
+    min-height: 34px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+@media (max-width: 680px) {
+    .workspace-switcher {
+        justify-content: stretch;
+    }
+
+    .workspace-switcher .field-select {
+        flex: 1 1 180px;
+        max-width: none;
+    }
+}
+
 .account-label {
     max-width: 200px;
     overflow: hidden;

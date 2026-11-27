@@ -8,6 +8,7 @@
             <h1 class="page-title">組織成員與權限</h1>
             <p class="page-description">邀請組織人員，並設定其資料範圍與維護權限。席次 {{ number_format($occupiedSeatCount) }} / {{ $seatLimit === null ? '不限' : number_format($seatLimit) }}，含待接受邀請。</p>
         </div>
+        <a class="button button-secondary" href="{{ route('team.activity.index') }}">操作紀錄</a>
     </div>
 
     @if (session('createdInviteUrl'))

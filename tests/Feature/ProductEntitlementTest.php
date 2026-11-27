@@ -215,6 +215,24 @@ class ProductEntitlementTest extends TestCase
      *     item: SubscriptionItem
      * }
      */
+    public function test_subscription_windows_are_compared_as_instants_not_taiwan_local_time(): void
+    {
+        $fixture = $this->createSubscriptionFixture();
+        $service = app(ProductEntitlementService::class);
+
+        $fixture['item']->update(['starts_at' => now()->addHour(), 'ends_at' => null]);
+        $this->assertFalse(
+            $service->resolve($fixture['organization'], 'website-monitoring', 'monitoring.targets')->isGranted,
+            'An item starting in one hour must not be granted yet.',
+        );
+
+        $fixture['item']->update(['starts_at' => now()->subDay(), 'ends_at' => now()->addHour()]);
+        $this->assertTrue(
+            $service->resolve($fixture['organization'], 'website-monitoring', 'monitoring.targets')->isGranted,
+            'An item ending in one hour must still be granted.',
+        );
+    }
+
     private function createSubscriptionFixture(
         string $subscriptionStatus = 'active',
         bool $enabled = true,

@@ -6,6 +6,7 @@ use App\Jobs\SendStatusPageSubscriptionConfirmation;
 use App\Models\NotificationOutbox;
 use App\Models\StatusPage;
 use App\Models\StatusPageSubscription;
+use App\Services\ProductEntitlementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -177,10 +178,17 @@ class StatusPageSubscriptionController extends Controller
     {
         abort_unless(preg_match('/^[A-Za-z0-9]{64}$/', $token) === 1, 404);
 
-        return StatusPage::query()
+        $statusPage = StatusPage::query()
             ->where('public_token_hash', hash('sha256', $token))
             ->where('is_published', true)
             ->firstOrFail();
+
+        abort_unless(
+            app(ProductEntitlementService::class)->ownerHasFeature((int) $statusPage->user_id, 'website-monitoring', 'monitoring.status_pages'),
+            404,
+        );
+
+        return $statusPage;
     }
 
     private function confirmationTokenMatches(StatusPageSubscription $subscription, mixed $token): bool

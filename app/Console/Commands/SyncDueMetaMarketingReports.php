@@ -10,6 +10,7 @@ use App\Models\SocialEngagementTargetMetaMarketingReport;
 use App\Services\MetaMarketingApiException;
 use App\Services\MetaMarketingCampaignReportSync;
 use App\Services\MetaMarketingClientAccountResolver;
+use App\Services\ProductEntitlementService;
 use App\Services\ScheduledSyncHealthRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -149,6 +150,17 @@ class SyncDueMetaMarketingReports extends Command
         return $failedCount === 0 ? self::SUCCESS : self::FAILURE;
     }
 
+    /**
+     * Owners whose organization opted into subscription access without this data source.
+     *
+     * @return list<int>
+     */
+    private function unentitledOwnerIds(CarbonImmutable $asOf): array
+    {
+        return app(ProductEntitlementService::class)
+            ->unentitledOwnerIds('marketing-insights', 'marketing.ads.meta', $asOf);
+    }
+
     /** @return Builder<SocialEngagementTarget> */
     private function dueTargets(CarbonImmutable $asOf): Builder
     {
@@ -161,7 +173,8 @@ class SyncDueMetaMarketingReports extends Command
             ->whereDate('ends_on', '>=', $asOf->subDays(7)->toDateString())
             ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(
                 $asOf->setTimezone('Asia/Taipei')->toDateString(),
-            ));
+            ))
+            ->whereNotIn('user_id', $this->unentitledOwnerIds($asOf));
     }
 
     private function clearExpiredAdInsights(CarbonImmutable $asOf): void

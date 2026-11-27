@@ -7,7 +7,7 @@
         <div class="heading-copy">
             <p class="eyebrow">Organization products</p>
             <h1 class="page-title">{{ $organization->name }} · 已封存的訂閱</h1>
-            <p class="page-description">商業訂閱與帳務暫緩開發；既有資料保留。</p>
+            <p class="page-description">訂閱合約資料保留封存；開立訂單與登錄收款請使用「<a class="strong-link" href="{{ route('platform.organizations.billing', $organization) }}">訂單與收款</a>」。</p>
         </div>
         <a class="button button-secondary" href="{{ route('platform.index') }}">返回組織管理</a>
     </div>

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Jobs\RunMonitorCheck;
 use App\Models\CheckRun;
 use App\Models\Monitor;
-use App\Models\Organization;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -18,9 +17,7 @@ class RunScheduler
 
             if ($lockedMonitor === null
                 || ! $lockedMonitor->enabled
-                || ! Organization::isAccessibleForOwner(
-                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
-                )) {
+                || ! $lockedMonitor->ownerAllowsChecks()) {
                 return null;
             }
 

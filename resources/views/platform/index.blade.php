@@ -224,6 +224,14 @@
                                         @csrf
                                         <button class="button button-primary button-small" type="submit">進入組織</button>
                                     </form>
+                                    <form action="{{ route('platform.organizations.entitlement-enforcement.update', $organization) }}" method="POST" class="platform-org-actions">
+                                        @csrf
+                                        @method('PATCH')
+                                        <input type="hidden" name="enforce" value="{{ $organization->enforcesEntitlements() ? '0' : '1' }}">
+                                        <button class="button button-secondary button-small" type="submit" aria-describedby="entitlement-mode-{{ $organization->id }}">{{ $organization->enforcesEntitlements() ? '停用訂閱授權' : '啟用訂閱授權' }}</button>
+                                        <span class="secondary-text" id="entitlement-mode-{{ $organization->id }}">{{ $organization->enforcesEntitlements() ? '目前依訂閱授權' : '目前不限制' }}</span>
+                                    </form>
+                                    <a class="button button-secondary button-small platform-org-actions" href="{{ route('platform.organizations.billing', $organization) }}">訂單與收款</a>
                                     <a class="button button-secondary button-small platform-org-actions" href="{{ route('platform.organizations.products', $organization) }}">封存訂閱</a>
                                 </td>
                             </tr>

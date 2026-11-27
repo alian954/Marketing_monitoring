@@ -9,6 +9,7 @@ use App\Models\NotificationOutbox;
 use App\Models\Organization;
 use App\Models\SchedulerHeartbeat;
 use App\Services\IncidentManager;
+use App\Services\ProductEntitlementService;
 use App\Services\RunScheduler;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -35,7 +36,8 @@ class ScheduleDueMonitors extends Command
                 ->where('enabled', true)
                 ->whereNotNull('next_check_at')
                 ->where('next_check_at', '<=', now())
-                ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(now('Asia/Taipei')->toDateString()));
+                ->whereNotIn('user_id', Organization::inaccessibleOwnerIds(now('Asia/Taipei')->toDateString()))
+                ->whereNotIn('user_id', app(ProductEntitlementService::class)->unentitledOwnerIds('website-monitoring', 'monitoring.targets'));
 
             if ($dcardCheckInFlight) {
                 $dueMonitorsQuery->where(static function (Builder $query): void {

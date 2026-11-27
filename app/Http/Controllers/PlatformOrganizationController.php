@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Organization;
+use App\Models\PlatformAuditAction;
 use App\Models\User;
+use App\Services\PlatformAuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -16,6 +18,8 @@ use Illuminate\View\View;
 
 class PlatformOrganizationController extends Controller
 {
+    public function __construct(private PlatformAuditLogger $auditLogger) {}
+
     public function index(): View
     {
         $organizations = Organization::query()
@@ -124,6 +128,13 @@ class PlatformOrganizationController extends Controller
             $organization->workspace()->create([
                 'public_id' => (string) Str::uuid(),
             ]);
+
+            $this->auditLogger->record(
+                PlatformAuditAction::OrganizationCreated,
+                $organization,
+                $this->auditedOrganizationSettings($organization),
+                (int) $owner->getKey(),
+            );
         });
 
         return redirect()->route('platform.index')->with('status', '組織與負責人帳號已建立。');
@@ -174,6 +185,8 @@ class PlatformOrganizationController extends Controller
                 ->lockForUpdate()
                 ->findOrFail($organization->getKey());
 
+            $settingsBefore = $this->auditedOrganizationSettings($lockedOrganization);
+
             $lockedOrganization->update([
                 'name' => trim($validated['name']),
                 'subscription_ends_on' => $this->subscriptionEndDate($validated['subscription_ends_on'] ?? null),
@@ -181,14 +194,69 @@ class PlatformOrganizationController extends Controller
                 'is_enabled' => $validated['is_enabled'],
                 ...$usageSettings,
             ]);
+
+            $changes = $this->auditLogger->changes(
+                $settingsBefore,
+                $this->auditedOrganizationSettings($lockedOrganization->refresh()),
+            );
+
+            if ($changes !== []) {
+                $this->auditLogger->record(
+                    PlatformAuditAction::OrganizationUpdated,
+                    $lockedOrganization,
+                    ['changes' => $changes],
+                    (int) $lockedOrganization->owner_user_id,
+                );
+            }
         });
 
         return redirect()->route('platform.index')->with('status', '組織設定已更新。');
     }
 
+    /**
+     * Opt an organization into (or out of) subscription-based product access.
+     */
+    public function updateEntitlementEnforcement(Request $request, Organization $organization): RedirectResponse
+    {
+        $validated = $request->validate([
+            'enforce' => ['required', 'boolean'],
+        ], [
+            'enforce.required' => '請選擇授權模式。',
+            'enforce.boolean' => '授權模式格式無效。',
+        ]);
+        $enforce = filter_var($validated['enforce'], FILTER_VALIDATE_BOOLEAN);
+
+        DB::transaction(function () use ($organization, $enforce): void {
+            $lockedOrganization = Organization::query()->lockForUpdate()->findOrFail($organization->getKey());
+            $wasEnforced = $lockedOrganization->enforcesEntitlements();
+
+            if ($wasEnforced === $enforce) {
+                return;
+            }
+
+            $lockedOrganization->forceFill(['entitlements_enforced_at' => $enforce ? now() : null])->save();
+            $this->auditLogger->record(PlatformAuditAction::OrganizationUpdated, $lockedOrganization, [
+                'changes' => $this->auditLogger->changes(
+                    ['entitlements_enforced' => $wasEnforced],
+                    ['entitlements_enforced' => $enforce],
+                ),
+            ], (int) $lockedOrganization->owner_user_id);
+        });
+
+        return redirect()->route('platform.index')->with('status', $enforce
+            ? '「'.$organization->name.'」已改為依訂閱授權產品功能。'
+            : '「'.$organization->name.'」已恢復舊模式，不依訂閱限制產品功能。');
+    }
+
     public function open(Request $request, Organization $organization): RedirectResponse
     {
         $request->session()->put('platform_organization_id', $organization->getKey());
+        $this->auditLogger->record(
+            PlatformAuditAction::OrganizationOpenedByPlatformAdmin,
+            $organization,
+            [],
+            (int) $organization->owner_user_id,
+        );
 
         return redirect()->route('dashboard')->with('status', '已切換至「'.$organization->name.'」。');
     }
@@ -224,6 +292,23 @@ class PlatformOrganizationController extends Controller
             ->pluck('aggregate', $ownerColumn)
             ->mapWithKeys(static fn (mixed $count, mixed $ownerId): array => [(int) $ownerId => (int) $count])
             ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function auditedOrganizationSettings(Organization $organization): array
+    {
+        return [
+            'name' => $organization->name,
+            'plan_name' => $organization->plan_name,
+            'subscription_ends_on' => $organization->subscription_ends_on?->toDateString(),
+            'seat_limit' => $organization->seat_limit,
+            'client_limit' => $organization->client_limit,
+            'monitor_limit' => $organization->monitor_limit,
+            'campaign_limit' => $organization->campaign_limit,
+            'is_enabled' => (bool) $organization->is_enabled,
+        ];
     }
 
     private function subscriptionEndDate(?string $date): ?string

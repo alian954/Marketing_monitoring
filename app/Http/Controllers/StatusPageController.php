@@ -8,6 +8,7 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\StatusPage;
 use App\Services\MonitorAvailabilityCalculator;
+use App\Services\ProductEntitlementService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -144,6 +145,10 @@ class StatusPageController extends Controller
             ->where('public_token_hash', hash('sha256', $token))
             ->where('is_published', true)
             ->firstOrFail();
+        abort_unless(
+            app(ProductEntitlementService::class)->ownerHasFeature((int) $statusPage->user_id, 'website-monitoring', 'monitoring.status_pages'),
+            404,
+        );
         $monitors = Monitor::query()
             ->where('public_status', true)
             ->where('user_id', $statusPage->user_id)

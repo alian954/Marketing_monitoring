@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Models\CheckRun;
 use App\Models\DomainRegistrationObservation;
 use App\Models\Monitor;
-use App\Models\Organization;
 use App\Services\IncidentManager;
 use App\Services\MonitorHostConcurrencyLock;
 use App\Services\Probe\DomainExpiryProbe;
@@ -53,9 +52,7 @@ class CheckDomainRegistrationExpiry implements ShouldBeUnique, ShouldQueue
         if ($monitor === null
             || ! $monitor->enabled
             || $monitor->socialPlatform() !== null
-            || ! Organization::isAccessibleForOwner(
-                $monitor->user_id === null ? null : (int) $monitor->user_id,
-            )) {
+            || ! $monitor->ownerAllowsChecks()) {
             return;
         }
 
@@ -75,9 +72,7 @@ class CheckDomainRegistrationExpiry implements ShouldBeUnique, ShouldQueue
 
             if ($lockedMonitor === null
                 || ! $lockedMonitor->enabled
-                || ! Organization::isAccessibleForOwner(
-                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
-                )
+                || ! $lockedMonitor->ownerAllowsChecks()
                 || $lockedMonitor->config_version !== $configVersion
                 || $lockedMonitor->socialPlatform() !== null) {
                 return;

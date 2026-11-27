@@ -86,6 +86,25 @@ class PlatformSubscriptionManagementTest extends TestCase
             ->assertSee('加入產品');
     }
 
+    public function test_subscription_times_entered_in_taiwan_time_are_stored_as_utc(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $this->actingAs($this->platformAdmin())
+            ->post(route('platform.organizations.subscriptions.store', $organization), [
+                'status' => 'active',
+                'starts_at' => '2026-12-01T09:00',
+                'current_period_starts_at' => '2026-12-01T09:00',
+                'current_period_ends_at' => '2027-01-01T09:00',
+                'trial_ends_at' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $subscription = Subscription::query()->where('organization_id', $organization->id)->sole();
+        $this->assertSame('2026-12-01 01:00:00', $subscription->starts_at->utc()->toDateTimeString());
+        $this->assertSame('2027-01-01 01:00:00', $subscription->current_period_ends_at->utc()->toDateTimeString());
+    }
+
     public function test_trial_subscriptions_require_a_trial_end_time(): void
     {
         $organization = Organization::factory()->create();

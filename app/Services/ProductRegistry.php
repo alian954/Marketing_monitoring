@@ -73,6 +73,20 @@ class ProductRegistry
         return $requirements;
     }
 
+    /**
+     * The product that owns a scheduled Artisan command, or null for central platform maintenance commands.
+     */
+    public function productCodeForScheduledCommand(string $commandName): ?string
+    {
+        foreach ($this->all() as $productCode => $manifest) {
+            if (in_array($commandName, $manifest['scheduled_commands'] ?? [], true)) {
+                return $productCode;
+            }
+        }
+
+        return null;
+    }
+
     private function validateManifest(string $productCode, array $manifest): void
     {
         $isValidCode = preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/', $productCode) === 1;
@@ -102,7 +116,8 @@ class ProductRegistry
             || ! $hasValidEntryRoute
             || ! $hasValidFeatureKeys
             || ! $hasValidFeatureLabels
-            || ! $hasValidRouteFeatures) {
+            || ! $hasValidRouteFeatures
+            || ! $this->hasValidScheduledCommands($productCode, $manifest['scheduled_commands'] ?? [])) {
             throw new InvalidArgumentException("The product manifest [{$productCode}] is invalid.");
         }
     }
@@ -137,6 +152,36 @@ class ProductRegistry
                 || ! is_string($featureLabels[$featureKey] ?? null)
                 || trim($featureLabels[$featureKey]) === '') {
                 return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Scheduled commands are optional, must be unique names, and may belong to only one product.
+     */
+    private function hasValidScheduledCommands(string $productCode, mixed $scheduledCommands): bool
+    {
+        if (! is_array($scheduledCommands) || ! array_is_list($scheduledCommands)) {
+            return false;
+        }
+
+        if (count($scheduledCommands) !== count(array_unique($scheduledCommands, SORT_REGULAR))) {
+            return false;
+        }
+
+        foreach ($scheduledCommands as $commandName) {
+            if (! is_string($commandName) || preg_match('/\A[a-z0-9-]+(?::[a-z0-9-]+)+\z/', $commandName) !== 1) {
+                return false;
+            }
+
+            foreach ($this->manifests as $otherProductCode => $otherManifest) {
+                if ($otherProductCode !== $productCode
+                    && is_array($otherManifest)
+                    && in_array($commandName, $otherManifest['scheduled_commands'] ?? [], true)) {
+                    return false;
+                }
             }
         }
 

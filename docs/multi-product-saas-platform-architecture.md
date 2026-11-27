@@ -6,6 +6,8 @@
 
 本階段優先完成中央平台的產品登錄、產品生命週期、功能目錄、產品入口對應及平台治理。既有方案、訂閱管理程式與資料表先封存保留，訂閱開通、訂單、收款、金流及付費權益執行暫緩；它們不作為目前平台功能可用性的依據，也不在本階段擴充。產品與功能路由只依程式登錄、同步後的目錄及平台管理員設定的產品狀態治理。
 
+**後續調整（2026-11-27）**：依平台商業化目標，人工帳務（訂單、訂單項目、人工收款紀錄）已重啟並完成第一版，金額一律取自可銷售方案、收款只能新增並寫入稽核。付費權益可由平台管理員逐一組織啟用，未啟用的既有組織維持原行為；金流 gateway、退款與發票仍待商業流程確認。
+
 ## 1. 決策摘要
 
 目標是「中央控制平台 + 多個有清楚責任邊界的產品」，不是把所有產品業務塞進中央後台，也不要求立即拆成微服務。
@@ -51,8 +53,9 @@ flowchart TB
 
 - `users` 是本機 email/password 帳號；登入、登出及密碼重設由 Laravel Web session 處理。目前沒有 OIDC 身分提供者、跨產品 SSO 或標準 access token。
 - `is_platform_admin` 是使用者上的全域布林旗標。總管理介面可選擇組織進入該組織的工作區上下文。
-- `organizations.owner_user_id` 唯一連到一個 owner 使用者。已新增一對一 `workspaces.organization_id` 身分映射和穩定 `public_id`；同一使用者跨多組織成員關係仍未支援。
-- `workspace_memberships.member_user_id` 唯一；目前一個會員使用者只能有一筆工作區會員關係。角色為 `editor` 或 `read_only`，客戶範圍由工作區層級設定。
+- `organizations.owner_user_id` 唯一連到一個 owner 使用者。已新增一對一 `workspaces.organization_id` 身分映射和穩定 `public_id`；同一使用者可加入多個組織的工作區。
+- `workspace_memberships` 以 `(owner_user_id, member_user_id)` 唯一，一個帳戶可在多個工作區各有一筆會員關係；被撤銷後重新受邀會沿用同一筆紀錄。角色為 `editor` 或 `read_only`，客戶範圍依各會員關係設定。
+- 目前工作區存在 session（`current_workspace_owner_id`），由頁首切換器變更；選擇只在該帳戶仍有效的會員關係或自有組織中生效，否則依序回退至自有組織、最早加入的工作區，並優先選擇未停用的組織。已有帳戶的受邀者須以受邀 email 登入後接受邀請；平台管理員不能加入組織。
 - `Client` 是代理商的外部客戶/品牌，並非 SaaS 租戶。它保留 `user_id` 相容欄位，並以 `workspace_id` 作主要 scope；既有資料透過 organization owner 對應 workspace。
 - 共用客戶目錄、`monitors`、`social_engagement_targets`、`status_pages`、`notification_outbox`、GA4/GSC/Meta/Google Ads 連線及 per-client property/site/ad account 對應已改用 workspace scope。根連線仍保留 `user_id` 作相容 fallback；對應表以 workspace-scoped composite foreign keys 確保連線與客戶屬於同一工作區。其他監測子記錄透過根資料及關聯隔離。
 
@@ -83,7 +86,7 @@ flowchart TB
 
 ### 2.5 路由、API、排程與測試證據
 
-- 平台管理、會員邀請、客戶、整合設定、監測、報表和匯出目前都是同一組登入後 Web routes；產品功能路由已加入 manifest 對應，產品維護/停售狀態會由共用 middleware 套用；不同路徑另由 `EnsurePlatformAdmin`、`EnsureWorkspaceOwner`、`RejectReadOnlyWorkspaceMemberWrites` 及相關 scopes 控制。租戶級付費權益 enforcement 暫緩。
+- 平台管理、會員邀請、客戶、整合設定、監測、報表和匯出目前都是同一組登入後 Web routes；產品功能路由已加入 manifest 對應，產品維護/停售狀態會由共用 middleware 套用，公開狀態頁、狀態頁訂閱及公開報表分享連結也納入同一檢查；manifest 的 `scheduled_commands` 宣告各產品的排程指令，產品停售時停止派送，維護中仍繼續執行以免監測與資料同步中斷，資料清理等中央指令不受產品狀態影響。測試確保每條產品路由都套用此 middleware、每個排程指令都歸屬某產品或列為中央指令；不同路徑另由 `EnsurePlatformAdmin`、`EnsureWorkspaceOwner`、`RejectReadOnlyWorkspaceMemberWrites` 及相關 scopes 控制。租戶級付費權益 enforcement 暫緩。
 - GA4、Meta Ads、Google Ads、Google Search Console 是呼叫外部 provider 的連接器，不是內部產品 API。OAuth App 憑證管理路由受 workspace owner 權限及節流保護。`routes` 目前只有 Web 與 Console 路由檔。
 - 排程器每分鐘派送網站監測與 worker heartbeat，另排每日 TLS、網域、robots、DNS 摘要及行銷資料同步。所有工作目前共用同一資料庫佇列，產品間沒有 worker/queue 邊界。
 - `AgencyWorkflowAcceptanceTest` 建立兩個組織、不同成員角色、多個客戶，並檢查 GA4 帳號對應、報表、CSV 匯出及分享內容隔離。它以 HTTP fake 驗證應用程式流程，不是 Google 實際 OAuth/API 驗收。
@@ -97,12 +100,12 @@ flowchart TB
 | 能力 | 現況 | 中央平台目標責任 |
 | --- | --- | --- |
 | 全域身分 | 本機 `users`、session login；無 SSO | 全域唯一 subject、登入、SSO、帳號生命週期、MFA/安全政策 |
-| 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，工作區隱含於 owner | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
+| 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，Workspace 一對一映射；帳戶可加入多個工作區並以 session 切換 | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
 | 全域角色 | `is_platform_admin`；工作區 `editor/read_only` | Super Admin、組織管理角色、產品管理角色與客戶範圍分離 |
 | 產品註冊及開通 | 已有 manifest registry、資料庫 catalog、`products:sync`、產品生命週期管理及功能到路由對應；租戶級付費開通暫緩 | 中央 catalog、產品狀態及產品功能入口治理 |
 | 訂閱/方案/權益 | 已有方案、訂閱管理程式和 server-side entitlement resolver，但 UI 已封存且不接入產品入口；租戶級付費授權暫緩 | 商業模式確認後再規劃方案、功能額度、試用/付款/到期/取消 |
-| 訂單、付款、帳務 | 平台沒有訂單、付款紀錄或發票資料 | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
-| 稽核與營運 | scheduler/worker heartbeat 和產品事件紀錄零散 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
+| 訂單、付款、帳務 | 已有中央訂單、訂單項目、人工收款及退款 ledger（跨產品、依方案價格、收款與退款只能新增）；尚無發票或金流 gateway | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
+| 稽核與營運 | 已有只能新增的 `platform_audit_events`，涵蓋組織建立/設定/平台管理員進入、產品狀態、方案、封存訂閱及成員邀請/權限/撤銷，平台管理員可依操作、組織及日期查詢，組織 owner 可在「組織成員 › 操作紀錄」檢視自己工作區的紀錄（平台人員只顯示為「平台管理員」）；scheduler/worker heartbeat 另行記錄 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
 | 客戶主檔 | `clients` 是 workspace 下的代理商客戶，已有使用中 | 中央共用 CRM-lite 客戶主檔；保留產品特有映射在產品模組 |
 
 ### 3.2 可獨立商業化的子平台
@@ -127,7 +130,8 @@ flowchart TB
 - 多組織/多工作區的正式租戶模型；使用者可加入多組織，且可在各產品有不同角色。
 - 具產品識別碼、狀態和部署版本的產品目錄；產品和產品專屬 entitlement/plan 註冊契約。
 - OIDC SSO issuer/client 流程；產品 audience 與 scope 的跨平台授權。
-- OAuth secret 的正式 key management / APP_KEY 輪替演練、稽核查詢介面與保留政策；待舊 `.env` fallback 移除後，再統一以工作區設定為準。
+- 稽核紀錄的保留期限與匯出；OAuth 憑證異動目前仍記在獨立的 `integration_application_credential_events`，待確認是否併入中央稽核。
+- OAuth secret 的正式 key management / APP_KEY 輪替演練與保留政策；待舊 `.env` fallback 移除後，再統一以工作區設定為準。
 - 客戶訂閱、方案/feature entitlement、用量 ledger 和跨產品 bundle（已列入後續階段，非本階段工作）。
 - 訂單、人工付款紀錄、交易/退款/發票狀態及商業統計（MRR、ARR、續訂、流失）。
 - 跨產品 API 使用量、資源消耗/成本歸屬；產品專屬 queue、worker、health 與錯誤隔離。
@@ -287,8 +291,8 @@ platform_audit_logs / outbox_events / inbox_events
 | --- | --- | --- | --- |
 | 0. 架構確認 | 已採用模組化單體、Organization = company/tenant/workspace、Client 為外部客戶、工作區角色與產品 entitlement 分離、先人工帳務等第一版方向。 | 未確認的發票、退款及資料刪除期限可能延誤商用。 | 每階段仍記錄決策；不在本階段接金流或自動刪除客戶資料。 |
 | 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients`、監測根表、`notification_outbox`、四種 provider connection 和 per-client property/site/ad account 對應回填及切換至 workspace scope；純子記錄沿用受限 parent scope，後續審查跨根資料連結是否需 composite key。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
-| 2. RBAC 與產品目錄 | 已建立 registry manifest、產品功能標籤、catalog 同步、產品方案/訂閱封存區、產品生命週期管理及功能路由對應；本階段先補齊中央目錄、功能範圍、產品健康與平台治理，不執行客戶付費授權。 | manifest 與資料庫目錄不同步；產品維護/停售狀態未套用到所有入口。 | 驗證 manifest 每條產品路由都有已登錄功能、catalog sync 保留管理員生命週期設定、維護/停售狀態套用至路由、平台管理權限及 workspace 隔離。 |
-| 3. 訂閱與商業帳務（封存） | 延後。保留已存在的方案、訂閱程式與資料，不新增訂單、付款、收款、發票、金流或商業用量帳務；待產品與功能邊界穩定、商業流程確認後再排期。 | 過早啟用未定義的方案或收款流程，造成產品可用性與客戶承諾不一致。 | 本階段驗收只確認既有資料保留且頁面標示封存；不將訂閱狀態作為本階段產品功能可用性的授權依據。 |
+| 2. RBAC 與產品目錄 | 已建立 registry manifest、產品功能標籤、catalog 同步、產品方案/訂閱封存區、產品生命週期管理、功能路由對應（含公開入口）、產品排程歸屬及中央稽核紀錄；本階段先補齊中央目錄、功能範圍、產品健康與平台治理，不執行客戶付費授權。 | manifest 與資料庫目錄不同步；產品維護/停售狀態未套用到所有入口。 | 驗證 manifest 每條產品路由都有已登錄功能、catalog sync 保留管理員生命週期設定、維護/停售狀態套用至路由、平台管理權限及 workspace 隔離。 |
+| 3. 訂閱與商業帳務（進行中） | 2026-11-27 依平台商業化目標重啟，先做人工帳務：已建立 `billing_orders`、`billing_order_items`、只能新增的 `billing_payments` 及 `BillingLedger`，訂單價格只取自可銷售方案，收款不可超過未收餘額、收齊自動轉為已收款、已收款訂單不可取消，所有操作寫入中央稽核；平台管理員可在「訂單與收款」頁操作。訂單收齊時 `SubscriptionProvisioner` 在同一交易內開通或續約訂閱項目（續約延長到期、換方案改用新方案、已過期則自新服務期間重新開始；服務期間以台灣日期計算，到期日次日 00:00 失效），並以來源訂單編號寫入稽核。付費權益已可逐一組織啟用：`organizations.entitlements_enforced_at` 為空時維持舊模式；平台管理員啟用後，登入後的產品路由會以 `ProductEntitlementService` 檢查訂閱授權，平台管理員不受限。另修正兩個互相抵消的時區錯誤：權益判斷原以台灣時間字串比較 UTC 儲存的訂閱時間，封存訂閱頁也未把台灣時間輸入轉為 UTC；先前以舊頁面建立的訂閱時間可能偏移 8 小時，需人工檢查。背景排程（監測派送、TLS/網域/robots 檢查、GA4/Meta/Google Ads 同步）會以 `ProductEntitlementService::unentitledOwnerIds` 排除已啟用訂閱授權但缺少對應功能的組織。公開狀態頁、狀態頁訂閱與公開報表分享也依擁有者組織的權益開放（未授權回應找不到）；退訂連結刻意不受產品狀態與權益限制，收件者永遠可以退訂。已排入佇列的監測、TLS、網域與 robots 檢查在執行前透過 `Monitor::ownerAllowsChecks()` 同時複查組織狀態與權益，失去授權的檢查會標示暫停。`php artisan products:entitlement-readiness` 可只讀取地列出尚未啟用的組織、啟用後會失去的功能，供舊客戶對照決策。尚未做：舊客戶訂閱對照與批次啟用、發票、金流 gateway。退款已完成：只能新增的 `billing_refunds`，只可對已收款訂單退款且不超過已收淨額，全額退款標示為已退款、部分退款視為折讓，退款不自動停用訂閱（交由平台管理員判斷）。到期提醒已完成：`billing:send-expiry-reminders` 每日台灣時間 09:13 寄信給組織擁有者，提醒 14 天內到期的產品；同一到期日只提醒一次，續約改變到期日後會再提醒，同組織多產品合併為一封。 | 舊客戶未完成訂閱對照就啟用授權會失去功能；時區或金額計算錯誤造成授權或帳務不一致；退款後服務狀態需人工判斷。 | 訂單金額只取自方案、收款/退款只能新增且不超過餘額、收齊才開通、續約與換方案行為、跨組織複合外鍵、時區回歸測試、各入口（登入頁面、公開入口、排程、佇列工作）依權益放行、退訂永遠可用、到期提醒不重複；舊客戶需先以 readiness 報表確認後再逐一啟用。 |
 | 4. 全域 SSO | 中央 OIDC issuer/IdP 與網站、行銷產品 clients；逐步將本機 login 綁定 global subject，不自動依未驗證 email 合併使用者。 | 帳號錯誤合併、token 重放、logout/revocation 不一致。 | OIDC test provider integration、PKCE/state/nonce 失敗、錯誤 issuer/audience、過期/replay、無訂閱、跨租戶角色、帳號停用及跨產品登出驗收。 |
 | 5. 整合憑證與資料來源 | 新增 workspace-level provider app 設定頁和 encrypted secret storage；拆分 app client credential 與使用者 OAuth grant，為每個 client 設定 data source mapping。 | Secret 外洩、callback URI/domain 白名單錯誤、provider 審核限制。 | secret 寫入/更新/遮蔽/刪除、權限、log redaction、加密備份還原、錯誤 app credentials、token revoke/refresh；以正式測試 app 完成每家 provider 真實 OAuth/API 驗收。 |
 | 6. 產品模組和工作隔離 | 先建立兩個產品的內部 contracts、report providers、具名 queues/worker 與每產品 health/heartbeat；逐模組遷移，不重寫功能。 | contract 遺漏導致報表差異；某產品工作延遲。 | 舊/新 report golden dataset 比對；單產品 worker 故障不阻塞另一產品；retry、poison message、replay、scheduler 和 alert 測試；organization/client 資料歸屬不變。 |
@@ -318,7 +322,7 @@ platform_audit_logs / outbox_events / inbox_events
 | 議題 | 現況/風險 | 規劃前需要確認 |
 | --- | --- | --- |
 | OAuth 憑證 ownership | 四種 provider 已支援工作區 owner 自填 OAuth app ID/secret；加密保存並記錄不含秘密值的異動事件，舊 `.env` 設定仍作暫時 fallback。 | 完成遷移後移除 fallback；確認 provider app review、callback 登記方式、secret 輪替和稽核保留政策。 |
-| 同一使用者多組織 | 現行 member ID 唯一，沒有多 membership selector。 | 第一版保留目前一個會員對一個 workspace 的限制；第二版再支援跨多組織 membership，避免與 tenant migration 一起改動。 |
+| 同一使用者多組織 | 已支援一個帳戶加入多個工作區，並以 session 選擇目前工作區、頁首切換。 | 角色仍是 workspace-wide；待全域 SSO 階段再確認跨產品角色與 global subject 綁定。 |
 | 到期後資料 | 現行到期/停用即阻止登入並中止監測工作。產品訂閱後可能需單一產品停用且其他產品繼續。 | 建議採產品級停用、停止寫入與排程，並提供暫時唯讀/匯出；資料刪除期限保持可設定，正式收費前依合約和法規決定。 |
 | 產品角色 | 現行角色是 workspace-level editor/read-only，所有業務共用。 | 第一版沿用 workspace-wide 角色，產品功能由獨立 entitlement 控制；待企業客戶要求再增設產品角色或 client 細分權限。 |
 | 訂閱與訂單 | 已有部分方案/訂閱程式，但本階段封存；目前不實作訂單、付款、人工收款 ledger 或金流，也不以其狀態控制產品入口。 | 產品/功能平台穩定後，再確認商業模式、稅務、退款、發票與核款流程。 |

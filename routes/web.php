@@ -20,6 +20,8 @@ use App\Http\Controllers\MetaMarketingIntegrationController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PlatformAuditEventController;
+use App\Http\Controllers\PlatformBillingController;
 use App\Http\Controllers\PlatformOrganizationController;
 use App\Http\Controllers\PlatformProductController;
 use App\Http\Controllers\PlatformSubscriptionController;
@@ -33,6 +35,8 @@ use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use App\Http\Controllers\WorkspaceAccessController;
+use App\Http\Controllers\WorkspaceActivityController;
+use App\Http\Controllers\WorkspaceSwitchController;
 use App\Http\Middleware\EnforceProductFeatureAvailability;
 use App\Http\Middleware\EnsureOrganizationActive;
 use App\Http\Middleware\EnsurePlatformAdmin;
@@ -51,29 +55,36 @@ Route::middleware('guest')->group(function (): void {
 
 Route::get('/status/{token}', [StatusPageController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{64}')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('status-pages.public');
 Route::get('/shared/client-reports/{token}', SharedClientReportController::class)
     ->where('token', '[a-f0-9]{64}')
     ->middleware('throttle:60,1')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('client-report-shares.public');
 Route::get('/shared/client-reports/{token}/export.csv', [SharedClientReportController::class, 'export'])
     ->where('token', '[a-f0-9]{64}')
     ->middleware('throttle:10,1')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('client-report-shares.public.export');
 Route::get('/shared/client-reports/{token}/snapshots/{snapshot}/export.csv', [ClientReportSnapshotController::class, 'downloadPublic'])
     ->where('token', '[a-f0-9]{64}')
     ->whereNumber('snapshot')
     ->middleware('throttle:10,1')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('client-report-shares.public.snapshots.export');
 Route::post('/status/{token}/subscriptions', [StatusPageSubscriptionController::class, 'subscribe'])
     ->where('token', '[A-Za-z0-9]{64}')
     ->middleware('throttle:status-page-subscription')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('status-page-subscriptions.subscribe');
 Route::get('/status-subscriptions/{subscription}/confirm', [StatusPageSubscriptionController::class, 'showConfirmation'])
     ->whereNumber('subscription')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('status-page-subscriptions.confirm');
 Route::post('/status-subscriptions/{subscription}/confirm', [StatusPageSubscriptionController::class, 'confirm'])
     ->whereNumber('subscription')
+    ->middleware(EnforceProductFeatureAvailability::class)
     ->name('status-page-subscriptions.confirm.store');
 Route::get('/status-subscriptions/{subscription}/unsubscribe', [StatusPageSubscriptionController::class, 'showUnsubscribe'])
     ->whereNumber('subscription')
@@ -94,10 +105,24 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
         ->name('accept');
 });
 
+Route::middleware('auth')->group(function (): void {
+    Route::get('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'showJoinInvitation'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('team.invitations.join.show');
+    Route::post('/team/invitations/{token}/join', [WorkspaceAccessController::class, 'joinInvitation'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->middleware('throttle:5,1')
+        ->name('team.invitations.join');
+    Route::post('/workspaces/switch', WorkspaceSwitchController::class)
+        ->middleware('throttle:30,1')
+        ->name('workspaces.switch');
+});
+
 Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class, EnforceProductFeatureAvailability::class])->group(function (): void {
     Route::middleware(EnsurePlatformAdmin::class)->prefix('platform')->name('platform.')->group(function (): void {
         Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
         Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
+        Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
         Route::patch('/products/{product}/lifecycle', [PlatformProductController::class, 'updateLifecycle'])
             ->whereNumber('product')
             ->name('products.lifecycle.update');
@@ -108,6 +133,24 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
             ->whereNumber('productPlan')
             ->name('products.plans.update');
         Route::post('/organizations', [PlatformOrganizationController::class, 'store'])->name('organizations.store');
+        Route::get('/organizations/{organization}/billing', [PlatformBillingController::class, 'index'])
+            ->whereNumber('organization')
+            ->name('organizations.billing');
+        Route::post('/organizations/{organization}/billing/orders', [PlatformBillingController::class, 'storeOrder'])
+            ->whereNumber('organization')
+            ->name('organizations.billing.orders.store');
+        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/payments', [PlatformBillingController::class, 'storePayment'])
+            ->whereNumber('organization')
+            ->whereNumber('billingOrder')
+            ->name('organizations.billing.payments.store');
+        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/refunds', [PlatformBillingController::class, 'storeRefund'])
+            ->whereNumber('organization')
+            ->whereNumber('billingOrder')
+            ->name('organizations.billing.refunds.store');
+        Route::post('/organizations/{organization}/billing/orders/{billingOrder}/cancel', [PlatformBillingController::class, 'cancelOrder'])
+            ->whereNumber('organization')
+            ->whereNumber('billingOrder')
+            ->name('organizations.billing.orders.cancel');
         Route::get('/organizations/{organization}/products', [PlatformSubscriptionController::class, 'index'])
             ->whereNumber('organization')
             ->name('organizations.products');
@@ -130,6 +173,9 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
         Route::patch('/organizations/{organization}', [PlatformOrganizationController::class, 'update'])
             ->whereNumber('organization')
             ->name('organizations.update');
+        Route::patch('/organizations/{organization}/entitlement-enforcement', [PlatformOrganizationController::class, 'updateEntitlementEnforcement'])
+            ->whereNumber('organization')
+            ->name('organizations.entitlement-enforcement.update');
         Route::post('/organizations/{organization}/open', [PlatformOrganizationController::class, 'open'])
             ->whereNumber('organization')
             ->name('organizations.open');
@@ -142,6 +188,7 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
     Route::get('/clients/performance', [ClientPortfolioController::class, 'index'])->name('clients.performance');
     Route::middleware(EnsureWorkspaceOwner::class)->prefix('team')->name('team.')->group(function (): void {
         Route::get('/', [WorkspaceAccessController::class, 'index'])->name('index');
+        Route::get('/activity', WorkspaceActivityController::class)->name('activity.index');
         Route::post('/invitations', [WorkspaceAccessController::class, 'storeInvitation'])
             ->middleware('throttle:10,1')
             ->name('invitations.store');

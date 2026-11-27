@@ -34,6 +34,7 @@
                     @if (auth()->user()?->isPlatformAdmin())
                         <a class="nav-link" href="{{ route('platform.index') }}" @if (request()->routeIs('platform.index', 'platform.organizations.*')) aria-current="page" @endif>總管理平台</a>
                         <a class="nav-link" href="{{ route('platform.products.index') }}" @if (request()->routeIs('platform.products.*')) aria-current="page" @endif>產品與功能</a>
+                        <a class="nav-link" href="{{ route('platform.audit-events.index') }}" @if (request()->routeIs('platform.audit-events.*')) aria-current="page" @endif>稽核紀錄</a>
                     @endif
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
@@ -50,6 +51,21 @@
         </header>
 
         <main id="main-content" class="page-shell">
+            @php($availableWorkspaces = auth()->user()?->availableWorkspaces() ?? [])
+            @if (count($availableWorkspaces) > 1)
+                <form class="workspace-switcher" action="{{ route('workspaces.switch') }}" method="POST">
+                    @csrf
+                    <label class="workspace-switcher-label" for="workspace-switcher-select">目前組織</label>
+                    <select class="field-select" id="workspace-switcher-select" name="workspace">
+                        @foreach ($availableWorkspaces as $availableWorkspace)
+                            <option value="{{ $availableWorkspace['key'] }}" @selected($availableWorkspace['isCurrent']) @disabled(! $availableWorkspace['isAccessible'])>
+                                {{ $availableWorkspace['name'] }} · {{ $availableWorkspace['roleLabel'] }}@if (! $availableWorkspace['isAccessible'])（已停用）@endif
+                            </option>
+                        @endforeach
+                    </select>
+                    <button class="button button-secondary button-small" type="submit">切換</button>
+                </form>
+            @endif
             <x-flash-messages />
             @if (auth()->user()?->isPlatformAdmin() && $platformSelectedOrganization !== null)
                 <div class="read-only-banner platform-context-banner" role="status">

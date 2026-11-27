@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PlatformAuditAction;
 use App\Models\Product;
 use App\Models\ProductPlan;
+use App\Services\PlatformAuditLogger;
 use App\Services\ProductRegistry;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -16,6 +18,8 @@ use Illuminate\View\View;
 
 class PlatformProductController extends Controller
 {
+    public function __construct(private PlatformAuditLogger $auditLogger) {}
+
     public function index(ProductRegistry $productRegistry): View
     {
         $products = Product::query()
@@ -48,7 +52,18 @@ class PlatformProductController extends Controller
             ])->errorBag('productLifecycle');
         }
 
+        $previousLifecycle = $product->lifecycle;
         $product->update(['lifecycle' => $validated['lifecycle']]);
+
+        if ($previousLifecycle !== $product->lifecycle) {
+            $this->auditLogger->record(PlatformAuditAction::ProductLifecycleUpdated, $product, [
+                'product_code' => $product->product_code,
+                'changes' => $this->auditLogger->changes(
+                    ['lifecycle' => $previousLifecycle],
+                    ['lifecycle' => $product->lifecycle],
+                ),
+            ]);
+        }
 
         return to_route('platform.products.index')->with('status', '產品狀態已更新。');
     }
@@ -169,6 +184,16 @@ class PlatformProductController extends Controller
                         : null,
                 ]);
             }
+
+            $this->auditLogger->record(PlatformAuditAction::ProductPlanCreated, $plan, [
+                'product_code' => $product->product_code,
+                'plan_code' => $plan->plan_code,
+                'version' => $plan->version,
+                'status' => $plan->status,
+                'billing_interval' => $plan->billing_interval,
+                'amount_minor' => $plan->amount_minor,
+                'currency_code' => $plan->currency_code,
+            ]);
         });
 
         return to_route('platform.products.index')->with('status', '產品方案已建立。');
@@ -191,7 +216,19 @@ class PlatformProductController extends Controller
             }
         }
 
+        $previousStatus = $productPlan->status;
         $productPlan->update(['status' => $validated['status']]);
+
+        if ($previousStatus !== $productPlan->status) {
+            $this->auditLogger->record(PlatformAuditAction::ProductPlanStatusUpdated, $productPlan, [
+                'plan_code' => $productPlan->plan_code,
+                'version' => $productPlan->version,
+                'changes' => $this->auditLogger->changes(
+                    ['status' => $previousStatus],
+                    ['status' => $productPlan->status],
+                ),
+            ]);
+        }
 
         return to_route('platform.products.index')->with('status', '方案狀態已更新。');
     }

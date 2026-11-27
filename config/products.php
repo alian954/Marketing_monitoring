@@ -65,6 +65,17 @@ return [
             'status-pages.edit' => ['monitoring.status_pages'],
             'status-pages.update' => ['monitoring.status_pages'],
             'status-pages.monitors.toggle' => ['monitoring.status_pages'],
+            'status-pages.public' => ['monitoring.status_pages'],
+            'status-page-subscriptions.subscribe' => ['monitoring.status_pages'],
+            'status-page-subscriptions.confirm' => ['monitoring.status_pages'],
+            'status-page-subscriptions.confirm.store' => ['monitoring.status_pages'],
+        ],
+        'scheduled_commands' => [
+            'monitors:dispatch-due',
+            'monitors:dispatch-tls',
+            'monitors:dispatch-domain-expiry',
+            'monitors:dispatch-robots',
+            'monitors:send-dns-summary',
         ],
     ],
     'marketing-insights' => [
@@ -165,6 +176,14 @@ return [
             'integrations.google-ads.disconnect' => ['marketing.ads.google'],
             'integrations.oauth-application.update' => ['marketing.reports'],
             'integrations.oauth-application.destroy' => ['marketing.reports'],
+            'client-report-shares.public' => ['marketing.reports'],
+            'client-report-shares.public.export' => ['marketing.reports'],
+            'client-report-shares.public.snapshots.export' => ['marketing.reports'],
+        ],
+        'scheduled_commands' => [
+            'google-analytics:sync-due',
+            'meta-marketing:sync-due',
+            'google-ads:sync-due',
         ],
     ],
 ];

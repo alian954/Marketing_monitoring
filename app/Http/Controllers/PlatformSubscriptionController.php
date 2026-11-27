@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Organization;
+use App\Models\PlatformAuditAction;
 use App\Models\Product;
 use App\Models\ProductPlan;
 use App\Models\Subscription;
 use App\Models\SubscriptionItem;
+use App\Services\PlatformAuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +23,14 @@ use Illuminate\View\View;
  */
 class PlatformSubscriptionController extends Controller
 {
+    private const AUDITED_SUBSCRIPTION_FIELDS = [
+        'status', 'starts_at', 'current_period_starts_at', 'current_period_ends_at', 'trial_ends_at', 'cancel_at_period_end',
+    ];
+
+    private const AUDITED_SUBSCRIPTION_ITEM_FIELDS = ['status', 'product_plan_id', 'quantity', 'starts_at', 'ends_at'];
+
+    public function __construct(private PlatformAuditLogger $auditLogger) {}
+
     public function index(Organization $organization): View
     {
         $products = Product::query()
@@ -58,10 +68,18 @@ class PlatformSubscriptionController extends Controller
             ])->errorBag('subscription');
         }
 
-        $organization->subscriptions()->create([
+        $validated = $this->taipeiInputsToUtc($validated);
+
+        $subscription = $organization->subscriptions()->create([
             ...$validated,
             'cancel_at_period_end' => false,
         ]);
+        $this->auditLogger->record(
+            PlatformAuditAction::SubscriptionCreated,
+            $subscription,
+            $this->auditedFields($subscription, self::AUDITED_SUBSCRIPTION_FIELDS),
+            (int) $organization->owner_user_id,
+        );
 
         return to_route('platform.organizations.products', $organization)->with('status', '訂閱已建立。');
     }
@@ -92,10 +110,20 @@ class PlatformSubscriptionController extends Controller
             ])->errorBag('subscriptionState');
         }
 
+        $validated = $this->taipeiInputsToUtc($validated);
+
+        $fieldsBefore = $this->auditedFields($subscription, self::AUDITED_SUBSCRIPTION_FIELDS);
         $subscription->update([
             ...$validated,
             'canceled_at' => $validated['status'] === 'canceled' ? ($subscription->canceled_at ?? now()) : null,
         ]);
+        $this->recordChanges(
+            PlatformAuditAction::SubscriptionUpdated,
+            $subscription,
+            $fieldsBefore,
+            $this->auditedFields($subscription->refresh(), self::AUDITED_SUBSCRIPTION_FIELDS),
+            $organization,
+        );
 
         return to_route('platform.organizations.products', $organization)->with('status', '訂閱狀態已更新。');
     }
@@ -110,6 +138,8 @@ class PlatformSubscriptionController extends Controller
             'starts_at' => ['required', 'date'],
             'ends_at' => ['nullable', 'date', 'after:starts_at'],
         ]);
+
+        $validated = $this->taipeiInputsToUtc($validated);
 
         DB::transaction(function () use ($validated, $organization, $subscription): void {
             Organization::query()->whereKey($organization->getKey())->lockForUpdate()->firstOrFail();
@@ -140,7 +170,7 @@ class PlatformSubscriptionController extends Controller
                 ])->errorBag('subscriptionItem');
             }
 
-            $lockedSubscription->items()->create([
+            $subscriptionItem = $lockedSubscription->items()->create([
                 'organization_id' => $organization->getKey(),
                 'product_id' => $plan->product_id,
                 'product_plan_id' => $plan->getKey(),
@@ -149,6 +179,16 @@ class PlatformSubscriptionController extends Controller
                 'starts_at' => $validated['starts_at'],
                 'ends_at' => $validated['ends_at'] ?? null,
             ]);
+            $this->auditLogger->record(
+                PlatformAuditAction::SubscriptionItemCreated,
+                $subscriptionItem,
+                [
+                    'subscription_id' => $lockedSubscription->getKey(),
+                    'product_id' => $plan->product_id,
+                    ...$this->auditedFields($subscriptionItem, self::AUDITED_SUBSCRIPTION_ITEM_FIELDS),
+                ],
+                (int) $organization->owner_user_id,
+            );
         });
 
         return to_route('platform.organizations.products', $organization)->with('status', '產品已加入組織訂閱。');
@@ -193,6 +233,8 @@ class PlatformSubscriptionController extends Controller
             ])->errorBag('subscriptionItemState');
         }
 
+        $validated = $this->taipeiInputsToUtc($validated);
+
         $endsAt = $validated['ends_at'] ?? null;
 
         if ($validated['status'] === 'canceled' && $endsAt === null) {
@@ -200,11 +242,70 @@ class PlatformSubscriptionController extends Controller
             $endsAt = $startsAt->lessThan(now()) ? now() : $startsAt;
         }
 
+        $fieldsBefore = $this->auditedFields($subscriptionItem, self::AUDITED_SUBSCRIPTION_ITEM_FIELDS);
         $subscriptionItem->update([
             ...$validated,
             'ends_at' => $endsAt,
         ]);
+        $this->recordChanges(
+            PlatformAuditAction::SubscriptionItemUpdated,
+            $subscriptionItem,
+            $fieldsBefore,
+            $this->auditedFields($subscriptionItem->refresh(), self::AUDITED_SUBSCRIPTION_ITEM_FIELDS),
+            $organization,
+        );
 
         return to_route('platform.organizations.products', $organization)->with('status', '產品訂閱項目已更新。');
+    }
+
+    /**
+     * @param  list<string>  $fields
+     * @return array<string, mixed>
+     */
+    private function auditedFields(Subscription|SubscriptionItem $model, array $fields): array
+    {
+        $values = [];
+
+        foreach ($fields as $field) {
+            $value = $model->getAttribute($field);
+            $values[$field] = $value instanceof \DateTimeInterface ? $value->format(DATE_ATOM) : $value;
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     */
+    private function recordChanges(
+        PlatformAuditAction $action,
+        Subscription|SubscriptionItem $subject,
+        array $before,
+        array $after,
+        Organization $organization,
+    ): void {
+        $changes = $this->auditLogger->changes($before, $after);
+
+        if ($changes !== []) {
+            $this->auditLogger->record($action, $subject, ['changes' => $changes], (int) $organization->owner_user_id);
+        }
+    }
+
+    /**
+     * Datetime inputs are entered in Taiwan local time; store them in the application timezone (UTC).
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function taipeiInputsToUtc(array $validated): array
+    {
+        foreach (['starts_at', 'ends_at', 'current_period_starts_at', 'current_period_ends_at', 'trial_ends_at'] as $field) {
+            if (isset($validated[$field]) && is_string($validated[$field]) && $validated[$field] !== '') {
+                $validated[$field] = Carbon::parse($validated[$field], 'Asia/Taipei')->setTimezone(config('app.timezone'));
+            }
+        }
+
+        return $validated;
     }
 }

@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Organization;
+use App\Models\PlatformAuditAction;
 use App\Models\User;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMembership;
+use App\Services\PlatformAuditLogger;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +23,8 @@ use Illuminate\View\View;
 
 class WorkspaceAccessController extends Controller
 {
+    public function __construct(private PlatformAuditLogger $auditLogger) {}
+
     public function index(Request $request): View
     {
         $owner = $this->workspaceOwnerFor($request);
@@ -67,10 +72,10 @@ class WorkspaceAccessController extends Controller
             ? array_map('intval', $validated['client_ids'])
             : null;
 
-        if (User::query()->whereRaw('lower(email) = ?', [$email])->exists()) {
-            throw ValidationException::withMessages([
-                'email' => '此電子郵件已有帳戶，請使用尚未註冊的電子郵件邀請。',
-            ]);
+        $existingAccount = User::query()->whereRaw('lower(email) = ?', [$email])->first();
+
+        if ($existingAccount !== null) {
+            $this->ensureExistingAccountCanBeInvited($owner, $existingAccount);
         }
 
         $token = Str::random(64);
@@ -92,7 +97,7 @@ class WorkspaceAccessController extends Controller
                 ->whereNull('revoked_at')
                 ->update(['revoked_at' => now()]);
 
-            $owner->workspaceInvitations()->create([
+            $workspaceInvitation = $owner->workspaceInvitations()->create([
                 'email' => $email,
                 'role' => $validated['role'] ?? WorkspaceMembership::ROLE_READ_ONLY,
                 'client_scope' => $clientScope,
@@ -100,6 +105,11 @@ class WorkspaceAccessController extends Controller
                 'token_hash' => hash('sha256', $token),
                 'expires_at' => now()->addDays(WorkspaceInvitation::EXPIRATION_DAYS),
             ]);
+            $this->auditLogger->record(PlatformAuditAction::MemberInvitationCreated, $workspaceInvitation, [
+                'role' => $workspaceInvitation->role,
+                'client_scope' => $workspaceInvitation->client_scope,
+                'client_ids' => $clientIds ?? [],
+            ], (int) $owner->getKey());
         });
 
         return redirect()->route('team.index')->with(
@@ -125,6 +135,12 @@ class WorkspaceAccessController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
             $workspaceInvitation->forceFill(['revoked_at' => now()])->save();
+            $this->auditLogger->record(
+                PlatformAuditAction::MemberInvitationRevoked,
+                $workspaceInvitation,
+                [],
+                (int) $owner->getKey(),
+            );
         });
 
         return redirect()->route('team.index')->with('status', '邀請連結已撤銷。');
@@ -146,6 +162,10 @@ class WorkspaceAccessController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
             $workspaceMembership->forceFill(['revoked_at' => now()])->save();
+            $this->auditLogger->record(PlatformAuditAction::MemberRevoked, $workspaceMembership, [
+                'member_user_id' => $workspaceMembership->member_user_id,
+                'role' => $workspaceMembership->role,
+            ], (int) $owner->getKey());
         });
 
         return redirect()->route('team.index')->with('status', '成員存取權已撤銷。');
@@ -169,7 +189,18 @@ class WorkspaceAccessController extends Controller
             ->whereKey($membership)
             ->whereNull('revoked_at')
             ->firstOrFail();
+        $previousRole = $workspaceMembership->role;
         $workspaceMembership->update(['role' => $validated['role']]);
+
+        if ($previousRole !== $workspaceMembership->role) {
+            $this->auditLogger->record(PlatformAuditAction::MemberRoleUpdated, $workspaceMembership, [
+                'member_user_id' => $workspaceMembership->member_user_id,
+                'changes' => $this->auditLogger->changes(
+                    ['role' => $previousRole],
+                    ['role' => $workspaceMembership->role],
+                ),
+            ], (int) $owner->getKey());
+        }
 
         return redirect()->route('team.index')->with('status', '成員權限已更新。');
     }
@@ -212,28 +243,92 @@ class WorkspaceAccessController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $previousClientScope = $workspaceMembership->client_scope;
+            $previousClientIds = DB::table('workspace_membership_clients')
+                ->where('workspace_membership_id', $workspaceMembership->getKey())
+                ->orderBy('client_id')
+                ->pluck('client_id')
+                ->map(static fn (mixed $clientId): int => (int) $clientId)
+                ->all();
+
             $workspaceMembership->update(['client_scope' => $clientScope]);
             $workspaceMembership->clients()->sync($clientIds);
+
+            sort($clientIds);
+
+            if ($previousClientScope !== $clientScope || $previousClientIds !== $clientIds) {
+                $this->auditLogger->record(PlatformAuditAction::MemberClientScopeUpdated, $workspaceMembership, [
+                    'member_user_id' => $workspaceMembership->member_user_id,
+                    'before' => ['client_scope' => $previousClientScope, 'client_ids' => $previousClientIds],
+                    'after' => ['client_scope' => $clientScope, 'client_ids' => $clientIds],
+                ], (int) $workspaceMembership->owner_user_id);
+            }
         });
 
         return redirect()->route('team.index')->with('status', '成員的客戶存取範圍已更新。');
     }
 
-    public function showInvitation(string $token): View
+    public function showInvitation(string $token): View|RedirectResponse
     {
         $invitation = $this->findAvailableInvitation($token);
-        $invitationClients = $invitation->client_scope === WorkspaceMembership::CLIENT_SCOPE_SELECTED
-            ? Client::query()
-                ->where('user_id', $invitation->owner_user_id)
-                ->whereIn('id', $invitation->client_ids ?? [])
-                ->orderBy('name')
-                ->get(['id', 'name'])
-            : collect();
+
+        if ($this->invitedAccount($invitation) !== null) {
+            return redirect()->route('team.invitations.join.show', ['token' => $token]);
+        }
 
         return view('workspace-access.accept', [
             'invitation' => $invitation,
-            'invitationClients' => $invitationClients,
+            'invitationClients' => $this->invitationClients($invitation),
         ]);
+    }
+
+    public function showJoinInvitation(Request $request, string $token): View
+    {
+        $invitation = $this->findAvailableInvitation($token);
+        $user = $this->invitedAuthenticatedUser($request, $invitation);
+
+        return view('workspace-access.join', [
+            'invitation' => $invitation,
+            'invitationClients' => $this->invitationClients($invitation),
+            'invitedUser' => $user,
+        ]);
+    }
+
+    public function joinInvitation(Request $request, string $token): RedirectResponse
+    {
+        $invitation = $this->findAvailableInvitation($token);
+        $user = $this->invitedAuthenticatedUser($request, $invitation);
+
+        DB::transaction(function () use ($invitation, $user): void {
+            $lockedInvitation = $this->lockAcceptableInvitation($invitation);
+            $owner = User::query()->findOrFail($lockedInvitation->owner_user_id);
+            $this->ensureExistingAccountCanBeInvited($owner, $user, 'invitation');
+            $clientScope = $lockedInvitation->client_scope ?? WorkspaceMembership::CLIENT_SCOPE_ALL;
+            $clientIds = $this->acceptedInvitationClientIds($lockedInvitation, $clientScope);
+
+            $membership = WorkspaceMembership::query()
+                ->where('owner_user_id', $lockedInvitation->owner_user_id)
+                ->where('member_user_id', $user->getKey())
+                ->lockForUpdate()
+                ->first() ?? new WorkspaceMembership([
+                    'owner_user_id' => $lockedInvitation->owner_user_id,
+                    'member_user_id' => $user->getKey(),
+                ]);
+            $membership->forceFill([
+                'role' => $lockedInvitation->role ?? WorkspaceMembership::ROLE_READ_ONLY,
+                'client_scope' => $clientScope,
+                'accepted_at' => now(),
+                'revoked_at' => null,
+            ])->save();
+            $membership->clients()->sync($clientIds);
+            $lockedInvitation->forceFill(['accepted_at' => now()])->save();
+            $this->recordInvitationAccepted($lockedInvitation, $membership, $user, false);
+        });
+
+        $request->session()->put(User::CURRENT_WORKSPACE_SESSION_KEY, (int) $invitation->owner_user_id);
+        $user->forgetWorkspaceContext();
+
+        return redirect()->route('dashboard')->with('status', '已加入組織，目前正在使用該組織的工作區。');
     }
 
     public function acceptInvitation(Request $request, string $token): RedirectResponse
@@ -251,65 +346,32 @@ class WorkspaceAccessController extends Controller
         $invitation = $this->findAvailableInvitation($token);
 
         $member = DB::transaction(function () use ($invitation, $validated): User {
-            $organization = Organization::query()
-                ->where('owner_user_id', $invitation->owner_user_id)
-                ->lockForUpdate()
-                ->first();
-            $lockedInvitation = WorkspaceInvitation::query()
-                ->whereKey($invitation->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if (
-                $lockedInvitation->accepted_at !== null
-                || $lockedInvitation->revoked_at !== null
-                || $lockedInvitation->expires_at->isPast()
-            ) {
-                throw (new ModelNotFoundException)->setModel(WorkspaceInvitation::class, [$invitation->getKey()]);
-            }
-
-            if ($organization !== null && ! $organization->isAccessible()) {
-                throw (new ModelNotFoundException)->setModel(WorkspaceInvitation::class, [$invitation->getKey()]);
-            }
+            $lockedInvitation = $this->lockAcceptableInvitation($invitation);
 
             if (User::query()->whereRaw('lower(email) = ?', [$lockedInvitation->email])->exists()) {
                 throw ValidationException::withMessages([
-                    'email' => '此電子郵件已有帳戶，無法接受此邀請。',
+                    'email' => '此電子郵件已有帳戶，請登入後接受此邀請。',
                 ]);
             }
 
             $clientScope = $lockedInvitation->client_scope ?? WorkspaceMembership::CLIENT_SCOPE_ALL;
-            $clientIds = [];
-
-            if ($clientScope === WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
-                $clientIds = Client::query()
-                    ->where('user_id', $lockedInvitation->owner_user_id)
-                    ->whereIn('id', $lockedInvitation->client_ids ?? [])
-                    ->orderBy('id')
-                    ->pluck('id')
-                    ->map(static fn (mixed $clientId): int => (int) $clientId)
-                    ->all();
-
-                if ($clientIds === []) {
-                    throw ValidationException::withMessages([
-                        'client_scope' => '邀請指定的客戶已不存在，請聯絡擁有者重新建立邀請。',
-                    ]);
-                }
-            }
+            $clientIds = $this->acceptedInvitationClientIds($lockedInvitation, $clientScope);
 
             $member = User::query()->create([
                 'name' => $validated['name'],
                 'email' => $lockedInvitation->email,
                 'password' => Hash::make($validated['password']),
             ]);
-            $membership = $member->workspaceMembership()->create([
+            $membership = WorkspaceMembership::query()->create([
                 'owner_user_id' => $lockedInvitation->owner_user_id,
+                'member_user_id' => $member->getKey(),
                 'role' => $lockedInvitation->role ?? WorkspaceMembership::ROLE_READ_ONLY,
                 'client_scope' => $clientScope,
                 'accepted_at' => now(),
             ]);
             $membership->clients()->sync($clientIds);
             $lockedInvitation->forceFill(['accepted_at' => now()])->save();
+            $this->recordInvitationAccepted($lockedInvitation, $membership, $member, true);
 
             return $member;
         });
@@ -318,6 +380,128 @@ class WorkspaceAccessController extends Controller
         $request->session()->regenerate();
 
         return redirect()->route('dashboard')->with('status', '已加入組織。');
+    }
+
+    private function recordInvitationAccepted(
+        WorkspaceInvitation $invitation,
+        WorkspaceMembership $membership,
+        User $member,
+        bool $createdAccount,
+    ): void {
+        $this->auditLogger->record(PlatformAuditAction::MemberInvitationAccepted, $membership, [
+            'invitation_id' => $invitation->getKey(),
+            'member_user_id' => $member->getKey(),
+            'role' => $membership->role,
+            'client_scope' => $membership->client_scope,
+            'created_account' => $createdAccount,
+        ], (int) $invitation->owner_user_id, $member);
+    }
+
+    private function lockAcceptableInvitation(WorkspaceInvitation $invitation): WorkspaceInvitation
+    {
+        $organization = Organization::query()
+            ->where('owner_user_id', $invitation->owner_user_id)
+            ->lockForUpdate()
+            ->first();
+        $lockedInvitation = WorkspaceInvitation::query()
+            ->whereKey($invitation->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if (
+            $lockedInvitation->accepted_at !== null
+            || $lockedInvitation->revoked_at !== null
+            || $lockedInvitation->expires_at->isPast()
+            || ($organization !== null && ! $organization->isAccessible())
+        ) {
+            throw (new ModelNotFoundException)->setModel(WorkspaceInvitation::class, [$invitation->getKey()]);
+        }
+
+        return $lockedInvitation;
+    }
+
+    /**
+     * Resolve the invitation's clients in the inviting workspace; the accepting account may already be scoped to another workspace.
+     *
+     * @return list<int>
+     */
+    private function acceptedInvitationClientIds(WorkspaceInvitation $invitation, string $clientScope): array
+    {
+        if ($clientScope !== WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
+            return [];
+        }
+
+        $clientIds = Client::withoutGlobalScopes()
+            ->where('user_id', $invitation->owner_user_id)
+            ->whereIn('id', $invitation->client_ids ?? [])
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn (mixed $clientId): int => (int) $clientId)
+            ->all();
+
+        if ($clientIds === []) {
+            throw ValidationException::withMessages([
+                'client_scope' => '邀請指定的客戶已不存在，請聯絡擁有者重新建立邀請。',
+            ]);
+        }
+
+        return $clientIds;
+    }
+
+    /** @return Collection<int, Client> */
+    private function invitationClients(WorkspaceInvitation $invitation): Collection
+    {
+        if ($invitation->client_scope !== WorkspaceMembership::CLIENT_SCOPE_SELECTED) {
+            return new Collection;
+        }
+
+        return Client::withoutGlobalScopes()
+            ->where('user_id', $invitation->owner_user_id)
+            ->whereIn('id', $invitation->client_ids ?? [])
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    private function invitedAccount(WorkspaceInvitation $invitation): ?User
+    {
+        return User::query()->whereRaw('lower(email) = ?', [mb_strtolower($invitation->email)])->first();
+    }
+
+    private function invitedAuthenticatedUser(Request $request, WorkspaceInvitation $invitation): User
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        abort_unless(
+            mb_strtolower($user->email) === mb_strtolower($invitation->email),
+            403,
+            '此邀請不是寄給目前登入的帳戶，請改用受邀電子郵件登入。',
+        );
+
+        return $user;
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function ensureExistingAccountCanBeInvited(User $owner, User $account, string $errorKey = 'email'): void
+    {
+        if ($account->is($owner)) {
+            throw ValidationException::withMessages([$errorKey => '不能邀請組織擁有者自己。']);
+        }
+
+        if ($account->isPlatformAdmin()) {
+            throw ValidationException::withMessages([$errorKey => '平台管理員帳戶不能加入組織，請改用總管理平台檢視組織。']);
+        }
+
+        $isActiveMember = WorkspaceMembership::query()
+            ->where('owner_user_id', $owner->getKey())
+            ->where('member_user_id', $account->getKey())
+            ->whereNull('revoked_at')
+            ->exists();
+
+        if ($isActiveMember) {
+            throw ValidationException::withMessages([$errorKey => '此帳戶已是組織成員。']);
+        }
     }
 
     private function findAvailableInvitation(string $token): WorkspaceInvitation

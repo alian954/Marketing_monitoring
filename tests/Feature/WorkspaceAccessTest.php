@@ -307,11 +307,11 @@ class WorkspaceAccessTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'revoked@example.test']);
     }
 
-    public function test_owner_cannot_invite_an_existing_account_or_revoke_another_workspaces_records(): void
+    public function test_owner_cannot_invite_themselves_or_revoke_another_workspaces_records(): void
     {
-        $owner = User::factory()->create();
+        $owner = User::factory()->create(['email' => 'already.registered@example.test']);
         $otherOwner = User::factory()->create();
-        $existingUser = User::factory()->create(['email' => 'already.registered@example.test']);
+        $existingUser = $owner;
         $otherInvitation = WorkspaceInvitation::factory()->create(['owner_user_id' => $otherOwner->id]);
         $otherMembership = WorkspaceMembership::factory()->create(['owner_user_id' => $otherOwner->id]);
 

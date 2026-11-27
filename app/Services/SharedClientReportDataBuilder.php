@@ -41,12 +41,24 @@ class SharedClientReportDataBuilder
     {
         abort_unless(preg_match('/^[a-f0-9]{64}$/', $token) === 1, 404);
 
-        return ClientReportShare::query()
+        $share = ClientReportShare::query()
             ->with(['client.user'])
             ->where('token_hash', hash('sha256', $token))
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
             ->firstOrFail();
+
+        abort_unless(
+            app(ProductEntitlementService::class)->ownerHasFeature(
+                // Public links must not depend on who is signed in, so bypass the workspace scope.
+                (int) Client::withoutGlobalScopes()->whereKey($share->client_id)->value('user_id'),
+                'marketing-insights',
+                'marketing.reports',
+            ),
+            404,
+        );
+
+        return $share;
     }
 
     /**

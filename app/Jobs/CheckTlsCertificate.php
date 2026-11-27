@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Models\CheckRun;
 use App\Models\Monitor;
-use App\Models\Organization;
 use App\Models\TlsObservation;
 use App\Services\IncidentManager;
 use App\Services\MonitorHostConcurrencyLock;
@@ -54,9 +53,7 @@ class CheckTlsCertificate implements ShouldBeUnique, ShouldQueue
             || ! $monitor->enabled
             || $monitor->socialPlatform() !== null
             || parse_url($monitor->url, PHP_URL_SCHEME) !== 'https'
-            || ! Organization::isAccessibleForOwner(
-                $monitor->user_id === null ? null : (int) $monitor->user_id,
-            )) {
+            || ! $monitor->ownerAllowsChecks()) {
             return;
         }
 
@@ -77,9 +74,7 @@ class CheckTlsCertificate implements ShouldBeUnique, ShouldQueue
             if ($lockedMonitor === null
                 || ! $lockedMonitor->enabled
                 || $lockedMonitor->socialPlatform() !== null
-                || ! Organization::isAccessibleForOwner(
-                    $lockedMonitor->user_id === null ? null : (int) $lockedMonitor->user_id,
-                )
+                || ! $lockedMonitor->ownerAllowsChecks()
                 || $lockedMonitor->config_version !== $configVersion) {
                 return;
             }

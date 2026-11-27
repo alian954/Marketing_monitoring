@@ -43,6 +43,7 @@ class SubscriptionItem extends Model
             'quantity' => 'integer',
             'starts_at' => 'immutable_datetime',
             'ends_at' => 'immutable_datetime',
+            'expiry_reminder_sent_for' => 'immutable_datetime',
         ];
     }
 }
