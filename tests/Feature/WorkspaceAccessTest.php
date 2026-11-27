@@ -96,6 +96,36 @@ class WorkspaceAccessTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_read_only_members_are_not_offered_monitor_editing_and_cannot_open_its_pages(): void
+    {
+        $owner = User::factory()->create();
+        $client = $owner->clients()->create(['name' => '唯讀可見客戶']);
+        $monitor = Monitor::factory()->create(['user_id' => $owner->id, 'client_id' => $client->id]);
+        $member = User::factory()->create();
+        WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+        ]);
+        $this->actingAs($member);
+
+        foreach ([route('dashboard', ['client_id' => $client->id]), route('monitors.index'), route('monitors.show', $monitor)] as $page) {
+            $this->get($page)
+                ->assertOk()
+                ->assertDontSee(route('monitors.create'), false)
+                ->assertDontSee(route('monitors.import'), false)
+                ->assertDontSee(route('monitors.edit', $monitor), false);
+        }
+
+        $this->get(route('monitors.create'))->assertForbidden();
+        $this->get(route('monitors.import'))->assertForbidden();
+        $this->get(route('monitors.edit', $monitor))->assertForbidden();
+        $this->get(route('clients.index'))
+            ->assertOk()
+            ->assertSee('唯讀可見客戶')
+            ->assertDontSee('id="client-name-'.$client->id.'"', false);
+    }
+
     public function test_owner_can_invite_an_editor_who_can_manage_campaigns_but_not_workspace_settings(): void
     {
         Config::set('monitoring.transport', 'fixture');

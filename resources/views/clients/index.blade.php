@@ -104,6 +104,8 @@
                             <th scope="row">
                                 @if ($client->isDefault())
                                     {{ $client->name }} <span class="secondary-text">預設分類</span>
+                                @elseif (auth()->user()?->isReadOnlyWorkspaceMember())
+                                    {{ $client->name }}
                                 @else
                                     <form action="{{ route('clients.update', $client) }}" method="POST" class="client-name-edit">
                                         @csrf

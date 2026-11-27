@@ -18,6 +18,10 @@ class RejectReadOnlyWorkspaceMemberWrites
     {
         $user = $request->user();
 
+        if ($user instanceof User && $request->routeIs('monitors.create', 'monitors.edit', 'monitors.import')) {
+            abort_if($user->isReadOnlyWorkspaceMember(), 403, '工作區成員僅有檢視權限。');
+        }
+
         if ($user instanceof User
             && ! $request->routeIs('platform.*')
             && ! $request->isMethodSafe()

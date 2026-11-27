@@ -102,7 +102,9 @@
                 <button class="button button-secondary" type="submit">{{ $monitor->enabled ? '暫停監測' : '恢復監測' }}</button>
             </form>
             <a class="button button-secondary" href="{{ route('monitors.robots', $monitor) }}">檢視 robots.txt</a>
-            <a class="button button-secondary" href="{{ route('monitors.edit', $monitor) }}">編輯</a>
+            @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                <a class="button button-secondary" href="{{ route('monitors.edit', $monitor) }}">編輯</a>
+            @endunless
         </div>
     </div>
 
@@ -121,7 +123,9 @@
     @endif
     @if ($monitor->socialContentExpectationMissing())
         <div class="form-note spaced-bottom" role="status">
-            尚未設定預期貼文文字，目前只能確認連線與 HTTP 回應，無法驗證文章內容。<a href="{{ route('monitors.edit', $monitor) }}">編輯並新增文字片段</a>。
+            尚未設定預期貼文文字，目前只能確認連線與 HTTP 回應，無法驗證文章內容。@unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                <a href="{{ route('monitors.edit', $monitor) }}">編輯並新增文字片段</a>。
+            @endunless
         </div>
     @endif
     @error('check')

@@ -25,8 +25,10 @@
         </div>
         <div class="heading-actions">
             <a class="button button-secondary" href="{{ route('monitors.export', $monitorExportFilters) }}">{{ $hasFilters ? '匯出符合條件 CSV' : '匯出 CSV' }}</a>
-            <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
-            <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $filters['client_id']]) }}">新增監測項目</a>
+            @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
+                <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $filters['client_id']]) }}">新增監測項目</a>
+            @endunless
         </div>
     </div>
 
@@ -180,8 +182,10 @@
                     <h3 class="empty-title">尚未新增監測項目</h3>
                     <p class="empty-copy">新增網站或公開貼文網址，即可開始檢查連線與指定內容。</p>
                     <div class="button-row centered-actions">
-                        <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
-                        <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
+                        @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                            <a class="button button-secondary" href="{{ route('monitors.import') }}">匯入 CSV</a>
+                            <a class="button button-primary" href="{{ route('monitors.create') }}">新增監測項目</a>
+                        @endunless
                     </div>
                 @endif
             </div>
@@ -371,7 +375,9 @@
                                             @csrf
                                             <button class="button button-quiet button-small" type="submit">{{ $monitor->enabled ? '暫停' : '恢復' }}</button>
                                         </form>
-                                        <a class="button button-secondary button-small" href="{{ route('monitors.edit', $monitor) }}">編輯</a>
+                                        @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                                            <a class="button button-secondary button-small" href="{{ route('monitors.edit', $monitor) }}">編輯</a>
+                                        @endunless
                                     </div>
                                 </td>
                             </tr>

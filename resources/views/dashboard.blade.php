@@ -33,7 +33,9 @@
                 </form>
             @endif
             @if ($totalMonitors > 0 && $attentionCount === 0)
-                <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+                @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                    <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+                @endunless
             @endif
         </div>
     </div>
@@ -94,7 +96,9 @@
         @elseif ($totalMonitors === 0)
             <div class="empty-state dashboard-focus-empty">
                 <h3 class="empty-title">尚未新增監測項目</h3>
-                <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+                @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                    <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增監測項目</a>
+                @endunless
             </div>
         @else
             <div class="dashboard-focus-clear">
@@ -135,7 +139,9 @@
                 <div class="empty-state">
                     <h3 class="empty-title">目前沒有監測項目</h3>
                     <p class="empty-copy">新增網站或公開貼文網址，即可開始檢查連線狀態與指定內容。</p>
-                    <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增第一個監測項目</a>
+                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                        <a class="button button-primary" href="{{ route('monitors.create', ['client_id' => $selectedClientId]) }}">新增第一個監測項目</a>
+                    @endunless
                 </div>
             @else
                 <div class="data-table-wrap">
