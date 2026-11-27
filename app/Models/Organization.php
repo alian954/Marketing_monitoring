@@ -29,6 +29,16 @@ class Organization extends Model
         return $this->hasOne(Workspace::class);
     }
 
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function subscriptionItems(): HasMany
+    {
+        return $this->hasMany(SubscriptionItem::class);
+    }
+
     public function clients(): HasMany
     {
         return $this->hasMany(Client::class, 'user_id', 'owner_user_id');

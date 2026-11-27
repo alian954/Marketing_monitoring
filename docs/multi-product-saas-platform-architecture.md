@@ -92,8 +92,8 @@ flowchart TB
 | 全域身分 | 本機 `users`、session login；無 SSO | 全域唯一 subject、登入、SSO、帳號生命週期、MFA/安全政策 |
 | 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，工作區隱含於 owner | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
 | 全域角色 | `is_platform_admin`；工作區 `editor/read_only` | Super Admin、組織管理角色、產品管理角色與客戶範圍分離 |
-| 產品註冊及開通 | 已有版控中的產品 manifest registry；尚無資料庫產品目錄、組織開通及訂閱授權 | 中央 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
-| 訂閱/方案/權益 | 只有組織層級的 `plan_name`、日期及席次/資源上限 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
+| 產品註冊及開通 | 已有 manifest registry、資料庫 catalog 與 `products:sync`；組織開通和產品入口授權尚未接線 | 中央 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
+| 訂閱/方案/權益 | 舊組織方案欄位仍供既有功能使用；新增產品方案、訂閱項目和 server-side entitlement resolver，尚未回填/管理/接入入口 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
 | 訂單、付款、帳務 | 平台沒有訂單、付款紀錄或發票資料 | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
 | 稽核與營運 | scheduler/worker heartbeat 和產品事件紀錄零散 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
 | 客戶主檔 | `clients` 是 workspace 下的代理商客戶，已有使用中 | 中央共用 CRM-lite 客戶主檔；保留產品特有映射在產品模組 |
@@ -180,11 +180,12 @@ workspace_memberships (user_id, workspace_id, workspace_role)
 workspace_client_memberships (workspace_membership_id, client_id)
 clients (workspace_id, external customer profile)
 
-products (code, status, manifest_version, deployed_version)
-product_plans (product_id, plan_code, version)
-plan_entitlements (plan_id, feature_key, typed_limit)
-subscriptions (organization_id, contract state, billing period)
-subscription_items (subscription_id, product_id, plan_id, product state)
+products (product_code, name, version, manifest_version, lifecycle, entry_route)
+product_features (product_id, feature_key)
+product_plans (product_id, plan_code, version, status, billing_interval, amount_minor, currency_code)
+plan_entitlements (product_plan_id, product_id, feature_key, is_enabled, limit_value)
+subscriptions (organization_id, status, starts_at, current_period, trial/cancel state, provider reference)
+subscription_items (organization_id, subscription_id, product_id, product_plan_id, status, quantity, period)
 product_usages (product_id, workspace_id, feature_key, period, amount)
 
 orders / order_items / payment_transactions / invoices / manual_payment_records
@@ -223,7 +224,9 @@ platform_audit_logs / outbox_events / inbox_events
 
 ### 7.1 執行期產品註冊
 
-第一階段已以 `config/products.php` 和 `App\Services\ProductRegistry` 建立 boot-time manifest registry，提供 `all`、`find`、`declaresFeature` 查詢，並在讀取時驗證產品代碼、名稱、版本、生命週期、入口 route 名稱與不重複的 feature keys；功能測試另確認入口 route 存在。現有 `website-monitoring` 和 `marketing-insights` 已登錄；測試證明新增第三個產品只需增加 manifest。這仍只是程式碼層產品註冊，尚未提供資料庫 catalog、管理者開通、組織訂閱或 server-side entitlement 授權。
+第一階段以 `config/products.php` 和 `App\Services\ProductRegistry` 建立 boot-time manifest registry，提供 `all`、`find`、`declaresFeature` 查詢，並驗證產品代碼、名稱、版本、生命週期、入口 route 名稱與不重複的 feature keys。現有 `website-monitoring` 和 `marketing-insights` 已登錄；測試證明新增第三個產品只需增加 manifest。第二階段新增中央產品/功能 catalog、方案、訂閱及訂閱項目資料表，`products:sync` 可冪等同步程式碼 manifest，`ProductEntitlementService` 會依產品、功能鍵、租戶、方案、訂閱狀態與有效期間計算授權；跨租戶及跨產品方案組合由複合外鍵阻擋。
+
+目前 entitlement 仍是尚未接入路由、API、背景工作或管理介面的核心服務；新資料模型沒有回填舊 `Organization` 方案，也沒有管理 UI 或金流。`EnsureOrganizationActive` 與既有配額欄位保持原狀，entitlement resolver 仍額外尊重舊組織停用/到期狀態，避免新模型意外重新開放舊帳戶。需在建立回填、中央方案管理與產品入口授權流程後，才可逐步切換舊方案欄位。
 
 產品目錄只接受經版本控制及審查的程式碼 manifest，不允許管理者上傳任意 PHP/plugin 程式。每個產品 manifest 至少聲明：
 
