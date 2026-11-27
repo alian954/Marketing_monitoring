@@ -1421,7 +1421,8 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 }
 
 .platform-plan-status-active,
-.platform-plan-status-trialing {
+.platform-plan-status-trialing,
+.platform-plan-status-approved {
     color: #17654f;
     background: #e6f5ef;
 }
@@ -1434,7 +1435,8 @@ body.is-read-only-member form[method="post" i]:not(.logout-form):not(.account-pa
 
 .platform-plan-status-retired,
 .platform-plan-status-canceled,
-.platform-plan-status-expired {
+.platform-plan-status-expired,
+.platform-plan-status-rejected {
     color: #8f354b;
     background: #fbecef;
 }

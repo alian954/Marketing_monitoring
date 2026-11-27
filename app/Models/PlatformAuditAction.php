@@ -24,6 +24,9 @@ enum PlatformAuditAction: string
     case BillingOrderCanceled = 'billing.order_canceled';
     case BillingPaymentRecorded = 'billing.payment_recorded';
     case BillingRefundRecorded = 'billing.refund_recorded';
+    case TrialRequested = 'trial.requested';
+    case TrialApproved = 'trial.approved';
+    case TrialRejected = 'trial.rejected';
 
     public function label(): string
     {
@@ -48,6 +51,9 @@ enum PlatformAuditAction: string
             self::BillingOrderCanceled => '取消訂單',
             self::BillingPaymentRecorded => '登錄收款',
             self::BillingRefundRecorded => '登錄退款',
+            self::TrialRequested => '申請產品試用',
+            self::TrialApproved => '核准產品試用',
+            self::TrialRejected => '婉拒產品試用',
         };
     }
 }

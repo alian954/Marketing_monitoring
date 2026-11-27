@@ -147,6 +147,9 @@ class PlatformAuditEvent extends Model
             'method' => '收款方式',
             'order_status' => '訂單狀態',
             'reason' => '原因',
+            'trial_request_id' => '試用申請',
+            'trial_days' => '試用天數',
+            'review_note' => '審核說明',
         ][$field] ?? $field;
     }
 

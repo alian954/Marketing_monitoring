@@ -29,6 +29,7 @@ use App\Http\Controllers\PlatformOrganizationController;
 use App\Http\Controllers\PlatformProductController;
 use App\Http\Controllers\PlatformSubscriptionController;
 use App\Http\Controllers\PlatformSystemStatusController;
+use App\Http\Controllers\PlatformTrialRequestController;
 use App\Http\Controllers\RobotsReviewController;
 use App\Http\Controllers\SharedClientReportController;
 use App\Http\Controllers\SocialEngagementCampaignReportController;
@@ -38,6 +39,7 @@ use App\Http\Controllers\SocialEngagementTargetGoogleAnalyticsController;
 use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
+use App\Http\Controllers\TrialRequestController;
 use App\Http\Controllers\WorkspaceAccessController;
 use App\Http\Controllers\WorkspaceActivityController;
 use App\Http\Controllers\WorkspaceSwitchController;
@@ -129,6 +131,13 @@ if (PlatformConsole::isEnabled()) {
             Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
             Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
             Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
+            Route::get('/trial-requests', [PlatformTrialRequestController::class, 'index'])->name('trial-requests.index');
+            Route::post('/trial-requests/{trialRequest}/approve', [PlatformTrialRequestController::class, 'approve'])
+                ->whereNumber('trialRequest')
+                ->name('trial-requests.approve');
+            Route::post('/trial-requests/{trialRequest}/reject', [PlatformTrialRequestController::class, 'reject'])
+                ->whereNumber('trialRequest')
+                ->name('trial-requests.reject');
             Route::patch('/products/{product}/lifecycle', [PlatformProductController::class, 'updateLifecycle'])
                 ->whereNumber('product')
                 ->name('products.lifecycle.update');
@@ -471,6 +480,12 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
         Route::delete('/integrations/google-ads/connection', [GoogleAdsIntegrationController::class, 'disconnect'])->name('integrations.google-ads.disconnect');
     });
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
+    Route::middleware(EnsureWorkspaceOwner::class)->prefix('trials')->name('trials.')->group(function (): void {
+        Route::get('/', [TrialRequestController::class, 'index'])->name('index');
+        Route::post('/', [TrialRequestController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('store');
+    });
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

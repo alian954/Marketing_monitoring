@@ -39,6 +39,11 @@ class Organization extends Model
         return $this->hasMany(SubscriptionItem::class);
     }
 
+    public function trialRequests(): HasMany
+    {
+        return $this->hasMany(TrialRequest::class);
+    }
+
     public function clients(): HasMany
     {
         return $this->hasMany(Client::class, 'user_id', 'owner_user_id');

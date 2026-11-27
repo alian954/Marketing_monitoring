@@ -31,6 +31,9 @@
                         <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
                         <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
                     @endif
+                    @if (auth()->user()?->isWorkspaceOwner())
+                        <a class="nav-link" href="{{ route('trials.index') }}" @if (request()->routeIs('trials.*')) aria-current="page" @endif>申請試用</a>
+                    @endif
                     <a class="nav-link" href="{{ route('features.index') }}" @if (request()->routeIs('features.*')) aria-current="page" @endif>功能說明</a>
                     <a class="nav-link" href="{{ route('account.password.edit') }}" @if (request()->routeIs('account.password.*')) aria-current="page" @endif>帳戶安全</a>
                 </nav>
