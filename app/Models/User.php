@@ -281,7 +281,9 @@ class User extends Authenticatable
     public function workspaceOrganization(): ?Organization
     {
         if ($this->isPlatformAdmin()) {
-            return $this->selectedPlatformOrganization();
+            // Until another organization is opened, an admin who owns an organization works in it.
+            return $this->selectedPlatformOrganization()
+                ?? Organization::query()->where('owner_user_id', $this->getKey())->first();
         }
 
         return Organization::query()->where('owner_user_id', $this->workspaceOwnerId())->first();
@@ -311,7 +313,7 @@ class User extends Authenticatable
     public function isWorkspaceOwner(): bool
     {
         if ($this->isPlatformAdmin()) {
-            return $this->selectedPlatformOrganization() !== null;
+            return $this->workspaceOrganization() !== null;
         }
 
         return $this->workspaceMembership === null;
