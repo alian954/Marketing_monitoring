@@ -29,6 +29,26 @@ class ClientCrossPlatformOverview
         ],
     ];
 
+    /**
+     * Platforms without an API connection whose daily figures are imported from CSV per client.
+     *
+     * @var array<string, array{label: string, conversions_key: string, conversion_value_key: string, conversion_label: string}>
+     */
+    public const IMPORTED_SOURCES = [
+        'tiktok_ads' => [
+            'label' => 'TikTok Ads',
+            'conversions_key' => 'conversions',
+            'conversion_value_key' => 'conversion_value',
+            'conversion_label' => '轉換',
+        ],
+        'line_ads' => [
+            'label' => 'LINE 廣告',
+            'conversions_key' => 'conversions',
+            'conversion_value_key' => 'conversion_value',
+            'conversion_label' => '轉換',
+        ],
+    ];
+
     private const CHART_LEFT = 48.0;
 
     private const CHART_RIGHT = 576.0;
@@ -40,8 +60,19 @@ class ClientCrossPlatformOverview
     public function __construct(private readonly CampaignPortfolioMarketingSummary $portfolioSummary) {}
 
     /**
+     * Every paid-media platform shown on the overview, synced platforms first.
+     *
+     * @return array<string, array{label: string, conversions_key: string, conversion_value_key: string, conversion_label: string}>
+     */
+    public static function allPaidSources(): array
+    {
+        return self::PAID_SOURCES + self::IMPORTED_SOURCES;
+    }
+
+    /**
      * @param  Collection<int, SocialEngagementTarget>  $targets
      * @param  array<int, array<string, mixed>>  $marketingSummaries
+     * @param  array<string, list<array{currency_code: string, campaign_name: string, rows: list<array<string, mixed>>}>>  $importedCampaigns  Imported source => campaigns with daily rows.
      * @return array{
      *     from: string,
      *     to: string,
@@ -50,18 +81,20 @@ class ClientCrossPlatformOverview
      *     ga4: array{sessions: int, engaged_sessions: int, key_events: float, revenue_groups: array<string, float>, campaign_count: int, has_data: bool},
      *     attribution: array{platform_conversions: float, ga4_key_events: float|null, ratio: float|null, status: string},
      *     coverage: array<string, array{label: string, configured_campaigns: int, campaigns_with_data: int, stale_campaigns: int, unavailable_campaigns: int, duplicate_mappings_excluded: int}>,
-     *     daily: list<array{date: string, google_ads_spend: float, meta_marketing_spend: float, conversions: float}>
+     *     daily: list<array<string, float|string>>
      * }
      */
-    public function build(Collection $targets, array $marketingSummaries, string $fromOn, string $toOn): array
+    public function build(Collection $targets, array $marketingSummaries, string $fromOn, string $toOn, array $importedCampaigns = []): array
     {
+        $paidSources = self::allPaidSources();
+        $emptyDay = array_merge(array_fill_keys(array_map(static fn (string $source): string => $source.'_spend', array_keys($paidSources)), 0.0), ['conversions' => 0.0]);
         $sources = [...array_keys(self::PAID_SOURCES), 'google_analytics'];
         $coverage = [];
         $rowsByIdentity = array_fill_keys($sources, []);
 
         foreach ($sources as $source) {
             $coverage[$source] = [
-                'label' => self::PAID_SOURCES[$source]['label'] ?? 'GA4',
+                'label' => $paidSources[$source]['label'] ?? 'GA4',
                 'configured_campaigns' => 0,
                 'campaigns_with_data' => 0,
                 'stale_campaigns' => 0,
@@ -119,11 +152,33 @@ class ClientCrossPlatformOverview
             }
         }
 
+        foreach (self::IMPORTED_SOURCES as $source => $definition) {
+            $coverage[$source] = [
+                'label' => $definition['label'],
+                'configured_campaigns' => 0,
+                'campaigns_with_data' => 0,
+                'stale_campaigns' => 0,
+                'unavailable_campaigns' => 0,
+                'duplicate_mappings_excluded' => 0,
+            ];
+            $rowsByIdentity[$source] = [];
+
+            foreach ($importedCampaigns[$source] ?? [] as $campaign) {
+                $coverage[$source]['configured_campaigns']++;
+                $rowsByIdentity[$source][$campaign['currency_code'].'|'.$campaign['campaign_name']] = [
+                    'currency_code' => $this->currencyCode($campaign['currency_code']),
+                    'rows' => $campaign['rows'],
+                    'start_on' => $fromOn,
+                    'end_on' => $toOn,
+                ];
+            }
+        }
+
         $groups = [];
         $dailyByCurrency = [];
         $platformConversions = 0.0;
 
-        foreach (self::PAID_SOURCES as $source => $definition) {
+        foreach ($paidSources as $source => $definition) {
             foreach ($rowsByIdentity[$source] as $mapping) {
                 $rows = $this->rowsWithinPeriod($mapping['rows'], $mapping['start_on'], $mapping['end_on']);
 
@@ -133,7 +188,7 @@ class ClientCrossPlatformOverview
 
                 $coverage[$source]['campaigns_with_data']++;
                 $currencyCode = $mapping['currency_code'];
-                $groups[$currencyCode] ??= array_fill_keys(array_keys(self::PAID_SOURCES), $this->emptyPaidMetrics());
+                $groups[$currencyCode] ??= array_fill_keys(array_keys($paidSources), $this->emptyPaidMetrics());
                 $groups[$currencyCode][$source]['campaign_count']++;
 
                 foreach ($rows as $row) {
@@ -147,7 +202,7 @@ class ClientCrossPlatformOverview
                     $groups[$currencyCode][$source]['active_dates'][$row['date']] = true;
                     $platformConversions += $conversions;
 
-                    $dailyByCurrency[$currencyCode][$row['date']] ??= ['google_ads_spend' => 0.0, 'meta_marketing_spend' => 0.0, 'conversions' => 0.0];
+                    $dailyByCurrency[$currencyCode][$row['date']] ??= $emptyDay;
                     $dailyByCurrency[$currencyCode][$row['date']][$source.'_spend'] += $spend;
                     $dailyByCurrency[$currencyCode][$row['date']]['conversions'] += $conversions;
                 }
@@ -188,11 +243,7 @@ class ClientCrossPlatformOverview
 
         if ($primaryCurrencyCode !== null) {
             foreach ($this->datesBetween($fromOn, $toOn) as $date) {
-                $daily[] = ['date' => $date] + ($dailyByCurrency[$primaryCurrencyCode][$date] ?? [
-                    'google_ads_spend' => 0.0,
-                    'meta_marketing_spend' => 0.0,
-                    'conversions' => 0.0,
-                ]);
+                $daily[] = ['date' => $date] + ($dailyByCurrency[$primaryCurrencyCode][$date] ?? $emptyDay);
             }
         }
 
@@ -241,17 +292,30 @@ class ClientCrossPlatformOverview
     }
 
     /**
-     * Builds a stacked daily spend bar chart for the primary currency.
+     * Builds a stacked daily spend bar chart for the primary currency, one segment per platform.
      *
-     * @param  list<array{date: string, google_ads_spend: float, meta_marketing_spend: float, conversions: float}>  $daily
-     * @return array{maximum_label: string, bars: list<array{date: string, label: string, x: float, width: float, google_ads: array{y: float, height: float}, meta_marketing: array{y: float, height: float}}>, axis_labels: list<array{x: float, label: string}>}|null
+     * @param  list<array<string, float|string>>  $daily
+     * @return array{maximum_label: string, bars: list<array{date: string, label: string, x: float, width: float, segments: list<array{source: string, y: float, height: float}>}>, axis_labels: list<array{x: float, label: string}>, sources: list<string>}|null
      */
     public function chart(array $daily): ?array
     {
+        $paidSources = self::allPaidSources();
         $maximum = 0.0;
+        $activeSources = [];
 
         foreach ($daily as $day) {
-            $maximum = max($maximum, $day['google_ads_spend'] + $day['meta_marketing_spend']);
+            $total = 0.0;
+
+            foreach (array_keys($paidSources) as $source) {
+                $spend = (float) ($day[$source.'_spend'] ?? 0.0);
+                $total += $spend;
+
+                if ($spend > 0) {
+                    $activeSources[$source] = true;
+                }
+            }
+
+            $maximum = max($maximum, $total);
         }
 
         if ($daily === [] || $maximum <= 0) {
@@ -267,21 +331,38 @@ class ClientCrossPlatformOverview
 
         foreach ($daily as $index => $day) {
             $x = self::CHART_LEFT + $slotWidth * $index + ($slotWidth - $barWidth) / 2;
-            $googleHeight = $day['google_ads_spend'] / $maximum * $plotHeight;
-            $metaHeight = $day['meta_marketing_spend'] / $maximum * $plotHeight;
+            $top = self::CHART_BOTTOM;
+            $segments = [];
+            $labels = [];
+
+            foreach ($paidSources as $source => $definition) {
+                $spend = (float) ($day[$source.'_spend'] ?? 0.0);
+
+                if (! array_key_exists($source, $activeSources)) {
+                    continue;
+                }
+
+                $labels[] = $definition['label'].' '.number_format($spend, 2);
+                $height = $spend / $maximum * $plotHeight;
+
+                if ($height > 0) {
+                    $top -= $height;
+                    $segments[] = ['source' => $source, 'y' => round($top, 2), 'height' => round($height, 2)];
+                }
+            }
+
             $bars[] = [
-                'date' => $day['date'],
-                'label' => $day['date'].' Google Ads '.number_format($day['google_ads_spend'], 2).'、Meta Ads '.number_format($day['meta_marketing_spend'], 2),
+                'date' => (string) $day['date'],
+                'label' => $day['date'].' '.implode('、', $labels),
                 'x' => round($x, 2),
                 'width' => round($barWidth, 2),
-                'google_ads' => ['y' => round(self::CHART_BOTTOM - $googleHeight, 2), 'height' => round($googleHeight, 2)],
-                'meta_marketing' => ['y' => round(self::CHART_BOTTOM - $googleHeight - $metaHeight, 2), 'height' => round($metaHeight, 2)],
+                'segments' => $segments,
             ];
 
             if ($index % $labelEvery === 0) {
                 $axisLabels[] = [
                     'x' => round($x + $barWidth / 2, 2),
-                    'label' => CarbonImmutable::createFromFormat('!Y-m-d', $day['date'])->format('n/j'),
+                    'label' => CarbonImmutable::createFromFormat('!Y-m-d', (string) $day['date'])->format('n/j'),
                 ];
             }
         }
@@ -290,6 +371,7 @@ class ClientCrossPlatformOverview
             'maximum_label' => number_format($maximum, 0),
             'bars' => $bars,
             'axis_labels' => $axisLabels,
+            'sources' => array_values(array_filter(array_keys($paidSources), static fn (string $source): bool => array_key_exists($source, $activeSources))),
         ];
     }
 

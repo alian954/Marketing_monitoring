@@ -78,10 +78,13 @@ class ClientBudgetPacing
             ? (int) $monthStart->diff(CarbonImmutable::createFromFormat('!Y-m-d', $period['to'], self::TIMEZONE))->days + 1
             : 0;
         $platformSpend = ['google_ads' => 0.0, 'meta_marketing' => 0.0];
+        $totalSpend = 0.0;
         $unmatched = [];
 
         foreach ($overview['currency_groups'] ?? [] as $group) {
             if ($group['currency_code'] === $budget->currency_code) {
+                $totalSpend = (float) ($group['total']['spend'] ?? 0.0);
+
                 foreach (array_keys($platformSpend) as $source) {
                     $platformSpend[$source] = (float) ($group['platforms'][$source]['spend'] ?? 0.0);
                 }
@@ -107,7 +110,7 @@ class ClientBudgetPacing
             'elapsed_days' => $elapsedDays,
             'remaining_days' => $daysInMonth - $elapsedDays,
             'data_through' => $period['has_elapsed_days'] ? $period['to'] : null,
-            'total' => $this->line((float) $budget->total_budget, array_sum($platformSpend), $daysInMonth, $elapsedDays),
+            'total' => $this->line((float) $budget->total_budget, max($totalSpend, array_sum($platformSpend)), $daysInMonth, $elapsedDays),
             'platforms' => $platforms,
             'unmatched_currency_spend' => $unmatched,
         ];

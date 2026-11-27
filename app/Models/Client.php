@@ -93,6 +93,11 @@ class Client extends Model
         return $this->hasMany(ClientMarketingInsight::class);
     }
 
+    public function adPlatformDailyMetrics(): HasMany
+    {
+        return $this->hasMany(ClientAdPlatformDailyMetric::class);
+    }
+
     public function storeOrders(): HasMany
     {
         return $this->hasMany(ClientStoreOrder::class);

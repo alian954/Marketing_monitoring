@@ -82,7 +82,7 @@ class ClientCrossPlatformOverviewTest extends TestCase
         $this->assertSame(2.0, $overview['attribution']['ratio']);
         $this->assertSame('platform_higher', $overview['attribution']['status']);
 
-        $this->assertSame(['date' => '2026-11-05', 'google_ads_spend' => 150.0, 'meta_marketing_spend' => 60.0, 'conversions' => 3.0], $overview['daily'][0]);
+        $this->assertSame(['date' => '2026-11-05', 'google_ads_spend' => 150.0, 'meta_marketing_spend' => 60.0, 'tiktok_ads_spend' => 0.0, 'line_ads_spend' => 0.0, 'conversions' => 3.0], $overview['daily'][0]);
         $this->assertCount(2, $response->viewData('chart')['bars']);
 
         $comparison = $response->viewData('comparison');

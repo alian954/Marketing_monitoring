@@ -218,8 +218,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (\App\Services\ClientCrossPlatformOverview::PAID_SOURCES as $source => $definition)
+                        @foreach (\App\Services\ClientCrossPlatformOverview::allPaidSources() as $source => $definition)
                             @php $platform = $group['platforms'][$source]; @endphp
+                            @continue(array_key_exists($source, \App\Services\ClientCrossPlatformOverview::IMPORTED_SOURCES) && $platform['campaign_count'] === 0)
                             <tr>
                                 <th scope="row">
                                     {{ $definition['label'] }}
@@ -263,15 +264,16 @@
                 <div>
                     <h2 id="cross-platform-chart-title" class="panel-title">每日花費（{{ $primaryCurrency }}）</h2>
                     <p class="panel-description">
-                        <span class="cross-platform-legend cross-platform-legend--google">Google Ads</span>
-                        <span class="cross-platform-legend cross-platform-legend--meta">Meta Ads</span>
+                        @foreach ($chart['sources'] as $source)
+                            <span class="cross-platform-legend cross-platform-legend--{{ $source }}">{{ \App\Services\ClientCrossPlatformOverview::allPaidSources()[$source]['label'] }}</span>
+                        @endforeach
                     </p>
                 </div>
             </div>
             <div class="metric-trend-chart">
                 <figure class="metric-trend-figure">
                     <svg class="metric-trend-svg" viewBox="0 0 600 196" role="img" aria-labelledby="cross-platform-chart-svg-title">
-                        <title id="cross-platform-chart-svg-title">{{ $formatDate($period['from']) }}–{{ $formatDate($period['to']) }} 每日 Google Ads 與 Meta Ads 花費堆疊長條圖，最高單日 {{ $chart['maximum_label'] }} {{ $primaryCurrency }}</title>
+                        <title id="cross-platform-chart-svg-title">{{ $formatDate($period['from']) }}–{{ $formatDate($period['to']) }} 每日各廣告平台花費堆疊長條圖，最高單日 {{ $chart['maximum_label'] }} {{ $primaryCurrency }}</title>
                         <line class="metric-trend-grid-line" x1="48" y1="24" x2="576" y2="24"></line>
                         <line class="metric-trend-grid-line" x1="48" y1="154" x2="576" y2="154"></line>
                         <text class="metric-trend-axis-label" x="44" y="28" text-anchor="end">{{ $chart['maximum_label'] }}</text>
@@ -279,12 +281,9 @@
                         @foreach ($chart['bars'] as $bar)
                             <g>
                                 <title>{{ $bar['label'] }}</title>
-                                @if ($bar['google_ads']['height'] > 0)
-                                    <rect class="cross-platform-bar--google" x="{{ $bar['x'] }}" y="{{ $bar['google_ads']['y'] }}" width="{{ $bar['width'] }}" height="{{ $bar['google_ads']['height'] }}"></rect>
-                                @endif
-                                @if ($bar['meta_marketing']['height'] > 0)
-                                    <rect class="cross-platform-bar--meta" x="{{ $bar['x'] }}" y="{{ $bar['meta_marketing']['y'] }}" width="{{ $bar['width'] }}" height="{{ $bar['meta_marketing']['height'] }}"></rect>
-                                @endif
+                                @foreach ($bar['segments'] as $segment)
+                                    <rect class="cross-platform-bar--{{ $segment['source'] }}" x="{{ $bar['x'] }}" y="{{ $segment['y'] }}" width="{{ $bar['width'] }}" height="{{ $segment['height'] }}"></rect>
+                                @endforeach
                             </g>
                         @endforeach
                         @foreach ($chartMarkers as $marker)
@@ -307,8 +306,9 @@
                             <thead>
                                 <tr>
                                     <th scope="col">日期</th>
-                                    <th scope="col" class="numeric">Google Ads 花費</th>
-                                    <th scope="col" class="numeric">Meta Ads 花費</th>
+                                    @foreach ($chart['sources'] as $source)
+                                        <th scope="col" class="numeric">{{ \App\Services\ClientCrossPlatformOverview::allPaidSources()[$source]['label'] }} 花費</th>
+                                    @endforeach
                                     <th scope="col" class="numeric">平台轉換</th>
                                 </tr>
                             </thead>
@@ -316,8 +316,9 @@
                                 @foreach (array_reverse($overview['daily']) as $day)
                                     <tr>
                                         <th scope="row"><time datetime="{{ $day['date'] }}">{{ $formatDate($day['date']) }}</time></th>
-                                        <td class="numeric">{{ number_format($day['google_ads_spend'], 2) }}</td>
-                                        <td class="numeric">{{ number_format($day['meta_marketing_spend'], 2) }}</td>
+                                        @foreach ($chart['sources'] as $source)
+                                            <td class="numeric">{{ number_format($day[$source.'_spend'], 2) }}</td>
+                                        @endforeach
                                         <td class="numeric">{{ number_format($day['conversions'], 1) }}</td>
                                     </tr>
                                 @endforeach

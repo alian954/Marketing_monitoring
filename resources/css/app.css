@@ -3181,11 +3181,11 @@ a.platform-chip:hover {
     background: var(--surface-tint);
 }
 
-.cross-platform-bar--google {
+.cross-platform-bar--google_ads {
     fill: var(--blue);
 }
 
-.cross-platform-bar--meta {
+.cross-platform-bar--meta_marketing {
     fill: var(--teal);
 }
 
@@ -3203,12 +3203,28 @@ a.platform-chip:hover {
     content: '';
 }
 
-.cross-platform-legend--google::before {
+.cross-platform-legend--google_ads::before {
     background: var(--blue);
 }
 
-.cross-platform-legend--meta::before {
+.cross-platform-legend--meta_marketing::before {
     background: var(--teal);
+}
+
+.cross-platform-bar--tiktok_ads {
+    fill: var(--coral);
+}
+
+.cross-platform-bar--line_ads {
+    fill: var(--green);
+}
+
+.cross-platform-legend--tiktok_ads::before {
+    background: var(--coral);
+}
+
+.cross-platform-legend--line_ads::before {
+    background: var(--green);
 }
 
 .cross-platform-facts {

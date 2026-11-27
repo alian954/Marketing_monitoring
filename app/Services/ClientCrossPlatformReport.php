@@ -21,6 +21,7 @@ class ClientCrossPlatformReport
         private readonly ClientMarketingTimeline $marketingTimeline,
         private readonly ClientBudgetPacing $budgetPacing,
         private readonly ClientStoreRevenueSummary $storeRevenueSummary,
+        private readonly ClientAdPlatformMetricImporter $adPlatformMetrics,
     ) {}
 
     /**
@@ -44,8 +45,9 @@ class ClientCrossPlatformReport
         $previousPeriod = $this->previousPeriod($period);
         $targets = $this->targets($client, $previousPeriod['from'], $period['to']);
         $marketingSummaries = $this->dashboardCampaignMarketingSummary->build($targets, $user, $now);
-        $overview = $this->crossPlatformOverview->build($targets, $marketingSummaries, $period['from'], $period['to']);
-        $previousOverview = $this->crossPlatformOverview->build($targets, $marketingSummaries, $previousPeriod['from'], $previousPeriod['to']);
+        $importedCampaigns = $this->adPlatformMetrics->campaignsForPeriod($client, $previousPeriod['from'], $period['to']);
+        $overview = $this->crossPlatformOverview->build($targets, $marketingSummaries, $period['from'], $period['to'], $importedCampaigns);
+        $previousOverview = $this->crossPlatformOverview->build($targets, $marketingSummaries, $previousPeriod['from'], $previousPeriod['to'], $importedCampaigns);
         $chart = $this->crossPlatformOverview->chart($overview['daily']);
         $timeline = $this->marketingTimeline->build($client, $period['from'], $period['to']);
         $budget = $client->monthlyBudgets()->where('month', substr($period['to'], 0, 7))->first();
@@ -78,7 +80,13 @@ class ClientCrossPlatformReport
         if ($period['has_elapsed_days']) {
             $targets = $this->targets($client, $period['from'], $period['to']);
             $summaries = $this->dashboardCampaignMarketingSummary->build($targets, $user, $now);
-            $overview = $this->crossPlatformOverview->build($targets, $summaries, $period['from'], $period['to']);
+            $overview = $this->crossPlatformOverview->build(
+                $targets,
+                $summaries,
+                $period['from'],
+                $period['to'],
+                $this->adPlatformMetrics->campaignsForPeriod($client, $period['from'], $period['to']),
+            );
         }
 
         return $this->budgetPacing->pace($budget, $overview, $now);

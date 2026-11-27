@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClientAdPlatformImportController;
 use App\Http\Controllers\ClientBudgetController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCrossPlatformOverviewController;
@@ -323,6 +324,16 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     Route::delete('/clients/{client}/store-revenue', [ClientStoreRevenueController::class, 'destroy'])
         ->whereNumber('client')
         ->name('clients.store-revenue.destroy');
+    Route::get('/clients/{client}/ad-imports', [ClientAdPlatformImportController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.ad-imports.index');
+    Route::post('/clients/{client}/ad-imports', [ClientAdPlatformImportController::class, 'store'])
+        ->whereNumber('client')
+        ->middleware('throttle:20,1')
+        ->name('clients.ad-imports.store');
+    Route::delete('/clients/{client}/ad-imports', [ClientAdPlatformImportController::class, 'destroy'])
+        ->whereNumber('client')
+        ->name('clients.ad-imports.destroy');
     Route::get('/clients/{client}/budgets', [ClientBudgetController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.budgets.index');

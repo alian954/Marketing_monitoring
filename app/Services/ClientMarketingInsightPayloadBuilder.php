@@ -35,7 +35,7 @@ class ClientMarketingInsightPayloadBuilder
     ): array {
         $platformLabels = array_map(
             static fn (array $definition): string => $definition['label'],
-            ClientCrossPlatformOverview::PAID_SOURCES,
+            ClientCrossPlatformOverview::allPaidSources(),
         );
         $currencyGroups = [];
 
