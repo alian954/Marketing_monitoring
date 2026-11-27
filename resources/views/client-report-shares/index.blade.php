@@ -99,6 +99,119 @@
         @endif
     </section>
 
+    <section class="panel spaced-top" aria-labelledby="report-schedule-list-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="report-schedule-list-title" class="panel-title">自動寄送</h2>
+                <p class="panel-description">依樣板每週或每月產生報表快照，寄送線上報表連結與 CSV 附件。</p>
+            </div>
+        </div>
+        @if ($schedules->isNotEmpty())
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <caption class="sr-only">自動寄送排程的樣板、頻率、收件人、下次寄送與最近結果</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">樣板</th>
+                            <th scope="col">頻率</th>
+                            <th scope="col">收件人</th>
+                            <th scope="col">下次寄送</th>
+                            <th scope="col">最近結果</th>
+                            <th scope="col"><span class="sr-only">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($schedules as $schedule)
+                            <tr>
+                                <th scope="row">{{ $schedule->template?->name ?? '已刪除樣板' }}</th>
+                                <td>{{ \App\Models\ClientReportSchedule::FREQUENCY_LABELS[$schedule->frequency] ?? $schedule->frequency }}</td>
+                                <td>{{ implode('、', $schedule->recipientList()) }}</td>
+                                <td>
+                                    @if ($schedule->isPaused())
+                                        已暫停
+                                    @else
+                                        <time datetime="{{ $schedule->next_run_on->toDateString() }}">{{ $schedule->next_run_on->format('Y/n/j') }}</time>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($schedule->last_failure_reason !== null)
+                                        <span class="field-error">{{ $schedule->last_failure_reason }}</span>
+                                    @elseif ($schedule->last_delivered_at !== null)
+                                        已寄送 <time datetime="{{ $schedule->last_delivered_at->toIso8601String() }}">{{ $schedule->last_delivered_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                    @else
+                                        <span class="secondary-text">尚未寄送</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @unless (auth()->user()?->isReadOnlyWorkspaceMember())
+                                        <div class="row-actions">
+                                            <form action="{{ route('clients.report-schedules.update', [$client, $schedule]) }}" method="POST" class="inline-form">
+                                                @csrf
+                                                @method('PATCH')
+                                                <input type="hidden" name="paused" value="{{ $schedule->isPaused() ? '0' : '1' }}">
+                                                <button class="button button-secondary button-small" type="submit">{{ $schedule->isPaused() ? '恢復' : '暫停' }}</button>
+                                            </form>
+                                            <form action="{{ route('clients.report-schedules.destroy', [$client, $schedule]) }}" method="POST" class="inline-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="button button-quiet button-small" type="submit" aria-label="刪除{{ $schedule->template?->name }}自動寄送">刪除</button>
+                                            </form>
+                                        </div>
+                                    @endunless
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+        <div class="panel-body">
+            @if ($templates->isEmpty())
+                <p class="empty-copy">先在下方儲存報表樣板，再設定自動寄送。</p>
+            @elseif (! auth()->user()?->isReadOnlyWorkspaceMember())
+                @php
+                    $scheduleErrors = $errors->getBag('reportSchedule');
+                    $scheduleRecipientErrors = collect($scheduleErrors->getMessages())
+                        ->filter(static fn (array $messages, string $key): bool => str_starts_with($key, 'recipients'))
+                        ->flatten()
+                        ->unique();
+                @endphp
+                <form action="{{ route('clients.report-schedules.store', $client) }}" method="POST" class="client-create-form" aria-labelledby="report-schedule-list-title">
+                    @csrf
+                    <div class="field-group">
+                        <label class="field-label" for="report-schedule-template">報表樣板</label>
+                        <select class="field-select{{ $scheduleErrors->has('template_id') ? ' is-invalid' : '' }}" id="report-schedule-template" name="template_id" required>
+                            @foreach ($templates as $template)
+                                <option value="{{ $template->id }}" @selected((string) old('template_id') === (string) $template->id)>{{ $template->name }}</option>
+                            @endforeach
+                        </select>
+                        @if ($scheduleErrors->has('template_id'))<p class="field-error" role="alert">{{ $scheduleErrors->first('template_id') }}</p>@endif
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="report-schedule-frequency">寄送頻率</label>
+                        <select class="field-select{{ $scheduleErrors->has('frequency') ? ' is-invalid' : '' }}" id="report-schedule-frequency" name="frequency" required>
+                            @foreach (\App\Models\ClientReportSchedule::FREQUENCY_LABELS as $frequency => $label)
+                                <option value="{{ $frequency }}" @selected(old('frequency', \App\Models\ClientReportSchedule::FREQUENCY_WEEKLY) === $frequency)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @if ($scheduleErrors->has('frequency'))<p class="field-error" role="alert">{{ $scheduleErrors->first('frequency') }}</p>@endif
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="report-schedule-recipients">收件信箱</label>
+                        <textarea class="field-textarea{{ $scheduleRecipientErrors->isNotEmpty() ? ' is-invalid' : '' }}" id="report-schedule-recipients" name="recipients" rows="3" required autocomplete="email" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="report-schedule-recipients-help">{{ old('recipients') }}</textarea>
+                        <p id="report-schedule-recipients-help" class="field-help">最多 {{ \App\Models\ClientReportSchedule::MAX_RECIPIENTS }} 個，以換行或逗號分隔。台北時間上午寄出，報表期間為上一個完整週或月。</p>
+                        @foreach ($scheduleRecipientErrors as $message)
+                            <p class="field-error" role="alert">{{ $message }}</p>
+                        @endforeach
+                    </div>
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">建立自動寄送</button>
+                    </div>
+                </form>
+            @endif
+        </div>
+    </section>
+
     <section class="panel spaced-top" aria-labelledby="create-report-share-title">
         <div class="panel-header">
             <h2 id="create-report-share-title" class="panel-title">建立分享連結</h2>

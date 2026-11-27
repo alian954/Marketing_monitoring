@@ -6,12 +6,11 @@ use App\Models\Client;
 use App\Models\ClientReportShare;
 use App\Models\ClientReportSnapshot;
 use App\Models\User;
-use App\Services\SharedClientReportCsv;
+use App\Services\ClientReportSnapshotRecorder;
 use App\Services\SharedClientReportDataBuilder;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClientReportSnapshotController extends Controller
@@ -20,24 +19,14 @@ class ClientReportSnapshotController extends Controller
         Request $request,
         Client $client,
         ClientReportShare $reportShare,
-        SharedClientReportDataBuilder $reportDataBuilder,
-        SharedClientReportCsv $csv,
+        ClientReportSnapshotRecorder $snapshotRecorder,
     ): RedirectResponse {
         abort_unless((int) $reportShare->client_id === (int) $client->getKey(), 404);
 
         $user = $request->user();
         abort_unless($user instanceof User, 403);
 
-        $reportData = $reportDataBuilder->buildForShare($reportShare);
-        $csvContent = $this->buildCsv($csv, $reportData);
-        $snapshot = DB::transaction(fn (): ClientReportSnapshot => $reportShare->snapshots()->create([
-            'created_by_user_id' => $user->getKey(),
-            'report_sections' => $reportData['reportSections'],
-            'report_starts_on' => $reportData['reportPeriod']['from'] ?? null,
-            'report_ends_on' => $reportData['reportPeriod']['to'] ?? null,
-            'csv_content' => $csvContent,
-            'csv_sha256' => hash('sha256', $csvContent),
-        ]));
+        $snapshot = $snapshotRecorder->record($reportShare, $user);
 
         return redirect()
             ->route('clients.report-shares.index', $client)
@@ -65,21 +54,6 @@ class ClientReportSnapshotController extends Controller
         $reportSnapshot = $share->snapshots()->findOrFail($snapshot);
 
         return $this->csvResponse($reportSnapshot, true);
-    }
-
-    /** @param array<string, mixed> $reportData */
-    private function buildCsv(SharedClientReportCsv $csv, array $reportData): string
-    {
-        return $csv->build(
-            $reportData['client'],
-            $reportData['campaignRows'],
-            $reportData['reportingCurrencyGroups'],
-            $reportData['reportSections'],
-            $reportData['reportPeriod'] === null
-                ? null
-                : $reportData['reportPeriod']['from'].' 至 '.$reportData['reportPeriod']['to'],
-            $reportData['comparisonPeriod']['label'] ?? null,
-        );
     }
 
     private function csvResponse(ClientReportSnapshot $snapshot, bool $public): StreamedResponse

@@ -22,6 +22,7 @@ Schedule::command('meta-marketing:sync-due')->dailyAt('06:40')->timezone('Asia/T
 Schedule::command('google-ads:sync-due')->dailyAt('06:50')->timezone('Asia/Taipei')->withoutOverlapping(120);
 Schedule::command('monitors:prune')->dailyAt('02:05')->withoutOverlapping();
 Schedule::command('auth:clear-resets')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('client-reports:send-scheduled')->dailyAt('08:41')->timezone('Asia/Taipei')->withoutOverlapping(60);
 Schedule::command('billing:send-expiry-reminders')->dailyAt('09:13')->timezone('Asia/Taipei')->withoutOverlapping();
 
 /*

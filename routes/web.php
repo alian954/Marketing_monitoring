@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientPortfolioController;
+use App\Http\Controllers\ClientReportScheduleController;
 use App\Http\Controllers\ClientReportShareController;
 use App\Http\Controllers\ClientReportSnapshotController;
 use App\Http\Controllers\ClientReportTemplateController;
@@ -248,6 +249,19 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
         ->whereNumber('snapshot')
         ->scopeBindings()
         ->name('clients.report-shares.snapshots.export');
+    Route::post('/clients/{client}/report-schedules', [ClientReportScheduleController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.report-schedules.store');
+    Route::patch('/clients/{client}/report-schedules/{reportSchedule}', [ClientReportScheduleController::class, 'update'])
+        ->whereNumber('client')
+        ->whereNumber('reportSchedule')
+        ->scopeBindings()
+        ->name('clients.report-schedules.update');
+    Route::delete('/clients/{client}/report-schedules/{reportSchedule}', [ClientReportScheduleController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('reportSchedule')
+        ->scopeBindings()
+        ->name('clients.report-schedules.destroy');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');

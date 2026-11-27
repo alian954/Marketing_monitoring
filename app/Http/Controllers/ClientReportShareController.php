@@ -37,6 +37,10 @@ class ClientReportShareController extends Controller
             ->latest('updated_at')
             ->latest('id')
             ->get();
+        $schedules = $client->reportSchedules()
+            ->with('template:id,name')
+            ->latest('id')
+            ->get();
         $templateId = $request->query('template_id');
         $validTemplateId = is_string($templateId) || is_int($templateId)
             ? filter_var($templateId, FILTER_VALIDATE_INT)
@@ -51,6 +55,7 @@ class ClientReportShareController extends Controller
                 'shares' => $shares,
                 'campaignTargets' => $campaignTargets,
                 'templates' => $templates,
+                'schedules' => $schedules,
                 'selectedTemplate' => $selectedTemplate,
                 'reportPeriod' => $reportingPeriod->defaultPeriod(),
             ])
