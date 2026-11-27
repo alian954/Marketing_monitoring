@@ -278,6 +278,7 @@ class WorkspaceAccessController extends Controller
 
         return view('workspace-access.accept', [
             'invitation' => $invitation,
+            'organizationName' => $this->invitationOrganizationName($invitation),
             'invitationClients' => $this->invitationClients($invitation),
         ]);
     }
@@ -289,6 +290,7 @@ class WorkspaceAccessController extends Controller
 
         return view('workspace-access.join', [
             'invitation' => $invitation,
+            'organizationName' => $this->invitationOrganizationName($invitation),
             'invitationClients' => $this->invitationClients($invitation),
             'invitedUser' => $user,
         ]);
@@ -446,6 +448,12 @@ class WorkspaceAccessController extends Controller
         }
 
         return $clientIds;
+    }
+
+    private function invitationOrganizationName(WorkspaceInvitation $invitation): string
+    {
+        return Organization::query()->where('owner_user_id', $invitation->owner_user_id)->value('name')
+            ?? $invitation->owner->name.' 的組織';
     }
 
     /** @return Collection<int, Client> */

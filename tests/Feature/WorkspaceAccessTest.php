@@ -126,6 +126,20 @@ class WorkspaceAccessTest extends TestCase
             ->assertDontSee('id="client-name-'.$client->id.'"', false);
     }
 
+    public function test_invitation_pages_name_the_inviting_organization(): void
+    {
+        $owner = User::factory()->create(['name' => '工作區擁有者']);
+        Organization::factory()->for($owner, 'owner')->create(['name' => '晨星行銷公司']);
+        $this->actingAs($owner)->post(route('team.invitations.store'), ['email' => 'new.member@example.test']);
+        $token = basename((string) parse_url((string) session('createdInviteUrl'), PHP_URL_PATH));
+        $this->post(route('logout'));
+
+        $this->get(route('team.invitations.show', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('加入 晨星行銷公司')
+            ->assertDontSee('工作區擁有者 的組織');
+    }
+
     public function test_owner_can_invite_an_editor_who_can_manage_campaigns_but_not_workspace_settings(): void
     {
         Config::set('monitoring.transport', 'fixture');

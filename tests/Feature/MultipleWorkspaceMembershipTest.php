@@ -42,7 +42,7 @@ class MultipleWorkspaceMembershipTest extends TestCase
             ->assertRedirect(route('team.invitations.join.show', ['token' => $token]));
         $this->get(route('team.invitations.join.show', ['token' => $token]))
             ->assertOk()
-            ->assertSee('加入 代理商擁有者 的組織')
+            ->assertSee('加入 代理商組織')
             ->assertSee('以目前帳戶加入組織');
 
         $this->post(route('team.invitations.join', ['token' => $token]))
