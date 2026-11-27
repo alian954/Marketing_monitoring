@@ -7,7 +7,7 @@
         <div class="heading-copy">
             <p class="eyebrow">Platform administration</p>
             <h1 class="page-title">總管理平台</h1>
-            <p class="page-description">管理組織方案、用量上限與服務期限。</p>
+            <p class="page-description">管理組織、工作區與平台營運狀態。</p>
         </div>
     </div>
 
@@ -224,7 +224,7 @@
                                         @csrf
                                         <button class="button button-primary button-small" type="submit">進入組織</button>
                                     </form>
-                                    <a class="button button-secondary button-small platform-org-actions" href="{{ route('platform.organizations.products', $organization) }}">產品訂閱</a>
+                                    <a class="button button-secondary button-small platform-org-actions" href="{{ route('platform.organizations.products', $organization) }}">封存訂閱</a>
                                 </td>
                             </tr>
                         @endforeach

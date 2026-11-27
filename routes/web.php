@@ -33,6 +33,7 @@ use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use App\Http\Controllers\WorkspaceAccessController;
+use App\Http\Middleware\EnforceProductFeatureAvailability;
 use App\Http\Middleware\EnsureOrganizationActive;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureWorkspaceOwner;
@@ -93,10 +94,13 @@ Route::middleware('guest')->prefix('team/invitations')->name('team.invitations.'
         ->name('accept');
 });
 
-Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class])->group(function (): void {
+Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorkspaceMemberWrites::class, EnforceProductFeatureAvailability::class])->group(function (): void {
     Route::middleware(EnsurePlatformAdmin::class)->prefix('platform')->name('platform.')->group(function (): void {
         Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
         Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
+        Route::patch('/products/{product}/lifecycle', [PlatformProductController::class, 'updateLifecycle'])
+            ->whereNumber('product')
+            ->name('products.lifecycle.update');
         Route::post('/products/{product}/plans', [PlatformProductController::class, 'storePlan'])
             ->whereNumber('product')
             ->name('products.plans.store');

@@ -2,6 +2,10 @@
 
 **狀態：架構方向已確認，採漸進式實作。** 第一版以 Organization 同時代表公司、租戶及 Workspace，不另建重複的公司層；`Client` 仍是工作區下的外部客戶。保留模組化單體，已建立 workspace identity mapping，並將 `clients`、監測根表、通知 outbox、四種 OAuth 連線及 per-client property/site/ad account 對應加入 workspace scope。`user_id` 暫時保留作相容及未完成資料回填時的 fallback；其他產品關聯資料仍待遷移。
 
+## 本階段範圍調整（2026-11-27）
+
+本階段優先完成中央平台的產品登錄、產品生命週期、功能目錄、產品入口對應及平台治理。既有方案、訂閱管理程式與資料表先封存保留，訂閱開通、訂單、收款、金流及付費權益執行暫緩；它們不作為目前平台功能可用性的依據，也不在本階段擴充。產品與功能路由只依程式登錄、同步後的目錄及平台管理員設定的產品狀態治理。
+
 ## 1. 決策摘要
 
 目標是「中央控制平台 + 多個有清楚責任邊界的產品」，不是把所有產品業務塞進中央後台，也不要求立即拆成微服務。
@@ -79,7 +83,7 @@ flowchart TB
 
 ### 2.5 路由、API、排程與測試證據
 
-- 平台管理、會員邀請、客戶、整合設定、監測、報表和匯出目前都是同一組登入後 Web routes；不同路徑由 `EnsurePlatformAdmin`、`EnsureWorkspaceOwner`、`RejectReadOnlyWorkspaceMemberWrites` 及相關 scopes 控制。
+- 平台管理、會員邀請、客戶、整合設定、監測、報表和匯出目前都是同一組登入後 Web routes；產品功能路由已加入 manifest 對應，產品維護/停售狀態會由共用 middleware 套用；不同路徑另由 `EnsurePlatformAdmin`、`EnsureWorkspaceOwner`、`RejectReadOnlyWorkspaceMemberWrites` 及相關 scopes 控制。租戶級付費權益 enforcement 暫緩。
 - GA4、Meta Ads、Google Ads、Google Search Console 是呼叫外部 provider 的連接器，不是內部產品 API。OAuth App 憑證管理路由受 workspace owner 權限及節流保護。`routes` 目前只有 Web 與 Console 路由檔。
 - 排程器每分鐘派送網站監測與 worker heartbeat，另排每日 TLS、網域、robots、DNS 摘要及行銷資料同步。所有工作目前共用同一資料庫佇列，產品間沒有 worker/queue 邊界。
 - `AgencyWorkflowAcceptanceTest` 建立兩個組織、不同成員角色、多個客戶，並檢查 GA4 帳號對應、報表、CSV 匯出及分享內容隔離。它以 HTTP fake 驗證應用程式流程，不是 Google 實際 OAuth/API 驗收。
@@ -95,8 +99,8 @@ flowchart TB
 | 全域身分 | 本機 `users`、session login；無 SSO | 全域唯一 subject、登入、SSO、帳號生命週期、MFA/安全政策 |
 | 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，工作區隱含於 owner | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
 | 全域角色 | `is_platform_admin`；工作區 `editor/read_only` | Super Admin、組織管理角色、產品管理角色與客戶範圍分離 |
-| 產品註冊及開通 | 已有 manifest registry、資料庫 catalog 與 `products:sync`；組織開通和產品入口授權尚未接線 | 中央 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
-| 訂閱/方案/權益 | 已有產品方案、訂閱項目、組織訂閱管理介面和 server-side entitlement resolver；舊組織方案欄位仍供既有功能使用，產品功能尚未全面改由新權益控制 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
+| 產品註冊及開通 | 已有 manifest registry、資料庫 catalog、`products:sync`、產品生命週期管理及功能到路由對應；租戶級付費開通暫緩 | 中央 catalog、產品狀態及產品功能入口治理 |
+| 訂閱/方案/權益 | 已有方案、訂閱管理程式和 server-side entitlement resolver，但 UI 已封存且不接入產品入口；租戶級付費授權暫緩 | 商業模式確認後再規劃方案、功能額度、試用/付款/到期/取消 |
 | 訂單、付款、帳務 | 平台沒有訂單、付款紀錄或發票資料 | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
 | 稽核與營運 | scheduler/worker heartbeat 和產品事件紀錄零散 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
 | 客戶主檔 | `clients` 是 workspace 下的代理商客戶，已有使用中 | 中央共用 CRM-lite 客戶主檔；保留產品特有映射在產品模組 |
@@ -124,7 +128,7 @@ flowchart TB
 - 具產品識別碼、狀態和部署版本的產品目錄；產品和產品專屬 entitlement/plan 註冊契約。
 - OIDC SSO issuer/client 流程；產品 audience 與 scope 的跨平台授權。
 - OAuth secret 的正式 key management / APP_KEY 輪替演練、稽核查詢介面與保留政策；待舊 `.env` fallback 移除後，再統一以工作區設定為準。
-- 依產品授權的訂閱 item、方案/feature entitlement、用量 ledger 和跨產品 bundle。
+- 客戶訂閱、方案/feature entitlement、用量 ledger 和跨產品 bundle（已列入後續階段，非本階段工作）。
 - 訂單、人工付款紀錄、交易/退款/發票狀態及商業統計（MRR、ARR、續訂、流失）。
 - 跨產品 API 使用量、資源消耗/成本歸屬；產品專屬 queue、worker、health 與錯誤隔離。
 - 產品模組契約、版本相容性、事件 outbox/inbox 及未來獨立部署通訊介面。
@@ -283,8 +287,8 @@ platform_audit_logs / outbox_events / inbox_events
 | --- | --- | --- | --- |
 | 0. 架構確認 | 已採用模組化單體、Organization = company/tenant/workspace、Client 為外部客戶、工作區角色與產品 entitlement 分離、先人工帳務等第一版方向。 | 未確認的發票、退款及資料刪除期限可能延誤商用。 | 每階段仍記錄決策；不在本階段接金流或自動刪除客戶資料。 |
 | 1. Canonical 租戶 | 已新增 Workspace/Organization 一對一 identity mapping，並將 `clients`、監測根表、`notification_outbox`、四種 provider connection 和 per-client property/site/ad account 對應回填及切換至 workspace scope；純子記錄沿用受限 parent scope，後續審查跨根資料連結是否需 composite key。 | 不一致的 owner/workspace mapping 可能造成跨租戶外洩或背景工作漏資料。 | 每次新增資料表 scope 前後比對筆數與 owner/workspace；兩個組織、同 ID 資源、不同角色的 CRUD、report/CSV/share、job recheck；保留 legacy fallback 至資料對帳完成。 |
-| 2. RBAC 與產品目錄 | 已建立 registry manifest、產品功能標籤、catalog 同步、產品方案版本與權益管理、產品上架/停售、組織訂閱與產品項目管理；下一步為角色授權、權益用量及入口接線。 | 在權益尚未接線時誤以為已限制產品存取；未註冊產品誤放行。 | 已驗證方案金額/功能權益、管理員限制、訂閱加入/取消、租戶隔離及 entitlement resolver；後續覆蓋所有產品路由、API、queue、匯出及 feature 狀態矩陣。 |
-| 3. 訂閱與商業帳務 | 下一步將 Organization 上的 `plan_name` 和 quota 漸進對應 product plan/subscription items，補上 free/trial/paid/enterprise、bundle、人工付款 ledger、升降級/寬限期與歷史稽核。舊欄位採 dual-read 遷移並保留操作日誌。 | 金額/幣別或到期換算錯誤、過期帳戶錯誤續權。 | 方案矩陣、時區邊界、核款、重複核款冪等、退款/沖正、單產品取消、bundle 分項、降級不刪資料、跨租戶用量隔離及財務對帳測試。 |
+| 2. RBAC 與產品目錄 | 已建立 registry manifest、產品功能標籤、catalog 同步、產品方案/訂閱封存區、產品生命週期管理及功能路由對應；本階段先補齊中央目錄、功能範圍、產品健康與平台治理，不執行客戶付費授權。 | manifest 與資料庫目錄不同步；產品維護/停售狀態未套用到所有入口。 | 驗證 manifest 每條產品路由都有已登錄功能、catalog sync 保留管理員生命週期設定、維護/停售狀態套用至路由、平台管理權限及 workspace 隔離。 |
+| 3. 訂閱與商業帳務（封存） | 延後。保留已存在的方案、訂閱程式與資料，不新增訂單、付款、收款、發票、金流或商業用量帳務；待產品與功能邊界穩定、商業流程確認後再排期。 | 過早啟用未定義的方案或收款流程，造成產品可用性與客戶承諾不一致。 | 本階段驗收只確認既有資料保留且頁面標示封存；不將訂閱狀態作為本階段產品功能可用性的授權依據。 |
 | 4. 全域 SSO | 中央 OIDC issuer/IdP 與網站、行銷產品 clients；逐步將本機 login 綁定 global subject，不自動依未驗證 email 合併使用者。 | 帳號錯誤合併、token 重放、logout/revocation 不一致。 | OIDC test provider integration、PKCE/state/nonce 失敗、錯誤 issuer/audience、過期/replay、無訂閱、跨租戶角色、帳號停用及跨產品登出驗收。 |
 | 5. 整合憑證與資料來源 | 新增 workspace-level provider app 設定頁和 encrypted secret storage；拆分 app client credential 與使用者 OAuth grant，為每個 client 設定 data source mapping。 | Secret 外洩、callback URI/domain 白名單錯誤、provider 審核限制。 | secret 寫入/更新/遮蔽/刪除、權限、log redaction、加密備份還原、錯誤 app credentials、token revoke/refresh；以正式測試 app 完成每家 provider 真實 OAuth/API 驗收。 |
 | 6. 產品模組和工作隔離 | 先建立兩個產品的內部 contracts、report providers、具名 queues/worker 與每產品 health/heartbeat；逐模組遷移，不重寫功能。 | contract 遺漏導致報表差異；某產品工作延遲。 | 舊/新 report golden dataset 比對；單產品 worker 故障不阻塞另一產品；retry、poison message、replay、scheduler 和 alert 測試；organization/client 資料歸屬不變。 |
@@ -317,7 +321,7 @@ platform_audit_logs / outbox_events / inbox_events
 | 同一使用者多組織 | 現行 member ID 唯一，沒有多 membership selector。 | 第一版保留目前一個會員對一個 workspace 的限制；第二版再支援跨多組織 membership，避免與 tenant migration 一起改動。 |
 | 到期後資料 | 現行到期/停用即阻止登入並中止監測工作。產品訂閱後可能需單一產品停用且其他產品繼續。 | 建議採產品級停用、停止寫入與排程，並提供暫時唯讀/匯出；資料刪除期限保持可設定，正式收費前依合約和法規決定。 |
 | 產品角色 | 現行角色是 workspace-level editor/read-only，所有業務共用。 | 第一版沿用 workspace-wide 角色，產品功能由獨立 entitlement 控制；待企業客戶要求再增設產品角色或 client 細分權限。 |
-| 人工付款 | 現有平台只記方案名稱、到期和 quota，不記金額、收據或核款人。 | 第一版建議先記錄人工訂單/收款 ledger，不綁特定金流；稅務、退款及發票格式在首批商用流程確認後決定。 |
+| 訂閱與訂單 | 已有部分方案/訂閱程式，但本階段封存；目前不實作訂單、付款、人工收款 ledger 或金流，也不以其狀態控制產品入口。 | 產品/功能平台穩定後，再確認商業模式、稅務、退款、發票與核款流程。 |
 | 分析資料憑證 | app client secret 加密後依賴 `APP_KEY`；key rotation 會影響可讀性。 | 密鑰管理/輪替/備份責任人、workspace 權限、刪除與重新授權政策。 |
 | 子平台隔離 | 模組化單體可避免程式重複，但 process/DB/部署故障仍可能跨產品影響。 | 何種 RTO/RPO、流量、provider 限制或客戶合約才觸發獨立 worker、DB 或部署。 |
 
@@ -339,4 +343,4 @@ platform_audit_logs / outbox_events / inbox_events
 
 ---
 
-**預設決策**：先沿用工作區層級 `editor/read_only` 角色，另以產品 entitlement 控制功能；首階段採人工帳務，不綁定特定金流；停用或欠款政策先採停止寫入與背景同步、保留讀取與匯出，資料刪除期限需在商用前依合約及法規政策設定；provider app 憑證由工作區管理者在平台輸入、加密保存，並與使用者 OAuth grant token 分開管理。正式金流、發票、憑證金鑰輪替與資料刪除期限在首批商用客戶/法規需求明確後再定。
+**預設決策**：本階段先沿用工作區層級 `editor/read_only`，優先治理中央產品目錄、產品生命週期與功能入口；既有方案/訂閱功能封存保留，訂單、收款及金流延後，暫不以付費 entitlement 控制入口。provider app 憑證由工作區管理者在平台輸入、加密保存，並與使用者 OAuth grant token 分開管理。商業模式、正式金流、發票、憑證金鑰輪替與資料刪除期限待相應階段確認。

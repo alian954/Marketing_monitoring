@@ -1,13 +1,13 @@
 @extends('layouts.app')
 
-@section('title', '產品與方案')
+@section('title', '產品與功能')
 
 @section('content')
     <div class="page-heading">
         <div class="heading-copy">
             <p class="eyebrow">Platform catalog</p>
-            <h1 class="page-title">產品與方案</h1>
-            <p class="page-description">管理可銷售的產品方案與功能權益。</p>
+            <h1 class="page-title">產品與功能</h1>
+            <p class="page-description">管理產品登錄、功能模組與入口狀態。</p>
         </div>
         <a class="button button-secondary" href="{{ route('platform.index') }}">返回總管理平台</a>
     </div>
@@ -21,18 +21,74 @@
         </section>
     @else
         @foreach ($products as $product)
+            @php($manifest = $productManifests[$product->product_code] ?? [])
             @php($productFormId = 'product-plan-create-'.$product->id)
             @php($showPlanErrors = (string) old('product_id') === (string) $product->id && $errors->getBag('productPlan')->any())
+            @php($showLifecycleErrors = (string) old('product_id') === (string) $product->id && $errors->getBag('productLifecycle')->any())
+            @php($showPlanStatusErrors = (string) old('product_plan_id') !== '' && $errors->getBag('productPlanStatus')->any() && $product->plans->contains('id', (int) old('product_plan_id')))
             <section class="panel spaced-top" aria-labelledby="product-title-{{ $product->id }}">
                 <div class="panel-header platform-catalog-header">
                     <div>
                         <h2 class="panel-title" id="product-title-{{ $product->id }}">{{ $product->name }}</h2>
-                        <p class="panel-description">{{ $product->product_code }} · 版本 {{ $product->version }} · {{ $product->lifecycle }}</p>
+                        <p class="panel-description">{{ $product->product_code }} · 版本 {{ $product->version }} · {{ ['active' => '啟用中', 'maintenance' => '維護中', 'retired' => '已停售'][$product->lifecycle] ?? $product->lifecycle }}</p>
                     </div>
                     <span class="platform-chip">{{ $product->features->count() }} 項功能</span>
                 </div>
 
                 <div class="panel-body">
+                    <section aria-labelledby="product-features-title-{{ $product->id }}">
+                        <h3 class="section-title" id="product-features-title-{{ $product->id }}">已登錄功能</h3>
+                        <div class="platform-entitlement-grid">
+                            @foreach ($product->features as $feature)
+                                @php($featureRouteNames = collect($manifest['route_features'] ?? [])->filter(fn (array $featureKeys): bool => in_array($feature->feature_key, $featureKeys, true))->keys())
+                                <article class="platform-entitlement-field">
+                                    <strong>{{ $feature->display_name }}</strong>
+                                    <p class="secondary-text"><code>{{ $feature->feature_key }}</code></p>
+                                    <details>
+                                        <summary>{{ $featureRouteNames->count() }} 個功能入口</summary>
+                                        @if ($featureRouteNames->isNotEmpty())
+                                            <ul>
+                                                @foreach ($featureRouteNames as $routeName)
+                                                    <li><code>{{ $routeName }}</code></li>
+                                                @endforeach
+                                            </ul>
+                                        @else
+                                            <p class="secondary-text">尚未連結產品入口。</p>
+                                        @endif
+                                    </details>
+                                </article>
+                            @endforeach
+                        </div>
+                    </section>
+
+                    <section class="platform-plan-editor" aria-labelledby="product-lifecycle-title-{{ $product->id }}">
+                        <h3 class="section-title" id="product-lifecycle-title-{{ $product->id }}">產品狀態</h3>
+                        <form action="{{ route('platform.products.lifecycle.update', $product) }}" method="POST" class="platform-plan-form" aria-labelledby="product-lifecycle-title-{{ $product->id }}">
+                            @csrf
+                            @method('PATCH')
+                            <input type="hidden" name="product_id" value="{{ $product->id }}">
+                            <div class="form-grid platform-plan-fields">
+                                <div class="field-group">
+                                    <label class="field-label" for="product-lifecycle-{{ $product->id }}">可用狀態</label>
+                                    <select class="field-select" id="product-lifecycle-{{ $product->id }}" name="lifecycle" required>
+                                        <option value="active" @selected($product->lifecycle === 'active')>啟用中</option>
+                                        <option value="maintenance" @selected($product->lifecycle === 'maintenance')>維護中</option>
+                                        <option value="retired" @selected($product->lifecycle === 'retired')>已停售</option>
+                                    </select>
+                                </div>
+                            </div>
+                            @if ($showLifecycleErrors)
+                                <div class="alert alert-error" role="alert" aria-label="產品狀態錯誤">
+                                    @foreach ($errors->getBag('productLifecycle')->all() as $error)<p>{{ $error }}</p>@endforeach
+                                </div>
+                            @endif
+                            <div class="form-actions"><button class="button button-secondary" type="submit">儲存產品狀態</button></div>
+                        </form>
+                    </section>
+
+                    <details class="platform-plan-editor" @if ($showPlanErrors || $showPlanStatusErrors) open @endif>
+                        <summary><strong>封存項目：方案與訂閱設定</strong></summary>
+                        <p class="field-help">本階段先處理產品與功能目錄；方案、訂閱、訂單及金流暫緩。既有資料與管理程式保留供後續使用。</p>
                     @if ($product->plans->isNotEmpty())
                         <div class="data-table-wrap" tabindex="0" role="region" aria-labelledby="product-plans-caption-{{ $product->id }}">
                             <table class="data-table platform-plans-table">
@@ -93,7 +149,7 @@
                         <p class="empty-copy">尚無方案，請建立第一個方案版本。</p>
                     @endif
 
-                    @if ((string) old('product_plan_id') !== '' && $errors->getBag('productPlanStatus')->any() && $product->plans->contains('id', (int) old('product_plan_id')))
+                    @if ($showPlanStatusErrors)
                         <div class="alert alert-error" role="alert" aria-label="方案狀態錯誤">
                             @foreach ($errors->getBag('productPlanStatus')->all() as $error)<p>{{ $error }}</p>@endforeach
                         </div>
@@ -181,6 +237,7 @@
                             </div>
                         </form>
                     </section>
+                    </details>
                 </div>
             </section>
         @endforeach

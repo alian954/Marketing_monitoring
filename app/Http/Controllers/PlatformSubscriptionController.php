@@ -16,6 +16,9 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
+/**
+ * Retained as archived compatibility tooling while commercial subscriptions are deferred.
+ */
 class PlatformSubscriptionController extends Controller
 {
     public function index(Organization $organization): View

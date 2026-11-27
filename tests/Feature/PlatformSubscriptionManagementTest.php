@@ -37,6 +37,7 @@ class PlatformSubscriptionManagementTest extends TestCase
             ->get(route('platform.organizations.products', $organization))
             ->assertOk()
             ->assertSee($organization->name)
+            ->assertSee('封存的產品訂閱管理')
             ->assertSee('建立訂閱合約');
     }
 

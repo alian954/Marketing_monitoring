@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductPlan;
+use App\Services\ProductRegistry;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ use Illuminate\View\View;
 
 class PlatformProductController extends Controller
 {
-    public function index(): View
+    public function index(ProductRegistry $productRegistry): View
     {
         $products = Product::query()
             ->with(['features' => fn ($query) => $query->orderBy('display_name'), 'plans' => fn ($query) => $query
@@ -28,7 +29,28 @@ class PlatformProductController extends Controller
 
         return view('platform.products.index', [
             'products' => $products,
+            'productManifests' => $productRegistry->all(),
         ]);
+    }
+
+    public function updateLifecycle(Request $request, Product $product, ProductRegistry $productRegistry): RedirectResponse
+    {
+        $manifest = $productRegistry->find($product->product_code);
+        abort_unless($manifest !== null, 404);
+
+        $validated = $request->validateWithBag('productLifecycle', [
+            'lifecycle' => ['required', Rule::in(['active', 'maintenance', 'retired'])],
+        ]);
+
+        if ($validated['lifecycle'] === 'active' && $manifest['lifecycle'] !== 'active') {
+            throw ValidationException::withMessages([
+                'lifecycle' => '程式登錄的產品狀態尚未允許啟用。',
+            ])->errorBag('productLifecycle');
+        }
+
+        $product->update(['lifecycle' => $validated['lifecycle']]);
+
+        return to_route('platform.products.index')->with('status', '產品狀態已更新。');
     }
 
     public function storePlan(Request $request, Product $product): RedirectResponse

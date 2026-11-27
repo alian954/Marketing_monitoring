@@ -1,17 +1,20 @@
 @extends('layouts.app')
 
-@section('title', '組織產品訂閱')
+@section('title', '已封存的組織訂閱')
 
 @section('content')
     <div class="page-heading">
         <div class="heading-copy">
             <p class="eyebrow">Organization products</p>
-            <h1 class="page-title">{{ $organization->name }} · 產品訂閱</h1>
-            <p class="page-description">管理此組織的產品訂閱與功能權益。</p>
+            <h1 class="page-title">{{ $organization->name }} · 已封存的訂閱</h1>
+            <p class="page-description">商業訂閱與帳務暫緩開發；既有資料保留。</p>
         </div>
         <a class="button button-secondary" href="{{ route('platform.index') }}">返回組織管理</a>
     </div>
 
+    <details class="platform-plan-editor" aria-labelledby="archived-subscriptions-summary">
+        <summary id="archived-subscriptions-summary"><strong>封存的產品訂閱管理</strong></summary>
+        <p class="field-help">本階段先治理中央產品目錄與功能模組，不新增訂閱、訂單、收款或金流流程。</p>
     <section class="panel" aria-labelledby="create-subscription-title">
         <div class="panel-header">
             <div>
@@ -221,4 +224,5 @@
             <section class="panel"><div class="empty-state"><h3 class="empty-title">尚無產品訂閱</h3><p class="empty-copy">建立上方的訂閱合約後，即可加入產品。</p></div></section>
         @endforelse
     </section>
+    </details>
 @endsection

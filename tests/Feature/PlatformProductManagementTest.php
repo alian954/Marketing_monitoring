@@ -21,7 +21,7 @@ class PlatformProductManagementTest extends TestCase
         $this->seed(ProductCatalogSeeder::class);
     }
 
-    public function test_only_platform_admins_can_open_product_plan_management(): void
+    public function test_only_platform_admins_can_open_the_product_feature_catalog(): void
     {
         $this->actingAs(User::factory()->create())
             ->get(route('platform.products.index'))
@@ -30,7 +30,9 @@ class PlatformProductManagementTest extends TestCase
         $this->actingAs($this->platformAdmin())
             ->get(route('platform.products.index'))
             ->assertOk()
-            ->assertSee('產品與方案')
+            ->assertSee('產品與功能')
+            ->assertSee('已登錄功能')
+            ->assertSee('封存項目：方案與訂閱設定')
             ->assertSee('公開貼文監測');
     }
 
