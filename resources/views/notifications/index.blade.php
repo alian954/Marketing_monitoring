@@ -70,6 +70,7 @@
                                 <option value="slack" @selected($filters['channel'] === 'slack')>Slack webhook</option>
                                 <option value="discord" @selected($filters['channel'] === 'discord')>Discord webhook</option>
                                 <option value="teams" @selected($filters['channel'] === 'teams')>Microsoft Teams workflow</option>
+                                <option value="line" @selected($filters['channel'] === 'line')>LINE</option>
                             </select>
                         </div>
                         <div class="field-group">

@@ -3,9 +3,12 @@
 namespace App\Jobs;
 
 use App\Models\Incident;
+use App\Models\LineNotificationTarget;
 use App\Models\NotificationOutbox;
 use App\Models\StatusPageSubscription;
 use App\Services\DiscordWebhookUrlPolicy;
+use App\Services\LineMessagingApi;
+use App\Services\LineMessagingApiException;
 use App\Services\SlackWebhookUrlPolicy;
 use App\Services\TeamsWebhookUrlPolicy;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -15,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
+use Ramsey\Uuid\Uuid;
 use Throwable;
 
 class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
@@ -94,6 +98,8 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 'recipient' => $outbox->recipient,
                 'subject' => $outbox->subject,
                 'body' => $outbox->body,
+                'workspace_id' => is_numeric($outbox->workspace_id) ? (int) $outbox->workspace_id : null,
+                'event_key' => (string) $outbox->event_key,
             ];
         });
 
@@ -110,6 +116,8 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
                 $this->sendDiscord($message);
             } elseif ($message['channel'] === NotificationOutbox::CHANNEL_TEAMS) {
                 $this->sendTeams($message);
+            } elseif ($message['channel'] === NotificationOutbox::CHANNEL_LINE) {
+                $this->sendLine($message);
             } else {
                 throw new InvalidArgumentException('Unsupported notification channel.');
             }
@@ -126,10 +134,44 @@ class SendNotificationOutbox implements ShouldBeUnique, ShouldQueue
 
             NotificationOutbox::query()->whereKey($this->outboxId)->where('status', 'sending')->update([
                 'status' => 'unknown',
-                'last_error' => '寄送結果不明（'.class_basename($exception).'）。重試前請先確認收件狀態。',
+                'last_error' => $exception instanceof LineMessagingApiException
+                    ? $exception->getMessage().'重試前請先確認 LINE 是否已收到。'
+                    : '寄送結果不明（'.class_basename($exception).'）。重試前請先確認收件狀態。',
                 'updated_at' => now(),
             ]);
         }
+    }
+
+    /**
+     * Resolves the LINE target inside the outbox workspace so a target ID can never borrow another workspace's channel token.
+     *
+     * @param  array{channel: string, recipient: string, subject: string, body: string, workspace_id: int|null, event_key: string}  $message
+     */
+    private function sendLine(array $message): void
+    {
+        $target = $message['workspace_id'] === null
+            ? null
+            : LineNotificationTarget::query()
+                ->withoutGlobalScopes()
+                ->where('workspace_id', $message['workspace_id'])
+                ->where('target_id', $message['recipient'])
+                ->with(['channel' => static fn ($query) => $query->withoutGlobalScopes()])
+                ->first();
+
+        if ($target === null || $target->channel === null || (int) $target->channel->workspace_id !== $message['workspace_id']) {
+            throw new LineMessagingApiException('找不到 LINE 推播對象或官方帳號連線已移除。');
+        }
+
+        if (! $target->isActive()) {
+            throw new LineMessagingApiException('LINE 官方帳號已離開此群組或被對象封鎖。');
+        }
+
+        app(LineMessagingApi::class)->pushText(
+            (string) $target->channel->channel_access_token,
+            $target->target_id,
+            $message['subject']."\n\n".$message['body'],
+            Uuid::uuid5(Uuid::NAMESPACE_URL, 'line-notification:'.$message['event_key'])->toString(),
+        );
     }
 
     /** @param array{channel: string, recipient: string, subject: string, body: string} $message */

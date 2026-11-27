@@ -111,7 +111,7 @@ class NotificationController extends Controller
         return $request->validate([
             'status' => ['nullable', 'in:pending,sending,sent,failed,unknown,cancelled'],
             'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED.','.NotificationOutbox::EVENT_TYPE_MARKETING_ALERT],
-            'channel' => ['nullable', 'in:email,slack,discord,teams'],
+            'channel' => ['nullable', 'in:email,slack,discord,teams,line'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
@@ -173,6 +173,7 @@ class NotificationController extends Controller
             NotificationOutbox::CHANNEL_SLACK => 'Slack webhook',
             NotificationOutbox::CHANNEL_DISCORD => 'Discord webhook',
             NotificationOutbox::CHANNEL_TEAMS => 'Microsoft Teams workflow',
+            NotificationOutbox::CHANNEL_LINE => 'LINE',
         ];
     }
 
@@ -180,6 +181,10 @@ class NotificationController extends Controller
     {
         if (in_array($notification->channel, [NotificationOutbox::CHANNEL_SLACK, NotificationOutbox::CHANNEL_DISCORD, NotificationOutbox::CHANNEL_TEAMS], true)) {
             return 'Webhook 端點已遮蔽';
+        }
+
+        if ($notification->channel === NotificationOutbox::CHANNEL_LINE) {
+            return 'LINE 推播對象已遮蔽';
         }
 
         $recipient = (string) $notification->recipient;

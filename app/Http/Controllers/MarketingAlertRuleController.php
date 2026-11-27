@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\LineNotificationTarget;
 use App\Models\MarketingAlertEvent;
 use App\Models\MarketingAlertRule;
 use App\Models\NotificationOutbox;
@@ -24,7 +25,8 @@ class MarketingAlertRuleController extends Controller
 
     public function index(Client $client): Response
     {
-        $rules = $client->marketingAlertRules()->latest('id')->get();
+        $rules = $client->marketingAlertRules()->with('lineNotificationTarget')->latest('id')->get();
+        $lineTargets = LineNotificationTarget::query()->active()->orderBy('display_name')->get();
         $recentEvents = MarketingAlertEvent::query()
             ->whereIn('marketing_alert_rule_id', $rules->modelKeys())
             ->with(['rule:id,metric', 'target:id,tag'])
@@ -37,6 +39,7 @@ class MarketingAlertRuleController extends Controller
                 'client' => $client,
                 'rules' => $rules,
                 'recentEvents' => $recentEvents,
+                'lineTargets' => $lineTargets,
             ])
             ->header('Cache-Control', 'private, no-store');
     }
@@ -48,6 +51,11 @@ class MarketingAlertRuleController extends Controller
             is_string($request->input('recipients')) ? $request->input('recipients') : null,
         );
         $webhookUrl = is_string($request->input('webhook_url')) ? trim($request->input('webhook_url')) : '';
+        $lineTargetInput = $request->input('line_notification_target_id');
+        $lineTarget = is_numeric($lineTargetInput)
+            ? LineNotificationTarget::query()->active()->find((int) $lineTargetInput)
+            : null;
+        $lineTargetRequested = $lineTargetInput !== null && $lineTargetInput !== '';
         $needsThreshold = is_string($metric) && (MarketingAlertRule::METRICS[$metric]['threshold_label'] ?? null) !== null;
         $threshold = $request->input('threshold');
 
@@ -81,7 +89,11 @@ class MarketingAlertRuleController extends Controller
             'webhook_url.max' => 'Webhook 網址過長。',
         ]);
         $webhookChannel = null;
-        $validator->after(function ($validator) use ($recipients, $webhookUrl, &$webhookChannel): void {
+        $validator->after(function ($validator) use ($recipients, $webhookUrl, $lineTarget, $lineTargetRequested, &$webhookChannel): void {
+            if ($lineTargetRequested && $lineTarget === null) {
+                $validator->errors()->add('line_notification_target_id', '所選 LINE 推播對象無效或已離開。');
+            }
+
             if ($webhookUrl !== '') {
                 $webhookChannel = match (true) {
                     SlackWebhookUrlPolicy::isAllowed($webhookUrl) => NotificationOutbox::CHANNEL_SLACK,
@@ -95,8 +107,8 @@ class MarketingAlertRuleController extends Controller
                 }
             }
 
-            if ($recipients === [] && $webhookUrl === '') {
-                $validator->errors()->add('recipients', '請至少設定一個收件信箱或 Webhook。');
+            if ($recipients === [] && $webhookUrl === '' && ! $lineTargetRequested) {
+                $validator->errors()->add('recipients', '請至少設定一個收件信箱、Webhook 或 LINE 推播對象。');
             }
         });
 
@@ -104,7 +116,7 @@ class MarketingAlertRuleController extends Controller
             return redirect()
                 ->route('clients.marketing-alerts.index', $client)
                 ->withErrors($validator)
-                ->withInput($request->only(['metric', 'threshold', 'recipients']));
+                ->withInput($request->only(['metric', 'threshold', 'recipients', 'line_notification_target_id']));
         }
 
         $client->marketingAlertRules()->create([
@@ -113,6 +125,7 @@ class MarketingAlertRuleController extends Controller
             'recipients' => $recipients === [] ? null : implode("\n", $recipients),
             'webhook_url' => $webhookUrl === '' ? null : $webhookUrl,
             'webhook_channel' => $webhookChannel,
+            'line_notification_target_id' => $lineTarget?->getKey(),
         ]);
 
         return redirect()

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendNotificationOutbox;
 use App\Models\Client;
+use App\Models\LineNotificationTarget;
 use App\Models\MarketingAlertEvent;
 use App\Models\MarketingAlertRule;
 use App\Models\NotificationOutbox;
@@ -11,6 +12,7 @@ use App\Models\Organization;
 use App\Models\SocialEngagementTarget;
 use App\Models\SocialEngagementTargetGoogleAdsReport;
 use App\Models\SocialEngagementTargetMetaMarketingReport;
+use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -414,6 +416,19 @@ class MarketingAlertEvaluator
 
         if (is_string($rule->webhook_url) && $rule->webhook_url !== '' && is_string($rule->webhook_channel)) {
             $destinations[] = [$rule->webhook_channel, $rule->webhook_url];
+        }
+
+        $lineTarget = $rule->line_notification_target_id === null
+            ? null
+            : LineNotificationTarget::query()
+                ->withoutGlobalScopes()
+                ->active()
+                ->whereKey($rule->line_notification_target_id)
+                ->where('workspace_id', $client->workspace_id ?? Workspace::idForOwnerUserId((int) $client->user_id))
+                ->first();
+
+        if ($lineTarget !== null) {
+            $destinations[] = [NotificationOutbox::CHANNEL_LINE, $lineTarget->target_id];
         }
 
         if ($destinations === []) {

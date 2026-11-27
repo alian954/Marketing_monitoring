@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $isConsoleRequest = static fn (Request $request): bool => PlatformConsole::isConsoleRequest($request);
 
         $middleware->web(prepend: [IsolatePlatformConsole::class]);
+        $middleware->validateCsrfTokens(except: ['webhooks/line/*']);
         $middleware->redirectGuestsTo(
             static fn (Request $request): string => $isConsoleRequest($request) ? route('platform.login') : route('login'),
         );
@@ -25,7 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontFlash(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook']);
+        $exceptions->dontFlash(['notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'channel_access_token', 'channel_secret']);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

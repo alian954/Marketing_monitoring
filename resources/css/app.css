@@ -3171,6 +3171,19 @@ a.platform-chip:hover {
     margin-top: 18px;
 }
 
+.line-setup-steps {
+    display: grid;
+    gap: 12px;
+    margin: 0 0 14px;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.line-setup-steps .field-group {
+    margin-top: 8px;
+}
+
 .campaign-report-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

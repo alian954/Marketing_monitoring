@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['metric', 'threshold', 'recipients', 'webhook_url', 'webhook_channel', 'paused_at'])]
+#[Fillable(['metric', 'threshold', 'recipients', 'webhook_url', 'webhook_channel', 'line_notification_target_id', 'paused_at'])]
 #[Hidden(['recipients', 'webhook_url'])]
 class MarketingAlertRule extends Model
 {
@@ -74,6 +74,11 @@ class MarketingAlertRule extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function lineNotificationTarget(): BelongsTo
+    {
+        return $this->belongsTo(LineNotificationTarget::class);
     }
 
     public function events(): HasMany

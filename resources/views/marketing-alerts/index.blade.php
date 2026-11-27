@@ -59,6 +59,10 @@
                                 if ($rule->webhook_channel !== null) {
                                     $destinationLabels[] = ['slack' => 'Slack', 'teams' => 'Teams', 'discord' => 'Discord'][$rule->webhook_channel] ?? $rule->webhook_channel;
                                 }
+
+                                if ($rule->lineNotificationTarget !== null) {
+                                    $destinationLabels[] = 'LINE：'.$rule->lineNotificationTarget->label().($rule->lineNotificationTarget->isActive() ? '' : '（已離開，暫停推播）');
+                                }
                             @endphp
                             <tr>
                                 <th scope="row">
@@ -147,6 +151,28 @@
                         <input class="field-input{{ $errors->has('webhook_url') ? ' is-invalid' : '' }}" id="marketing-alert-webhook" name="webhook_url" type="url" maxlength="2048" autocomplete="off" spellcheck="false" aria-describedby="marketing-alert-webhook-help{{ $errors->has('webhook_url') ? ' marketing-alert-webhook-error' : '' }}" @if ($errors->has('webhook_url')) aria-invalid="true" @endif>
                         <p id="marketing-alert-webhook-help" class="field-help">網址會加密保存，建立後不再顯示。</p>
                         @error('webhook_url')<p id="marketing-alert-webhook-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label" for="marketing-alert-line-target">LINE 推播對象（選填）</label>
+                        @if ($lineTargets->isNotEmpty())
+                            <select class="field-input{{ $errors->has('line_notification_target_id') ? ' is-invalid' : '' }}" id="marketing-alert-line-target" name="line_notification_target_id" aria-describedby="marketing-alert-line-target-help{{ $errors->has('line_notification_target_id') ? ' marketing-alert-line-target-error' : '' }}" @if ($errors->has('line_notification_target_id')) aria-invalid="true" @endif>
+                                <option value="">不推播到 LINE</option>
+                                @foreach ($lineTargets as $lineTarget)
+                                    <option value="{{ $lineTarget->getKey() }}" @selected((string) old('line_notification_target_id') === (string) $lineTarget->getKey())>{{ $lineTarget->label() }}</option>
+                                @endforeach
+                            </select>
+                            <p id="marketing-alert-line-target-help" class="field-help">警示會由工作區的 LINE 官方帳號推播到所選群組或好友。</p>
+                        @else
+                            <p id="marketing-alert-line-target-help" class="field-help">
+                                尚無 LINE 推播對象。
+                                @if (auth()->user()?->isWorkspaceOwner())
+                                    請先到 <a href="{{ route('integrations.line.edit') }}">LINE 通知</a> 連結官方帳號並把它加入群組。
+                                @else
+                                    請組織擁有者先設定 LINE 官方帳號。
+                                @endif
+                            </p>
+                        @endif
+                        @error('line_notification_target_id')<p id="marketing-alert-line-target-error" class="field-error" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="form-actions">
                         <button class="button button-primary" type="submit">建立警示規則</button>

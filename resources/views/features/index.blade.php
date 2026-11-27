@@ -97,7 +97,7 @@
             <div>
                 <h2 id="events-notifications-title" class="panel-title">事件與通知</h2>
                 <p class="panel-description">異常可設定延遲確認，減少短暫波動誤報。事件可認領、加註備註、暫停提醒或安排維護；認領不會自動結束事件。</p>
-                <p class="panel-description">通知支援電子郵件、Slack、Discord 與 Microsoft Teams。可使用全域設定或為監測項目指定收件人，並設定持續未恢復事件的升級通知。</p>
+                <p class="panel-description">通知支援電子郵件、Slack、Discord 與 Microsoft Teams；行銷警示另可透過工作區的 LINE 官方帳號推播到群組或好友。可使用全域設定或為監測項目指定收件人，並設定持續未恢復事件的升級通知。</p>
             </div>
         </div>
     </section>

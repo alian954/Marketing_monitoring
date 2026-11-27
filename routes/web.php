@@ -16,6 +16,8 @@ use App\Http\Controllers\GoogleSearchConsoleIntegrationController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\IntegrationApplicationCredentialController;
+use App\Http\Controllers\LineMessagingIntegrationController;
+use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\MaintenanceWindowController;
 use App\Http\Controllers\MarketingAlertRuleController;
 use App\Http\Controllers\MetaMarketingIntegrationController;
@@ -86,6 +88,10 @@ Route::post('/status/{token}/subscriptions', [StatusPageSubscriptionController::
     ->middleware('throttle:status-page-subscription')
     ->middleware(EnforceProductFeatureAvailability::class)
     ->name('status-page-subscriptions.subscribe');
+Route::post('/webhooks/line/{webhookKey}', LineWebhookController::class)
+    ->where('webhookKey', '[A-Za-z0-9]{64}')
+    ->middleware('throttle:120,1')
+    ->name('line.webhook');
 Route::get('/status-subscriptions/{subscription}/confirm', [StatusPageSubscriptionController::class, 'showConfirmation'])
     ->whereNumber('subscription')
     ->middleware(EnforceProductFeatureAvailability::class)
@@ -478,6 +484,18 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
             ->whereNumber('client')
             ->name('integrations.google-ads.clients.customer.update');
         Route::delete('/integrations/google-ads/connection', [GoogleAdsIntegrationController::class, 'disconnect'])->name('integrations.google-ads.disconnect');
+        Route::get('/integrations/line', [LineMessagingIntegrationController::class, 'show'])->name('integrations.line.edit');
+        Route::put('/integrations/line', [LineMessagingIntegrationController::class, 'update'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.line.update');
+        Route::delete('/integrations/line', [LineMessagingIntegrationController::class, 'destroy'])->name('integrations.line.destroy');
+        Route::post('/integrations/line/targets/{lineNotificationTarget}/test', [LineMessagingIntegrationController::class, 'sendTest'])
+            ->whereNumber('lineNotificationTarget')
+            ->middleware('throttle:notification-test')
+            ->name('integrations.line.targets.test');
+        Route::delete('/integrations/line/targets/{lineNotificationTarget}', [LineMessagingIntegrationController::class, 'destroyTarget'])
+            ->whereNumber('lineNotificationTarget')
+            ->name('integrations.line.targets.destroy');
     });
     Route::get('/features', [FeatureGuideController::class, 'index'])->name('features.index');
     Route::middleware(EnsureWorkspaceOwner::class)->prefix('trials')->name('trials.')->group(function (): void {
