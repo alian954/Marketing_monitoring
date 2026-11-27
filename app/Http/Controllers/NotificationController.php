@@ -110,7 +110,7 @@ class NotificationController extends Controller
     {
         return $request->validate([
             'status' => ['nullable', 'in:pending,sending,sent,failed,unknown,cancelled'],
-            'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED],
+            'event_type' => ['nullable', 'in:opened,recovered,reminder,'.NotificationOutbox::EVENT_TYPE_ESCALATION.','.NotificationOutbox::EVENT_TYPE_ESCALATION_STAGE_2.',dns_daily_summary,'.NotificationOutbox::EVENT_TYPE_TEST.','.NotificationOutbox::EVENT_TYPE_STATUS_OPENED.','.NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED.','.NotificationOutbox::EVENT_TYPE_MARKETING_ALERT],
             'channel' => ['nullable', 'in:email,slack,discord,teams'],
             'monitor_id' => ['nullable', 'integer', 'exists:monitors,id'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
@@ -160,6 +160,7 @@ class NotificationController extends Controller
             'dns_daily_summary' => '每日 DNS 變更摘要',
             NotificationOutbox::EVENT_TYPE_STATUS_OPENED => '公開狀態頁異常更新',
             NotificationOutbox::EVENT_TYPE_STATUS_RECOVERED => '公開狀態頁恢復更新',
+            NotificationOutbox::EVENT_TYPE_MARKETING_ALERT => '行銷數據警示',
             NotificationOutbox::EVENT_TYPE_TEST => '測試通知',
         ];
     }

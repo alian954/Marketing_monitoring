@@ -155,6 +155,10 @@ return [
             'clients.report-schedules.store' => ['marketing.reports'],
             'clients.report-schedules.update' => ['marketing.reports'],
             'clients.report-schedules.destroy' => ['marketing.reports'],
+            'clients.marketing-alerts.index' => ['marketing.reports'],
+            'clients.marketing-alerts.store' => ['marketing.reports'],
+            'clients.marketing-alerts.update' => ['marketing.reports'],
+            'clients.marketing-alerts.destroy' => ['marketing.reports'],
             'integrations.google-analytics.edit' => ['marketing.analytics.ga4'],
             'integrations.google-analytics.connect' => ['marketing.analytics.ga4'],
             'integrations.google-analytics.callback' => ['marketing.analytics.ga4'],
@@ -188,6 +192,7 @@ return [
             'meta-marketing:sync-due',
             'google-ads:sync-due',
             'client-reports:send-scheduled',
+            'marketing-alerts:evaluate',
         ],
     ],
 ];

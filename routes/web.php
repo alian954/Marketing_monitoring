@@ -17,6 +17,7 @@ use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
 use App\Http\Controllers\IntegrationApplicationCredentialController;
 use App\Http\Controllers\MaintenanceWindowController;
+use App\Http\Controllers\MarketingAlertRuleController;
 use App\Http\Controllers\MetaMarketingIntegrationController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\MonitorImportController;
@@ -262,6 +263,22 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
         ->whereNumber('reportSchedule')
         ->scopeBindings()
         ->name('clients.report-schedules.destroy');
+    Route::get('/clients/{client}/marketing-alerts', [MarketingAlertRuleController::class, 'index'])
+        ->whereNumber('client')
+        ->name('clients.marketing-alerts.index');
+    Route::post('/clients/{client}/marketing-alerts', [MarketingAlertRuleController::class, 'store'])
+        ->whereNumber('client')
+        ->name('clients.marketing-alerts.store');
+    Route::patch('/clients/{client}/marketing-alerts/{marketingAlertRule}', [MarketingAlertRuleController::class, 'update'])
+        ->whereNumber('client')
+        ->whereNumber('marketingAlertRule')
+        ->scopeBindings()
+        ->name('clients.marketing-alerts.update');
+    Route::delete('/clients/{client}/marketing-alerts/{marketingAlertRule}', [MarketingAlertRuleController::class, 'destroy'])
+        ->whereNumber('client')
+        ->whereNumber('marketingAlertRule')
+        ->scopeBindings()
+        ->name('clients.marketing-alerts.destroy');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');

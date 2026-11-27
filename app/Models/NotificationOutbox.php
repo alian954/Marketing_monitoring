@@ -40,6 +40,8 @@ class NotificationOutbox extends Model
 
     public const EVENT_TYPE_STATUS_RECOVERED = 'status_recovered';
 
+    public const EVENT_TYPE_MARKETING_ALERT = 'marketing_alert';
+
     protected $table = 'notification_outbox';
 
     /** @use HasFactory<NotificationOutboxFactory> */
