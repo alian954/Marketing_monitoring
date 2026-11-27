@@ -161,6 +161,7 @@
                                     <a class="monitor-name-link" href="{{ route('dashboard', ['client_id' => $row['client']->getKey()]) }}" aria-label="查看{{ $row['client']->name }}行銷報告">
                                         {{ $row['client']->name }}
                                     </a>
+                                    <a class="secondary-text" href="{{ route('clients.cross-platform', ['client' => $row['client'], 'from' => $reportPeriod['from'], 'to' => $reportPeriod['to']]) }}">跨平台總覽</a>
                                     @if ($row['client']->reporting_currency_code)
                                         <span class="secondary-text">報表幣別 {{ $row['client']->reporting_currency_code }}</span>
                                     @elseif ($row['money_groups'] !== [])

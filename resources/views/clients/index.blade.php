@@ -123,6 +123,7 @@
                             <td class="numeric">{{ number_format($client->monitors_count) }}</td>
                             <td class="numeric">{{ number_format($client->social_engagement_targets_count) }}</td>
                             <td>
+                                <a class="button button-secondary button-small" href="{{ route('clients.cross-platform', $client) }}">跨平台總覽</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.report-shares.index', $client) }}">報表分享</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.marketing-alerts.index', $client) }}">行銷警示</a>
                                 <a class="button button-secondary button-small" href="{{ route('clients.currencies.index', $client) }}">幣別與匯率</a>

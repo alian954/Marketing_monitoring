@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientCrossPlatformOverviewController;
 use App\Http\Controllers\ClientCurrencyController;
 use App\Http\Controllers\ClientPortfolioController;
 use App\Http\Controllers\ClientReportScheduleController;
@@ -301,6 +302,9 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
         ->whereNumber('reportSchedule')
         ->scopeBindings()
         ->name('clients.report-schedules.destroy');
+    Route::get('/clients/{client}/cross-platform', [ClientCrossPlatformOverviewController::class, 'show'])
+        ->whereNumber('client')
+        ->name('clients.cross-platform');
     Route::get('/clients/{client}/marketing-alerts', [MarketingAlertRuleController::class, 'index'])
         ->whereNumber('client')
         ->name('clients.marketing-alerts.index');

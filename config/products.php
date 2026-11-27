@@ -149,6 +149,7 @@ return [
             'social-engagement-targets.meta-marketing.placements' => ['marketing.ads.meta'],
             'social-engagement-targets.meta-marketing.demographics' => ['marketing.ads.meta'],
             'clients.performance' => ['marketing.reports'],
+            'clients.cross-platform' => ['marketing.reports'],
             'clients.performance.export' => ['marketing.reports'],
             'clients.report-shares.index' => ['marketing.reports'],
             'clients.report-shares.store' => ['marketing.reports'],

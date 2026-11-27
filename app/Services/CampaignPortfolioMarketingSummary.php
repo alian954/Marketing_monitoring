@@ -894,7 +894,7 @@ class CampaignPortfolioMarketingSummary
         return in_array('stale', $statuses, true) ? 'stale' : 'missing';
     }
 
-    private function campaignMappingKey(string $source, SocialEngagementTarget $target): ?string
+    public function campaignMappingKey(string $source, SocialEngagementTarget $target): ?string
     {
         $identity = $this->campaignMappingIdentity($source, $target);
 
