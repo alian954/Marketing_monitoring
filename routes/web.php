@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClientAdPlatformImportController;
 use App\Http\Controllers\ClientBudgetController;
@@ -253,6 +254,11 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
         Route::patch('/members/{membership}/clients', [WorkspaceAccessController::class, 'updateMemberClients'])
             ->whereNumber('membership')
             ->name('members.clients.update');
+    });
+    Route::middleware(EnsureWorkspaceOwner::class)->prefix('api-tokens')->name('api-tokens.')->group(function (): void {
+        Route::get('/', [ApiTokenController::class, 'index'])->name('index');
+        Route::post('/', [ApiTokenController::class, 'store'])->middleware('throttle:10,1')->name('store');
+        Route::delete('/{apiToken}', [ApiTokenController::class, 'destroy'])->whereNumber('apiToken')->name('destroy');
     });
     Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
     Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');

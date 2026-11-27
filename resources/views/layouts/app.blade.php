@@ -31,6 +31,7 @@
                         <a class="nav-link" href="{{ route('integrations.google-ads.edit') }}" @if (request()->routeIs('integrations.google-ads.*')) aria-current="page" @endif>Google Ads 整合</a>
                         <a class="nav-link" href="{{ route('integrations.meta-marketing.edit') }}" @if (request()->routeIs('integrations.meta-marketing.*')) aria-current="page" @endif>Meta Ads 整合</a>
                         <a class="nav-link" href="{{ route('integrations.line.edit') }}" @if (request()->routeIs('integrations.line.*')) aria-current="page" @endif>LINE 通知</a>
+                        <a class="nav-link" href="{{ route('api-tokens.index') }}" @if (request()->routeIs('api-tokens.*')) aria-current="page" @endif>資料 API</a>
                     @endif
                     @if (auth()->user()?->isWorkspaceOwner())
                         <a class="nav-link" href="{{ route('trials.index') }}" @if (request()->routeIs('trials.*')) aria-current="page" @endif>申請試用</a>

@@ -3763,3 +3763,7 @@ a.platform-chip:hover {
         grid-template-columns: 1fr;
     }
 }
+
+.api-token-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
