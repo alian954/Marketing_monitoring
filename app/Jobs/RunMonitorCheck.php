@@ -62,9 +62,10 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         ?DnsChangeRecorder $dnsChanges = null,
     ): void {
         $dnsChanges ??= app(DnsChangeRecorder::class);
-        $run = CheckRun::query()->with('monitor')->findOrFail($this->checkRunId);
+        $run = CheckRun::query()->with('monitor')->find($this->checkRunId);
 
-        if (in_array($run->status, ['completed', 'stale_config', 'paused'], true)) {
+        // Deleting a monitor also deletes its check runs, so a job queued earlier has nothing left to do.
+        if ($run === null || in_array($run->status, ['completed', 'stale_config', 'paused'], true)) {
             return;
         }
 
@@ -139,9 +140,9 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
         }
 
         DB::transaction(function () use ($run, $monitor, $normal, $adsbot, $incidents, $scheduler, $dnsChanges): void {
-            $lockedRun = CheckRun::query()->lockForUpdate()->findOrFail($run->id);
+            $lockedRun = CheckRun::query()->lockForUpdate()->find($run->id);
 
-            if (in_array($lockedRun->status, ['completed', 'stale_config', 'paused'], true)) {
+            if ($lockedRun === null || in_array($lockedRun->status, ['completed', 'stale_config', 'paused'], true)) {
                 return;
             }
 
