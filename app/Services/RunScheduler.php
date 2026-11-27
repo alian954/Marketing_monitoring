@@ -42,6 +42,8 @@ class RunScheduler
                 'alert_on_response_metadata_change' => $lockedMonitor->alert_on_response_metadata_change,
                 'request_headers' => $lockedMonitor->request_headers ?? [],
                 'expected_response_header' => $lockedMonitor->expected_response_header,
+                'expected_tracking_tags' => $lockedMonitor->expected_tracking_tags ?? [],
+                'alert_on_utm_loss' => $lockedMonitor->alert_on_utm_loss,
                 'response_time_threshold_ms' => $lockedMonitor->response_time_threshold_ms,
                 'min_response_body_bytes' => $lockedMonitor->min_response_body_bytes,
                 'max_response_body_bytes' => $lockedMonitor->max_response_body_bytes,

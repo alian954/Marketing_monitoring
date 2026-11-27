@@ -109,6 +109,47 @@ class IncidentManager
                 ));
             }
 
+            $expectedTrackingTags = is_array($lockedMonitor->expected_tracking_tags) ? $lockedMonitor->expected_tracking_tags : [];
+
+            if ($expectedTrackingTags !== [] && $normalProbeSucceeded && $normal->responseTrackingTags !== null) {
+                $missingTrackingTags = array_values(array_diff($expectedTrackingTags, $normal->responseTrackingTags));
+                $delay = $this->earlierDelay($delay, $this->recordRule(
+                    $lockedMonitor,
+                    $run,
+                    'tracking_tags',
+                    'warning',
+                    $missingTrackingTags !== [],
+                    $normal,
+                    true,
+                    null,
+                    ['missing_tracking_tags' => $missingTrackingTags],
+                ));
+            }
+
+            if ($lockedMonitor->alert_on_utm_loss && $normalProbeSucceeded) {
+                $expectedUtmParameters = $this->utmParameters($lockedMonitor->url);
+
+                if ($expectedUtmParameters !== []) {
+                    $finalUtmParameters = $this->utmParameters($normal->finalUrl);
+                    $lostUtmParameters = array_keys(array_filter(
+                        $expectedUtmParameters,
+                        static fn (string $value, string $key): bool => ($finalUtmParameters[$key] ?? null) !== $value,
+                        ARRAY_FILTER_USE_BOTH,
+                    ));
+                    $delay = $this->earlierDelay($delay, $this->recordRule(
+                        $lockedMonitor,
+                        $run,
+                        'utm_lost',
+                        'warning',
+                        $lostUtmParameters !== [],
+                        $normal,
+                        true,
+                        null,
+                        ['lost_utm_parameters' => $lostUtmParameters],
+                    ));
+                }
+            }
+
             $responseTimeThreshold = $lockedMonitor->response_time_threshold_ms;
             $normalElapsedMs = $run->normal_elapsed_ms ?? $normal->elapsedMs;
 
@@ -919,6 +960,31 @@ class IncidentManager
             'check_run_id' => $run->id,
             'event_type' => $eventType,
         ], ['evidence' => $evidence, 'created_at' => now()])->wasRecentlyCreated;
+    }
+
+    /**
+     * @return array<string, string> UTM query parameters keyed by lower-case name.
+     */
+    private function utmParameters(?string $url): array
+    {
+        $query = is_string($url) ? parse_url($url, PHP_URL_QUERY) : null;
+
+        if (! is_string($query) || $query === '') {
+            return [];
+        }
+
+        $parameters = [];
+
+        foreach (explode('&', $query) as $segment) {
+            [$rawKey, $rawValue] = array_pad(explode('=', $segment, 2), 2, '');
+            $key = mb_strtolower(rawurldecode($rawKey));
+
+            if (str_starts_with($key, 'utm_')) {
+                $parameters[$key] = rawurldecode(str_replace('+', ' ', $rawValue));
+            }
+        }
+
+        return $parameters;
     }
 
     private function earlierDelay(?int $current, ?int $candidate): ?int

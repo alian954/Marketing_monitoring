@@ -211,6 +211,23 @@
                         <dd>{{ $monitor->alert_on_response_metadata_change ? '已啟用' : '未啟用' }}</dd>
                     </div>
                     <div class="metadata-item">
+                        <dt>必要追蹤碼</dt>
+                        <dd>
+                            @if (($monitor->expected_tracking_tags ?? []) === [])
+                                未設定
+                            @else
+                                {{ collect($monitor->expected_tracking_tags)->map(static fn (string $tag): string => \App\Services\Probe\TrackingTagExtractor::label($tag))->implode('、') }}
+                            @endif
+                            @if ($latestTrackingTagsRun !== null)
+                                <span class="secondary-text">最近偵測到：{{ $latestTrackingTagsRun->response_tracking_tags === [] ? '無' : collect($latestTrackingTagsRun->response_tracking_tags)->map(static fn (string $tag): string => \App\Services\Probe\TrackingTagExtractor::label($tag))->implode('、') }}</span>
+                            @endif
+                        </dd>
+                    </div>
+                    <div class="metadata-item">
+                        <dt>UTM 遺失警示</dt>
+                        <dd>{{ $monitor->alert_on_utm_loss ? '已啟用' : '未啟用' }}</dd>
+                    </div>
+                    <div class="metadata-item">
                         <dt>回應時間警示門檻</dt>
                         <dd>{{ $monitor->response_time_threshold_ms !== null ? number_format($monitor->response_time_threshold_ms).' 毫秒' : '未設定' }}</dd>
                     </div>
@@ -1464,6 +1481,12 @@
                                                         條件：{{ match ($event->evidence['expected_text_mode']) { 'absent' => '不得出現任一片段', 'present_any' => '至少包含一個片段', default => '必須包含全部片段' } }}；
                                                         比對：{{ $eventExpectedTextMatchResult === null ? '無法判定' : match ($event->evidence['expected_text_mode']) { 'absent' => $eventExpectedTextMatchResult ? '原始回應找到禁止文字' : '原始回應未找到禁止文字', 'present_any' => $eventExpectedTextMatchResult ? '原始回應找到至少一個片段' : '原始回應未找到任何片段', default => $eventExpectedTextMatchResult ? '原始回應找到全部片段' : '原始回應缺少至少一個片段' } }}
                                                     </span>
+                                                @endif
+                                                @if ($incident->rule_key === 'tracking_tags' && ($event->evidence['missing_tracking_tags'] ?? []) !== [])
+                                                    <span class="secondary-text">缺少：{{ collect($event->evidence['missing_tracking_tags'])->map(static fn (string $tag): string => \App\Services\Probe\TrackingTagExtractor::label($tag))->implode('、') }}</span>
+                                                @endif
+                                                @if ($incident->rule_key === 'utm_lost' && ($event->evidence['lost_utm_parameters'] ?? []) !== [])
+                                                    <span class="secondary-text">遺失或被改寫：{{ implode('、', $event->evidence['lost_utm_parameters']) }}</span>
                                                 @endif
                                                 @if ($incident->rule_key === 'response_header' && isset($event->evidence['expected_response_header_name']) && array_key_exists('expected_response_header_found', $event->evidence))
                                                     @php

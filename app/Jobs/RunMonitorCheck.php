@@ -195,6 +195,7 @@ class RunMonitorCheck implements ShouldBeUnique, ShouldQueue
                 'response_robots_directives' => $normal->responseRobotsDirectives,
                 'response_content_type' => $normal->responseContentType,
                 'response_body_bytes' => $normal->responseBodyBytes,
+                'response_tracking_tags' => $responseConditionStatusAccepted ? $normal->responseTrackingTags : null,
                 'tls_expires_at' => $normal->tlsExpiresAt,
             ])->save();
 

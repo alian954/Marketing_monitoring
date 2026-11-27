@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
-#[Fillable(['name', 'url', 'url_hash', 'label', 'client_id', 'utm_content', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'alert_on_visible_text_change', 'alert_on_response_metadata_change', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'slo_target_basis_points', 'next_check_at', 'last_checked_at'])]
+#[Fillable(['name', 'url', 'url_hash', 'label', 'client_id', 'utm_content', 'notification_email', 'notification_escalation_email', 'notification_escalation_delay_minutes', 'notification_escalation_stage_2_email', 'notification_escalation_stage_2_delay_minutes', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header', 'enabled', 'allowed_redirect_hosts', 'accepted_status_codes', 'expected_text', 'expected_text_mode', 'expected_tracking_tags', 'alert_on_utm_loss', 'alert_on_visible_text_change', 'alert_on_response_metadata_change', 'response_time_threshold_ms', 'min_response_body_bytes', 'max_response_body_bytes', 'timeout_seconds', 'confirmation_delay_seconds', 'public_status', 'interval_seconds', 'slo_target_basis_points', 'next_check_at', 'last_checked_at'])]
 #[Hidden(['user_id', 'workspace_id', 'notification_escalation_email', 'notification_escalation_stage_2_email', 'notification_slack_webhook', 'notification_discord_webhook', 'notification_teams_webhook', 'request_headers', 'expected_response_header'])]
 class Monitor extends Model
 {
@@ -108,6 +108,8 @@ class Monitor extends Model
             'accepted_status_codes' => 'array',
             'tags' => 'array',
             'enabled' => 'boolean',
+            'expected_tracking_tags' => 'array',
+            'alert_on_utm_loss' => 'boolean',
             'alert_on_visible_text_change' => 'boolean',
             'alert_on_response_metadata_change' => 'boolean',
             'config_version' => 'integer',

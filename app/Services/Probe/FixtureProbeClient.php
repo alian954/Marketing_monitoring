@@ -54,6 +54,7 @@ class FixtureProbeClient implements ProbeClient
         $body = match ($path) {
             '/missing-text' => '<html>fixture page without the expected copy</html>',
             '/html-entities' => '<html>Campaign &amp; special offer</html>',
+            '/tracked' => '<html><script>gtag(\'config\', \'G-FIXTURE123\');fbq(\'init\', \'123456789012345\');</script>fixture healthy landing page</html>',
             default => '<html>fixture healthy landing page</html>',
         };
         $elapsedMs = (int) round((hrtime(true) - $startedAt) / 1_000_000) + 2;
@@ -96,6 +97,7 @@ class FixtureProbeClient implements ProbeClient
             publicEngagementMetrics: $socialPlatform !== null
                 ? ($responseInspection['public_engagement_metrics'] ?? null)
                 : null,
+            responseTrackingTags: TrackingTagExtractor::extract($body),
         );
     }
 }

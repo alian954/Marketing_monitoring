@@ -347,6 +347,9 @@ class SecureProbeClient implements ProbeClient
                     $monitorHostDnsRecords,
                     $responseRobotsDirectives,
                     publicEngagementMetrics: $accessGateDetected ? null : $publicEngagementMetrics,
+                    responseTrackingTags: $response->errorType === null && ! $accessGateDetected
+                        ? TrackingTagExtractor::extract($response->body)
+                        : null,
                 );
             }
 

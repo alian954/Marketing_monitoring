@@ -34,6 +34,8 @@ class Incident extends Model
         'response_time' => 'HTTP 回應時間超過設定門檻',
         'response_content_change' => '原始回應文字或分享預覽資訊已變更',
         'response_size' => 'HTTP 回應本文大小超出設定範圍或無法判定',
+        'tracking_tags' => '頁面缺少追蹤碼',
+        'utm_lost' => '重新導向後 UTM 參數遺失',
         'monitor_stale' => '監測資料逾時',
         'adsbot_difference' => 'AdsBot 模擬結果不同',
         'tls_expired' => 'TLS 憑證已過期',

@@ -283,6 +283,23 @@
                         </div>
 
                         <div class="field-group field-group-full">
+                            <label class="field-label" for="expected_tracking_tags">必要追蹤碼（選填）</label>
+                            <textarea class="field-textarea @error('expected_tracking_tags') is-invalid @enderror" id="expected_tracking_tags" name="expected_tracking_tags" rows="2" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="G-XXXXXXXXXX, GTM-XXXXXXX, 1234567890123456" aria-describedby="{{ $errors->has('expected_tracking_tags') ? 'expected-tracking-tags-help expected-tracking-tags-error' : 'expected-tracking-tags-help' }}" @if ($errors->has('expected_tracking_tags')) aria-invalid="true" @endif>{{ old('expected_tracking_tags', implode(', ', $monitor->expected_tracking_tags ?? [])) }}</textarea>
+                            <p id="expected-tracking-tags-help" class="field-help">GA4（G-）、Google Tag Manager（GTM-）、Google Ads（AW-）或 Meta Pixel 數字 ID，以逗號或換行分隔。原始 HTML 缺少任一代碼時建立警告；由 GTM 動態載入的代碼請改填 GTM 容器 ID。</p>
+                            @error('expected_tracking_tags')<p id="expected-tracking-tags-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
+                            <input type="hidden" name="alert_on_utm_loss" value="0">
+                            <label class="field-check spaced-top" for="alert_on_utm_loss">
+                                <input id="alert_on_utm_loss" name="alert_on_utm_loss" type="checkbox" value="1" aria-describedby="utm-loss-help{{ $errors->has('alert_on_utm_loss') ? ' utm-loss-error' : '' }}" @checked(old('alert_on_utm_loss', $monitor->alert_on_utm_loss))>
+                                重新導向後 UTM 參數遺失時建立警告
+                            </label>
+                            <p id="utm-loss-help" class="field-help">網址含 utm_ 參數時，比對最終網址是否保留相同的 UTM 值，避免成效歸因失真。</p>
+                            @error('alert_on_utm_loss')<p id="utm-loss-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                        </div>
+
+                        <div class="field-group field-group-full">
                             <input type="hidden" name="alert_on_visible_text_change" value="0">
                             <label class="field-check spaced-top" for="alert_on_visible_text_change">
                                 <input id="alert_on_visible_text_change" name="alert_on_visible_text_change" type="checkbox" value="1" aria-describedby="visible-text-change-help{{ $errors->has('alert_on_visible_text_change') ? ' visible-text-change-error' : '' }}" @checked(old('alert_on_visible_text_change', $monitor->alert_on_visible_text_change))>

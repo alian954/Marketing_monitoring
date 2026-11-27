@@ -25,6 +25,7 @@ use App\Services\Probe\ProbeClient;
 use App\Services\Probe\ProbeException;
 use App\Services\Probe\RequestHeaderParser;
 use App\Services\Probe\ResponseHeaderCondition;
+use App\Services\Probe\TrackingTagExtractor;
 use App\Services\Probe\UrlSafetyPolicy;
 use App\Services\RedirectChangeHistory;
 use App\Services\ResponseContentChangeHistory;
@@ -425,6 +426,8 @@ class MonitorController extends Controller
             'expected_text_mode' => $validated['expected_text_mode'],
             'alert_on_visible_text_change' => $validated['alert_on_visible_text_change'],
             'alert_on_response_metadata_change' => $validated['alert_on_response_metadata_change'],
+            'expected_tracking_tags' => $validated['expected_tracking_tags'] === [] ? null : $validated['expected_tracking_tags'],
+            'alert_on_utm_loss' => $validated['alert_on_utm_loss'],
             'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
             'min_response_body_bytes' => $validated['min_response_body_bytes'],
             'max_response_body_bytes' => $validated['max_response_body_bytes'],
@@ -873,8 +876,18 @@ class MonitorController extends Controller
             'segments' => $responseBodySizeSegments,
         ];
 
+        $latestTrackingTagsRun = CheckRun::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('config_version', $monitor->config_version)
+            ->where('status', 'completed')
+            ->whereNotNull('response_tracking_tags')
+            ->latest('finished_at')
+            ->latest('id')
+            ->first(['id', 'finished_at', 'response_tracking_tags']);
+
         return view('monitors.show', compact(
             'monitor',
+            'latestTrackingTagsRun',
             'previousResponseMetadataRun',
             'responseMetadataComparisonAvailable',
             'responseMetadataChanged',
@@ -997,6 +1010,8 @@ class MonitorController extends Controller
                 'expected_text_mode' => $validated['expected_text_mode'],
                 'alert_on_visible_text_change' => $validated['alert_on_visible_text_change'],
                 'alert_on_response_metadata_change' => $validated['alert_on_response_metadata_change'],
+                'expected_tracking_tags' => $validated['expected_tracking_tags'] === [] ? null : $validated['expected_tracking_tags'],
+                'alert_on_utm_loss' => $validated['alert_on_utm_loss'],
                 'response_time_threshold_ms' => $validated['response_time_threshold_ms'],
                 'min_response_body_bytes' => $validated['min_response_body_bytes'],
                 'max_response_body_bytes' => $validated['max_response_body_bytes'],
@@ -2249,7 +2264,39 @@ class MonitorController extends Controller
         }, 'monitors.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    /** @return array{name: string, url: string, label: ?string, client_id: int|null, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, slo_target_basis_points: int, allowed_redirect_hosts: list<string>} */
+    /**
+     * @return list<string>
+     *
+     * @throws ValidationException
+     */
+    private function parseExpectedTrackingTags(?string $input): array
+    {
+        $tags = [];
+
+        foreach (preg_split('/[\s,;]+/', (string) $input, flags: PREG_SPLIT_NO_EMPTY) ?: [] as $value) {
+            $tag = TrackingTagExtractor::normalize($value);
+
+            if ($tag === null) {
+                throw ValidationException::withMessages([
+                    'expected_tracking_tags' => '無法辨識追蹤碼「'.mb_substr($value, 0, 40).'」；請輸入 G-、GTM-、AW- 開頭的代碼或 Meta Pixel 數字 ID。',
+                ]);
+            }
+
+            $tags[] = $tag;
+        }
+
+        $tags = array_values(array_unique($tags));
+
+        if (count($tags) > TrackingTagExtractor::MAX_TAGS) {
+            throw ValidationException::withMessages([
+                'expected_tracking_tags' => '最多可設定 '.TrackingTagExtractor::MAX_TAGS.' 個追蹤碼。',
+            ]);
+        }
+
+        return $tags;
+    }
+
+    /** @return array{name: string, url: string, label: ?string, client_id: int|null, notification_email: ?string, notification_escalation_email: ?string, notification_escalation_delay_minutes: ?int, notification_escalation_stage_2_email: ?string, notification_escalation_stage_2_delay_minutes: ?int, notification_slack_webhook: ?string, notification_discord_webhook: ?string, notification_teams_webhook: ?string, request_headers: array<string, string>, expected_response_header: ?string, accepted_status_codes: list<int>, expected_text: ?string, expected_text_mode: string, alert_on_visible_text_change: bool, alert_on_response_metadata_change: bool, expected_tracking_tags: list<string>, alert_on_utm_loss: bool, response_time_threshold_ms: ?int, min_response_body_bytes: ?int, max_response_body_bytes: ?int, timeout_seconds: int, confirmation_delay_seconds: int, interval_seconds: int, slo_target_basis_points: int, allowed_redirect_hosts: list<string>} */
     private function validateMonitor(Request $request, ?Monitor $monitor = null): array
     {
         $requestHeadersInput = $request->input('request_headers', '');
@@ -2347,6 +2394,8 @@ class MonitorController extends Controller
             'expected_text' => ['nullable', 'string', 'max:500'],
             'alert_on_visible_text_change' => ['sometimes', 'boolean'],
             'alert_on_response_metadata_change' => ['sometimes', 'boolean'],
+            'expected_tracking_tags' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'alert_on_utm_loss' => ['sometimes', 'boolean'],
             'expected_text_mode' => ['sometimes', 'in:'.implode(',', [
                 ExpectedTextMatcher::MODE_PRESENT,
                 ExpectedTextMatcher::MODE_PRESENT_ANY,
@@ -2442,6 +2491,10 @@ class MonitorController extends Controller
         } elseif ($expectedResponseHeader === null) {
             $expectedResponseHeader = $monitor?->expected_response_header;
         }
+
+        $expectedTrackingTags = array_key_exists('expected_tracking_tags', $validated)
+            ? $this->parseExpectedTrackingTags($validated['expected_tracking_tags'])
+            : ($monitor?->expected_tracking_tags ?? []);
 
         $requestUrl = trim((string) ($validated['url'] ?? '')) !== ''
             ? trim((string) $validated['url'])
@@ -2611,6 +2664,10 @@ class MonitorController extends Controller
             'alert_on_response_metadata_change' => array_key_exists('alert_on_response_metadata_change', $validated)
                 ? (bool) $validated['alert_on_response_metadata_change']
                 : ($monitor?->alert_on_response_metadata_change ?? false),
+            'expected_tracking_tags' => $expectedTrackingTags,
+            'alert_on_utm_loss' => array_key_exists('alert_on_utm_loss', $validated)
+                ? (bool) $validated['alert_on_utm_loss']
+                : ($monitor?->alert_on_utm_loss ?? false),
             'response_time_threshold_ms' => array_key_exists('response_time_threshold_ms', $validated)
                 ? ($validated['response_time_threshold_ms'] === null ? null : (int) $validated['response_time_threshold_ms'])
                 : ($monitor?->response_time_threshold_ms),
