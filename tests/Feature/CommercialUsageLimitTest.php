@@ -113,6 +113,24 @@ class CommercialUsageLimitTest extends TestCase
         $this->assertSame(1, $organization->fresh()->monitorUsageCount());
     }
 
+    public function test_import_preview_reports_the_rows_the_monitor_limit_will_leave_out(): void
+    {
+        Config::set('monitoring.transport', 'fixture');
+        $owner = User::factory()->create();
+        Organization::factory()->for($owner, 'owner')->create(['monitor_limit' => 1]);
+        $csv = "name,url,label\n第一筆,https://fixture.test/ok,qa\n第二筆,https://fixture.test/404,qa\n";
+
+        $this->actingAs($owner)
+            ->post(route('monitors.import.preview'), [
+                'csv_file' => UploadedFile::fake()->createWithContent('monitors.csv', $csv),
+            ])
+            ->assertOk()
+            ->assertViewHas('validCount', 2)
+            ->assertViewHas('importableCount', 1)
+            ->assertSee('確認並匯入 1 個監測項目')
+            ->assertSee('另有 1 列可匯入資料會依列號順序略過');
+    }
+
     public function test_campaign_limit_allows_editing_an_existing_target_but_rejects_a_new_target(): void
     {
         $owner = User::factory()->create();

@@ -675,11 +675,14 @@ class MonitorImportController extends Controller
             return $row;
         }, $rows);
 
+        $validCount = collect($rows)->where('eligible', true)->count();
+
         return view('monitors.import', [
             'previewRows' => $previewRows,
             'previewToken' => $previewToken,
-            'validCount' => collect($rows)->where('eligible', true)->count(),
+            'validCount' => $validCount,
             'invalidCount' => collect($rows)->where('eligible', false)->count(),
+            'importableCount' => $this->countWithinMonitorLimit($request, $validCount),
         ]);
     }
 
@@ -785,6 +788,22 @@ class MonitorImportController extends Controller
         }
 
         return redirect()->route('monitors.index')->with('status', $status);
+    }
+
+    /**
+     * How many of the eligible rows the organization's monitor limit still has room for.
+     */
+    private function countWithinMonitorLimit(Request $request, int $eligibleCount): int
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+        $organization = Organization::query()->where('owner_user_id', $user->workspaceOwnerId())->first();
+
+        if ($organization?->monitor_limit === null) {
+            return $eligibleCount;
+        }
+
+        return min($eligibleCount, max(0, $organization->monitor_limit - $organization->monitorUsageCount()));
     }
 
     private function validateUrl(string $url): string

@@ -48,7 +48,9 @@
     @isset($previewRows)
         @php
             $rowCount = count($previewRows);
-            $canCommit = isset($previewToken) && ! empty($previewToken) && ($validCount ?? 0) > 0;
+            $importableCount ??= $validCount ?? 0;
+            $canCommit = isset($previewToken) && ! empty($previewToken) && $importableCount > 0;
+            $quotaExcludedCount = ($validCount ?? 0) - $importableCount;
         @endphp
 
         <section class="panel import-preview" aria-labelledby="preview-title">
@@ -63,6 +65,12 @@
                     <span class="summary-chip is-good">{{ $validCount ?? 0 }} 列可匯入</span>
                     <span class="summary-chip is-bad">{{ $invalidCount ?? 0 }} 列需處理</span>
                 </div>
+
+                @if ($quotaExcludedCount > 0)
+                    <div class="alert alert-warning" role="status">
+                        監測項目上限僅剩 {{ $importableCount }} 個名額，另有 {{ $quotaExcludedCount }} 列可匯入資料會依列號順序略過。如需匯入，請聯絡平台管理員調整方案。
+                    </div>
+                @endif
 
                 @if (count($previewRows) === 0)
                     <div class="empty-state">
@@ -217,16 +225,16 @@
                     <div class="confirmation-panel">
                         <span class="heartbeat-dot is-stale" aria-hidden="true"></span>
                         <div>
-                            <p><strong>已完成檢視？</strong> 確認後將新增 {{ $validCount }} 個可匯入的監測項目。有錯誤或網址重複的資料列將會略過。</p>
+                            <p><strong>已完成檢視？</strong> 確認後將新增 {{ $importableCount }} 個可匯入的監測項目。有錯誤或網址重複的資料列將會略過。</p>
                             <form action="{{ route('monitors.import.commit') }}" method="POST" class="confirm-submit">
                                 @csrf
                                 <input type="hidden" name="preview_token" value="{{ $previewToken }}">
-                                <button class="button button-primary" type="submit">確認並匯入 {{ $validCount }} 個監測項目</button>
+                                <button class="button button-primary" type="submit">確認並匯入 {{ $importableCount }} 個監測項目</button>
                             </form>
                         </div>
                     </div>
                 @else
-                    <div class="form-note import-empty-note">目前沒有可匯入的資料列。請修正 CSV 中列出的問題後重新上傳。</div>
+                    <div class="form-note import-empty-note">{{ $quotaExcludedCount > 0 ? '監測項目已達上限，目前無法匯入。' : '目前沒有可匯入的資料列。請修正 CSV 中列出的問題後重新上傳。' }}</div>
                 @endif
             </div>
         </section>
