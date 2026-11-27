@@ -19,6 +19,16 @@ class GoogleAdsClientAccountTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'services.google_ads.client_id' => 'test-google-ads-client',
+            'services.google_ads.client_secret' => 'test-google-ads-secret',
+        ]);
+    }
+
     public function test_ambiguous_legacy_customer_is_left_pending_for_each_client(): void
     {
         $user = User::factory()->create();

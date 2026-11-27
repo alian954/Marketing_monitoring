@@ -127,7 +127,7 @@ class SyncDueGoogleAnalyticsReports extends Command
 
                             if ($accessToken === null) {
                                 try {
-                                    $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+                                    $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
                                 } catch (GoogleAnalyticsApiException|ConnectionException $exception) {
                                     $tokenRefreshFailed = true;
                                     $failedCount += $targetsToSync->count();

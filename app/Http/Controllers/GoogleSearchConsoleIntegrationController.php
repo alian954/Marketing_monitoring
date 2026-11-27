@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\GoogleSearchConsoleApiException;
 use App\Services\GoogleSearchConsoleDataApi;
 use App\Services\GoogleSearchConsoleReportCsv;
+use App\Services\OAuthApplicationCredentialResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
@@ -19,18 +20,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class GoogleSearchConsoleIntegrationController extends Controller
 {
-    public function show(Request $request, GoogleSearchConsoleDataApi $dataApi): View
-    {
+    public function show(
+        Request $request,
+        GoogleSearchConsoleDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): View {
         $user = $request->user();
         Client::ensureDefaultFor($user);
         $clients = $user->clients()->orderBy('name')->get();
         $connection = $user->googleSearchConsoleConnection;
+        $workspaceId = $credentialResolver->workspaceIdFor($user);
+        $credentialDetails = $credentialResolver->details('google_search_console', $workspaceId);
         $sites = [];
         $siteListError = null;
 
         if ($connection !== null) {
             try {
-                $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+                $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, $workspaceId);
                 $sites = $dataApi->sites($accessToken);
             } catch (GoogleSearchConsoleApiException $exception) {
                 $siteListError = $exception->getMessage();
@@ -70,8 +76,7 @@ class GoogleSearchConsoleIntegrationController extends Controller
             'clientSites' => $clientSites,
             'selectedClient' => $selectedClient,
             'selectedSiteUrl' => $selectedSiteUrl,
-            'oauthConfigured' => filled(config('services.google_search_console.client_id'))
-                && filled(config('services.google_search_console.client_secret')),
+            ...$credentialDetails,
             'redirectUri' => $this->redirectUri(),
             'sites' => $sites,
             'siteListError' => $siteListError,
@@ -82,20 +87,22 @@ class GoogleSearchConsoleIntegrationController extends Controller
         ]);
     }
 
-    public function connect(Request $request): RedirectResponse
+    public function connect(Request $request, OAuthApplicationCredentialResolver $credentialResolver): RedirectResponse
     {
-        $clientId = config('services.google_search_console.client_id');
-        $clientSecret = config('services.google_search_console.client_secret');
+        $credentials = $credentialResolver->resolve(
+            'google_search_console',
+            $credentialResolver->workspaceIdFor($request->user()),
+        );
 
-        if (! is_string($clientId) || trim($clientId) === '' || ! is_string($clientSecret) || trim($clientSecret) === '') {
+        if ($credentials === null) {
             return redirect()->route('integrations.google-search-console.edit')
-                ->withErrors(['google_search_console' => '尚未設定 Search Console OAuth 用戶端，請先在伺服器環境設定連線參數。']);
+                ->withErrors(['google_search_console' => '請先在此頁設定 OAuth 用戶端 ID 與密鑰。']);
         }
 
         $state = Str::random(64);
         $request->session()->put('google_search_console.oauth_state', $state);
         $query = http_build_query([
-            'client_id' => $clientId,
+            'client_id' => $credentials['client_id'],
             'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
             'scope' => 'https://www.googleapis.com/auth/webmasters.readonly',
@@ -108,8 +115,11 @@ class GoogleSearchConsoleIntegrationController extends Controller
         return redirect()->away('https://accounts.google.com/o/oauth2/v2/auth?'.$query);
     }
 
-    public function callback(Request $request, GoogleSearchConsoleDataApi $dataApi): RedirectResponse
-    {
+    public function callback(
+        Request $request,
+        GoogleSearchConsoleDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): RedirectResponse {
         $expectedState = $request->session()->pull('google_search_console.oauth_state');
         $receivedState = $request->query('state');
 
@@ -131,7 +141,11 @@ class GoogleSearchConsoleIntegrationController extends Controller
         }
 
         try {
-            $tokens = $dataApi->exchangeAuthorizationCode($code, $this->redirectUri());
+            $tokens = $dataApi->exchangeAuthorizationCode(
+                $code,
+                $this->redirectUri(),
+                $credentialResolver->workspaceIdFor($request->user()),
+            );
         } catch (GoogleSearchConsoleApiException $exception) {
             return redirect()->route('integrations.google-search-console.edit')
                 ->withErrors(['google_search_console' => $exception->getMessage()]);
@@ -157,8 +171,11 @@ class GoogleSearchConsoleIntegrationController extends Controller
             ->with('status', 'Google Search Console 已連結。請選擇要查看的網站。');
     }
 
-    public function updateSite(Request $request, GoogleSearchConsoleDataApi $dataApi): RedirectResponse
-    {
+    public function updateSite(
+        Request $request,
+        GoogleSearchConsoleDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): RedirectResponse {
         $validated = $request->validate([
             'client_id' => ['required', 'integer'],
             'site_url' => ['required', 'string', 'max:2048'],
@@ -178,7 +195,10 @@ class GoogleSearchConsoleIntegrationController extends Controller
         }
 
         try {
-            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+            $accessToken = $dataApi->refreshAccessToken(
+                $connection->refresh_token,
+                $credentialResolver->workspaceIdFor($request->user()),
+            );
             $sites = $dataApi->sites($accessToken);
         } catch (GoogleSearchConsoleApiException $exception) {
             return redirect()->route('integrations.google-search-console.edit')
@@ -214,11 +234,12 @@ class GoogleSearchConsoleIntegrationController extends Controller
     public function report(
         GoogleSearchConsolePerformanceReportRequest $request,
         GoogleSearchConsoleDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
     ): RedirectResponse {
         $validated = [...$request->validated(), 'compare' => $request->boolean('compare')];
 
         try {
-            $report = $this->buildReport($request->user(), $validated, $dataApi);
+            $report = $this->buildReport($request->user(), $validated, $dataApi, $credentialResolver);
         } catch (GoogleSearchConsoleApiException $exception) {
             return redirect()->route('integrations.google-search-console.edit')
                 ->withErrors(['google_search_console' => $exception->getMessage()])
@@ -238,11 +259,12 @@ class GoogleSearchConsoleIntegrationController extends Controller
         GoogleSearchConsolePerformanceReportRequest $request,
         GoogleSearchConsoleDataApi $dataApi,
         GoogleSearchConsoleReportCsv $csv,
+        OAuthApplicationCredentialResolver $credentialResolver,
     ): RedirectResponse|StreamedResponse {
         $validated = [...$request->validated(), 'compare' => $request->boolean('compare')];
 
         try {
-            $report = $this->buildReport($request->user(), $validated, $dataApi);
+            $report = $this->buildReport($request->user(), $validated, $dataApi, $credentialResolver);
         } catch (GoogleSearchConsoleApiException $exception) {
             return redirect()->route('integrations.google-search-console.edit')
                 ->withErrors(['google_search_console' => $exception->getMessage()])
@@ -281,8 +303,12 @@ class GoogleSearchConsoleIntegrationController extends Controller
     /** @param array<string, mixed> $validated
      * @return array<string, mixed>
      */
-    private function buildReport(User $user, array $validated, GoogleSearchConsoleDataApi $dataApi): array
-    {
+    private function buildReport(
+        User $user,
+        array $validated,
+        GoogleSearchConsoleDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): array {
         Client::ensureDefaultFor($user);
         $clients = $user->clients()->orderBy('name')->get();
         $requestedClientId = $validated['client_id'] ?? null;
@@ -313,7 +339,10 @@ class GoogleSearchConsoleIntegrationController extends Controller
             throw new GoogleSearchConsoleApiException('請先為所選客戶選擇 Search Console 網站。');
         }
 
-        $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+        $accessToken = $dataApi->refreshAccessToken(
+            $connection->refresh_token,
+            $credentialResolver->workspaceIdFor($user),
+        );
         $sites = $dataApi->sites($accessToken);
         $siteIsAccessible = collect($sites)->contains(
             static fn (array $site): bool => $site['site_url'] === $siteUrl,

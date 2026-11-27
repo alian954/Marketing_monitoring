@@ -30,18 +30,24 @@ class MetaMarketingDataApi
     private const DEMOGRAPHIC_INSIGHTS_REPORT_LIMIT = 200;
 
     /** @return array{access_token: string, expires_in: int|null} */
-    public function exchangeAuthorizationCode(string $code, string $redirectUri): array
+    public function exchangeAuthorizationCode(string $code, string $redirectUri, ?int $workspaceId = null): array
     {
+        $credentials = app(OAuthApplicationCredentialResolver::class)->resolve('meta_marketing', $workspaceId);
+
+        if ($credentials === null) {
+            throw new MetaMarketingApiException('請先在 Meta Ads 整合設定輸入 OAuth 用戶端 ID 與密鑰。');
+        }
+
         $shortLivedToken = $this->exchangeToken([
-            'client_id' => (string) config('services.meta_marketing.client_id'),
-            'client_secret' => (string) config('services.meta_marketing.client_secret'),
+            'client_id' => $credentials['client_id'],
+            'client_secret' => $credentials['client_secret'],
             'code' => $code,
             'redirect_uri' => $redirectUri,
         ]);
 
         return $this->exchangeToken([
-            'client_id' => (string) config('services.meta_marketing.client_id'),
-            'client_secret' => (string) config('services.meta_marketing.client_secret'),
+            'client_id' => $credentials['client_id'],
+            'client_secret' => $credentials['client_secret'],
             'grant_type' => 'fb_exchange_token',
             'fb_exchange_token' => $shortLivedToken['access_token'],
         ]);

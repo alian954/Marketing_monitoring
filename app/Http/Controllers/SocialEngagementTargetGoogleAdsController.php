@@ -35,7 +35,7 @@ class SocialEngagementTargetGoogleAdsController extends Controller
         }
 
         try {
-            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
             $campaigns = $dataApi->campaigns(
                 $accessToken,
                 $clientAccount->customer_id,
@@ -96,7 +96,7 @@ class SocialEngagementTargetGoogleAdsController extends Controller
         }
 
         try {
-            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
             $campaignReportSync->sync($connection, $socialEngagementTarget, $accessToken);
         } catch (GoogleAdsApiException $exception) {
             return $this->reportRedirect($socialEngagementTarget)

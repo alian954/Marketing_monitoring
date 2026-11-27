@@ -19,16 +19,14 @@
             </div>
         </div>
         <div class="panel-body">
+            @include('integrations.partials.oauth-application-credentials', ['providerCode' => 'google_search_console', 'providerName' => 'Google Search Console'])
             @if ($oauthConfigured)
-                <p class="field-help">Google OAuth 重新導向 URI：<code>{{ $redirectUri }}</code></p>
                 <form action="{{ route('integrations.google-search-console.connect') }}" method="POST">
                     @csrf
                     <button class="button button-primary" type="submit">{{ $connection ? '重新連結 Google 帳戶' : '連結 Google 帳戶' }}</button>
                 </form>
             @else
-                <p class="alert alert-error" role="status">請先在伺服器設定 GOOGLE_SEARCH_CONSOLE_CLIENT_ID、GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET 與 GOOGLE_SEARCH_CONSOLE_REDIRECT_URI。</p>
-                <p class="field-help">在 Google Cloud 啟用 Search Console API，建立 OAuth 網頁用戶端並設定授權重新導向 URI。</p>
-                <p class="field-help">重新導向 URI：<code>{{ $redirectUri }}</code></p>
+                <p class="field-help">儲存 OAuth App 憑證後即可連結 Search Console。</p>
             @endif
 
             @if ($connection)

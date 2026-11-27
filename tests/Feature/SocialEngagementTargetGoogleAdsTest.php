@@ -24,6 +24,16 @@ class SocialEngagementTargetGoogleAdsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'services.google_ads.client_id' => 'test-google-ads-client',
+            'services.google_ads.client_secret' => 'test-google-ads-secret',
+        ]);
+    }
+
     public function test_google_ads_sync_requires_authentication(): void
     {
         $target = $this->createTarget();

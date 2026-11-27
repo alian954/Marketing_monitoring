@@ -8,6 +8,7 @@ use App\Models\GoogleAnalyticsConnection;
 use App\Services\GoogleAnalyticsApiException;
 use App\Services\GoogleAnalyticsClientPropertyResolver;
 use App\Services\GoogleAnalyticsDataApi;
+use App\Services\OAuthApplicationCredentialResolver;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,12 +17,16 @@ use Illuminate\View\View;
 
 class GoogleAnalyticsIntegrationController extends Controller
 {
-    public function show(Request $request, GoogleAnalyticsClientPropertyResolver $propertyResolver): View
-    {
+    public function show(
+        Request $request,
+        GoogleAnalyticsClientPropertyResolver $propertyResolver,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): View {
         $user = $request->user();
         Client::ensureDefaultFor($user);
         $clients = $user->clients()->orderBy('name')->get();
         $connection = $user->googleAnalyticsConnection;
+        $credentialDetails = $credentialResolver->details('google_analytics', $credentialResolver->workspaceIdFor($user));
         $clientProperties = $connection === null
             ? collect()
             : $clients->mapWithKeys(function (Client $client) use ($connection, $propertyResolver): array {
@@ -34,26 +39,24 @@ class GoogleAnalyticsIntegrationController extends Controller
             'connection' => $connection,
             'clients' => $clients,
             'clientProperties' => $clientProperties,
-            'oauthConfigured' => filled(config('services.google_analytics.client_id'))
-                && filled(config('services.google_analytics.client_secret')),
+            ...$credentialDetails,
             'redirectUri' => $this->redirectUri(),
         ]);
     }
 
-    public function connect(Request $request): RedirectResponse
+    public function connect(Request $request, OAuthApplicationCredentialResolver $credentialResolver): RedirectResponse
     {
-        $clientId = config('services.google_analytics.client_id');
-        $clientSecret = config('services.google_analytics.client_secret');
+        $credentials = $credentialResolver->resolve('google_analytics', $credentialResolver->workspaceIdFor($request->user()));
 
-        if (! is_string($clientId) || trim($clientId) === '' || ! is_string($clientSecret) || trim($clientSecret) === '') {
+        if ($credentials === null) {
             return redirect()->route('integrations.google-analytics.edit')
-                ->withErrors(['google_analytics' => '尚未設定 Google OAuth 用戶端，請先在伺服器環境設定 GA4 連線參數。']);
+                ->withErrors(['google_analytics' => '請先在此頁設定 Google OAuth 用戶端 ID 與密鑰。']);
         }
 
         $state = Str::random(64);
         $request->session()->put('google_analytics.oauth_state', $state);
         $query = http_build_query([
-            'client_id' => $clientId,
+            'client_id' => $credentials['client_id'],
             'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
             'scope' => 'https://www.googleapis.com/auth/analytics.readonly',
@@ -66,8 +69,11 @@ class GoogleAnalyticsIntegrationController extends Controller
         return redirect()->away('https://accounts.google.com/o/oauth2/v2/auth?'.$query);
     }
 
-    public function callback(Request $request, GoogleAnalyticsDataApi $dataApi): RedirectResponse
-    {
+    public function callback(
+        Request $request,
+        GoogleAnalyticsDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): RedirectResponse {
         $expectedState = $request->session()->pull('google_analytics.oauth_state');
         $receivedState = $request->query('state');
 
@@ -89,7 +95,11 @@ class GoogleAnalyticsIntegrationController extends Controller
         }
 
         try {
-            $tokens = $dataApi->exchangeAuthorizationCode($code, $this->redirectUri());
+            $tokens = $dataApi->exchangeAuthorizationCode(
+                $code,
+                $this->redirectUri(),
+                $credentialResolver->workspaceIdFor($request->user()),
+            );
         } catch (GoogleAnalyticsApiException $exception) {
             return redirect()->route('integrations.google-analytics.edit')
                 ->withErrors(['google_analytics' => $exception->getMessage()]);

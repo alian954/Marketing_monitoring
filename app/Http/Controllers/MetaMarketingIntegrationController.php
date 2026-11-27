@@ -9,6 +9,7 @@ use App\Models\MetaMarketingConnection;
 use App\Services\MetaMarketingApiException;
 use App\Services\MetaMarketingClientAccountResolver;
 use App\Services\MetaMarketingDataApi;
+use App\Services\OAuthApplicationCredentialResolver;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,9 +18,14 @@ use Illuminate\View\View;
 
 class MetaMarketingIntegrationController extends Controller
 {
-    public function show(Request $request, MetaMarketingClientAccountResolver $accountResolver): View
-    {
-        $connection = $request->user()->metaMarketingConnection;
+    public function show(
+        Request $request,
+        MetaMarketingClientAccountResolver $accountResolver,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): View {
+        $user = $request->user();
+        $connection = $user->metaMarketingConnection;
+        $credentialDetails = $credentialResolver->details('meta_marketing', $credentialResolver->workspaceIdFor($user));
         $clients = Client::query()->orderBy('name')->get();
         $clientAccounts = collect();
 
@@ -37,26 +43,24 @@ class MetaMarketingIntegrationController extends Controller
             'connection' => $connection,
             'clients' => $clients,
             'clientAccounts' => $clientAccounts,
-            'oauthConfigured' => filled(config('services.meta_marketing.client_id'))
-                && filled(config('services.meta_marketing.client_secret')),
+            ...$credentialDetails,
             'redirectUri' => $this->redirectUri(),
         ]);
     }
 
-    public function connect(Request $request): RedirectResponse
+    public function connect(Request $request, OAuthApplicationCredentialResolver $credentialResolver): RedirectResponse
     {
-        $clientId = config('services.meta_marketing.client_id');
-        $clientSecret = config('services.meta_marketing.client_secret');
+        $credentials = $credentialResolver->resolve('meta_marketing', $credentialResolver->workspaceIdFor($request->user()));
 
-        if (! is_string($clientId) || trim($clientId) === '' || ! is_string($clientSecret) || trim($clientSecret) === '') {
+        if ($credentials === null) {
             return redirect()->route('integrations.meta-marketing.edit')
-                ->withErrors(['meta_marketing' => '尚未設定 Meta App，請先在伺服器環境設定 Meta Marketing OAuth。']);
+                ->withErrors(['meta_marketing' => '請先在此頁設定 Meta OAuth 用戶端 ID 與密鑰。']);
         }
 
         $state = Str::random(64);
         $request->session()->put('meta_marketing.oauth_state', $state);
         $query = http_build_query([
-            'client_id' => $clientId,
+            'client_id' => $credentials['client_id'],
             'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
             'scope' => 'ads_read',
@@ -66,8 +70,11 @@ class MetaMarketingIntegrationController extends Controller
         return redirect()->away('https://www.facebook.com/'.$this->apiVersion().'/dialog/oauth?'.$query);
     }
 
-    public function callback(Request $request, MetaMarketingDataApi $dataApi): RedirectResponse
-    {
+    public function callback(
+        Request $request,
+        MetaMarketingDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): RedirectResponse {
         $expectedState = $request->session()->pull('meta_marketing.oauth_state');
         $receivedState = $request->query('state');
 
@@ -89,7 +96,11 @@ class MetaMarketingIntegrationController extends Controller
         }
 
         try {
-            $tokens = $dataApi->exchangeAuthorizationCode($code, $this->redirectUri());
+            $tokens = $dataApi->exchangeAuthorizationCode(
+                $code,
+                $this->redirectUri(),
+                $credentialResolver->workspaceIdFor($request->user()),
+            );
         } catch (MetaMarketingApiException $exception) {
             return redirect()->route('integrations.meta-marketing.edit')
                 ->withErrors(['meta_marketing' => $exception->getMessage()]);

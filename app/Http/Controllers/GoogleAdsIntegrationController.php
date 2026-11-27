@@ -8,6 +8,7 @@ use App\Models\GoogleAdsConnection;
 use App\Services\GoogleAdsApiException;
 use App\Services\GoogleAdsClientAccountResolver;
 use App\Services\GoogleAdsDataApi;
+use App\Services\OAuthApplicationCredentialResolver;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,12 +17,16 @@ use Illuminate\View\View;
 
 class GoogleAdsIntegrationController extends Controller
 {
-    public function show(Request $request, GoogleAdsClientAccountResolver $accountResolver): View
-    {
+    public function show(
+        Request $request,
+        GoogleAdsClientAccountResolver $accountResolver,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): View {
         $user = $request->user();
         Client::ensureDefaultFor($user);
         $clients = $user->clients()->orderBy('name')->get();
         $connection = $user->googleAdsConnection;
+        $credentialDetails = $credentialResolver->details('google_ads', $credentialResolver->workspaceIdFor($user));
         $clientAccounts = $connection === null
             ? collect()
             : $clients->mapWithKeys(function (Client $client) use ($connection, $accountResolver): array {
@@ -34,26 +39,24 @@ class GoogleAdsIntegrationController extends Controller
             'connection' => $connection,
             'clients' => $clients,
             'clientAccounts' => $clientAccounts,
-            'oauthConfigured' => filled(config('services.google_ads.client_id'))
-                && filled(config('services.google_ads.client_secret')),
+            ...$credentialDetails,
             'redirectUri' => $this->redirectUri(),
         ]);
     }
 
-    public function connect(Request $request): RedirectResponse
+    public function connect(Request $request, OAuthApplicationCredentialResolver $credentialResolver): RedirectResponse
     {
-        $clientId = config('services.google_ads.client_id');
-        $clientSecret = config('services.google_ads.client_secret');
+        $credentials = $credentialResolver->resolve('google_ads', $credentialResolver->workspaceIdFor($request->user()));
 
-        if (! is_string($clientId) || trim($clientId) === '' || ! is_string($clientSecret) || trim($clientSecret) === '') {
+        if ($credentials === null) {
             return redirect()->route('integrations.google-ads.edit')
-                ->withErrors(['google_ads' => '尚未設定 Google OAuth 用戶端，請先在伺服器環境設定 Google Ads 連線參數。']);
+                ->withErrors(['google_ads' => '請先在此頁設定 Google OAuth 用戶端 ID 與密鑰。']);
         }
 
         $state = Str::random(64);
         $request->session()->put('google_ads.oauth_state', $state);
         $query = http_build_query([
-            'client_id' => $clientId,
+            'client_id' => $credentials['client_id'],
             'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
             'scope' => 'https://www.googleapis.com/auth/adwords',
@@ -66,8 +69,11 @@ class GoogleAdsIntegrationController extends Controller
         return redirect()->away('https://accounts.google.com/o/oauth2/v2/auth?'.$query);
     }
 
-    public function callback(Request $request, GoogleAdsDataApi $dataApi): RedirectResponse
-    {
+    public function callback(
+        Request $request,
+        GoogleAdsDataApi $dataApi,
+        OAuthApplicationCredentialResolver $credentialResolver,
+    ): RedirectResponse {
         $expectedState = $request->session()->pull('google_ads.oauth_state');
         $receivedState = $request->query('state');
 
@@ -89,7 +95,11 @@ class GoogleAdsIntegrationController extends Controller
         }
 
         try {
-            $tokens = $dataApi->exchangeAuthorizationCode($code, $this->redirectUri());
+            $tokens = $dataApi->exchangeAuthorizationCode(
+                $code,
+                $this->redirectUri(),
+                $credentialResolver->workspaceIdFor($request->user()),
+            );
         } catch (GoogleAdsApiException $exception) {
             return redirect()->route('integrations.google-ads.edit')
                 ->withErrors(['google_ads' => $exception->getMessage()]);
@@ -130,7 +140,7 @@ class GoogleAdsIntegrationController extends Controller
         }
 
         try {
-            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
             $customer = $dataApi->customerDetails(
                 $accessToken,
                 $request->validated('customer_id'),

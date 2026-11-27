@@ -22,16 +22,14 @@
             @if ($errors->has('google_ads'))
                 <p class="alert alert-error" role="alert">{{ $errors->first('google_ads') }}</p>
             @endif
+            @include('integrations.partials.oauth-application-credentials', ['providerCode' => 'google_ads', 'providerName' => 'Google Ads'])
             @if ($oauthConfigured)
-                <p class="field-help">Google OAuth 重新導向 URI：<code>{{ $redirectUri }}</code></p>
                 <form action="{{ route('integrations.google-ads.connect') }}" method="POST">
                     @csrf
                     <button class="button button-primary" type="submit">{{ $connection ? '重新連結 Google 帳戶' : '連結 Google 帳戶' }}</button>
                 </form>
             @else
-                <p class="alert alert-error" role="status">請先在伺服器設定 GOOGLE_ADS_CLIENT_ID、GOOGLE_ADS_CLIENT_SECRET 與 GOOGLE_ADS_REDIRECT_URI，再建立連線。</p>
-                <p class="field-help">在 Google Cloud 專案啟用 Google Ads API、設定 OAuth 網頁用戶端和同意畫面，並加入下方重新導向 URI。</p>
-                <p class="field-help">重新導向 URI：<code>{{ $redirectUri }}</code></p>
+                <p class="field-help">儲存 OAuth App 憑證後即可連結 Google Ads。</p>
             @endif
 
             @if ($connection)

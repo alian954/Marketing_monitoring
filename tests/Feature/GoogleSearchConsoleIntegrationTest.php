@@ -21,6 +21,16 @@ class GoogleSearchConsoleIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'services.google_search_console.client_id' => 'test-google-search-console-client',
+            'services.google_search_console.client_secret' => 'test-google-search-console-secret',
+        ]);
+    }
+
     public function test_search_analytics_retries_quota_and_connection_failures_before_succeeding(): void
     {
         Http::fake([

@@ -19,16 +19,14 @@
             </div>
         </div>
         <div class="panel-body">
+            @include('integrations.partials.oauth-application-credentials', ['providerCode' => 'google_analytics', 'providerName' => 'Google Analytics 4'])
             @if ($oauthConfigured)
-                <p class="field-help">Google OAuth 重新導向 URI：<code>{{ $redirectUri }}</code></p>
                 <form action="{{ route('integrations.google-analytics.connect') }}" method="POST">
                     @csrf
                     <button class="button button-primary" type="submit">{{ $connection ? '重新連結 Google 帳戶' : '連結 Google 帳戶' }}</button>
                 </form>
             @else
-                <p class="alert alert-error" role="status">請先在伺服器設定 GOOGLE_ANALYTICS_CLIENT_ID、GOOGLE_ANALYTICS_CLIENT_SECRET 與 GOOGLE_ANALYTICS_REDIRECT_URI，再建立連線。</p>
-                <p class="field-help">在 Google Cloud 建立 OAuth 網頁用戶端、啟用 Google Analytics Data API，並將上方重新導向 URI 加入授權清單。</p>
-                <p class="field-help">重新導向 URI：<code>{{ $redirectUri }}</code></p>
+                <p class="field-help">儲存 OAuth App 憑證後即可連結 Google Analytics。</p>
             @endif
 
             @if ($connection)

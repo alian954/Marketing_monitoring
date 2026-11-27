@@ -22,12 +22,14 @@ class GoogleAnalyticsIntegrationTest extends TestCase
             ->assertRedirect(route('login'));
     }
 
-    public function test_integration_settings_explain_required_configuration_and_ga4_metrics(): void
+    public function test_integration_settings_explain_oauth_setup_and_ga4_metrics(): void
     {
         $this->actingAs(User::factory()->create())
             ->get(route('integrations.google-analytics.edit'))
             ->assertOk()
-            ->assertSee('GOOGLE_ANALYTICS_CLIENT_ID')
+            ->assertSee('用戶端 ID')
+            ->assertSee('用戶端密鑰')
+            ->assertSee('重新導向 URI')
             ->assertSee('utm_campaign')
             ->assertSee('重要事件與營收須先在 GA4 正確設定');
     }

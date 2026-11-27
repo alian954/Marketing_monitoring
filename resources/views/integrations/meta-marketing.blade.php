@@ -19,16 +19,14 @@
             </div>
         </div>
         <div class="panel-body">
+            @include('integrations.partials.oauth-application-credentials', ['providerCode' => 'meta_marketing', 'providerName' => 'Meta Ads'])
             @if ($oauthConfigured)
-                <p class="field-help">Meta OAuth 重新導向 URI：<code>{{ $redirectUri }}</code></p>
                 <form action="{{ route('integrations.meta-marketing.connect') }}" method="POST" aria-labelledby="meta-marketing-connection-title">
                     @csrf
                     <button class="button button-primary" type="submit">{{ $connection ? '重新連結 Meta 帳戶' : '連結 Meta 帳戶' }}</button>
                 </form>
             @else
-                <p class="alert alert-error" role="status">請先在伺服器設定 META_MARKETING_CLIENT_ID、META_MARKETING_CLIENT_SECRET 與 META_MARKETING_REDIRECT_URI，再建立連線。</p>
-                <p class="field-help">在 Meta for Developers 建立應用程式、啟用 Marketing API，設定 OAuth 重新導向 URI 並取得 <code>ads_read</code> 權限。</p>
-                <p class="field-help">重新導向 URI：<code>{{ $redirectUri }}</code></p>
+                <p class="field-help">在 Meta for Developers 啟用 Marketing API、設定回呼 URI，並授予 <code>ads_read</code> 權限。</p>
             @endif
 
             @if ($connection)

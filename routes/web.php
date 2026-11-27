@@ -14,6 +14,7 @@ use App\Http\Controllers\GoogleAnalyticsIntegrationController;
 use App\Http\Controllers\GoogleSearchConsoleIntegrationController;
 use App\Http\Controllers\IncidentController;
 use App\Http\Controllers\IncidentHistoryController;
+use App\Http\Controllers\IntegrationApplicationCredentialController;
 use App\Http\Controllers\MaintenanceWindowController;
 use App\Http\Controllers\MetaMarketingIntegrationController;
 use App\Http\Controllers\MonitorController;
@@ -323,6 +324,14 @@ Route::middleware(['auth', EnsureOrganizationActive::class, RejectReadOnlyWorksp
     Route::post('/social-engagement-targets', [SocialEngagementTargetController::class, 'store'])->name('social-engagement-targets.store');
     Route::delete('/social-engagement-targets/{socialEngagementTarget}', [SocialEngagementTargetController::class, 'destroy'])->name('social-engagement-targets.destroy');
     Route::middleware(EnsureWorkspaceOwner::class)->group(function (): void {
+        Route::put('/integrations/{integrationProvider}/oauth-application', [IntegrationApplicationCredentialController::class, 'update'])
+            ->whereIn('integrationProvider', ['google_analytics', 'google_search_console', 'meta_marketing', 'google_ads'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.oauth-application.update');
+        Route::delete('/integrations/{integrationProvider}/oauth-application', [IntegrationApplicationCredentialController::class, 'destroy'])
+            ->whereIn('integrationProvider', ['google_analytics', 'google_search_console', 'meta_marketing', 'google_ads'])
+            ->middleware('throttle:10,1')
+            ->name('integrations.oauth-application.destroy');
         Route::get('/integrations/google-analytics', [GoogleAnalyticsIntegrationController::class, 'show'])->name('integrations.google-analytics.edit');
         Route::post('/integrations/google-analytics/connect', [GoogleAnalyticsIntegrationController::class, 'connect'])->name('integrations.google-analytics.connect');
         Route::get('/integrations/google-analytics/callback', [GoogleAnalyticsIntegrationController::class, 'callback'])->name('integrations.google-analytics.callback');

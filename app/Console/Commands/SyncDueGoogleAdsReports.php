@@ -132,7 +132,7 @@ class SyncDueGoogleAdsReports extends Command
 
                             if ($accessToken === null) {
                                 try {
-                                    $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+                                    $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
                                 } catch (GoogleAdsApiException|ConnectionException $exception) {
                                     $tokenRefreshFailed = true;
                                     $failedCount += $targetsToSync->count();

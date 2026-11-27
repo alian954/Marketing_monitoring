@@ -35,14 +35,20 @@ class GoogleSearchConsoleDataApi
     /**
      * @return array{access_token: string, refresh_token: ?string}
      */
-    public function exchangeAuthorizationCode(string $code, string $redirectUri): array
+    public function exchangeAuthorizationCode(string $code, string $redirectUri, ?int $workspaceId = null): array
     {
+        $credentials = app(OAuthApplicationCredentialResolver::class)->resolve('google_search_console', $workspaceId);
+
+        if ($credentials === null) {
+            throw new GoogleSearchConsoleApiException('請先在 Search Console 整合設定輸入 OAuth 用戶端 ID 與密鑰。');
+        }
+
         $response = Http::asForm()
             ->acceptJson()
             ->timeout(10)
             ->post('https://oauth2.googleapis.com/token', [
-                'client_id' => (string) config('services.google_search_console.client_id'),
-                'client_secret' => (string) config('services.google_search_console.client_secret'),
+                'client_id' => $credentials['client_id'],
+                'client_secret' => $credentials['client_secret'],
                 'code' => $code,
                 'grant_type' => 'authorization_code',
                 'redirect_uri' => $redirectUri,
@@ -62,14 +68,20 @@ class GoogleSearchConsoleDataApi
         ];
     }
 
-    public function refreshAccessToken(string $refreshToken): string
+    public function refreshAccessToken(string $refreshToken, ?int $workspaceId = null): string
     {
+        $credentials = app(OAuthApplicationCredentialResolver::class)->resolve('google_search_console', $workspaceId);
+
+        if ($credentials === null) {
+            throw new GoogleSearchConsoleApiException('請先在 Search Console 整合設定輸入 OAuth 用戶端 ID 與密鑰。');
+        }
+
         $response = Http::asForm()
             ->acceptJson()
             ->timeout(10)
             ->post('https://oauth2.googleapis.com/token', [
-                'client_id' => (string) config('services.google_search_console.client_id'),
-                'client_secret' => (string) config('services.google_search_console.client_secret'),
+                'client_id' => $credentials['client_id'],
+                'client_secret' => $credentials['client_secret'],
                 'grant_type' => 'refresh_token',
                 'refresh_token' => $refreshToken,
             ]);

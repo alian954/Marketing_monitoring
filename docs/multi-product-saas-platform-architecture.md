@@ -71,17 +71,20 @@ flowchart TB
 
 - 每個工作區 owner 透過平台 OAuth 流程授權自己的 Google/Meta 帳戶。refresh/access token 存在各連線資料表，模型使用 Laravel `encrypted` cast；Google Ads/Meta 模型也隱藏 token 序列化欄位。
 - 四種 connection model 的 access/refresh token 均使用 encrypted cast，並由模型序列化隱藏；測試會確認回傳陣列不包含 token。
-- OAuth provider app 的 `client_id`、`client_secret` 和 callback URI 目前讀自 `.env` / `config/services.php`。Google Ads 與 Meta 連線頁明確提示由伺服器環境設定。這與「使用者自行在平台填寫」的目標不同。
+- GA4、Search Console、Meta Ads、Google Ads 的 OAuth App `client_id` 與 `client_secret` 已可由工作區 owner 在整合頁設定；資料存在 `integration_application_credentials`，secret 使用 encrypted cast 和 `TEXT` 欄位，模型序列化時隱藏。表單不回顯 secret，空白更新會保留原密鑰。
+- `integration_application_credential_events` 記錄工作區、操作者、provider 與建立/更新/刪除動作，不保存憑證值。callback URI 仍由平台設定並顯示給管理者，須在 provider app 登記。
+- 為不中斷既有租戶，若工作區尚未填入憑證，OAuth resolver 暫時回退至 `config/services.php` 的舊伺服器設定。完成既有連線遷移後，應移除這項 fallback。更換 app 憑證可能需要重新授權；授權後的使用者 token 是獨立資料，不會因憑證表單更新而直接刪除。
 
-本提案以使用者最新要求為準：目標設計應允許工作區管理者在整合設定頁輸入其 provider app 的 client ID/secret，再由該工作區進行 OAuth。這和使用者授權後產生的 access/refresh token 是不同記錄，必須分表/分欄管理。provider secret 必須加密、更新後不回顯、限制讀取權限並記錄異動；不得進 log、URL 或前端腳本。`APP_KEY` 仍是站台層級加密根金鑰，不能改由每個整合帳號填入。
+工作區 owner 路由限制憑證管理權限，保存/刪除端點另有節流。`APP_KEY` 仍是站台層級加密根金鑰，不能改由每個整合帳號填入；APP_KEY 輪替、正式金鑰管理服務與稽核保留政策尚需規劃。
 
 ### 2.5 路由、API、排程與測試證據
 
 - 平台管理、會員邀請、客戶、整合設定、監測、報表和匯出目前都是同一組登入後 Web routes；不同路徑由 `EnsurePlatformAdmin`、`EnsureWorkspaceOwner`、`RejectReadOnlyWorkspaceMemberWrites` 及相關 scopes 控制。
-- GA4、Meta Ads、Google Ads、Google Search Console 是呼叫外部 provider 的連接器，不是內部產品 API。`routes` 目前只有 Web 與 Console 路由檔。
+- GA4、Meta Ads、Google Ads、Google Search Console 是呼叫外部 provider 的連接器，不是內部產品 API。OAuth App 憑證管理路由受 workspace owner 權限及節流保護。`routes` 目前只有 Web 與 Console 路由檔。
 - 排程器每分鐘派送網站監測與 worker heartbeat，另排每日 TLS、網域、robots、DNS 摘要及行銷資料同步。所有工作目前共用同一資料庫佇列，產品間沒有 worker/queue 邊界。
 - `AgencyWorkflowAcceptanceTest` 建立兩個組織、不同成員角色、多個客戶，並檢查 GA4 帳號對應、報表、CSV 匯出及分享內容隔離。它以 HTTP fake 驗證應用程式流程，不是 Google 實際 OAuth/API 驗收。
-- `AccountDataIsolationTest`、`ClientReportShareTest`、`ClientReportSnapshotControllerTest`、`CommercialUsageLimitTest`、`PlatformOrganizationTest` 等測試涵蓋資料隔離、權限、匯出、分享與配額；整合 provider 目前缺少正式憑證時，外部服務仍須另行實際驗證。
+- `IntegrationApplicationCredentialTest` 驗證工作區隔離、encrypted cast、secret 不寫入驗證 session、不進稽核紀錄，以及四個 provider 皆使用該工作區憑證交換授權碼。這些測試以 HTTP fake 驗證應用流程，不代表 provider production OAuth/API 的實際驗收。
+- `AccountDataIsolationTest`、`ClientReportShareTest`、`ClientReportSnapshotControllerTest`、`CommercialUsageLimitTest`、`PlatformOrganizationTest` 等測試涵蓋資料隔離、權限、匯出、分享與配額；整合 provider 仍須以各 provider 的正式 OAuth app 另行驗證。
 
 ## 3. 功能分類
 
@@ -93,7 +96,7 @@ flowchart TB
 | 公司、組織、租戶、工作區 | `Organization` 綁單一 owner，工作區隱含於 owner | 公司/帳務主體、租戶、工作區及多對多會員關係明確化 |
 | 全域角色 | `is_platform_admin`；工作區 `editor/read_only` | Super Admin、組織管理角色、產品管理角色與客戶範圍分離 |
 | 產品註冊及開通 | 已有 manifest registry、資料庫 catalog 與 `products:sync`；組織開通和產品入口授權尚未接線 | 中央 catalog、產品狀態、組織訂閱某產品的啟用狀態 |
-| 訂閱/方案/權益 | 舊組織方案欄位仍供既有功能使用；新增產品方案、訂閱項目和 server-side entitlement resolver，尚未回填/管理/接入入口 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
+| 訂閱/方案/權益 | 已有產品方案、訂閱項目、組織訂閱管理介面和 server-side entitlement resolver；舊組織方案欄位仍供既有功能使用，產品功能尚未全面改由新權益控制 | 產品方案、feature entitlement、用量、試用/付款/到期/取消 |
 | 訂單、付款、帳務 | 平台沒有訂單、付款紀錄或發票資料 | 訂單項目、人工收款紀錄、退款/調整、對帳及財務匯出 |
 | 稽核與營運 | scheduler/worker heartbeat 和產品事件紀錄零散 | 管理操作稽核、全域通知、產品健康、跨產品使用量/成本彙總 |
 | 客戶主檔 | `clients` 是 workspace 下的代理商客戶，已有使用中 | 中央共用 CRM-lite 客戶主檔；保留產品特有映射在產品模組 |
@@ -113,14 +116,14 @@ flowchart TB
 
 ### 3.4 可由多個子平台共用的基礎服務
 
-全域身分、組織/工作區、client 主檔、RBAC/授權、產品目錄、entitlement 查詢、credential vault、通知 outbox、佇列與排程管理、稽核、健康探測、檔案匯出/分享骨架及 API gateway/client registry。
+全域身分、組織/工作區、client 主檔、RBAC/授權、產品目錄、entitlement 查詢、工作區 credential vault 與不含秘密值的憑證異動紀錄、通知 outbox、佇列與排程管理、稽核、健康探測、檔案匯出/分享骨架及 API gateway/client registry。
 
 ### 3.5 尚未實作但目標架構必須具備
 
 - 多組織/多工作區的正式租戶模型；使用者可加入多組織，且可在各產品有不同角色。
 - 具產品識別碼、狀態和部署版本的產品目錄；產品和產品專屬 entitlement/plan 註冊契約。
 - OIDC SSO issuer/client 流程；產品 audience 與 scope 的跨平台授權。
-- 組織/工作區層級的使用者自填 OAuth app 憑證 UI、加密、輪替及稽核。
+- OAuth secret 的正式 key management / APP_KEY 輪替演練、稽核查詢介面與保留政策；待舊 `.env` fallback 移除後，再統一以工作區設定為準。
 - 依產品授權的訂閱 item、方案/feature entitlement、用量 ledger 和跨產品 bundle。
 - 訂單、人工付款紀錄、交易/退款/發票狀態及商業統計（MRR、ARR、續訂、流失）。
 - 跨產品 API 使用量、資源消耗/成本歸屬；產品專屬 queue、worker、health 與錯誤隔離。
@@ -310,7 +313,7 @@ platform_audit_logs / outbox_events / inbox_events
 
 | 議題 | 現況/風險 | 規劃前需要確認 |
 | --- | --- | --- |
-| OAuth 憑證 ownership | provider app secrets 在 `.env`；使用者 grant token 在 encrypted DB。使用者要求 app credentials 由工作區 owner 在平台填寫。 | 是否所有整合 provider 都採 BYO OAuth app；哪些 provider 仍需平台自有 app/審核；每 provider callback 設定及 app review 流程。 |
+| OAuth 憑證 ownership | 四種 provider 已支援工作區 owner 自填 OAuth app ID/secret；加密保存並記錄不含秘密值的異動事件，舊 `.env` 設定仍作暫時 fallback。 | 完成遷移後移除 fallback；確認 provider app review、callback 登記方式、secret 輪替和稽核保留政策。 |
 | 同一使用者多組織 | 現行 member ID 唯一，沒有多 membership selector。 | 第一版保留目前一個會員對一個 workspace 的限制；第二版再支援跨多組織 membership，避免與 tenant migration 一起改動。 |
 | 到期後資料 | 現行到期/停用即阻止登入並中止監測工作。產品訂閱後可能需單一產品停用且其他產品繼續。 | 建議採產品級停用、停止寫入與排程，並提供暫時唯讀/匯出；資料刪除期限保持可設定，正式收費前依合約和法規決定。 |
 | 產品角色 | 現行角色是 workspace-level editor/read-only，所有業務共用。 | 第一版沿用 workspace-wide 角色，產品功能由獨立 entitlement 控制；待企業客戶要求再增設產品角色或 client 細分權限。 |
@@ -336,4 +339,4 @@ platform_audit_logs / outbox_events / inbox_events
 
 ---
 
-**預設決策**：先沿用工作區層級 `editor/read_only` 角色，另以產品 entitlement 控制功能；首階段採人工帳務，不綁定特定金流；停用或欠款政策先採停止寫入與背景同步、保留讀取與匯出，資料刪除期限需在商用前依合約及法規政策設定；provider app 憑證由工作區管理者在平台輸入，與使用者 OAuth grant token 分別加密保存。正式金流、發票與資料刪除期限在首批商用客戶/法規需求明確後再定。
+**預設決策**：先沿用工作區層級 `editor/read_only` 角色，另以產品 entitlement 控制功能；首階段採人工帳務，不綁定特定金流；停用或欠款政策先採停止寫入與背景同步、保留讀取與匯出，資料刪除期限需在商用前依合約及法規政策設定；provider app 憑證由工作區管理者在平台輸入、加密保存，並與使用者 OAuth grant token 分開管理。正式金流、發票、憑證金鑰輪替與資料刪除期限在首批商用客戶/法規需求明確後再定。

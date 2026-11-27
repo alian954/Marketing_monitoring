@@ -40,7 +40,7 @@ class SocialEngagementTargetGoogleAnalyticsController extends Controller
         }
 
         try {
-            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token);
+            $accessToken = $dataApi->refreshAccessToken($connection->refresh_token, (int) $connection->workspace_id);
             $campaignReportSync->sync($connection, $socialEngagementTarget, $accessToken, $clientProperty->property_id);
         } catch (GoogleAnalyticsApiException $exception) {
             return $this->reportRedirect($socialEngagementTarget)
