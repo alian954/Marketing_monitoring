@@ -37,6 +37,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PlatformAuditEventController;
 use App\Http\Controllers\PlatformAuthController;
 use App\Http\Controllers\PlatformBillingController;
+use App\Http\Controllers\PlatformEntitlementMigrationController;
 use App\Http\Controllers\PlatformOrganizationController;
 use App\Http\Controllers\PlatformProductController;
 use App\Http\Controllers\PlatformSubscriptionController;
@@ -159,6 +160,9 @@ if (PlatformConsole::isEnabled()) {
             Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
             Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
             Route::get('/trial-requests', [PlatformTrialRequestController::class, 'index'])->name('trial-requests.index');
+            Route::get('/entitlement-migration', [PlatformEntitlementMigrationController::class, 'index'])->name('entitlement-migration.index');
+            Route::post('/entitlement-migration/subscriptions', [PlatformEntitlementMigrationController::class, 'mapSubscriptions'])->name('entitlement-migration.subscriptions');
+            Route::post('/entitlement-migration/enforce', [PlatformEntitlementMigrationController::class, 'enforce'])->name('entitlement-migration.enforce');
             Route::post('/trial-requests/{trialRequest}/approve', [PlatformTrialRequestController::class, 'approve'])
                 ->whereNumber('trialRequest')
                 ->name('trial-requests.approve');

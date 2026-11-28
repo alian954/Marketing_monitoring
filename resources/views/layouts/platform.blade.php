@@ -23,6 +23,7 @@
                     <a class="nav-link" href="{{ route('platform.index') }}" @if (request()->routeIs('platform.index', 'platform.organizations.*')) aria-current="page" @endif>組織管理</a>
                     <a class="nav-link" href="{{ route('platform.products.index') }}" @if (request()->routeIs('platform.products.*')) aria-current="page" @endif>產品與功能</a>
                     <a class="nav-link" href="{{ route('platform.trial-requests.index') }}" @if (request()->routeIs('platform.trial-requests.*')) aria-current="page" @endif>試用申請</a>
+                    <a class="nav-link" href="{{ route('platform.entitlement-migration.index') }}" @if (request()->routeIs('platform.entitlement-migration.*')) aria-current="page" @endif>授權切換</a>
                     <a class="nav-link" href="{{ route('platform.audit-events.index') }}" @if (request()->routeIs('platform.audit-events.*')) aria-current="page" @endif>稽核紀錄</a>
                     <a class="nav-link" href="{{ route('platform.system.index') }}" @if (request()->routeIs('platform.system.*')) aria-current="page" @endif>系統狀態</a>
                 </nav>
