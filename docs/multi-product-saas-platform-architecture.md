@@ -80,7 +80,7 @@ flowchart TB
 - 四種 connection model 的 access/refresh token 均使用 encrypted cast，並由模型序列化隱藏；測試會確認回傳陣列不包含 token。
 - GA4、Search Console、Meta Ads、Google Ads 的 OAuth App `client_id` 與 `client_secret` 已可由工作區 owner 在整合頁設定；資料存在 `integration_application_credentials`，secret 使用 encrypted cast 和 `TEXT` 欄位，模型序列化時隱藏。表單不回顯 secret，空白更新會保留原密鑰。
 - `integration_application_credential_events` 記錄工作區、操作者、provider 與建立/更新/刪除動作，不保存憑證值。callback URI 仍由平台設定並顯示給管理者，須在 provider app 登記。
-- 為不中斷既有租戶，若工作區尚未填入憑證，OAuth resolver 暫時回退至 `config/services.php` 的舊伺服器設定。完成既有連線遷移後，應移除這項 fallback。更換 app 憑證可能需要重新授權；授權後的使用者 token 是獨立資料，不會因憑證表單更新而直接刪除。
+- 為不中斷既有租戶，若工作區尚未填入憑證，OAuth resolver 暫時回退至 `config/services.php` 的舊伺服器設定。完成既有連線遷移後應關閉這項 fallback：管理後台「系統狀態」會列出仍依賴主機憑證的工作區，名單清空後設定 `OAUTH_LEGACY_CREDENTIAL_FALLBACK=false` 即可關閉。更換 app 憑證可能需要重新授權；授權後的使用者 token 是獨立資料，不會因憑證表單更新而直接刪除。
 
 工作區 owner 路由限制憑證管理權限，保存/刪除端點另有節流。`APP_KEY` 仍是站台層級加密根金鑰，不能改由每個整合帳號填入；APP_KEY 輪替、正式金鑰管理服務與稽核保留政策尚需規劃。
 

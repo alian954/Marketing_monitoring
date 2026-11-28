@@ -4,15 +4,16 @@ namespace App\Services;
 
 use App\Models\IntegrationApplicationCredential;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class OAuthApplicationCredentialResolver
 {
-    /** @var array<string, array{config_key: string, label: string, edit_route: string}> */
+    /** @var array<string, array{config_key: string, label: string, edit_route: string, connection_table: string}> */
     private const PROVIDERS = [
-        'google_analytics' => ['config_key' => 'google_analytics', 'label' => 'Google Analytics 4', 'edit_route' => 'integrations.google-analytics.edit'],
-        'google_search_console' => ['config_key' => 'google_search_console', 'label' => 'Google Search Console', 'edit_route' => 'integrations.google-search-console.edit'],
-        'meta_marketing' => ['config_key' => 'meta_marketing', 'label' => 'Meta Ads', 'edit_route' => 'integrations.meta-marketing.edit'],
-        'google_ads' => ['config_key' => 'google_ads', 'label' => 'Google Ads', 'edit_route' => 'integrations.google-ads.edit'],
+        'google_analytics' => ['config_key' => 'google_analytics', 'label' => 'Google Analytics 4', 'edit_route' => 'integrations.google-analytics.edit', 'connection_table' => 'google_analytics_connections'],
+        'google_search_console' => ['config_key' => 'google_search_console', 'label' => 'Google Search Console', 'edit_route' => 'integrations.google-search-console.edit', 'connection_table' => 'google_search_console_connections'],
+        'meta_marketing' => ['config_key' => 'meta_marketing', 'label' => 'Meta Ads', 'edit_route' => 'integrations.meta-marketing.edit', 'connection_table' => 'meta_marketing_connections'],
+        'google_ads' => ['config_key' => 'google_ads', 'label' => 'Google Ads', 'edit_route' => 'integrations.google-ads.edit', 'connection_table' => 'google_ads_connections'],
     ];
 
     /** @return array{client_id: string, client_secret: string, source: 'workspace'|'server'}|null */
@@ -37,6 +38,10 @@ class OAuthApplicationCredentialResolver
                     'source' => 'workspace',
                 ];
             }
+        }
+
+        if (! $this->allowsLegacyFallback()) {
+            return null;
         }
 
         $clientId = config('services.'.$provider['config_key'].'.client_id');
@@ -66,7 +71,8 @@ class OAuthApplicationCredentialResolver
                 ->first();
         $legacyClientId = $provider === null ? null : config('services.'.$provider['config_key'].'.client_id');
         $legacyClientSecret = $provider === null ? null : config('services.'.$provider['config_key'].'.client_secret');
-        $hasLegacyCredential = is_string($legacyClientId) && trim($legacyClientId) !== ''
+        $hasLegacyCredential = $this->allowsLegacyFallback()
+            && is_string($legacyClientId) && trim($legacyClientId) !== ''
             && is_string($legacyClientSecret) && trim($legacyClientSecret) !== '';
 
         return [
@@ -77,7 +83,50 @@ class OAuthApplicationCredentialResolver
         ];
     }
 
-    /** @return array{config_key: string, label: string, edit_route: string}|null */
+    public function allowsLegacyFallback(): bool
+    {
+        return (bool) config('services.oauth_legacy_credential_fallback', true);
+    }
+
+    /**
+     * Workspaces with an existing provider connection but no stored app credential of their own, so they still depend on the
+     * server-wide fallback. The fallback can be turned off once this list is empty.
+     *
+     * @return list<array{workspace_id: int|null, organization_name: string|null, providers: list<string>}>
+     */
+    public function workspacesRelyingOnServerCredentials(): array
+    {
+        $dependents = [];
+
+        foreach (self::PROVIDERS as $providerCode => $provider) {
+            $workspaceIds = DB::table($provider['connection_table'])
+                ->whereNotExists(static function ($query) use ($provider, $providerCode): void {
+                    $query->selectRaw('1')
+                        ->from('integration_application_credentials')
+                        ->whereColumn('integration_application_credentials.workspace_id', $provider['connection_table'].'.workspace_id')
+                        ->where('integration_application_credentials.provider_code', $providerCode);
+                })
+                ->distinct()
+                ->pluck('workspace_id');
+
+            foreach ($workspaceIds as $workspaceId) {
+                $key = $workspaceId === null ? 'unassigned' : (string) $workspaceId;
+                $dependents[$key] ??= [
+                    'workspace_id' => $workspaceId === null ? null : (int) $workspaceId,
+                    'organization_name' => $workspaceId === null ? null : DB::table('workspaces')
+                        ->join('organizations', 'organizations.id', '=', 'workspaces.organization_id')
+                        ->where('workspaces.id', $workspaceId)
+                        ->value('organizations.name'),
+                    'providers' => [],
+                ];
+                $dependents[$key]['providers'][] = $provider['label'];
+            }
+        }
+
+        return array_values($dependents);
+    }
+
+    /** @return array{config_key: string, label: string, edit_route: string, connection_table: string}|null */
     public function definition(string $providerCode): ?array
     {
         return self::PROVIDERS[$providerCode] ?? null;

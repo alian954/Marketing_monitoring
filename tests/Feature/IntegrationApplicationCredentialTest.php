@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\GoogleAdsConnection;
 use App\Models\IntegrationApplicationCredential;
 use App\Models\IntegrationApplicationCredentialEvent;
 use App\Models\Organization;
@@ -90,6 +91,61 @@ class IntegrationApplicationCredentialTest extends TestCase
         $this->assertSame('workspace', $resolver->resolve('google_analytics', $firstWorkspace->getKey())['source']);
         $this->assertSame('legacy-client-id', $resolver->resolve('google_analytics', $secondWorkspace->getKey())['client_id']);
         $this->assertSame('server', $resolver->resolve('google_analytics', $secondWorkspace->getKey())['source']);
+    }
+
+    public function test_server_credential_fallback_can_be_turned_off(): void
+    {
+        config([
+            'services.google_analytics.client_id' => 'legacy-client-id',
+            'services.google_analytics.client_secret' => 'legacy-client-secret',
+            'services.oauth_legacy_credential_fallback' => false,
+        ]);
+        $workspace = Workspace::factory()->create();
+        $resolver = app(OAuthApplicationCredentialResolver::class);
+
+        $this->assertNull($resolver->resolve('google_analytics', $workspace->getKey()));
+        $this->assertFalse($resolver->details('google_analytics', $workspace->getKey())['oauthConfigured']);
+
+        IntegrationApplicationCredential::factory()->create([
+            'workspace_id' => $workspace->getKey(),
+            'provider_code' => 'google_analytics',
+            'client_id' => 'custom-client-id',
+            'client_secret' => 'custom-client-secret',
+        ]);
+
+        $this->assertSame('workspace', $resolver->resolve('google_analytics', $workspace->getKey())['source']);
+    }
+
+    public function test_system_status_lists_workspaces_still_relying_on_server_credentials(): void
+    {
+        $legacyOwner = User::factory()->create();
+        $legacyOrganization = Organization::factory()->create(['owner_user_id' => $legacyOwner->id, 'name' => '舊連線組織']);
+        $migratedOwner = User::factory()->create();
+        $migratedOrganization = Organization::factory()->create(['owner_user_id' => $migratedOwner->id, 'name' => '已遷移組織']);
+        $legacyWorkspaceId = Workspace::factory()->create(['organization_id' => $legacyOrganization->id])->getKey();
+        $migratedWorkspaceId = Workspace::factory()->create(['organization_id' => $migratedOrganization->id])->getKey();
+        GoogleAdsConnection::factory()->create(['user_id' => $legacyOwner->id])->forceFill(['workspace_id' => $legacyWorkspaceId])->save();
+        GoogleAdsConnection::factory()->create(['user_id' => $migratedOwner->id])->forceFill(['workspace_id' => $migratedWorkspaceId])->save();
+        IntegrationApplicationCredential::factory()->create([
+            'workspace_id' => $migratedWorkspaceId,
+            'provider_code' => 'google_ads',
+        ]);
+        $admin = User::factory()->create();
+        $admin->forceFill(['is_platform_admin' => true])->save();
+
+        $dependents = app(OAuthApplicationCredentialResolver::class)->workspacesRelyingOnServerCredentials();
+
+        $this->assertSame([[
+            'workspace_id' => $legacyWorkspaceId,
+            'organization_name' => '舊連線組織',
+            'providers' => ['Google Ads'],
+        ]], $dependents);
+        $this->actingAs($admin, 'platform')
+            ->get(route('platform.system.index'))
+            ->assertOk()
+            ->assertSee('主機 OAuth 憑證備援')
+            ->assertSee($legacyOrganization->name)
+            ->assertDontSee($migratedOrganization->name);
     }
 
     public function test_all_oauth_providers_exchange_codes_using_workspace_credentials(): void

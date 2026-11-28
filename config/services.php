@@ -35,6 +35,12 @@ return [
         ],
     ],
 
+    /*
+     * Fall back to the server-wide OAuth app above when a workspace has not stored its own credential.
+     * Turn off once the platform system status page lists no workspace relying on it.
+     */
+    'oauth_legacy_credential_fallback' => (bool) env('OAUTH_LEGACY_CREDENTIAL_FALLBACK', true),
+
     'google_analytics' => [
         'client_id' => env('GOOGLE_ANALYTICS_CLIENT_ID'),
         'client_secret' => env('GOOGLE_ANALYTICS_CLIENT_SECRET'),

@@ -109,4 +109,45 @@
             </div>
         @endif
     </section>
+
+    <section class="panel spaced-top" aria-labelledby="oauth-fallback-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="oauth-fallback-title" class="panel-title">主機 OAuth 憑證備援</h2>
+                <p class="panel-description">
+                    @if ($legacyOAuthFallbackEnabled)
+                        已開啟：工作區未填 OAuth App 憑證時，改用 <code>.env</code> 的主機憑證。下列名單清空後，可設定 <code>OAUTH_LEGACY_CREDENTIAL_FALLBACK=false</code> 關閉。
+                    @else
+                        已關閉：每個工作區都必須使用自己的 OAuth App 憑證。
+                    @endif
+                </p>
+            </div>
+        </div>
+        @if ($legacyOAuthDependents === [])
+            <p class="empty-copy panel-body">沒有工作區依賴主機憑證。</p>
+        @else
+            <div class="data-table-wrap">
+                <table class="data-table">
+                    <caption class="sr-only">仍以主機 OAuth 憑證連線的工作區與平台</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">組織</th>
+                            <th scope="col">未填工作區憑證的連線</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($legacyOAuthDependents as $dependent)
+                            <tr>
+                                <th scope="row">{{ $dependent['organization_name'] ?? ($dependent['workspace_id'] === null ? '尚未對應工作區的舊連線' : '工作區 #'.$dependent['workspace_id']) }}</th>
+                                <td>{{ implode('、', $dependent['providers']) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @unless ($legacyOAuthFallbackEnabled)
+                <p class="field-help panel-body">備援已關閉，這些連線將無法更新授權，請通知組織擁有者填入 OAuth App 憑證並重新授權。</p>
+            @endunless
+        @endif
+    </section>
 @endsection
