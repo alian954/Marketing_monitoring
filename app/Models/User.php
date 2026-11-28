@@ -15,7 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 
 #[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token', 'is_platform_admin'])]
+#[Hidden(['password', 'remember_token', 'is_platform_admin', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_last_used_step'])]
 class User extends Authenticatable
 {
     /** @var list<int>|null */
@@ -243,6 +243,19 @@ class User extends Authenticatable
         return (bool) $this->is_platform_admin;
     }
 
+    /**
+     * Whether sign-in requires an authenticator code after the password.
+     */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null && is_string($this->two_factor_secret) && $this->two_factor_secret !== '';
+    }
+
+    public function remainingTwoFactorRecoveryCodeCount(): int
+    {
+        return count($this->two_factor_recovery_codes ?? []);
+    }
+
     public function workspaceOrganization(): ?Organization
     {
         return Organization::query()->where('owner_user_id', $this->workspaceOwnerId())->first();
@@ -359,6 +372,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'is_platform_admin' => 'boolean',
             'password' => 'hashed',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'immutable_datetime',
+            'two_factor_last_used_step' => 'integer',
         ];
     }
 }

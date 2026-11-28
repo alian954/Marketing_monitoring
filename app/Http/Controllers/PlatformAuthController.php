@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\PlatformConsole;
+use App\Services\TwoFactorLoginChallenge;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,6 +18,8 @@ use Illuminate\View\View;
 class PlatformAuthController extends Controller
 {
     public const GUARD = 'platform';
+
+    public function __construct(private TwoFactorLoginChallenge $twoFactorLoginChallenge) {}
 
     public function create(): View
     {
@@ -46,21 +49,41 @@ class PlatformAuthController extends Controller
 
         $guard = Auth::guard(self::GUARD);
 
-        if (! $guard->attempt($credentials)) {
+        if (! $guard->validate($credentials)) {
             RateLimiter::hit($key, 60);
             throw ValidationException::withMessages(['email' => '電子郵件或密碼不正確。']);
         }
 
-        $administrator = $guard->user();
+        $administrator = $guard->getLastAttempted();
 
         if (! $administrator instanceof User || ! $administrator->isPlatformAdmin()) {
             // Customer accounts get the same answer as a wrong password, so the console does not reveal who is an administrator.
-            $guard->logout();
             RateLimiter::hit($key, 60);
             throw ValidationException::withMessages(['email' => '電子郵件或密碼不正確。']);
         }
 
         RateLimiter::clear($key);
+
+        if (config('hashing.rehash_on_login', true)) {
+            $guard->getProvider()->rehashPasswordIfRequired($administrator, $credentials);
+        }
+
+        if ($administrator->hasTwoFactorEnabled()) {
+            $this->twoFactorLoginChallenge->begin($request, $administrator, self::GUARD, false);
+
+            return redirect()->route('platform.two-factor.challenge');
+        }
+
+        $guard->login($administrator);
+
+        return $this->completeLogin($request);
+    }
+
+    /**
+     * Finish a console sign-in after every check, including the authenticator code, has passed.
+     */
+    public function completeLogin(Request $request): RedirectResponse
+    {
         $request->session()->regenerate();
 
         return redirect()->to($this->intendedConsoleUrl($request));

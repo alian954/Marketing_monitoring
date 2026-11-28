@@ -52,6 +52,8 @@ use App\Http\Controllers\SocialEngagementTargetMetaMarketingController;
 use App\Http\Controllers\StatusPageController;
 use App\Http\Controllers\StatusPageSubscriptionController;
 use App\Http\Controllers\TrialRequestController;
+use App\Http\Controllers\TwoFactorChallengeController;
+use App\Http\Controllers\TwoFactorSettingsController;
 use App\Http\Controllers\WorkspaceAccessController;
 use App\Http\Controllers\WorkspaceActivityController;
 use App\Http\Controllers\WorkspaceSwitchController;
@@ -71,6 +73,8 @@ Route::middleware('guest')->group(function (): void {
     Route::post('/forgot-password', [AuthController::class, 'sendResetLink'])->middleware('throttle:5,1')->name('password.email');
     Route::get('/reset-password/{token}', [AuthController::class, 'showResetForm'])->name('password.reset');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1')->name('password.update');
+    Route::get('/two-factor-challenge', [TwoFactorChallengeController::class, 'create'])->name('two-factor.challenge');
+    Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:login')->name('two-factor.challenge.store');
 });
 
 Route::get('/status/{token}', [StatusPageController::class, 'show'])
@@ -140,10 +144,17 @@ if (PlatformConsole::isEnabled()) {
         Route::middleware('guest:platform')->group(function (): void {
             Route::get('/login', [PlatformAuthController::class, 'create'])->name('login');
             Route::post('/login', [PlatformAuthController::class, 'store'])->middleware('throttle:login')->name('login.store');
+            Route::get('/two-factor-challenge', [TwoFactorChallengeController::class, 'create'])->name('two-factor.challenge');
+            Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:login')->name('two-factor.challenge.store');
         });
 
         Route::middleware(['auth:platform', EnsurePlatformAdmin::class])->group(function (): void {
             Route::post('/logout', [PlatformAuthController::class, 'destroy'])->name('logout');
+            Route::get('/account/security', [TwoFactorSettingsController::class, 'show'])->name('account.security');
+            Route::post('/account/two-factor', [TwoFactorSettingsController::class, 'enable'])->middleware('throttle:10,1')->name('account.two-factor.enable');
+            Route::post('/account/two-factor/confirm', [TwoFactorSettingsController::class, 'confirm'])->middleware('throttle:10,1')->name('account.two-factor.confirm');
+            Route::post('/account/two-factor/recovery-codes', [TwoFactorSettingsController::class, 'regenerateRecoveryCodes'])->middleware('throttle:10,1')->name('account.two-factor.recovery-codes');
+            Route::delete('/account/two-factor', [TwoFactorSettingsController::class, 'disable'])->middleware('throttle:10,1')->name('account.two-factor.disable');
             Route::get('/', [PlatformOrganizationController::class, 'index'])->name('index');
             Route::get('/products', [PlatformProductController::class, 'index'])->name('products.index');
             Route::get('/audit-events', [PlatformAuditEventController::class, 'index'])->name('audit-events.index');
@@ -609,6 +620,10 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
     });
     Route::get('/account/password', [AuthController::class, 'editPassword'])->name('account.password.edit');
     Route::put('/account/password', [AuthController::class, 'updatePassword'])->name('account.password.update');
+    Route::post('/account/two-factor', [TwoFactorSettingsController::class, 'enable'])->middleware('throttle:10,1')->name('account.two-factor.enable');
+    Route::post('/account/two-factor/confirm', [TwoFactorSettingsController::class, 'confirm'])->middleware('throttle:10,1')->name('account.two-factor.confirm');
+    Route::post('/account/two-factor/recovery-codes', [TwoFactorSettingsController::class, 'regenerateRecoveryCodes'])->middleware('throttle:10,1')->name('account.two-factor.recovery-codes');
+    Route::delete('/account/two-factor', [TwoFactorSettingsController::class, 'disable'])->middleware('throttle:10,1')->name('account.two-factor.disable');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('/notifications/export.csv', [NotificationController::class, 'export'])->name('notifications.export');
     Route::post('/notifications/test', [NotificationController::class, 'sendTestNotification'])

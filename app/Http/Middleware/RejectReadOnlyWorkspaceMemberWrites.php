@@ -27,6 +27,7 @@ class RejectReadOnlyWorkspaceMemberWrites
             && ! $request->routeIs(
                 'logout',
                 'account.password.update',
+                'account.two-factor.*',
                 'social-engagement-targets.report.utm-link-preview',
             )) {
             abort_unless($user->canManageWorkspace(), 403, '工作區成員僅有檢視權限。');

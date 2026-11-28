@@ -27,6 +27,10 @@ enum PlatformAuditAction: string
     case TrialRequested = 'trial.requested';
     case TrialApproved = 'trial.approved';
     case TrialRejected = 'trial.rejected';
+    case TwoFactorEnabled = 'account.two_factor_enabled';
+    case TwoFactorDisabled = 'account.two_factor_disabled';
+    case TwoFactorRecoveryCodesRegenerated = 'account.two_factor_recovery_codes_regenerated';
+    case TwoFactorReset = 'account.two_factor_reset';
 
     public function label(): string
     {
@@ -54,6 +58,10 @@ enum PlatformAuditAction: string
             self::TrialRequested => '申請產品試用',
             self::TrialApproved => '核准產品試用',
             self::TrialRejected => '婉拒產品試用',
+            self::TwoFactorEnabled => '啟用雙因素驗證',
+            self::TwoFactorDisabled => '停用雙因素驗證',
+            self::TwoFactorRecoveryCodesRegenerated => '重新產生雙因素復原碼',
+            self::TwoFactorReset => '重設雙因素驗證',
         };
     }
 }

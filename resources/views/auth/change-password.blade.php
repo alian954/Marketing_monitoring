@@ -6,8 +6,8 @@
     <div class="page-heading">
         <div class="heading-copy">
             <p class="eyebrow">帳戶安全</p>
-            <h1 class="page-title">更改登入密碼</h1>
-            <p class="page-description">請先確認目前密碼，再設定新的登入密碼。</p>
+            <h1 class="page-title">登入密碼與雙因素驗證</h1>
+            <p class="page-description">更新登入密碼，或啟用驗證器 App 的第二道登入驗證。</p>
         </div>
     </div>
 
@@ -85,4 +85,6 @@
             </form>
         </div>
     </section>
+
+    @include('auth.two-factor._settings')
 @endsection

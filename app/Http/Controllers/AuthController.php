@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\PlatformConsole;
+use App\Services\TwoFactorLoginChallenge;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,14 +18,16 @@ use Illuminate\View\View;
 
 class AuthController extends Controller
 {
+    public function __construct(private TwoFactorLoginChallenge $twoFactorLoginChallenge) {}
+
     public function create(): View
     {
         return view('auth.login');
     }
 
-    public function editPassword(): View
+    public function editPassword(Request $request, TwoFactorSettingsController $twoFactorSettings): View
     {
-        return view('auth.change-password');
+        return view('auth.change-password', $twoFactorSettings->viewData($request));
     }
 
     public function updatePassword(Request $request): RedirectResponse
@@ -146,25 +149,23 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => '登入嘗試次數過多，請於一分鐘後再試。']);
         }
 
-        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+        $guard = Auth::guard();
+
+        if (! $guard->validate($credentials)) {
             RateLimiter::hit($key, 60);
             throw ValidationException::withMessages(['email' => '電子郵件或密碼不正確。']);
         }
 
         RateLimiter::clear($key);
-        $authenticatedUser = Auth::user();
+        $authenticatedUser = $guard->getLastAttempted();
 
         if ($authenticatedUser instanceof User && $authenticatedUser->isPlatformAdmin()) {
-            Auth::logout();
-            $request->session()->regenerateToken();
-
             throw ValidationException::withMessages([
                 'email' => '平台管理員帳號請由管理後台登入。',
             ]);
         }
 
         if (! $authenticatedUser instanceof User || ! $authenticatedUser->hasActiveOrganization()) {
-            Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
@@ -173,6 +174,26 @@ class AuthController extends Controller
             ]);
         }
 
+        if (config('hashing.rehash_on_login', true)) {
+            $guard->getProvider()->rehashPasswordIfRequired($authenticatedUser, $credentials);
+        }
+
+        if ($authenticatedUser->hasTwoFactorEnabled()) {
+            $this->twoFactorLoginChallenge->begin($request, $authenticatedUser, 'web', $request->boolean('remember'));
+
+            return redirect()->route('two-factor.challenge');
+        }
+
+        $guard->login($authenticatedUser, $request->boolean('remember'));
+
+        return $this->completeLogin($request);
+    }
+
+    /**
+     * Finish a customer sign-in after every check, including the authenticator code, has passed.
+     */
+    public function completeLogin(Request $request): RedirectResponse
+    {
         $request->session()->regenerate();
         $intendedUrl = $request->session()->pull('url.intended');
 

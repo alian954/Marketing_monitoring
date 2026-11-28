@@ -24,7 +24,7 @@ class AccountPasswordTest extends TestCase
         $this->actingAs($user)
             ->get(route('account.password.edit'))
             ->assertOk()
-            ->assertSee('更改登入密碼')
+            ->assertSee('登入密碼與雙因素驗證')
             ->assertSee('autocomplete="current-password"', false)
             ->assertSee('autocomplete="new-password"', false)
             ->assertSee(route('account.password.update'), false);

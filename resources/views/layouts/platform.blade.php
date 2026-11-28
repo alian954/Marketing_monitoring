@@ -28,7 +28,7 @@
                 </nav>
 
                 <div class="user-actions">
-                    <span class="account-label">{{ auth('platform')->user()?->email }}</span>
+                    <a class="account-label" href="{{ route('platform.account.security') }}" @if (request()->routeIs('platform.account.*')) aria-current="page" @endif>{{ auth('platform')->user()?->email }}</a>
                     <form class="logout-form" action="{{ route('platform.logout') }}" method="POST">
                         @csrf
                         <button class="logout-button" type="submit">登出</button>
