@@ -242,4 +242,50 @@
             </div>
         @endif
     </section>
+
+    <section class="panel spaced-top" aria-labelledby="organization-purge-title">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title" id="organization-purge-title">退租資料清除</h2>
+                <p class="panel-description">永久刪除此組織工作區內的客戶、監測、活動、名單、授權、成員與 API 金鑰；組織、訂閱合約、訂單收款與稽核紀錄會保留。刪除後無法復原，請先請客戶自行匯出需要的 CSV。</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            @if ($organization->data_purged_at !== null)
+                <p>資料已於 <time datetime="{{ $organization->data_purged_at->toIso8601String() }}">{{ $organization->data_purged_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time> 清除。</p>
+            @else
+                <dl class="platform-detail-list">
+                    @foreach ($purgePreview as $label => $count)
+                        <div>
+                            <dt>{{ $label }}</dt>
+                            <dd>{{ number_format($count) }} 筆</dd>
+                        </div>
+                    @endforeach
+                </dl>
+                @if ($purgeRefusalReason !== null)
+                    <p class="field-help spaced-top">{{ $purgeRefusalReason }}</p>
+                @else
+                    <form action="{{ route('platform.organizations.data.purge', $organization) }}" method="POST" class="spaced-top" aria-labelledby="organization-purge-title">
+                        @csrf
+                        @method('DELETE')
+                        <div class="form-grid">
+                            <div class="field-group">
+                                <label class="field-label" for="purge-confirmation-name">輸入組織名稱「{{ $organization->name }}」確認</label>
+                                <input class="field-input @error('confirmation_name') is-invalid @enderror" id="purge-confirmation-name" name="confirmation_name" type="text" maxlength="255" autocomplete="off" required @if ($errors->has('confirmation_name')) aria-invalid="true" aria-describedby="purge-confirmation-name-error" @endif>
+                                @error('confirmation_name')<p id="purge-confirmation-name-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="field-group">
+                                <label class="field-label" for="purge-current-password">管理員密碼</label>
+                                <input class="field-input @error('current_password') is-invalid @enderror" id="purge-current-password" name="current_password" type="password" maxlength="200" autocomplete="current-password" required @if ($errors->has('current_password')) aria-invalid="true" aria-describedby="purge-current-password-error" @endif>
+                                @error('current_password')<p id="purge-current-password-error" class="field-error" role="alert">{{ $message }}</p>@enderror
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="button button-danger" type="submit">永久清除組織資料</button>
+                        </div>
+                    </form>
+                @endif
+            @endif
+        </div>
+    </section>
 @endsection

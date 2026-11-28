@@ -225,6 +225,10 @@ if (PlatformConsole::isEnabled()) {
             Route::get('/organizations/{organization}', [PlatformOrganizationController::class, 'show'])
                 ->whereNumber('organization')
                 ->name('organizations.show');
+            Route::delete('/organizations/{organization}/data', [PlatformOrganizationController::class, 'purgeData'])
+                ->whereNumber('organization')
+                ->middleware('throttle:10,1')
+                ->name('organizations.data.purge');
             Route::get('/system', [PlatformSystemStatusController::class, 'index'])->name('system.index');
         });
     });

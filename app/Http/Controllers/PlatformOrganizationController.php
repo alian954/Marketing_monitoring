@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\PlatformAuditAction;
 use App\Models\PlatformAuditEvent;
 use App\Models\User;
+use App\Services\OrganizationDataPurger;
 use App\Services\PlatformAuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -20,7 +21,10 @@ use Illuminate\View\View;
 
 class PlatformOrganizationController extends Controller
 {
-    public function __construct(private PlatformAuditLogger $auditLogger) {}
+    public function __construct(
+        private PlatformAuditLogger $auditLogger,
+        private OrganizationDataPurger $dataPurger,
+    ) {}
 
     public function index(): View
     {
@@ -320,7 +324,43 @@ class PlatformOrganizationController extends Controller
             'openIncidentCount' => $openIncidentCount,
             'recentIncidents' => $recentIncidents,
             'recentAuditEvents' => $recentAuditEvents,
+            'purgeRefusalReason' => $this->dataPurger->refusalReason($organization),
+            'purgePreview' => $organization->data_purged_at === null ? $this->dataPurger->preview($organization) : [],
         ]);
+    }
+
+    /**
+     * Permanently delete a departed organization's workspace data; contract, billing and audit records stay.
+     */
+    public function purgeData(Request $request, Organization $organization): RedirectResponse
+    {
+        $request->validate([
+            'confirmation_name' => ['required', 'string', 'max:255'],
+            'current_password' => ['required', 'string', 'max:200', 'current_password:'.PlatformAuthController::GUARD],
+        ], [
+            'confirmation_name.required' => '請輸入組織名稱確認。',
+            'current_password.required' => '請輸入管理員密碼。',
+            'current_password.current_password' => '管理員密碼不正確。',
+        ]);
+
+        if (! hash_equals((string) $organization->name, trim((string) $request->input('confirmation_name')))) {
+            throw ValidationException::withMessages(['confirmation_name' => '輸入的組織名稱不一致。']);
+        }
+
+        $refusalReason = $this->dataPurger->refusalReason($organization);
+
+        if ($refusalReason !== null) {
+            throw ValidationException::withMessages(['confirmation_name' => $refusalReason]);
+        }
+
+        $actor = $request->user(PlatformAuthController::GUARD);
+        abort_unless($actor instanceof User, 401);
+
+        $deletedCounts = $this->dataPurger->purge($organization, $actor);
+
+        return redirect()
+            ->route('platform.organizations.show', $organization)
+            ->with('status', '已清除「'.$organization->name.'」的工作區資料，共刪除 '.number_format(array_sum($deletedCounts)).' 筆主要資料；帳務與稽核紀錄已保留。');
     }
 
     /**

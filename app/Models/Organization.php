@@ -177,6 +177,7 @@ class Organization extends Model
     {
         return [
             'entitlements_enforced_at' => 'immutable_datetime',
+            'data_purged_at' => 'immutable_datetime',
             'subscription_ends_on' => 'date',
             'seat_limit' => 'integer',
             'client_limit' => 'integer',

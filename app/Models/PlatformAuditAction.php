@@ -7,6 +7,7 @@ enum PlatformAuditAction: string
     case OrganizationCreated = 'organization.created';
     case OrganizationUpdated = 'organization.updated';
     case OrganizationOpenedByPlatformAdmin = 'organization.opened_by_platform_admin';
+    case OrganizationDataPurged = 'organization.data_purged';
     case ProductLifecycleUpdated = 'product.lifecycle_updated';
     case ProductPlanCreated = 'product_plan.created';
     case ProductPlanStatusUpdated = 'product_plan.status_updated';
@@ -38,6 +39,7 @@ enum PlatformAuditAction: string
             self::OrganizationCreated => '建立組織',
             self::OrganizationUpdated => '更新組織設定',
             self::OrganizationOpenedByPlatformAdmin => '平台管理員進入組織',
+            self::OrganizationDataPurged => '清除組織資料',
             self::ProductLifecycleUpdated => '變更產品狀態',
             self::ProductPlanCreated => '建立產品方案',
             self::ProductPlanStatusUpdated => '變更方案狀態',
