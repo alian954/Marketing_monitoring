@@ -186,8 +186,14 @@
         <div class="panel-header">
             <div>
                 <h2 id="marketing-alert-event-list-title" class="panel-title">最近觸發</h2>
-                <p class="panel-description">顯示最近 30 則。</p>
+                <p class="panel-description">顯示最近 30 則，待處理 {{ number_format($unacknowledgedEventCount) }} 則。處理時可靜音同一活動的同類警示，靜音期間仍會記錄但不通知。</p>
             </div>
+            @if ($canManage && $unacknowledgedEventCount > 0)
+                <form action="{{ route('clients.marketing-alerts.events.acknowledge-all', $client) }}" method="POST" class="inline-form">
+                    @csrf
+                    <button class="button button-secondary button-small" type="submit">全部標示為已處理</button>
+                </form>
+            @endif
         </div>
         @if ($recentEvents->isEmpty())
             <p class="empty-copy panel-body">尚無觸發紀錄。</p>
@@ -201,6 +207,10 @@
                             <th scope="col">警示</th>
                             <th scope="col">來源</th>
                             <th scope="col">內容</th>
+                            <th scope="col">處理狀態</th>
+                            @if ($canManage)
+                                <th scope="col"><span class="sr-only">操作</span></th>
+                            @endif
                         </tr>
                     </thead>
                     <tbody>
@@ -216,6 +226,54 @@
                                         {{ $event->message }}
                                     @endif
                                 </td>
+                                <td>
+                                    @if ($event->wasNotificationSuppressed())
+                                        靜音中，未通知
+                                    @elseif ($event->isAcknowledged())
+                                        已處理
+                                        <span class="secondary-text">
+                                            @if ($event->acknowledgedBy !== null){{ $event->acknowledgedBy->name }}・@endif<time datetime="{{ $event->acknowledged_at->toIso8601String() }}">{{ $event->acknowledged_at->timezone('Asia/Taipei')->format('Y/n/j H:i') }}</time>
+                                        </span>
+                                    @else
+                                        <strong>待處理</strong>
+                                    @endif
+                                    @if ($event->muted_until !== null)
+                                        <span class="secondary-text">同類警示靜音至 <time datetime="{{ $event->muted_until->toDateString() }}">{{ $event->muted_until->format('Y/n/j') }}</time></span>
+                                    @endif
+                                </td>
+                                @if ($canManage)
+                                    <td>
+                                        <div class="row-actions">
+                                            @if ($event->isAcknowledged() && ! $event->wasNotificationSuppressed())
+                                                <form action="{{ route('clients.marketing-alerts.events.update', [$client, $event]) }}" method="POST" class="inline-form">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="handled" value="0">
+                                                    <button class="button button-quiet button-small" type="submit">改回待處理</button>
+                                                </form>
+                                            @elseif (! $event->isAcknowledged())
+                                                <form action="{{ route('clients.marketing-alerts.events.update', [$client, $event]) }}" method="POST" class="inline-form">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="handled" value="1">
+                                                    <button class="button button-secondary button-small" type="submit">已處理</button>
+                                                </form>
+                                                <form action="{{ route('clients.marketing-alerts.events.update', [$client, $event]) }}" method="POST" class="inline-form row-actions">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <input type="hidden" name="handled" value="1">
+                                                    <label class="sr-only" for="marketing-alert-event-{{ $event->getKey() }}-mute">靜音天數</label>
+                                                    <select class="field-select field-select-small" id="marketing-alert-event-{{ $event->getKey() }}-mute" name="mute_days">
+                                                        @foreach ($muteDayOptions as $muteDays)
+                                                            <option value="{{ $muteDays }}">{{ $muteDays }} 天</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <button class="button button-quiet button-small" type="submit">處理並靜音</button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    </td>
+                                @endif
                             </tr>
                         @endforeach
                     </tbody>

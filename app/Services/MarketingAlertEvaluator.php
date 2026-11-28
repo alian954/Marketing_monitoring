@@ -75,10 +75,14 @@ class MarketingAlertEvaluator
 
             foreach ($signals as $signal) {
                 foreach ($this->candidates($rule, $signal, $yesterday, $now) as $candidate) {
-                    $event = $this->recordOnce($rule, $candidate);
+                    $event = $this->recordOnce($rule, $candidate, $today);
+
+                    if ($event !== null && ! $event->wasNotificationSuppressed()) {
+                        $events[] = $event;
+                    }
 
                     if ($event !== null) {
-                        $events[] = $event;
+                        $newEventCount++;
                     }
                 }
             }
@@ -86,7 +90,6 @@ class MarketingAlertEvaluator
             if ($events !== []) {
                 $this->queueNotifications($client, $rule, $events);
                 $rule->forceFill(['last_triggered_at' => now()])->save();
-                $newEventCount += count($events);
             }
         }
 
@@ -496,9 +499,11 @@ class MarketingAlertEvaluator
     }
 
     /**
+     * Record a new alert once; while a handled alert mutes the same campaign and source, keep it without notifying.
+     *
      * @param  array{target: SocialEngagementTarget, source: string, observed_on: string, observed_value: float|null, currency_code: string|null, message: string}  $candidate
      */
-    private function recordOnce(MarketingAlertRule $rule, array $candidate): ?MarketingAlertEvent
+    private function recordOnce(MarketingAlertRule $rule, array $candidate, CarbonImmutable $today): ?MarketingAlertEvent
     {
         $alreadyRecorded = $rule->events()
             ->where('social_engagement_target_id', $candidate['target']->getKey())
@@ -510,8 +515,14 @@ class MarketingAlertEvaluator
             return null;
         }
 
+        $isMuted = $rule->events()
+            ->where('social_engagement_target_id', $candidate['target']->getKey())
+            ->where('source', $candidate['source'])
+            ->whereDate('muted_until', '>=', $today->toDateString())
+            ->exists();
+
         try {
-            return $rule->events()->create([
+            $event = $rule->events()->make([
                 'social_engagement_target_id' => $candidate['target']->getKey(),
                 'source' => $candidate['source'],
                 'observed_on' => $candidate['observed_on'],
@@ -519,6 +530,17 @@ class MarketingAlertEvaluator
                 'currency_code' => $candidate['currency_code'],
                 'message' => $candidate['message'],
             ]);
+
+            if ($isMuted) {
+                $event->forceFill([
+                    'notification_suppressed_at' => now(),
+                    'acknowledged_at' => now(),
+                ]);
+            }
+
+            $event->save();
+
+            return $event;
         } catch (UniqueConstraintViolationException) {
             return null;
         }

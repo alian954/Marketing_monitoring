@@ -309,6 +309,128 @@ class MarketingAlertTest extends TestCase
         $this->assertDatabaseCount('marketing_alert_events', 0);
     }
 
+    public function test_owner_can_mark_alerts_handled_and_muted_alerts_are_recorded_without_notifying(): void
+    {
+        ['owner' => $owner, 'client' => $client, 'target' => $target] = $this->createClientWithTarget();
+        $this->createGoogleAdsReport($target, [
+            '2026-11-26' => ['spend' => 1000, 'conversions' => 1, 'value' => 500],
+            '2026-11-27' => ['spend' => 1000, 'conversions' => 1, 'value' => 500],
+            '2026-11-28' => ['spend' => 1000, 'conversions' => 1, 'value' => 500],
+        ]);
+        $rule = MarketingAlertRule::factory()->metric(MarketingAlertRule::METRIC_ROAS_BELOW, '1')->create([
+            'client_id' => $client->id,
+            'recipients' => 'ads@example.com',
+        ]);
+
+        $this->artisan('marketing-alerts:evaluate')->assertExitCode(0);
+        $firstEvent = $rule->events()->sole();
+        $this->assertSame(1, NotificationOutbox::query()->withoutGlobalScopes()->count());
+
+        $this->actingAs($owner)
+            ->get(route('clients.marketing-alerts.index', $client))
+            ->assertOk()
+            ->assertSee('待處理 1 則')
+            ->assertSee('全部標示為已處理');
+
+        $this->patch(route('clients.marketing-alerts.events.update', [$client, $firstEvent]), [
+            'handled' => '1',
+            'mute_days' => '7',
+        ])->assertRedirect(route('clients.marketing-alerts.index', $client));
+
+        $firstEvent->refresh();
+        $this->assertNotNull($firstEvent->acknowledged_at);
+        $this->assertSame($owner->id, $firstEvent->acknowledged_by_user_id);
+        $this->assertSame('2026-12-04', $firstEvent->muted_until->toDateString());
+
+        $this->travelTo(Carbon::parse('2026-11-28 07:23:00', 'Asia/Taipei'));
+        $this->artisan('marketing-alerts:evaluate')->assertExitCode(0);
+
+        $mutedEvent = $rule->events()->whereKeyNot($firstEvent->id)->sole();
+        $this->assertNotNull($mutedEvent->notification_suppressed_at);
+        $this->assertNotNull($mutedEvent->acknowledged_at);
+        $this->assertSame(1, NotificationOutbox::query()->withoutGlobalScopes()->count());
+
+        $this->get(route('clients.marketing-alerts.index', $client))
+            ->assertOk()
+            ->assertSee('靜音中，未通知')
+            ->assertSee('待處理 0 則');
+
+        $this->patch(route('clients.marketing-alerts.events.update', [$client, $firstEvent]), ['handled' => '0'])
+            ->assertRedirect(route('clients.marketing-alerts.index', $client));
+        $firstEvent->refresh();
+        $this->assertNull($firstEvent->acknowledged_at);
+        $this->assertNull($firstEvent->muted_until);
+
+        $this->travelTo(Carbon::parse('2026-11-29 07:23:00', 'Asia/Taipei'));
+        $this->artisan('marketing-alerts:evaluate')->assertExitCode(0);
+
+        $this->assertSame(3, $rule->events()->count());
+        $this->assertSame(2, NotificationOutbox::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_mute_days_are_validated_and_acknowledge_all_only_touches_the_clients_alerts(): void
+    {
+        ['owner' => $owner, 'client' => $client] = $this->createClientWithTarget();
+        ['client' => $otherClient, 'target' => $otherTarget] = $this->createClientWithTarget();
+        $rule = MarketingAlertRule::factory()->create(['client_id' => $client->id]);
+        $otherRule = MarketingAlertRule::factory()->create(['client_id' => $otherClient->id]);
+        $event = $this->createAlertEvent($rule, $client->socialEngagementTargets()->sole(), '2026-11-25');
+        $secondEvent = $this->createAlertEvent($rule, $client->socialEngagementTargets()->sole(), '2026-11-26');
+        $otherEvent = $this->createAlertEvent($otherRule, $otherTarget, '2026-11-26');
+        $sameOwnerClient = Client::factory()->for($owner)->create();
+
+        $this->actingAs($owner)
+            ->patch(route('clients.marketing-alerts.events.update', [$client, $event]), ['handled' => '1', 'mute_days' => '365'])
+            ->assertSessionHasErrors('mute_days');
+        $this->patch(route('clients.marketing-alerts.events.update', [$sameOwnerClient, $event]), ['handled' => '1'])
+            ->assertNotFound();
+        $this->patch(route('clients.marketing-alerts.events.update', [$client, $otherEvent]), ['handled' => '1'])
+            ->assertNotFound();
+
+        $this->post(route('clients.marketing-alerts.events.acknowledge-all', $client))
+            ->assertRedirect(route('clients.marketing-alerts.index', $client))
+            ->assertSessionHas('status', '已將 2 則警示標示為已處理。');
+
+        $this->assertNotNull($event->refresh()->acknowledged_at);
+        $this->assertSame($owner->id, $secondEvent->refresh()->acknowledged_by_user_id);
+        $this->assertNull($otherEvent->refresh()->acknowledged_at);
+    }
+
+    public function test_read_only_members_cannot_handle_alerts(): void
+    {
+        ['owner' => $owner, 'client' => $client, 'target' => $target] = $this->createClientWithTarget();
+        $rule = MarketingAlertRule::factory()->create(['client_id' => $client->id]);
+        $event = $this->createAlertEvent($rule, $target, '2026-11-26');
+        $member = User::factory()->create();
+        WorkspaceMembership::factory()->create([
+            'owner_user_id' => $owner->id,
+            'member_user_id' => $member->id,
+            'role' => WorkspaceMembership::ROLE_READ_ONLY,
+            'client_scope' => WorkspaceMembership::CLIENT_SCOPE_ALL,
+        ]);
+
+        $this->actingAs($member)
+            ->get(route('clients.marketing-alerts.index', $client))
+            ->assertOk()
+            ->assertSee('待處理')
+            ->assertDontSee('處理並靜音')
+            ->assertDontSee('全部標示為已處理');
+        $this->patch(route('clients.marketing-alerts.events.update', [$client, $event]), ['handled' => '1'])->assertForbidden();
+        $this->post(route('clients.marketing-alerts.events.acknowledge-all', $client))->assertForbidden();
+
+        $this->assertNull($event->refresh()->acknowledged_at);
+    }
+
+    private function createAlertEvent(MarketingAlertRule $rule, SocialEngagementTarget $target, string $observedOn): MarketingAlertEvent
+    {
+        return $rule->events()->create([
+            'social_engagement_target_id' => $target->id,
+            'source' => 'google_ads',
+            'observed_on' => $observedOn,
+            'message' => '測試警示',
+        ]);
+    }
+
     /**
      * @return array{owner: User, client: Client, target: SocialEngagementTarget}
      */

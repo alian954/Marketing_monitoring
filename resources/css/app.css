@@ -1925,6 +1925,13 @@ a.platform-chip:hover {
     resize: vertical;
 }
 
+.field-select-small {
+    width: auto;
+    min-height: 33px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
 .field-help {
     margin: 6px 0 0;
     color: var(--muted);

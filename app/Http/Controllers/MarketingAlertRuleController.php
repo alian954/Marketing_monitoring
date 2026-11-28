@@ -11,6 +11,7 @@ use App\Services\DiscordWebhookUrlPolicy;
 use App\Services\NotificationEmailRecipientParser;
 use App\Services\SlackWebhookUrlPolicy;
 use App\Services\TeamsWebhookUrlPolicy;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -21,7 +22,16 @@ class MarketingAlertRuleController extends Controller
 {
     private const RECENT_EVENT_LIMIT = 30;
 
+    private const TIMEZONE = 'Asia/Taipei';
+
     private const MAX_RECIPIENTS = 10;
+
+    /**
+     * Days a handled alert can keep the same rule, campaign and source quiet.
+     *
+     * @var list<int>
+     */
+    public const MUTE_DAY_OPTIONS = [7, 14, 30];
 
     public function index(Client $client): Response
     {
@@ -29,16 +39,22 @@ class MarketingAlertRuleController extends Controller
         $lineTargets = LineNotificationTarget::query()->active()->orderBy('display_name')->get();
         $recentEvents = MarketingAlertEvent::query()
             ->whereIn('marketing_alert_rule_id', $rules->modelKeys())
-            ->with(['rule:id,metric', 'target:id,tag'])
+            ->with(['rule:id,metric', 'target:id,tag', 'acknowledgedBy:id,name'])
             ->latest('id')
             ->limit(self::RECENT_EVENT_LIMIT)
             ->get();
+        $unacknowledgedEventCount = MarketingAlertEvent::query()
+            ->whereIn('marketing_alert_rule_id', $rules->modelKeys())
+            ->unacknowledged()
+            ->count();
 
         return response()
             ->view('marketing-alerts.index', [
                 'client' => $client,
                 'rules' => $rules,
                 'recentEvents' => $recentEvents,
+                'unacknowledgedEventCount' => $unacknowledgedEventCount,
+                'muteDayOptions' => self::MUTE_DAY_OPTIONS,
                 'lineTargets' => $lineTargets,
             ])
             ->header('Cache-Control', 'private, no-store');
@@ -153,5 +169,65 @@ class MarketingAlertRuleController extends Controller
         return redirect()
             ->route('clients.marketing-alerts.index', $client)
             ->with('status', '已刪除警示規則。');
+    }
+
+    /**
+     * Mark one alert as handled, optionally muting the same campaign and source, or reopen it.
+     */
+    public function updateEvent(Request $request, Client $client, MarketingAlertEvent $marketingAlertEvent): RedirectResponse
+    {
+        $validated = $request->validate([
+            'handled' => ['required', 'boolean'],
+            'mute_days' => ['nullable', 'integer', Rule::in(self::MUTE_DAY_OPTIONS)],
+        ], [
+            'mute_days.in' => '所選靜音天數無效。',
+        ]);
+
+        if (! $request->boolean('handled')) {
+            $marketingAlertEvent->forceFill([
+                'acknowledged_at' => null,
+                'acknowledged_by_user_id' => null,
+                'muted_until' => null,
+            ])->save();
+
+            return redirect()
+                ->route('clients.marketing-alerts.index', $client)
+                ->with('status', '已將警示改回待處理。');
+        }
+
+        $muteDays = isset($validated['mute_days']) ? (int) $validated['mute_days'] : null;
+        $mutedUntil = $muteDays === null
+            ? null
+            : CarbonImmutable::now(self::TIMEZONE)->startOfDay()->addDays($muteDays);
+
+        $marketingAlertEvent->forceFill([
+            'acknowledged_at' => $marketingAlertEvent->acknowledged_at ?? now(),
+            'acknowledged_by_user_id' => $request->user()?->getKey(),
+            'muted_until' => $mutedUntil?->toDateString(),
+        ])->save();
+
+        return redirect()
+            ->route('clients.marketing-alerts.index', $client)
+            ->with('status', $mutedUntil === null
+                ? '已標示為已處理。'
+                : '已標示為已處理，此活動的同類警示在 '.$mutedUntil->format('Y/n/j').' 前不再通知。');
+    }
+
+    /**
+     * Mark every pending alert of the client as handled.
+     */
+    public function acknowledgeAllEvents(Request $request, Client $client): RedirectResponse
+    {
+        $handledCount = $client->marketingAlertEvents()
+            ->whereNull('marketing_alert_events.acknowledged_at')
+            ->update([
+                'marketing_alert_events.acknowledged_at' => now(),
+                'marketing_alert_events.acknowledged_by_user_id' => $request->user()?->getKey(),
+                'marketing_alert_events.updated_at' => now(),
+            ]);
+
+        return redirect()
+            ->route('clients.marketing-alerts.index', $client)
+            ->with('status', '已將 '.number_format($handledCount).' 則警示標示為已處理。');
     }
 }

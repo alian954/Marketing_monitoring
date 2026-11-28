@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
@@ -81,6 +82,11 @@ class Client extends Model
     public function marketingAlertRules(): HasMany
     {
         return $this->hasMany(MarketingAlertRule::class);
+    }
+
+    public function marketingAlertEvents(): HasManyThrough
+    {
+        return $this->hasManyThrough(MarketingAlertEvent::class, MarketingAlertRule::class);
     }
 
     public function marketingAnnotations(): HasMany

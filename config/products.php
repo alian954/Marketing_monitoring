@@ -193,6 +193,8 @@ return [
             'clients.marketing-alerts.store' => ['marketing.reports'],
             'clients.marketing-alerts.update' => ['marketing.reports'],
             'clients.marketing-alerts.destroy' => ['marketing.reports'],
+            'clients.marketing-alerts.events.acknowledge-all' => ['marketing.reports'],
+            'clients.marketing-alerts.events.update' => ['marketing.reports'],
             'integrations.google-analytics.edit' => ['marketing.analytics.ga4'],
             'integrations.google-analytics.connect' => ['marketing.analytics.ga4'],
             'integrations.google-analytics.callback' => ['marketing.analytics.ga4'],

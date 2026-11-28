@@ -412,6 +412,14 @@ Route::middleware(['auth', EnsureCustomerAccount::class, EnsureOrganizationActiv
         ->whereNumber('marketingAlertRule')
         ->scopeBindings()
         ->name('clients.marketing-alerts.destroy');
+    Route::post('/clients/{client}/marketing-alerts/events/acknowledge-all', [MarketingAlertRuleController::class, 'acknowledgeAllEvents'])
+        ->whereNumber('client')
+        ->name('clients.marketing-alerts.events.acknowledge-all');
+    Route::patch('/clients/{client}/marketing-alerts/events/{marketingAlertEvent}', [MarketingAlertRuleController::class, 'updateEvent'])
+        ->whereNumber('client')
+        ->whereNumber('marketingAlertEvent')
+        ->scopeBindings()
+        ->name('clients.marketing-alerts.events.update');
     Route::get('/social-post-maturity/export.csv', [DashboardController::class, 'exportSocialPostMaturity'])->name('social-post-maturity.export');
     Route::get('/social-engagement-targets/export.csv', [DashboardController::class, 'exportSocialEngagementTargets'])->name('social-engagement-targets.export');
     Route::get('/social-engagement-targets/{socialEngagementTarget}/report', [SocialEngagementCampaignReportController::class, 'show'])->whereNumber('socialEngagementTarget')->name('social-engagement-targets.report');
